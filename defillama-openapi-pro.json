@@ -5541,6 +5541,7 @@
       "get": {
         "tags": ["TVL"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get aggregate TVL metrics for a protocol",
         "description": "Returns protocol metadata along with current TVL figures, chain breakdowns, and other aggregate metrics.",
         "parameters": [
@@ -5935,6 +5936,7 @@
       "get": {
         "tags": ["TVL"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get historical TVL chart for a protocol",
         "description": "Returns an array of [timestamp, value] pairs representing the protocol's TVL over time. By default returns the base TVL metric. Use the `key` parameter to select a different metric or aggregate all metrics.",
         "parameters": [
@@ -5988,6 +5990,7 @@
       "get": {
         "tags": ["TVL"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get historical TVL chart for a protocol broken down by chain",
         "description": "Returns an array of [timestamp, { chain: value }] pairs showing the selected metric per chain over time.",
         "parameters": [
@@ -6038,6 +6041,7 @@
       "get": {
         "tags": ["TVL"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get historical TVL chart for a protocol broken down by token",
         "description": "Returns an array of [timestamp, { token: value }] pairs showing TVL per token over time. Values are in USD by default, set currency=tokens for raw token amounts.",
         "parameters": [
@@ -6098,6 +6102,7 @@
       "get": {
         "tags": ["Treasury"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get aggregate treasury metrics for a protocol",
         "description": "Returns protocol metadata along with current treasury figures and chain breakdowns.",
         "parameters": [
@@ -6397,6 +6402,7 @@
       "get": {
         "tags": ["Treasury"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get historical treasury chart for a protocol",
         "description": "Returns an array of [timestamp, value] pairs representing the protocol's treasury value over time. By default excludes the protocol's own tokens (OwnTokens).",
         "parameters": [
@@ -6450,6 +6456,7 @@
       "get": {
         "tags": ["Treasury"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get historical treasury chart for a protocol broken down by chain",
         "description": "Returns an array of [timestamp, { chain: value }] pairs showing treasury value per chain over time. By default excludes the protocol's own tokens.",
         "parameters": [
@@ -6500,6 +6507,7 @@
       "get": {
         "tags": ["Treasury"],
         "x-api-plan-only": true,
+        "x-api-beta": true,
         "summary": "Get historical treasury chart for a protocol broken down by token",
         "description": "Returns an array of [timestamp, { token: value }] pairs showing treasury value per token over time. By default excludes OwnTokens and values are in USD. Use key and currency params to customize.",
         "parameters": [

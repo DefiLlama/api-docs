@@ -70,6 +70,11 @@ const title = computed(
           class="pro-indicator">
           API Plan
         </span>
+        <span
+          v-if="transformedOperation.information?.['x-api-beta'] === true"
+          class="beta-indicator">
+          Beta
+        </span>
       </span>
     </a>
   </li>
@@ -123,6 +128,17 @@ const title = computed(
   font-size: var(--scalar-micro);
   font-weight: var(--scalar-bold);
   background: color-mix(in srgb, var(--scalar-color-orange), transparent 90%);
+  padding: 1px 4px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.beta-indicator {
+  margin-left: 8px;
+  color: #9333ea;
+  font-size: var(--scalar-micro);
+  font-weight: var(--scalar-bold);
+  background: color-mix(in srgb, #9333ea, transparent 90%);
   padding: 1px 4px;
   border-radius: 6px;
   display: inline-block;
