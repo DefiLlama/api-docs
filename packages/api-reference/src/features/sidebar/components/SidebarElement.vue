@@ -129,25 +129,34 @@ const onAnchorClick = async (ev: Event) => {
         <p class="sidebar-heading-link-title">
           {{ item.title }}
         </p>
-        <p
+        <div
           v-if="'method' in item && !hasChildren"
           class="sidebar-heading-link-method">
-          &hairsp;
-          <span class="sr-only">HTTP Method:&nbsp;</span>
-          <SidebarHttpBadge
-            class="min-w-9.75 justify-end text-right"
-            :active="isActive"
-            :method="item.method">
-            <template #default>
-              <ScalarIconWebhooksLogo
-                weight="bold"
-                v-if="'webhook' in item"
-                :style="{
-                  color: getHttpMethodInfo(item.method).colorVar,
-                }" />
-            </template>
-          </SidebarHttpBadge>
-        </p>
+          <p class="sidebar-heading-link-method-row">
+            &hairsp;
+            <span class="sr-only">HTTP Method:&nbsp;</span>
+            <SidebarHttpBadge
+              class="min-w-9.75 justify-end text-right"
+              :active="isActive"
+              :method="item.method">
+              <template #default>
+                <ScalarIconWebhooksLogo
+                  weight="bold"
+                  v-if="'webhook' in item"
+                  :style="{
+                    color: getHttpMethodInfo(item.method).colorVar,
+                  }" />
+              </template>
+            </SidebarHttpBadge>
+          </p>
+          <span
+            v-if="
+              'operation' in item && item.operation?.['x-api-beta'] === true
+            "
+            class="sidebar-beta-badge">
+            Beta
+          </span>
+        </div>
       </a>
     </div>
     <slot v-if="open" />
@@ -177,6 +186,14 @@ const onAnchorClick = async (ev: Event) => {
   user-select: none;
 }
 .sidebar-heading-link-method {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.sidebar-heading-link-method-row {
   margin: 0;
 }
 .sidebar-heading.deprecated .sidebar-heading-link-title {
@@ -351,5 +368,14 @@ const onAnchorClick = async (ev: Event) => {
   --scalar-sidebar-font-weight: var(--scalar-sidebar-font-weight-active);
   color: var(--scalar-sidebar-color-1, var(--scalar-color-1));
   font-weight: var(--scalar-sidebar-font-weight-active, var(--scalar-semibold));
+}
+
+.sidebar-beta-badge {
+  color: #9333ea;
+  font-size: 9px;
+  font-weight: var(--scalar-bold);
+  text-transform: uppercase;
+  line-height: 1;
+  flex-shrink: 0;
 }
 </style>
