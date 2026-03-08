@@ -71,6 +71,10 @@
     {
       "name": "DAT",
       "description": "Digital Asset Treasury"
+    },
+    {
+      "name": "Equities",
+      "description": "Stock market data for publicly traded companies"
     }
   ],
   "paths": {
@@ -9078,6 +9082,261 @@
             "source": "result = pro_client.dat.getInstitution('<symbol>')"
           }
         ]
+      }
+    },
+    "/equities/v1/companies": {
+      "get": {
+        "tags": ["Equities"],
+        "x-scalar-tier": "pro",
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "List all tracked public companies",
+        "description": "Returns a list of all publicly traded companies tracked by DefiLlama, with current market summary data for each.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ticker": { "type": "string", "example": "COIN" },
+                      "name": { "type": "string", "example": "Coinbase Global Inc." },
+                      "currentPrice": { "type": "number", "example": 125.5 },
+                      "volume": { "type": "number", "example": 25000000 },
+                      "marketCap": { "type": "number", "example": 50000000000 },
+                      "priceChangePercentage": { "type": "number", "example": 2.5 },
+                      "lastUpdatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-03-08T12:00:00.000Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/statements": {
+      "get": {
+        "tags": ["Equities"],
+        "x-scalar-tier": "pro",
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get full financial statements for a company",
+        "description": "Returns normalized income statement, balance sheet, and cash flow statement for the given ticker, broken down by quarterly and annual periods.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "COIN" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "incomeStatement": {
+                      "type": "object",
+                      "properties": {
+                        "labels": { "type": "array", "items": { "type": "string" } },
+                        "quarterly": {
+                          "type": "object",
+                          "properties": {
+                            "periods": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["2024-Q1", "2024-Q2"]
+                            },
+                            "periodEnding": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["2024-03-31", "2024-06-30"]
+                            },
+                            "values": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
+                          }
+                        },
+                        "annual": {
+                          "type": "object",
+                          "properties": {
+                            "periods": { "type": "array", "items": { "type": "string" }, "example": ["2023", "2024"] },
+                            "periodEnding": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["2023-12-31", "2024-12-31"]
+                            },
+                            "values": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
+                          }
+                        }
+                      }
+                    },
+                    "balanceSheet": { "type": "object" },
+                    "cashflow": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing required ticker parameter" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Ticker not found" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/price-history": {
+      "get": {
+        "tags": ["Equities"],
+        "x-scalar-tier": "pro",
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get historical price data for a company",
+        "description": "Returns an array of daily closing prices for the given ticker, sorted from oldest to newest.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "COIN" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "date": { "type": "string", "format": "date", "example": "2024-12-31" },
+                      "price": { "type": "number", "example": 125.5 }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing required ticker parameter" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Prices not found for ticker" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/summary": {
+      "get": {
+        "tags": ["Equities"],
+        "x-scalar-tier": "pro",
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get live market summary for a company",
+        "description": "Returns current market data for the given ticker including price, volume, market cap, 52-week range, dividend yield, and P/E ratio.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "COIN" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "currentPrice": { "type": "number", "example": 125.5 },
+                    "volume": { "type": "number", "example": 25000000 },
+                    "marketCap": { "type": "number", "example": 50000000000 },
+                    "fiftyTwoWeekHigh": { "type": "number", "example": 150.75 },
+                    "fiftyTwoWeekLow": { "type": "number", "example": 90.25 },
+                    "dividendYield": { "type": "number", "example": 0.025 },
+                    "trailingPE": { "type": "number", "example": 28.5 },
+                    "priceChangePercentage": { "type": "number", "example": 2.5 },
+                    "updatedAt": { "type": "string", "format": "date-time", "example": "2025-03-08T12:00:00.000Z" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing required ticker parameter" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Summary not found for ticker" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/filings": {
+      "get": {
+        "tags": ["Equities"],
+        "x-scalar-tier": "pro",
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get SEC filings for a company",
+        "description": "Returns a list of SEC filings (10-K, 10-Q, etc.) for the given ticker, sorted by filing date descending (newest first).",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "COIN" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "filingDate": { "type": "string", "format": "date", "example": "2025-02-28" },
+                      "reportDate": { "type": "string", "format": "date", "example": "2024-12-31" },
+                      "form": { "type": "string", "example": "10-K" },
+                      "primaryDocumentUrl": {
+                        "type": "string",
+                        "format": "uri",
+                        "example": "https://www.sec.gov/Archives/edgar/data/1679788/0001679788-25-000123/0001679788-25-000123.htm"
+                      },
+                      "documentDescription": { "type": "string", "example": "Annual Report (Form 10-K)" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing required ticker parameter" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Filings not found for ticker" },
+          "500": { "description": "Internal server error" }
+        }
       }
     }
   }

@@ -1914,3 +1914,102 @@ SECTION 12: ACCOUNT MANAGEMENT
     }
     ```
 
+
+===============================================================================
+SECTION 13: EQUITIES (BETA)
+===============================================================================
+
+Stock market data for publicly traded companies. All endpoints require authentication.
+Base URL: `https://pro-api.llama.fi`
+Authentication: API key injected in path — `https://pro-api.llama.fi/<YOUR_API_KEY>/<ENDPOINT>`
+
+72. 🔒 **GET /equities/v1/companies**
+    Purpose: List all tracked public companies with current market summary
+    Parameters: None
+    Response:
+    ```json
+    [
+      {
+        "ticker": "COIN",
+        "name": "Coinbase Global Inc.",
+        "currentPrice": 125.50,
+        "volume": 25000000,
+        "marketCap": 50000000000,
+        "priceChangePercentage": 2.5,
+        "lastUpdatedAt": "2025-03-08T12:00:00.000Z"
+      }
+    ]
+    ```
+
+73. 🔒 **GET /equities/v1/statements?ticker={ticker}**
+    Purpose: Get full financial statements (income statement, balance sheet, cash flow)
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Response:
+    ```json
+    {
+      "incomeStatement": {
+        "labels": ["Revenue", "Operating Expenses", "Net Income"],
+        "quarterly": {
+          "periods": ["2024-Q1", "2024-Q2"],
+          "periodEnding": ["2024-03-31", "2024-06-30"],
+          "values": [[1000000, 800000, 200000]]
+        },
+        "annual": {
+          "periods": ["2023", "2024"],
+          "periodEnding": ["2023-12-31", "2024-12-31"],
+          "values": [[4000000, 3200000, 800000]]
+        }
+      },
+      "balanceSheet": {},
+      "cashflow": {}
+    }
+    ```
+
+74. 🔒 **GET /equities/v1/price-history?ticker={ticker}**
+    Purpose: Get historical daily closing prices for a company
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Response:
+    ```json
+    [
+      { "date": "2024-12-30", "price": 124.75 },
+      { "date": "2024-12-31", "price": 125.50 }
+    ]
+    ```
+
+75. 🔒 **GET /equities/v1/summary?ticker={ticker}**
+    Purpose: Get live market summary including price, volume, market cap, 52-week range, P/E ratio
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Response:
+    ```json
+    {
+      "currentPrice": 125.50,
+      "volume": 25000000,
+      "marketCap": 50000000000,
+      "fiftyTwoWeekHigh": 150.75,
+      "fiftyTwoWeekLow": 90.25,
+      "dividendYield": 0.025,
+      "trailingPE": 28.5,
+      "priceChangePercentage": 2.5,
+      "updatedAt": "2025-03-08T12:00:00.000Z"
+    }
+    ```
+
+76. 🔒 **GET /equities/v1/filings?ticker={ticker}**
+    Purpose: Get SEC filings (10-K, 10-Q, etc.) sorted by filing date descending
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Response:
+    ```json
+    [
+      {
+        "filingDate": "2025-02-28",
+        "reportDate": "2024-12-31",
+        "form": "10-K",
+        "primaryDocumentUrl": "https://www.sec.gov/Archives/edgar/data/1679788/0001679788-25-000123/0001679788-25-000123.htm",
+        "documentDescription": "Annual Report (Form 10-K)"
+      }
+    ]
+    ```
