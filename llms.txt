@@ -1914,3 +1914,193 @@ SECTION 12: ACCOUNT MANAGEMENT
     }
     ```
 
+
+===============================================================================
+SECTION 13: EQUITIES (BETA)
+===============================================================================
+
+Stock market data for publicly traded companies. All endpoints require authentication.
+Base URL: `https://pro-api.llama.fi`
+Authentication: API key injected in path — `https://pro-api.llama.fi/<YOUR_API_KEY>/<ENDPOINT>`
+
+72. 🔒 **GET /equities/v1/companies**
+    Purpose: Get list of all tracked public companies with current market summary, sorted by market cap (largest first)
+    Parameters: None
+    Response:
+    ```json
+    [
+      {
+        "ticker": "NVDA",
+        "name": "NVIDIA Corporation",
+        "currentPrice": 177.88,
+        "volume": 189021949,
+        "marketCap": 4323494854656,
+        "priceChangePercentage": -2.94,
+        "lastUpdatedAt": "2026-03-09 12:12:22"
+      }
+    ]
+    ```
+
+73. 🔒 **GET /equities/v1/statements?ticker={ticker}**
+    Purpose: Get financial statements (income statement, balance sheet, cash flow)
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Note: Each statement has top-level `labels` (row names), `children` metadata for sub-breakdowns, and `quarterly`/`annual` objects each containing `periods` (e.g. "Q1-2024" / "FY-2024"), `periodEnding` (ISO dates), `values` (parallel array of arrays), and `children` (breakdown values).
+    Response:
+    ```json
+    {
+      "incomeStatement": {
+        "labels": ["Total Revenue", "Cost of Revenue", "Gross Profit", "Operating Expense", "Operating Income", "Non-operating Items", "Income Before Tax", "Net Income"],
+        "children": {
+          "quarterly": {
+            "Total Revenue": { "labels": ["Bank Servicing and Subscription and Circulation", "Remaining Items"] },
+            "Operating Expense": { "labels": ["General and Administrative Expense", "Research and Development Expense", "Selling and Marketing Expense", "Other Operating Income (Expense), Net", "Remaining Items"] },
+            "Non-operating Items": { "labels": ["Other Nonoperating Income (Expense)", "Remaining Items"] }
+          },
+          "annual": {
+            "Total Revenue": { "labels": ["Bank Servicing and Subscription and Circulation", "Remaining Items"] },
+            "Operating Expense": { "labels": ["General and Administrative Expense", "Research and Development Expense", "Selling and Marketing Expense", "Other Operating Income (Expense), Net", "Remaining Items"] },
+            "Non-operating Items": { "labels": ["Other Nonoperating Income (Expense)", "Remaining Items"] }
+          }
+        },
+        "quarterly": {
+          "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
+          "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
+          "values": [
+            [1801112000, 2227962000, 1311908000, 2498462000],
+            [234066000, 335426000, 197251000, 501181000],
+            [1567046000, 1892536000, 1114657000, 1997281000],
+            [579333000, 1017811000, 822849000, null],
+            [987713000, 874725000, 291808000, 922324000],
+            [8953000, -5844000, -20948000, -31784000],
+            [996666000, 868881000, 270860000, 890540000],
+            [771463000, 1606349000, 406100000, 840208000]
+          ],
+          "children": {
+            "Total Revenue": {
+              "values": [[1596981000, 2033011000, 1234736000, 2490025000], [204131000, 194951000, 77172000, 8437000]]
+            },
+            "Operating Expense": {
+              "values": [
+                [121231000, 248195000, 242642000, 297324000],
+                [184225000, 291461000, 356264000, 459611000],
+                [117990000, 195733000, 105395000, 244571000],
+                [null, 282422000, 118548000, 258627000],
+                [155887000, 73451000, 144489000, -1035000]
+              ]
+            },
+            "Non-operating Items": {
+              "values": [[8953000, -5844000, -20948000, -31784000], [987713000, 868881000, 270860000, 890540000]]
+            }
+          }
+        },
+        "annual": {
+          "periods": ["FY-2023", "FY-2024"],
+          "periodEnding": ["2023-12-31", "2024-12-31"],
+          "values": [
+            [1166436000, 2271637000],
+            [277826000, 317042000],
+            [888610000, 1954595000],
+            [1443073000, 920526000],
+            [-554463000, 1034069000],
+            [-54982000, 462807000],
+            [-609445000, 1496876000],
+            [-429659000, 1291176000]
+          ],
+          "children": {
+            "Total Revenue": { "values": [[1164891000, 2197030000], [1545000, 74607000]] },
+            "Operating Expense": {
+              "values": [
+                [413578000, 362519000],
+                [570664000, 368691000],
+                [200204000, 225827000],
+                [258627000, -20270000],
+                [42453000, -16241000]
+              ]
+            },
+            "Non-operating Items": { "values": [[-54982000, 462807000], [-609445000, 1496876000]] }
+          }
+        }
+      },
+      "balanceSheet": {
+        "labels": ["Total Current Assets", "Total Non-Current Assets", "Total Assets", "Total Current Liabilities", "Total Liabilities", "Total Stockholders Equity", "Total Liabilities and Equity"],
+        "children": { "quarterly": {}, "annual": {} },
+        "quarterly": {
+          "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
+          "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
+          "values": [[79373000, 204728000, 209604000, 215571000], [126996000, 248147000, 250536000, 254181000], [206369000, 452875000, 460140000, 469752000], [217472000, 221034000, 223916000, 226930000], [217472000, 221034000, 223916000, 226930000], [231489000, 234641000, 237270000, 314164000], [448961000, 455675000, 457186000, 541094000]],
+          "children": {}
+        },
+        "annual": {
+          "periods": ["FY-2023", "FY-2024"],
+          "periodEnding": ["2023-12-31", "2024-12-31"],
+          "values": [[217472000, 226930000], [217472000, 226930000], [434944000, 453860000], [221034000, 226930000], [221034000, 226930000], [234641000, 314164000], [455675000, 541094000]],
+          "children": {}
+        }
+      },
+      "cashflow": {
+        "labels": ["Cashflow From Operating Activities", "Cashflow From Investing Activities", "Cashflow From Financing Activities", "Net Cashflow"],
+        "children": { "quarterly": {}, "annual": {} },
+        "quarterly": {
+          "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
+          "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
+          "values": [[234066000, 335426000, 197251000, 501181000], [-121231000, -248195000, -242642000, -297324000], [-98771300, -87472500, -29180800, -92232400], [14221670, 13119700, -7440700, 111211600]],
+          "children": {}
+        },
+        "annual": {
+          "periods": ["FY-2023", "FY-2024"],
+          "periodEnding": ["2023-12-31", "2024-12-31"],
+          "values": [[277826000, 317042000], [-413578000, -362519000], [-55446300, 103406900], [-19123600, 45811400]],
+          "children": {}
+        }
+      }
+    }
+    ```
+
+74. 🔒 **GET /equities/v1/price-history?ticker={ticker}**
+    Purpose: Returns an array of daily closing prices for the given ticker, sorted by date descending (newest first)
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Response:
+    ```json
+    [
+      { "date": "2024-12-31", "price": 125.50 },
+      { "date": "2024-12-30", "price": 124.75 }
+    ]
+    ```
+
+75. 🔒 **GET /equities/v1/summary?ticker={ticker}**
+    Purpose: Get live market summary including price, volume, market cap, 52-week range, P/E ratio
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Response:
+    ```json
+    {
+      "currentPrice": 250.13,
+      "volume": 1841923,
+      "marketCap": 100677328896,
+      "fiftyTwoWeekHigh": 267.31,
+      "fiftyTwoWeekLow": 105.04,
+      "dividendYield": 0.1743,
+      "trailingPE": 67.6,
+      "priceChangePercentage": -0.9,
+      "updatedAt": "2026-03-09 12:12:22"
+    }
+    ```
+
+76. 🔒 **GET /equities/v1/filings?ticker={ticker}**
+    Purpose: Get SEC filings (10-K, 10-Q, etc.) sorted by filing date descending
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. COIN
+    Response:
+    ```json
+    [
+      {
+        "filingDate": "2025-02-28",
+        "reportDate": "2024-12-31",
+        "form": "10-K",
+        "primaryDocumentUrl": "https://www.sec.gov/Archives/edgar/data/1679788/0001679788-25-000123/0001679788-25-000123.htm",
+        "documentDescription": "Annual Report"
+      }
+    ]
+    ```
