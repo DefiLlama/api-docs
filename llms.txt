@@ -1926,17 +1926,28 @@ Authentication: API key injected in path — `https://pro-api.llama.fi/<YOUR_API
 72. 🔒 **GET /equities/v1/companies**
     Purpose: Get list of all tracked public companies with current market summary, sorted by market cap (largest first)
     Parameters: None
-    Response:
+    Response (each element includes ticker, name, price metrics, TTM financials, and balance-sheet highlights):
     ```json
     [
       {
         "ticker": "NVDA",
         "name": "NVIDIA Corporation",
-        "currentPrice": 177.88,
-        "volume": 189021949,
-        "marketCap": 4323494854656,
-        "priceChangePercentage": -2.94,
-        "lastUpdatedAt": "2026-03-09 12:12:22"
+        "currentPrice": 172.7,
+        "volume": 209815684,
+        "marketCap": 4197473583104,
+        "priceChangePercentage1d": -3.28,
+        "trailingPE": 35.24,
+        "dividendYield": 0.0224,
+        "priceToBook": 26.68,
+        "lastUpdatedAt": "2026-03-21T13:33:10Z",
+        "priceChangePercentage7d": -5.74,
+        "priceChangePercentage1m": -8.08,
+        "revenueTTM": 215938000000,
+        "grossProfitTTM": 153463000000,
+        "totalAssets": 206803000000,
+        "earningsTTM": 120067000000,
+        "operatingProfitMargin": 60.38,
+        "totalLiabilities": 49510000000
       }
     ]
     ```
@@ -2057,38 +2068,59 @@ Authentication: API key injected in path — `https://pro-api.llama.fi/<YOUR_API
     }
     ```
 
-74. 🔒 **GET /equities/v1/price-history?ticker={ticker}**
-    Purpose: Returns an array of daily closing prices for the given ticker, sorted by date descending (newest first)
+74. 🔒 **GET /equities/v1/price-history?ticker={ticker}&timeframe={timeframe}**
+    Purpose: Daily closes as `[ISO8601 date-time string, price]` pairs, sorted by date descending (newest first)
     Parameters:
-    - ticker (query, required): Stock ticker symbol e.g. COIN
+    - ticker (query, required): Stock ticker symbol e.g. AAPL
+    - timeframe (query, optional): `1W` | `1M` | `6M` | `1Y` | `5Y` | `MAX` (case-insensitive). Omit or empty for full history.
     Response:
     ```json
     [
-      { "date": "2024-12-31", "price": 125.50 },
-      { "date": "2024-12-30", "price": 124.75 }
+      ["2026-03-21T13:33:10Z", 197.5],
+      ["2026-03-20T00:00:00Z", 196.2]
     ]
     ```
 
-75. 🔒 **GET /equities/v1/summary?ticker={ticker}**
-    Purpose: Get live market summary including price, volume, market cap, 52-week range, P/E ratio
+75. 🔒 **GET /equities/v1/ohlcv?ticker={ticker}&timeframe={timeframe}**
+    Purpose: Daily OHLCV bars as `[Unix timestamp (seconds UTC), open, high, low, close, volume]`, sorted newest first
     Parameters:
-    - ticker (query, required): Stock ticker symbol e.g. COIN
+    - ticker (query, required): Stock ticker symbol e.g. AAPL
+    - timeframe (query, optional): Same as price history (`1W`, `1M`, `6M`, `1Y`, `5Y`, `MAX`). Omit or empty for full history.
+    Response:
+    ```json
+    [
+      [1773964800, 247.98, 249.2, 246, 247.99, 88268000],
+      [1773878400, 249.4, 251.83, 247.3, 248.96, 34864100]
+    ]
+    ```
+
+76. 🔒 **GET /equities/v1/summary?ticker={ticker}**
+    Purpose: Live market snapshot for one ticker (no `ticker` / `name`; includes 52-week range, 1d/7d/1m change, valuation, TTM revenue/gross profit/earnings, total assets). For the list shape with company identity and liabilities/margin, use `GET /equities/v1/companies`.
+    Parameters:
+    - ticker (query, required): Stock ticker symbol e.g. AAPL
     Response:
     ```json
     {
-      "currentPrice": 250.13,
-      "volume": 1841923,
-      "marketCap": 100677328896,
-      "fiftyTwoWeekHigh": 267.31,
-      "fiftyTwoWeekLow": 105.04,
-      "dividendYield": 0.1743,
-      "trailingPE": 67.6,
-      "priceChangePercentage": -0.9,
-      "updatedAt": "2026-03-09 12:12:22"
+      "currentPrice": 247.99,
+      "volume": 87981315,
+      "marketCap": 3644938780672,
+      "fiftyTwoWeekHigh": 288.62,
+      "fiftyTwoWeekLow": 169.21,
+      "dividendYield": 0.4137,
+      "trailingPE": 31.35,
+      "priceChangePercentage1d": -0.39,
+      "priceToBook": 41.35,
+      "updatedAt": "2026-03-21T07:31:15Z",
+      "priceChangePercentage7d": -1.91,
+      "priceChangePercentage1m": -4.83,
+      "revenueTTM": 435617000000,
+      "grossProfitTTM": 206157000000,
+      "totalAssets": 379297000000,
+      "earningsTTM": 117777000000
     }
     ```
 
-76. 🔒 **GET /equities/v1/filings?ticker={ticker}**
+77. 🔒 **GET /equities/v1/filings?ticker={ticker}**
     Purpose: Get SEC filings (10-K, 10-Q, etc.) sorted by filing date descending
     Parameters:
     - ticker (query, required): Stock ticker symbol e.g. COIN
