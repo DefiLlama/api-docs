@@ -52,6 +52,7 @@ Lists the amount of a certain token within all protocols. Data for the Token Usa
 
 **Parameters:**
   - `symbol` (path, string, required) — token slug Example: `usdt`
+Returns: array of {name, category, amountUsd}
 
 ### GET /api/inflows/{protocol}/{timestamp}
 **Base URL:** `https://pro-api.llama.fi`
@@ -60,10 +61,12 @@ Lists the amount of inflows and outflows for a protocol at a given date
 **Parameters:**
   - `protocol` (path, string, required) — protocol slug Example: `compound-v3`
   - `timestamp` (path, integer, required) — unix timestamp Example: `1767139200`
+Returns: {outflows, oldTokens, currentTokens}
 
 ### GET /api/chainAssets
 **Base URL:** `https://pro-api.llama.fi`
 Get assets of all chains
+Returns: {chain, timestamp}
 
 ---
 
@@ -76,6 +79,7 @@ Get stablecoin dominance per chain along with the info about the larges coin in 
 **Parameters:**
   - `chain` (path, string, required) — chain slug, you can get these from /chains or the chains property on /protocols Example: `Ethereum`
   - `stablecoin` (query, integer, optional) — stablecoin ID, you can get these from /stablecoins Example: `1`
+Returns: array of {date, totalCirculatingUSD, greatestMcap}
 
 ---
 
@@ -84,6 +88,7 @@ Get stablecoin dominance per chain along with the info about the larges coin in 
 ### GET /api/emissions
 **Base URL:** `https://pro-api.llama.fi`
 List of all tokens along with basic info for each
+Returns: array of {token, sources, protocolId, name, circSupply, circSupply30d, totalLocked, maxSupply, gecko_id, events, nextEvent, unlocksPerDay, mcap}
 
 ### GET /api/emission/{protocol}
 **Base URL:** `https://pro-api.llama.fi`
@@ -91,6 +96,7 @@ Unlocks data for a given token/protocol. You can find a list of available slugs 
 
 **Parameters:**
   - `protocol` (path, string, required) — protocol slug Example: `hyperliquid`
+Returns: {body, lastModified}
 
 ---
 
@@ -99,30 +105,37 @@ Unlocks data for a given token/protocol. You can find a list of available slugs 
 ### GET /api/categories
 **Base URL:** `https://pro-api.llama.fi`
 Overview of all categories accross all protocols
+Returns: {chart, categories}
 
 ### GET /api/forks
 **Base URL:** `https://pro-api.llama.fi`
 Overview of all forks accross all protocols
+Returns: {chart, forks}
 
 ### GET /api/oracles
 **Base URL:** `https://pro-api.llama.fi`
 Overview of all oracles accross all protocols
+Returns: {chart, oracles, chainsByOracle}
 
 ### GET /api/hacks
 **Base URL:** `https://pro-api.llama.fi`
 Overview of all hacks on our Hacks dashboard
+Returns: array of {date, name, classification, technique, amount, chain, bridgeHack, targetType, source, returnedFunds, defillamaId, language}
 
 ### GET /api/raises
 **Base URL:** `https://pro-api.llama.fi`
 Overview of all raises on our Raises dashboard
+Returns: {raises}
 
 ### GET /api/treasuries
 **Base URL:** `https://pro-api.llama.fi`
 List all protocols on our Treasuries dashboard
+Returns: array of {id, name, address, symbol, url, description, chain, logo, audits, audit_note, gecko_id, cmcId, category, chains, module, treasury, forkedFromIds, twitter, slug, tvl, chainTvls, change_1h, change_1d, change_7d, tokenBreakdowns, mcap}
 
 ### GET /api/entities
 **Base URL:** `https://pro-api.llama.fi`
 List all entities
+Returns: array of {id, name, url, description, logo, category, module, twitter, symbol, chain, gecko_id, cmcId, chains, slug, tvl, chainTvls, change_1h, change_1d, change_7d, tokenBreakdowns, mcap}
 
 ---
 
@@ -142,10 +155,12 @@ Provides the name of contracts on a determined chain
 ### GET /yields/poolsOld
 **Base URL:** `https://pro-api.llama.fi`
 Same as /pools but it also includes a new parameter `pool_old` which usually contains pool address (but not guaranteed)
+Returns: {status, data}
 
 ### GET /yields/poolsBorrow
 **Base URL:** `https://pro-api.llama.fi`
 Borrow costs APY of assets from lending markets
+Returns: {status, data}
 
 ### GET /yields/chartLendBorrow/{pool}
 **Base URL:** `https://pro-api.llama.fi`
@@ -153,14 +168,17 @@ Historical borrow cost APY from a pool on a lending market, pool ids should be o
 
 **Parameters:**
   - `pool` (path, string, required) — pool id, can be retrieved from /poolsBorrow (property is called pool) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+Returns: {status, data}
 
 ### GET /yields/perps
 **Base URL:** `https://pro-api.llama.fi`
 Funding rates and Open Interest of perps across exchanges, including both Decentralized and Centralized
+Returns: {status, data}
 
 ### GET /yields/lsdRates
 **Base URL:** `https://pro-api.llama.fi`
 APY rates of multiple LSDs
+Returns: array of {name, symbol, address, type, expectedRate, marketRate, ethPeg, fee}
 
 ---
 
@@ -169,10 +187,12 @@ APY rates of multiple LSDs
 ### GET /etfs/snapshot
 **Base URL:** `https://pro-api.llama.fi`
 Get ETFs and their metrics (aum, flows, fees...)
+Returns: array of {ticker, timestamp, asset, issuer, etf_name, custodian, pct_fee, url, flows, aum, volume}
 
 ### GET /etfs/flows
 **Base URL:** `https://pro-api.llama.fi`
 Historical Flows at the Asset Level
+Returns: array of {gecko_id, day, total_flow_usd}
 
 ---
 
@@ -184,6 +204,7 @@ Get chart of narratives based on category performance (with individual coins wei
 
 **Parameters:**
   - `period` (path, string, required) — One of ['7', '30', 'ytd', '365'] Example: `30`
+Returns: array of {date, Analytics, Artificial Intelligence (AI), Bitcoin, Bridge Governance Tokens, Centralized Exchange (CEX) Token, Data Availability, Decentralized Finance (DeFi), Decentralized Identifier (DID), DePIN, Ethereum, Gaming (GameFi), Liquid Staking Governance Tokens, Meme, NFT Marketplace, Oracle, PolitiFi, Prediction Markets, Real World Assets (RWA), Rollup, Smart Contract Platform, SocialFi, Solana}
 
 ---
 
@@ -196,6 +217,7 @@ Lists all derivatives along summaries of their volumes filtering by chain
 **Parameters:**
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {totalDataChart, totalDataChartBreakdown, breakdown24h, breakdown30d, chain, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d, total7DaysAgo, total30DaysAgo, totalAllTime, protocols}
 
 ### GET /api/summary/derivatives/{protocol}
 **Base URL:** `https://pro-api.llama.fi`
@@ -205,6 +227,7 @@ Volume Details about a specific perp protocol
   - `protocol` (path, string, required) — protocol slug Example: `hyperliquid`
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {id, name, url, referralUrl, description, logo, gecko_id, cmcId, chains, twitter, github, symbol, address, childProtocols, linkedProtocols, defillamaId, disabled, displayName, module, category, methodologyURL, methodology, forkedFrom, audits, audit_links, versionKey, governanceID, treasury, parentProtocol, previousNames, latestFetchIsOk, slug, protocolType, total24h, total48hto24h, total7d, totalAllTime, totalDataChart, totalDataChartBreakdown, change_1d}
 
 ---
 
@@ -216,6 +239,7 @@ List all bridges along with summaries of recent bridge volumes.
 
 **Parameters:**
   - `includeChains` (query, boolean, optional) — set whether to include current previous day volume breakdown by chain Example: `true`
+Returns: {bridges}
 
 ### GET /bridges/bridge/{id}
 **Base URL:** `https://pro-api.llama.fi`
@@ -223,6 +247,7 @@ Get summary of bridge volume and volume breakdown by chain
 
 **Parameters:**
   - `id` (path, integer, required) — bridge ID, you can get these from /bridges Example: `1`
+Returns: {id, name, displayName, lastHourlyVolume, currentDayVolume, lastDailyVolume, dayBeforeLastVolume, weeklyVolume, monthlyVolume, lastHourlyTxs, currentDayTxs, prevDayTxs, dayBeforeLastTxs, weeklyTxs, monthlyTxs, chainBreakdown, destinationChain}
 
 ### GET /bridges/bridgevolume/{chain}
 **Base URL:** `https://pro-api.llama.fi`
@@ -231,6 +256,7 @@ Get historical volumes for a bridge, chain, or bridge on a particular chain
 **Parameters:**
   - `chain` (path, string, required) — chain slug, you can get these from /chains. Call also use 'all' for volume on all chains. Example: `Ethereum`
   - `id` (query, integer, optional) — bridge ID, you can get these from /bridges Example: `2`
+Returns: array of {date, depositUSD, withdrawUSD, depositTxs, withdrawTxs}
 
 ### GET /bridges/bridgedaystats/{timestamp}/{chain}
 **Base URL:** `https://pro-api.llama.fi`
@@ -240,6 +266,7 @@ Get a 24hr token and address volume breakdown for a bridge
   - `timestamp` (path, integer, required) — Unix timestamp. Data returned will be for the 24hr period starting at 00:00 UTC that the timestamp lands in. Example: `1755561600`
   - `chain` (path, string, required) — chain slug, you can get these from /chains. Example: `Ethereum`
   - `id` (query, integer, optional) — bridge ID, you can get these from /bridges Example: `2`
+Returns: {date, totalTokensDeposited, totalTokensWithdrawn, totalAddressDeposited, totalAddressWithdrawn}
 
 ### GET /bridges/transactions/{id}
 **Base URL:** `https://pro-api.llama.fi`
@@ -268,6 +295,7 @@ Get amount of credits left in the api key, these reset on the 1st of each month
 ### GET /dat/institutions
 **Base URL:** `https://pro-api.llama.fi`
 Get list of all institutions with Digital Asset Treasury data
+Returns: {institutionMetadata, assetMetadata, institutions, assets, totalCompanies, flows, mNAV, lastUpdated}
 
 ### GET /dat/institutions/{symbol}
 **Base URL:** `https://pro-api.llama.fi`
@@ -275,6 +303,7 @@ Get individual institution Digital Asset Treasury details
 
 **Parameters:**
   - `symbol` (path, string, required) — Institution ticker symbol (e.g., MSTR for MicroStrategy) Example: `MSTR`
+Returns: {institutionId, ticker, name, type, rank, price, priceChange24h, volume24h, fd_realized, fd_realistic, fd_max, mcap_realized, mcap_realistic, mcap_max, realized_mNAV, realistic_mNAV, max_mNAV, totalCost, totalUsdValue, assets, assetsMeta, ohlcv, assetValue, stats, transactions, lastUpdated}
 
 ---
 
@@ -283,6 +312,7 @@ Get individual institution Digital Asset Treasury details
 ### GET /equities/v1/companies
 **Base URL:** `https://pro-api.llama.fi`
 Get list of all tracked public companies
+Returns: array of {ticker, name, currentPrice, volume, marketCap, priceChangePercentage1d, trailingPE, dividendYield, priceToBook, lastUpdatedAt, priceChangePercentage7d, priceChangePercentage1m, revenueTTM, grossProfitTTM, totalAssets, earningsTTM, operatingProfitMargin, totalLiabilities}
 
 ### GET /equities/v1/statements
 **Base URL:** `https://pro-api.llama.fi`
@@ -290,6 +320,7 @@ Get financial statements for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
+Returns: {incomeStatement, balanceSheet, cashflow}
 
 ### GET /equities/v1/price-history
 **Base URL:** `https://pro-api.llama.fi`
@@ -313,6 +344,7 @@ Get live market summary for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
+Returns: {currentPrice, volume, marketCap, fiftyTwoWeekHigh, fiftyTwoWeekLow, dividendYield, trailingPE, priceChangePercentage1d, priceToBook, updatedAt, priceChangePercentage7d, priceChangePercentage1m, revenueTTM, grossProfitTTM, totalAssets, earningsTTM}
 
 ### GET /equities/v1/filings
 **Base URL:** `https://pro-api.llama.fi`
@@ -320,3 +352,4 @@ Get SEC filings for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
+Returns: array of {filingDate, reportDate, form, primaryDocumentUrl, documentDescription}

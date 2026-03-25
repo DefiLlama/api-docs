@@ -9,6 +9,7 @@
 ### GET /protocols
 **Base URL:** `https://api.llama.fi`
 List all protocols on defillama along with their tvl
+Returns: array of {id, name, symbol, category, chains, tvl, chainTvls, change_1d, change_7d}
 
 ### GET /protocol/{protocol}
 **Base URL:** `https://api.llama.fi`
@@ -16,10 +17,12 @@ Get historical TVL of a protocol and breakdowns by token and chain
 
 **Parameters:**
   - `protocol` (path, string, required) — protocol slug Example: `aave`
+Returns: {id, name, symbol, category, chains, currentChainTvls, chainTvls}
 
 ### GET /v2/historicalChainTvl
 **Base URL:** `https://api.llama.fi`
 Get historical TVL (excludes liquid staking and double counted tvl) of DeFi on all chains
+Returns: array of {date, tvl}
 
 ### GET /v2/historicalChainTvl/{chain}
 **Base URL:** `https://api.llama.fi`
@@ -27,6 +30,7 @@ Get historical TVL (excludes liquid staking and double counted tvl) of a chain
 
 **Parameters:**
   - `chain` (path, string, required) — chain slug, you can get these from /chains or the chains property on /protocols Example: `Ethereum`
+Returns: array of {date, tvl}
 
 ### GET /tvl/{protocol}
 **Base URL:** `https://api.llama.fi`
@@ -34,10 +38,12 @@ Simplified endpoint to get current TVL of a protocol
 
 **Parameters:**
   - `protocol` (path, string, required) — protocol slug Example: `uniswap`
+Returns: number
 
 ### GET /v2/chains
 **Base URL:** `https://api.llama.fi`
 Get current TVL of all chains
+Returns: array of {gecko_id, tvl, tokenSymbol, cmcId, name, chainId}
 
 ---
 
@@ -50,6 +56,7 @@ Get current prices of tokens by contract address
 **Parameters:**
   - `coins` (path, string, required) — set of comma-separated tokens defined as {chain}:{address} Example: `ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1,coingecko:ethereum,bsc:0x762539b45a1dcce3d36d080f74d1aed37844b878,ethereum:0xdB25f211AB05b1c97D595516F45794528a807ad8`
   - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 6 hours Example: `4h`
+Returns: {coins}
 
 ### GET /prices/historical/{timestamp}/{coins}
 **Base URL:** `https://api.llama.fi`
@@ -59,6 +66,7 @@ Get historical prices of tokens by contract address
   - `coins` (path, string, required) — set of comma-separated tokens defined as {chain}:{address} Example: `ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1,coingecko:ethereum,bsc:0x762539b45a1dcce3d36d080f74d1aed37844b878,ethereum:0xdB25f211AB05b1c97D595516F45794528a807ad8`
   - `timestamp` (path, number, required) — UNIX timestamp of time when you want historical prices Example: `1648680149`
   - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 6 hours Example: `4h`
+Returns: {coins}
 
 ### GET /batchHistorical
 **Base URL:** `https://api.llama.fi`
@@ -68,6 +76,7 @@ Get historical prices for multiple tokens at multiple different timestamps
   - `coins` (query, string, required) — object where keys are coins in the form {chain}:{address}, and values are arrays of requested timestamps Example: `{"avax:0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": [1666876743, 1666862343], "coingecko:ethereum": [1666869543, 1666862343]}
 `
   - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 6 hours Example: `600`
+Returns: {coins}
 
 ### GET /chart/{coins}
 **Base URL:** `https://api.llama.fi`
@@ -80,6 +89,7 @@ Get token prices at regular time intervals
   - `span` (query, number, optional) — number of data points returned, defaults to 0 Example: `10`
   - `period` (query, string, optional) — duration between data points, defaults to 24 hours Example: `2d`
   - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 10% of period Example: `600`
+Returns: {coins}
 
 ### GET /percentage/{coins}
 **Base URL:** `https://api.llama.fi`
@@ -90,6 +100,7 @@ Get percentage change in price over time
   - `timestamp` (query, number, optional) — timestamp of data point requested, defaults to time now Example: `1664364537`
   - `lookForward` (query, boolean, optional) — whether you want the duration after your given timestamp or not, defaults to false (looking back) Example: `false`
   - `period` (query, string, optional) — duration between data points, defaults to 24 hours Example: `3w`
+Returns: {coins}
 
 ### GET /prices/first/{coins}
 **Base URL:** `https://api.llama.fi`
@@ -97,6 +108,7 @@ Get earliest timestamp price record for coins
 
 **Parameters:**
   - `coins` (path, string, required) — set of comma-separated tokens defined as {chain}:{address} Example: `ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1,coingecko:ethereum,bsc:0x762539b45a1dcce3d36d080f74d1aed37844b878,ethereum:0xdB25f211AB05b1c97D595516F45794528a807ad8`
+Returns: {coins}
 
 ### GET /block/{chain}/{timestamp}
 **Base URL:** `https://api.llama.fi`
@@ -105,6 +117,7 @@ Get the closest block to a timestamp
 **Parameters:**
   - `chain` (path, string, required) — Chain which you want to get the block from Example: `ethereum`
   - `timestamp` (path, integer, required) — UNIX timestamp of the block you are searching for Example: `1603964988`
+Returns: {height, timestamp}
 
 ---
 
@@ -116,6 +129,7 @@ List all stablecoins along with their circulating amounts
 
 **Parameters:**
   - `includePrices` (query, boolean, optional) — set whether to include current stablecoin prices Example: `true`
+Returns: {peggedAssets}
 
 ### GET /stablecoincharts/all
 **Base URL:** `https://api.llama.fi`
@@ -123,6 +137,7 @@ Get historical mcap sum of all stablecoins
 
 **Parameters:**
   - `stablecoin` (query, integer, optional) — stablecoin ID, you can get these from /stablecoins Example: `1`
+Returns: array of {date, totalCirculating}
 
 ### GET /stablecoincharts/{chain}
 **Base URL:** `https://api.llama.fi`
@@ -131,6 +146,7 @@ Get historical mcap sum of all stablecoins in a chain
 **Parameters:**
   - `chain` (path, string, required) — chain slug, you can get these from /chains or the chains property on /protocols Example: `Ethereum`
   - `stablecoin` (query, integer, optional) — stablecoin ID, you can get these from /stablecoins Example: `1`
+Returns: array of {date, totalCirculating}
 
 ### GET /stablecoin/{asset}
 **Base URL:** `https://api.llama.fi`
@@ -138,14 +154,17 @@ Get historical mcap and historical chain distribution of a stablecoin
 
 **Parameters:**
   - `asset` (path, integer, required) — stablecoin ID, you can get these from /stablecoins Example: `1`
+Returns: {id, name, symbol, totalCirculating, chainCirculating}
 
 ### GET /stablecoinchains
 **Base URL:** `https://api.llama.fi`
 Get current mcap sum of all stablecoins on each chain
+Returns: array of {name, totalCirculating}
 
 ### GET /stablecoinprices
 **Base URL:** `https://api.llama.fi`
 Get historical prices of all stablecoins
+Returns: array of {date, prices}
 
 ---
 
@@ -154,6 +173,7 @@ Get historical prices of all stablecoins
 ### GET /pools
 **Base URL:** `https://api.llama.fi`
 Retrieve the latest data for all pools, including enriched information such as predictions
+Returns: {status, data}
 
 ### GET /chart/{pool}
 **Base URL:** `https://api.llama.fi`
@@ -161,6 +181,7 @@ Get historical APY and TVL of a pool
 
 **Parameters:**
   - `pool` (path, string, required) — pool id, can be retrieved from /pools (property is called pool) Example: `747c1d2a-c668-4682-b9f9-296708a3dd90`
+Returns: {status, data}
 
 ---
 
@@ -173,6 +194,7 @@ List all dexs along with summaries of their volumes and dataType history data
 **Parameters:**
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {protocols, totalDataChart, allChains}
 
 ### GET /overview/dexs/{chain}
 **Base URL:** `https://api.llama.fi`
@@ -182,6 +204,7 @@ List all dexs along with summaries of their volumes and dataType history data fi
   - `chain` (path, string, required) — chain name, list of all supported chains can be found under allChains attribute in /overview/dexs response Example: `ethereum`
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {protocols, totalDataChart}
 
 ### GET /summary/dexs/{protocol}
 **Base URL:** `https://api.llama.fi`
@@ -191,6 +214,7 @@ Get summary of dex volume with historical data
   - `protocol` (path, string, required) — protocol slug Example: `uniswap`
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {name, total24h, totalAllTime, totalDataChart, totalDataChartBreakdown, chains}
 
 ### GET /overview/options
 **Base URL:** `https://api.llama.fi`
@@ -200,6 +224,7 @@ List all options dexs along with summaries of their volumes and dataType history
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
   - `dataType` (query, string, optional) — Desired data type, dailyNotionalVolume by default. (one of: dailyPremiumVolume, dailyNotionalVolume) Example: `dailyPremiumVolume`
+Returns: {protocols, totalDataChart}
 
 ### GET /overview/options/{chain}
 **Base URL:** `https://api.llama.fi`
@@ -230,6 +255,7 @@ List all open interest dex exchanges along with summaries of their open interest
 **Parameters:**
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {protocols, totalDataChart, allChains}
 
 ---
 
@@ -243,6 +269,7 @@ List all protocols along with summaries of their fees and revenue and dataType h
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
   - `dataType` (query, string, optional) — Desired data type, dailyFees by default. (one of: dailyFees, dailyRevenue, dailyHoldersRevenue) Example: `dailyFees`
+Returns: {protocols, totalDataChart, totalDataChartBreakdown}
 
 ### GET /overview/fees/{chain}
 **Base URL:** `https://api.llama.fi`
@@ -253,6 +280,7 @@ List all protocols along with summaries of their fees and revenue and dataType h
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
   - `dataType` (query, string, optional) — Desired data type, dailyFees by default. (one of: dailyFees, dailyRevenue, dailyHoldersRevenue) Example: `dailyFees`
+Returns: {protocols, totalDataChart, totalDataChartBreakdown}
 
 ### GET /summary/fees/{protocol}
 **Base URL:** `https://api.llama.fi`
@@ -261,3 +289,4 @@ Get summary of protocol fees and revenue with historical data
 **Parameters:**
   - `protocol` (path, string, required) — protocol slug Example: `derive`
   - `dataType` (query, string, optional) — Desired data type, dailyFees by default. (one of: dailyFees, dailyRevenue, dailyHoldersRevenue) Example: `dailyFees`
+Returns: {id, name, url, referralUrl, description, logo, gecko_id, cmcId, chains, twitter, github, symbol, address, childProtocols, linkedProtocols, defillamaId, disabled, displayName, module, category, methodologyURL, methodology, forkedFrom, audits, audit_links, versionKey, governanceID, treasury, parentProtocol, previousNames, latestFetchIsOk, slug, protocolType, total24h, total48hto24h, total7d, totalAllTime, change_1d, totalDataChart, totalDataChartBreakdown}

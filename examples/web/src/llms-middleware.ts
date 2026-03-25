@@ -4,18 +4,11 @@
  * Usage with Express:
  * ```ts
  * import { llmsMiddleware } from './llms-middleware'
- * app.use(llmsMiddleware(llmsContent))
- * ```
- *
- * Usage with Hono:
- * ```ts
- * import { isAIUserAgent } from './llms-middleware'
- * app.use('/', async (c, next) => {
- *   if (isAIUserAgent(c.req.header('user-agent'))) {
- *     return c.text(llmsContent)
- *   }
- *   await next()
- * })
+ * app.use(llmsMiddleware({
+ *   'llms.txt': llmsIndex,
+ *   'llms-free.txt': llmsFree,
+ *   'llms-pro.txt': llmsPro,
+ * }))
  * ```
  */
 
@@ -48,20 +41,27 @@ export function isAIUserAgent(userAgent: string | undefined): boolean {
 
 export type LlmsMiddleware = (req: any, res: any, next: () => void) => void
 
-export function llmsMiddleware(llmsContent: string): LlmsMiddleware {
+export type LlmsFiles = {
+  'llms.txt': string
+  'llms-free.txt': string
+  'llms-pro.txt': string
+}
+
+export function llmsMiddleware(files: LlmsFiles): LlmsMiddleware {
   return (req, res, next) => {
     const userAgent = req.headers['user-agent']
+    const filename = req.url?.replace(/^\//, '') as keyof LlmsFiles
 
-    if (req.url === '/llms.txt') {
+    if (filename in files) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-      res.end(llmsContent)
+      res.end(files[filename])
       return
     }
 
     if (req.url === '/' && isAIUserAgent(userAgent)) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8')
       res.setHeader('X-Served-As', 'llms.txt')
-      res.end(llmsContent)
+      res.end(files['llms.txt'])
       return
     }
 

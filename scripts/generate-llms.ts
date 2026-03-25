@@ -26,6 +26,36 @@ type Endpoint = {
   tag: string
   proOnly: boolean
   parameters: Parameter[]
+  responseHint: string
+}
+
+/** Build a short one-line response hint from the OpenAPI response schema */
+function summarizeResponse(response: any): string {
+  if (!response) return ''
+  const schema = response?.content?.['application/json']?.schema
+  if (!schema) return ''
+
+  if (schema.type === 'array' && schema.items?.type === 'object') {
+    const keys = Object.keys(schema.items.properties ?? {})
+    if (keys.length === 0) return 'Returns: array of objects'
+    return `Returns: array of {${keys.join(', ')}}`
+  }
+
+  if (schema.type === 'object') {
+    const keys = Object.keys(schema.properties ?? {})
+    if (keys.length === 0) return 'Returns: object'
+    return `Returns: {${keys.join(', ')}}`
+  }
+
+  if (schema.type === 'number' || schema.type === 'integer') {
+    return 'Returns: number'
+  }
+
+  if (schema.type === 'string') {
+    return 'Returns: string'
+  }
+
+  return ''
 }
 
 function loadEndpoints(filePath: string): Endpoint[] {
@@ -48,6 +78,7 @@ function loadEndpoints(filePath: string): Endpoint[] {
         description: p.description,
         schema: p.schema,
       })),
+      responseHint: summarizeResponse(get.responses?.['200']),
     })
   }
 
@@ -75,6 +106,10 @@ function formatEndpoint(e: Endpoint, baseUrl: string): string {
     for (const p of e.parameters) {
       lines.push(formatParam(p))
     }
+  }
+
+  if (e.responseHint) {
+    lines.push(`${e.responseHint}`)
   }
 
   return lines.join('\n')
