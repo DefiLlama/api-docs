@@ -3,7 +3,7 @@
   "info": {
     "title": "DefiLlama Pro - OpenAPI 3.0",
     "version": "1.0.0",
-    "description": "Docs for DefiLlama's Pro API\n\nSDK\n\nInstall:\n```bash\nnpm install @defillama/api\npip install defillama-sdk\n```\n\nQuick start (JavaScript):\n```ts\nimport { DefiLlama } from '@defillama/api'\n\nconst proClient = new DefiLlama({ apiKey: 'your-api-key' })\nconst protocols = await proClient.tvl.getProtocols()\n```\n\nQuick start (Python):\n```py\nfrom defillama_sdk import DefiLlama\n\npro_client = DefiLlama({\"api_key\": \"your-api-key\"})\nprotocols = pro_client.tvl.getProtocols()\n```\n\nCoding with AI? Paste this link to LLM-specific docs for best results\n<a href='/llms.txt'>llms.txt</a>",
+    "description": "Docs for DefiLlama's Pro API\n\n## SDK\n\n**JavaScript** — `npm install @defillama/api` — [GitHub](https://github.com/DefiLlama/api-sdk)\n\n**Python** — `pip install defillama-sdk` — [GitHub](https://github.com/DefiLlama/python-sdk)\n\nQuick start (JavaScript):\n```ts\nimport { DefiLlama } from '@defillama/api'\n\nconst proClient = new DefiLlama({ apiKey: 'your-api-key' })\nconst protocols = await proClient.tvl.getProtocols()\n```\n\nQuick start (Python):\n```py\nfrom defillama_sdk import DefiLlama\n\npro_client = DefiLlama({\"api_key\": \"your-api-key\"})\nprotocols = pro_client.tvl.getProtocols()\n```\n\nCoding with AI? Paste this link to LLM-specific docs for best results\n<a href='/llms.txt'>llms.txt</a>",
     "x-scalar-sdk-installation": [
       {
         "lang": "node",

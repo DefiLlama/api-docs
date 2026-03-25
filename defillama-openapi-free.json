@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "description": "\n\nNeed higher rate limits or priority support? We offer a premium plan for 300$/mo. To get it, go to https://defillama.com/subscription\n\nSDK\n\nInstall:\n```bash\nnpm install @defillama/api\npip install defillama-sdk\n```\n\nQuick start (JavaScript):\n```ts\nimport { DefiLlama } from '@defillama/api'\n\nconst client = new DefiLlama()\nconst protocols = await client.tvl.getProtocols()\n```\n\nQuick start (Python):\n```py\nfrom defillama_sdk import DefiLlama\n\nclient = DefiLlama()\nprotocols = client.tvl.getProtocols()\n```\n\nCoding with AI? Paste this link to LLM-specific docs for best results\n<a href='/llms.txt'>llms.txt</a>",
+    "description": "\n\nNeed higher rate limits or priority support? We offer a premium plan for 300$/mo. To get it, go to https://defillama.com/subscription\n\n## SDK\n\n**JavaScript** — `npm install @defillama/api` — [GitHub](https://github.com/DefiLlama/api-sdk)\n\n**Python** — `pip install defillama-sdk` — [GitHub](https://github.com/DefiLlama/python-sdk)\n\nQuick start (JavaScript):\n```ts\nimport { DefiLlama } from '@defillama/api'\n\nconst client = new DefiLlama()\nconst protocols = await client.tvl.getProtocols()\n```\n\nQuick start (Python):\n```py\nfrom defillama_sdk import DefiLlama\n\nclient = DefiLlama()\nprotocols = client.tvl.getProtocols()\n```\n\nCoding with AI? Paste this link to LLM-specific docs for best results\n<a href='/llms.txt'>llms.txt</a>",
     "version": "1.0.0-oas3",
     "title": "DefiLlama API",
     "x-scalar-sdk-installation": [
