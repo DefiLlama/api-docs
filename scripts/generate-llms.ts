@@ -215,12 +215,7 @@ ${Array.from(proGroups.entries())
 `
 }
 
-function generateDetailedFile(
-  title: string,
-  baseUrl: string,
-  auth: string,
-  endpoints: Endpoint[],
-): string {
+function generateDetailedFile(title: string, baseUrl: string, auth: string, endpoints: Endpoint[]): string {
   const groups = groupByTag(endpoints)
 
   const sections = Array.from(groups.entries())
@@ -267,13 +262,8 @@ function buildFreeToProMapping(
   return mappings
 }
 
-function formatMappingTable(
-  mappings: { freePath: string; proPath: string; summary: string }[],
-): string {
-  const lines = [
-    '| Free path (api.llama.fi) | Pro path (pro-api.llama.fi) | Description |',
-    '|---|---|---|',
-  ]
+function formatMappingTable(mappings: { freePath: string; proPath: string; summary: string }[]): string {
+  const lines = ['| Free path (api.llama.fi) | Pro path (pro-api.llama.fi) | Description |', '|---|---|---|']
   for (const m of mappings) {
     lines.push(`| \`${m.freePath}\` | \`${m.proPath}\` | ${m.summary} |`)
   }
