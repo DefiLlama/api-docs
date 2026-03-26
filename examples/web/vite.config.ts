@@ -79,7 +79,9 @@ function llmsTxtPlugin(): Plugin {
         mkdirSync(outputDir, { recursive: true })
       }
       copyFileSync(llmsPath, resolve(outputDir, 'llms.txt'))
-      console.log('✓ Copied llms.txt to dist/')
+      copyFileSync(llmsFreePath, resolve(outputDir, 'llms-free.txt'))
+      copyFileSync(llmsProPath, resolve(outputDir, 'llms-pro.txt'))
+      console.log('✓ Copied llms.txt, llms-free.txt, and llms-pro.txt to dist/')
 
       // Copy functions/ directory to dist/ for Cloudflare Pages
       const functionsDir = resolve(__dirname, 'functions')
