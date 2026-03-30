@@ -3,7 +3,7 @@
   "info": {
     "title": "DefiLlama Pro - OpenAPI 3.0",
     "version": "1.0.0",
-    "description": "Docs for DefiLlama's Pro API\n\nSDK\n\nInstall:\n```bash\nnpm install @defillama/api\npip install defillama-sdk\n```\n\nQuick start (JavaScript):\n```ts\nimport { DefiLlama } from '@defillama/api'\n\nconst proClient = new DefiLlama({ apiKey: 'your-api-key' })\nconst protocols = await proClient.tvl.getProtocols()\n```\n\nQuick start (Python):\n```py\nfrom defillama_sdk import DefiLlama\n\npro_client = DefiLlama({\"api_key\": \"your-api-key\"})\nprotocols = pro_client.tvl.getProtocols()\n```\n\nCoding with AI? Paste this link to LLM-specific docs for best results\n<a href='/llms.txt'>llms.txt</a>",
+    "description": "Docs for DefiLlama's Pro API\n\n## SDK\n\n**JavaScript** — `npm install @defillama/api` — [GitHub](https://github.com/DefiLlama/api-sdk)\n\n**Python** — `pip install defillama-sdk` — [GitHub](https://github.com/DefiLlama/python-sdk)\n\nQuick start (JavaScript):\n```ts\nimport { DefiLlama } from '@defillama/api'\n\nconst proClient = new DefiLlama({ apiKey: 'your-api-key' })\nconst protocols = await proClient.tvl.getProtocols()\n```\n\nQuick start (Python):\n```py\nfrom defillama_sdk import DefiLlama\n\npro_client = DefiLlama({\"api_key\": \"your-api-key\"})\nprotocols = pro_client.tvl.getProtocols()\n```\n\nCoding with AI? Paste this link to LLM-specific docs for best results\n<a href='/llms.txt'>llms.txt</a>\n\n---\n\n## DefiLlama MCP Server\n\n**DeFi Data for AI Agents** — Connect your AI agent to DefiLlama data. Ask questions about TVL, yields, token prices, protocol metrics, stablecoins, bridges, ETFs, and more.\n\n23 tools · Easy setup · Uses your API credits\n\nQuick start — paste this into your AI agent:\n```\nRead https://raw.githubusercontent.com/DefiLlama/defillama-skills/refs/heads/master/defillama-setup/SKILL.md and follow the instructions to connect to DefiLlama MCP\n```\n\n<a href='https://defillama.com/mcp'>Learn more →</a>",
     "x-scalar-sdk-installation": [
       {
         "lang": "node",
@@ -75,6 +75,10 @@
     {
       "name": "DAT",
       "description": "Digital Asset Treasury"
+    },
+    {
+      "name": "Equities",
+      "description": "Stock market data for publicly traded companies"
     }
   ],
   "paths": {
@@ -10110,6 +10114,881 @@
             "source": "result = pro_client.dat.getInstitution('<symbol>')"
           }
         ]
+      }
+    },
+    "/equities/v1/companies": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get list of all tracked public companies",
+        "description": "Returns a list of all publicly traded companies tracked by DefiLlama, with current market summary data for each, sorted by market capitalization (largest first)",
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ticker": { "type": "string", "example": "NVDA" },
+                      "name": { "type": "string", "example": "NVIDIA Corporation" },
+                      "currentPrice": { "type": "number", "example": 172.7 },
+                      "volume": { "type": "number", "example": 209815684 },
+                      "marketCap": { "type": "number", "example": 4197473583104 },
+                      "priceChangePercentage1d": { "type": "number", "example": -3.28 },
+                      "trailingPE": { "type": "number", "nullable": true, "example": 35.24 },
+                      "dividendYield": { "type": "number", "nullable": true, "example": 0.0224 },
+                      "priceToBook": { "type": "number", "nullable": true, "example": 26.68 },
+                      "lastUpdatedAt": { "type": "string", "format": "date-time", "example": "2026-03-21T13:33:10Z" },
+                      "priceChangePercentage7d": { "type": "number", "example": -5.74 },
+                      "priceChangePercentage1m": { "type": "number", "example": -8.08 },
+                      "revenueTTM": { "type": "number", "nullable": true, "example": 215938000000 },
+                      "grossProfitTTM": { "type": "number", "nullable": true, "example": 153463000000 },
+                      "totalAssets": { "type": "number", "nullable": true, "example": 206803000000 },
+                      "earningsTTM": { "type": "number", "nullable": true, "example": 120067000000 },
+                      "operatingProfitMargin": { "type": "number", "nullable": true, "example": 60.38 },
+                      "totalLiabilities": { "type": "number", "nullable": true, "example": 49510000000 }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Companies with summary not found" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/statements": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get financial statements for a company",
+        "description": "Returns income statement, balance sheet, and cash flow statement for the given ticker, broken down by quarterly and annual periods.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "COIN" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Financial statements containing income statement, balance sheet, and cash flow data broken down by quarterly and annual periods.",
+                  "properties": {
+                    "incomeStatement": {
+                      "type": "object",
+                      "description": "Income statement data. The `labels` array defines the rows; `values` is a parallel array of arrays where each inner array holds one row's values across all periods.",
+                      "properties": {
+                        "labels": {
+                          "type": "array",
+                          "description": "Ordered list of income statement line items. Each index corresponds to an inner array in `quarterly.values` and `annual.values`.",
+                          "items": { "type": "string" },
+                          "example": [
+                            "Total Revenue",
+                            "Cost of Revenue",
+                            "Gross Profit",
+                            "Operating Expense",
+                            "Operating Income",
+                            "Non-operating Items",
+                            "Income Before Tax",
+                            "Income Tax",
+                            "Net Income",
+                            "Net Income to Common",
+                            "EPS Basic",
+                            "EPS Diluted",
+                            "Weighted Average Shares Basic",
+                            "Weighted Average Shares Diluted"
+                          ]
+                        },
+                        "children": {
+                          "type": "object",
+                          "description": "Metadata describing which top-level labels have child breakdowns and what those child labels are, separately for quarterly and annual periods.",
+                          "properties": {
+                            "quarterly": {
+                              "type": "object",
+                              "description": "Child label definitions for quarterly data. Keys are parent label names from `labels`.",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "labels": {
+                                    "type": "array",
+                                    "description": "Child line item names for this parent. Each index corresponds to an inner array in `quarterly.children[label].values`.",
+                                    "items": { "type": "string" }
+                                  }
+                                }
+                              }
+                            },
+                            "annual": {
+                              "type": "object",
+                              "description": "Child label definitions for annual data. Keys are parent label names from `labels`.",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "labels": {
+                                    "type": "array",
+                                    "items": { "type": "string" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "quarterly": {
+                          "type": "object",
+                          "description": "Quarterly period data for the income statement.",
+                          "properties": {
+                            "periods": {
+                              "type": "array",
+                              "description": "Period labels in `Q{N}-{YYYY}` format.",
+                              "items": { "type": "string" },
+                              "example": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"]
+                            },
+                            "periodEnding": {
+                              "type": "array",
+                              "description": "ISO 8601 date each quarter ended.",
+                              "items": { "type": "string", "format": "date" },
+                              "example": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"]
+                            },
+                            "values": {
+                              "type": "array",
+                              "description": "Parallel to `labels`. Each inner array contains the values for that row across all `periods`. Values may be `null` when not reported.",
+                              "items": {
+                                "type": "array",
+                                "items": { "type": "number", "nullable": true }
+                              }
+                            },
+                            "children": {
+                              "type": "object",
+                              "description": "Breakdown data for parent labels that have sub-components. Keys match parent label names. Child labels are defined in `children.quarterly[label].labels`.",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "values": {
+                                    "type": "array",
+                                    "description": "One inner array per child label, each containing values across all periods. Values may be `null`.",
+                                    "items": {
+                                      "type": "array",
+                                      "items": { "type": "number", "nullable": true }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "annual": {
+                          "type": "object",
+                          "description": "Annual period data for the income statement.",
+                          "properties": {
+                            "periods": {
+                              "type": "array",
+                              "description": "Period labels in `FY-{YYYY}` format.",
+                              "items": { "type": "string" },
+                              "example": ["FY-2022", "FY-2023", "FY-2024"]
+                            },
+                            "periodEnding": {
+                              "type": "array",
+                              "description": "ISO 8601 date each fiscal year ended.",
+                              "items": { "type": "string", "format": "date" },
+                              "example": ["2022-12-31", "2023-12-31", "2024-12-31"]
+                            },
+                            "values": {
+                              "type": "array",
+                              "description": "Parallel to `labels`. Each inner array contains the values for that row across all `periods`. Values may be `null`.",
+                              "items": {
+                                "type": "array",
+                                "items": { "type": "number", "nullable": true }
+                              }
+                            },
+                            "children": {
+                              "type": "object",
+                              "description": "Breakdown data for parent labels that have sub-components. Child labels are defined in `children.annual[label].labels`.",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "values": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "array",
+                                      "items": { "type": "number", "nullable": true }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "balanceSheet": {
+                      "type": "object",
+                      "description": "Balance sheet data. Follows the same structure as `incomeStatement`: top-level `labels`, `children` metadata, and `quarterly`/`annual` period objects each containing `periods`, `periodEnding`, `values`, and `children`.",
+                      "properties": {
+                        "labels": {
+                          "type": "array",
+                          "description": "Ordered list of balance sheet line items.",
+                          "items": { "type": "string" },
+                          "example": [
+                            "Total Current Assets",
+                            "Total Non-Current Assets",
+                            "Total Assets",
+                            "Total Current Liabilities",
+                            "Total Non-Current Liabilities",
+                            "Total Liabilities",
+                            "Total Mezzanine Equity",
+                            "Total Stockholders Equity",
+                            "Total Equity",
+                            "Total Liabilities and Equity"
+                          ]
+                        },
+                        "children": {
+                          "type": "object",
+                          "properties": {
+                            "quarterly": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "labels": { "type": "array", "items": { "type": "string" } }
+                                }
+                              }
+                            },
+                            "annual": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "labels": { "type": "array", "items": { "type": "string" } }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "quarterly": {
+                          "type": "object",
+                          "properties": {
+                            "periods": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["Q1-2024", "Q2-2024"]
+                            },
+                            "periodEnding": { "type": "array", "items": { "type": "string", "format": "date" } },
+                            "values": {
+                              "type": "array",
+                              "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                            },
+                            "children": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "values": {
+                                    "type": "array",
+                                    "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "annual": {
+                          "type": "object",
+                          "properties": {
+                            "periods": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["FY-2023", "FY-2024"]
+                            },
+                            "periodEnding": { "type": "array", "items": { "type": "string", "format": "date" } },
+                            "values": {
+                              "type": "array",
+                              "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                            },
+                            "children": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "values": {
+                                    "type": "array",
+                                    "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "cashflow": {
+                      "type": "object",
+                      "description": "Cash flow statement data. Follows the same structure as `incomeStatement`: top-level `labels`, `children` metadata, and `quarterly`/`annual` period objects each containing `periods`, `periodEnding`, `values`, and `children`.",
+                      "properties": {
+                        "labels": {
+                          "type": "array",
+                          "description": "Ordered list of cash flow line items.",
+                          "items": { "type": "string" },
+                          "example": [
+                            "Cashflow From Operating Activities",
+                            "Cashflow From Investing Activities",
+                            "Cashflow From Financing Activities",
+                            "Effect of Exchange Rate Changes on Cash",
+                            "Net Cashflow"
+                          ]
+                        },
+                        "children": {
+                          "type": "object",
+                          "properties": {
+                            "quarterly": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "labels": { "type": "array", "items": { "type": "string" } }
+                                }
+                              }
+                            },
+                            "annual": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "labels": { "type": "array", "items": { "type": "string" } }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "quarterly": {
+                          "type": "object",
+                          "properties": {
+                            "periods": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["Q1-2024", "Q2-2024"]
+                            },
+                            "periodEnding": { "type": "array", "items": { "type": "string", "format": "date" } },
+                            "values": {
+                              "type": "array",
+                              "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                            },
+                            "children": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "values": {
+                                    "type": "array",
+                                    "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "annual": {
+                          "type": "object",
+                          "properties": {
+                            "periods": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "example": ["FY-2023", "FY-2024"]
+                            },
+                            "periodEnding": { "type": "array", "items": { "type": "string", "format": "date" } },
+                            "values": {
+                              "type": "array",
+                              "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                            },
+                            "children": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "values": {
+                                    "type": "array",
+                                    "items": { "type": "array", "items": { "type": "number", "nullable": true } }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "incomeStatement": {
+                    "labels": [
+                      "Total Revenue",
+                      "Cost of Revenue",
+                      "Gross Profit",
+                      "Operating Expense",
+                      "Operating Income",
+                      "Non-operating Items",
+                      "Income Before Tax",
+                      "Net Income"
+                    ],
+                    "children": {
+                      "quarterly": {
+                        "Total Revenue": {
+                          "labels": ["Bank Servicing and Subscription and Circulation", "Remaining Items"]
+                        },
+                        "Operating Expense": {
+                          "labels": [
+                            "General and Administrative Expense",
+                            "Research and Development Expense",
+                            "Selling and Marketing Expense",
+                            "Other Operating Income (Expense), Net",
+                            "Remaining Items"
+                          ]
+                        },
+                        "Non-operating Items": {
+                          "labels": ["Other Nonoperating Income (Expense)", "Remaining Items"]
+                        }
+                      },
+                      "annual": {
+                        "Total Revenue": {
+                          "labels": ["Bank Servicing and Subscription and Circulation", "Remaining Items"]
+                        },
+                        "Operating Expense": {
+                          "labels": [
+                            "General and Administrative Expense",
+                            "Research and Development Expense",
+                            "Selling and Marketing Expense",
+                            "Other Operating Income (Expense), Net",
+                            "Remaining Items"
+                          ]
+                        },
+                        "Non-operating Items": {
+                          "labels": ["Other Nonoperating Income (Expense)", "Remaining Items"]
+                        }
+                      }
+                    },
+                    "quarterly": {
+                      "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
+                      "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
+                      "values": [
+                        [1801112000, 2227962000, 1311908000, 2498462000],
+                        [234066000, 335426000, 197251000, 501181000],
+                        [1567046000, 1892536000, 1114657000, 1997281000],
+                        [579333000, 1017811000, 822849000, null],
+                        [987713000, 874725000, 291808000, 922324000],
+                        [8953000, -5844000, -20948000, -31784000],
+                        [996666000, 868881000, 270860000, 890540000],
+                        [771463000, 1606349000, 406100000, 840208000]
+                      ],
+                      "children": {
+                        "Total Revenue": {
+                          "values": [
+                            [1596981000, 2033011000, 1234736000, 2490025000],
+                            [204131000, 194951000, 77172000, 8437000]
+                          ]
+                        },
+                        "Operating Expense": {
+                          "values": [
+                            [121231000, 248195000, 242642000, 297324000],
+                            [184225000, 291461000, 356264000, 459611000],
+                            [117990000, 195733000, 105395000, 244571000],
+                            [null, 282422000, 118548000, 258627000],
+                            [155887000, 73451000, 144489000, -1035000]
+                          ]
+                        },
+                        "Non-operating Items": {
+                          "values": [
+                            [8953000, -5844000, -20948000, -31784000],
+                            [987713000, 868881000, 270860000, 890540000]
+                          ]
+                        }
+                      }
+                    },
+                    "annual": {
+                      "periods": ["FY-2023", "FY-2024"],
+                      "periodEnding": ["2023-12-31", "2024-12-31"],
+                      "values": [
+                        [1166436000, 2271637000],
+                        [277826000, 317042000],
+                        [888610000, 1954595000],
+                        [1443073000, 920526000],
+                        [-554463000, 1034069000],
+                        [-54982000, 462807000],
+                        [-609445000, 1496876000],
+                        [-429659000, 1291176000]
+                      ],
+                      "children": {
+                        "Total Revenue": {
+                          "values": [[1164891000, 2197030000], [1545000, 74607000]]
+                        },
+                        "Operating Expense": {
+                          "values": [
+                            [413578000, 362519000],
+                            [570664000, 368691000],
+                            [200204000, 225827000],
+                            [258627000, -20270000],
+                            [42453000, -16241000]
+                          ]
+                        },
+                        "Non-operating Items": {
+                          "values": [[-54982000, 462807000], [-609445000, 1496876000]]
+                        }
+                      }
+                    }
+                  },
+                  "balanceSheet": {
+                    "labels": [
+                      "Total Current Assets",
+                      "Total Non-Current Assets",
+                      "Total Assets",
+                      "Total Current Liabilities",
+                      "Total Liabilities",
+                      "Total Stockholders Equity",
+                      "Total Liabilities and Equity"
+                    ],
+                    "children": {
+                      "quarterly": {},
+                      "annual": {}
+                    },
+                    "quarterly": {
+                      "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
+                      "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
+                      "values": [
+                        [79373000, 204728000, 209604000, 215571000],
+                        [126996000, 248147000, 250536000, 254181000],
+                        [206369000, 452875000, 460140000, 469752000],
+                        [217472000, 221034000, 223916000, 226930000],
+                        [217472000, 221034000, 223916000, 226930000],
+                        [231489000, 234641000, 237270000, 314164000],
+                        [448961000, 455675000, 457186000, 541094000]
+                      ],
+                      "children": {}
+                    },
+                    "annual": {
+                      "periods": ["FY-2023", "FY-2024"],
+                      "periodEnding": ["2023-12-31", "2024-12-31"],
+                      "values": [
+                        [217472000, 226930000],
+                        [217472000, 226930000],
+                        [434944000, 453860000],
+                        [221034000, 226930000],
+                        [221034000, 226930000],
+                        [234641000, 314164000],
+                        [455675000, 541094000]
+                      ],
+                      "children": {}
+                    }
+                  },
+                  "cashflow": {
+                    "labels": [
+                      "Cashflow From Operating Activities",
+                      "Cashflow From Investing Activities",
+                      "Cashflow From Financing Activities",
+                      "Net Cashflow"
+                    ],
+                    "children": {
+                      "quarterly": {},
+                      "annual": {}
+                    },
+                    "quarterly": {
+                      "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
+                      "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
+                      "values": [
+                        [234066000, 335426000, 197251000, 501181000],
+                        [-121231000, -248195000, -242642000, -297324000],
+                        [-98771300, -87472500, -29180800, -92232400],
+                        [14221670, 13119700, -7440700, 111211600]
+                      ],
+                      "children": {}
+                    },
+                    "annual": {
+                      "periods": ["FY-2023", "FY-2024"],
+                      "periodEnding": ["2023-12-31", "2024-12-31"],
+                      "values": [
+                        [277826000, 317042000],
+                        [-413578000, -362519000],
+                        [-55446300, 103406900],
+                        [-19123600, 45811400]
+                      ],
+                      "children": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing required ticker parameter" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Ticker not found" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/price-history": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get historical price data for a company",
+        "description": "Returns daily closing prices as two-element arrays: ISO 8601 date-time string, then numeric price. Sorted by date descending (newest first).",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "AAPL" }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Optional lookback window (case-insensitive). Omit or empty for full history (`MAX`).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["1W", "1M", "6M", "1Y", "5Y", "MAX"],
+              "default": "MAX",
+              "example": "1Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "description": "Each item is `[timestamp, price]`: ISO 8601 string, then closing price.",
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "anyOf": [
+                        { "type": "string", "description": "ISO 8601 date-time" },
+                        { "type": "number", "description": "Closing price" }
+                      ]
+                    }
+                  },
+                  "example": [["2026-03-21T13:33:10Z", 197.5], ["2026-03-20T00:00:00Z", 196.2]]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required `ticker` or invalid `timeframe`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string", "example": "Invalid timeframe" },
+                    "validTimeframes": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "example": ["1W", "1M", "6M", "1Y", "5Y", "MAX"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Prices not found for ticker" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/ohlcv": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get OHLCV candle data for a company",
+        "description": "Returns daily OHLCV bars as six-number arrays: Unix timestamp in seconds (UTC), open, high, low, close, volume. Sorted by time descending (newest first). Optional `timeframe` filters how far back data goes; omit or empty for full history (`MAX`).",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "AAPL" }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Optional lookback window (case-insensitive). Same values as price history. Omit or empty for full history (`MAX`).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["1W", "1M", "6M", "1Y", "5Y", "MAX"],
+              "default": "MAX",
+              "example": "6M"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "description": "Each item is `[timestamp, open, high, low, close, volume]`. `timestamp` is Unix epoch seconds (UTC).",
+                  "items": {
+                    "type": "array",
+                    "minItems": 6,
+                    "maxItems": 6,
+                    "items": { "type": "number" }
+                  },
+                  "example": [
+                    [1773964800, 247.98, 249.2, 246, 247.99, 88268000],
+                    [1773878400, 249.4, 251.83, 247.3, 248.96, 34864100]
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required `ticker` or invalid `timeframe`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string", "example": "Invalid timeframe" },
+                    "validTimeframes": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "example": ["1W", "1M", "6M", "1Y", "5Y", "MAX"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "OHLCV not found for ticker" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/summary": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get live market summary for a company",
+        "description": "Returns current market data for a single ticker. This is a compact snapshot (no `ticker` / `name` fields); use `GET /equities/v1/companies` for the list shape that includes company identity and balance-sheet highlights.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "AAPL" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "currentPrice": { "type": "number", "example": 247.99 },
+                    "volume": { "type": "number", "example": 87981315 },
+                    "marketCap": { "type": "number", "example": 3644938780672 },
+                    "fiftyTwoWeekHigh": { "type": "number", "example": 288.62 },
+                    "fiftyTwoWeekLow": { "type": "number", "example": 169.21 },
+                    "dividendYield": { "type": "number", "nullable": true, "example": 0.4137 },
+                    "trailingPE": { "type": "number", "nullable": true, "example": 31.35 },
+                    "priceChangePercentage1d": { "type": "number", "example": -0.39 },
+                    "priceToBook": { "type": "number", "nullable": true, "example": 41.35 },
+                    "updatedAt": { "type": "string", "format": "date-time", "example": "2026-03-21T07:31:15Z" },
+                    "priceChangePercentage7d": { "type": "number", "example": -1.91 },
+                    "priceChangePercentage1m": { "type": "number", "example": -4.83 },
+                    "revenueTTM": { "type": "number", "nullable": true, "example": 435617000000 },
+                    "grossProfitTTM": { "type": "number", "nullable": true, "example": 206157000000 },
+                    "totalAssets": { "type": "number", "nullable": true, "example": 379297000000 },
+                    "earningsTTM": { "type": "number", "nullable": true, "example": 117777000000 }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing required ticker parameter" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Summary not found for ticker" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/equities/v1/filings": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-scalar-stability": "beta",
+        "summary": "Get SEC filings for a company",
+        "description": "Returns a list of SEC filings (10-K, 10-Q, etc.) for the given ticker, sorted by filing date descending (newest first).",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": { "type": "string", "example": "COIN" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "filingDate": { "type": "string", "format": "date", "example": "2025-02-28" },
+                      "reportDate": { "type": "string", "format": "date", "example": "2024-12-31" },
+                      "form": { "type": "string", "example": "10-K" },
+                      "primaryDocumentUrl": {
+                        "type": "string",
+                        "format": "uri",
+                        "example": "https://www.sec.gov/Archives/edgar/data/1679788/0001679788-25-000123/0001679788-25-000123.htm"
+                      },
+                      "documentDescription": { "type": "string", "example": "Annual Report" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing required ticker parameter" },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "Filings not found for ticker" },
+          "500": { "description": "Internal server error" }
+        }
       }
     }
   }

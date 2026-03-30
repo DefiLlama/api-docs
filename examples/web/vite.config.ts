@@ -28,12 +28,18 @@ function isAIRequest(userAgent: string | undefined): boolean {
 
 function llmsTxtPlugin(): Plugin {
   let llmsContent: string
+  let llmsFreeContent: string
+  let llmsProContent: string
   const llmsPath = resolve(__dirname, '../../llms.txt')
+  const llmsFreePath = resolve(__dirname, '../../llms-free.txt')
+  const llmsProPath = resolve(__dirname, '../../llms-pro.txt')
 
   return {
     name: 'llms-txt-plugin',
     configureServer(server) {
       llmsContent = readFileSync(llmsPath, 'utf-8')
+      llmsFreeContent = readFileSync(llmsFreePath, 'utf-8')
+      llmsProContent = readFileSync(llmsProPath, 'utf-8')
 
       server.middlewares.use((req, res, next) => {
         const userAgent = req.headers['user-agent']
@@ -41,6 +47,18 @@ function llmsTxtPlugin(): Plugin {
         if (req.url === '/llms.txt') {
           res.setHeader('Content-Type', 'text/plain; charset=utf-8')
           res.end(llmsContent)
+          return
+        }
+
+        if (req.url === '/llms-free.txt') {
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+          res.end(llmsFreeContent)
+          return
+        }
+
+        if (req.url === '/llms-pro.txt') {
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+          res.end(llmsProContent)
           return
         }
 
@@ -61,7 +79,9 @@ function llmsTxtPlugin(): Plugin {
         mkdirSync(outputDir, { recursive: true })
       }
       copyFileSync(llmsPath, resolve(outputDir, 'llms.txt'))
-      console.log('✓ Copied llms.txt to dist/')
+      copyFileSync(llmsFreePath, resolve(outputDir, 'llms-free.txt'))
+      copyFileSync(llmsProPath, resolve(outputDir, 'llms-pro.txt'))
+      console.log('✓ Copied llms.txt, llms-free.txt, and llms-pro.txt to dist/')
 
       // Copy functions/ directory to dist/ for Cloudflare Pages
       const functionsDir = resolve(__dirname, 'functions')
