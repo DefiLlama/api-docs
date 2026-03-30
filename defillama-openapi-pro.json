@@ -3563,8 +3563,8 @@
             "description": "Set to \"tokens\" to return values denominated in raw token amounts instead of USD",
             "schema": {
               "type": "string",
-              "enum": ["tokens"],
-              "example": "tokens"
+              "enum": ["usd", "token", "raw"],
+              "example": "usd"
             }
           }
         ],
