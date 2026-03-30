@@ -27,6 +27,7 @@ import { Anchor } from '@/components/Anchor'
 import { Badge } from '@/components/Badge'
 import { HttpMethod } from '@/components/HttpMethod'
 import OperationPath from '@/components/OperationPath.vue'
+import { BetaBadge } from '@/components/BetaBadge'
 import { ProBadge } from '@/components/ProBadge'
 import { SectionAccordion } from '@/components/Section'
 import { ExampleResponses } from '@/features/example-responses'
@@ -96,6 +97,7 @@ const handleDiscriminatorChange = (type: string) => {
               </Badge>
 
               <ProBadge :operation="operation" />
+              <BetaBadge :operation="operation" />
 
               <Badge
                 v-if="isWebhook"

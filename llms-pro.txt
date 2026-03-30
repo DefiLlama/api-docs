@@ -353,3 +353,323 @@ Get SEC filings for a company
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
 Returns: array of {filingDate, reportDate, form, primaryDocumentUrl, documentDescription}
+
+---
+
+## Oracles (Beta)
+
+### GET /api/v2/metrics/oracle
+**Base URL:** `https://pro-api.llama.fi`
+Get oracle data overview. Returns mapping of oracle names to arrays of protocol names using that oracle.
+Returns: {oracles: {OracleName: [protocol1, protocol2, ...], ...}}
+
+### GET /api/v2/chart/oracle
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data for all oracles. Returns array of [timestamp, value] pairs representing total oracle TVL over time.
+Returns: array of [timestamp, value]
+
+### GET /api/v2/chart/oracle/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by chain. Returns array of objects with timestamp and TVL per chain.
+Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
+
+### GET /api/v2/chart/oracle/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by protocol/oracle. Returns array of objects with timestamp and TVL per oracle.
+Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
+
+### GET /api/v2/chart/oracle/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by protocol/oracle. Returns array of [timestamp, value] pairs for a specific oracle.
+
+**Parameters:**
+  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
+Returns: array of [timestamp, value]
+
+### GET /api/v2/chart/oracle/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get chain breakdown timeseries chart data by protocol/oracle. Returns array of objects with timestamp and TVL per chain for a specific oracle.
+
+**Parameters:**
+  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
+Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
+
+### GET /api/v2/chart/oracle/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by chain. Returns array of [timestamp, value] pairs for oracle TVL on a specific chain.
+
+**Parameters:**
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+Returns: array of [timestamp, value]
+
+### GET /api/v2/chart/oracle/chain/{chain}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol breakdown timeseries chart data by chain. Returns array of objects with timestamp and TVL per oracle for a specific chain.
+
+**Parameters:**
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
+
+---
+
+## Forks (Beta)
+
+### GET /api/v2/metrics/fork
+**Base URL:** `https://pro-api.llama.fi`
+Get fork data overview. Returns mapping of fork protocol names to arrays of forked protocol names.
+Returns: {ForkName: [protocol1, protocol2, ...], ...}
+
+### GET /api/v2/chart/fork/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by protocol. Returns array of objects with timestamp and TVL per fork protocol.
+Returns: array of {timestamp, Fork1: value, Fork2: value, ...}
+
+### GET /api/v2/chart/fork/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by protocol. Returns array of [timestamp, value] pairs for all forks of a specific protocol.
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave-v3`
+Returns: array of [timestamp, value]
+
+---
+
+## Dimensions (Beta)
+
+Unified dimension endpoints for fees, DEX volumes, derivatives, options, aggregators, bridge aggregators, open interest, and normalized volume.
+
+**`{metric}` values:** fees, dexs, derivatives, options, aggregators, bridge-aggregators, open-interest, normalized-volume
+
+**`dataType` query parameter** (optional, metric-specific):
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+**`{protocol}`** should be slug-formatted (e.g. `aave`, `hyperliquid-perps`, `openocean`, `li.fi-bridge-aggregator`)
+**`{category}`** should be slug-formatted (e.g. `dexs`, `prediction-market`, `options`, `dex-aggregator`, `bridge-aggregator`)
+
+### Overview
+
+#### GET /api/v2/metrics/{metric}
+**Base URL:** `https://pro-api.llama.fi`
+Get dimension data overview. Returns aggregate metrics including totals and percentage changes.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
+
+#### GET /api/v2/chart/{metric}
+**Base URL:** `https://pro-api.llama.fi`
+Get historical timeseries chart data.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, value]
+
+#### GET /api/v2/chart/{metric}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical timeseries chart data breakdown by chain.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
+
+#### GET /api/v2/chart/{metric}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical timeseries chart data breakdown by protocol.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
+
+### For chains
+
+#### GET /api/v2/metrics/{metric}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get chain dimension data overview.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: {chain, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
+
+#### GET /api/v2/chart/{metric}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get chain historical timeseries chart data.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, value]
+
+#### GET /api/v2/chart/{metric}/chain/{chain}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get chain timeseries chart data breakdown by protocol.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
+
+### For protocols
+
+#### GET /api/v2/metrics/{metric}/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol dimension data overview. Returns protocol metadata along with aggregate metrics.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: {id, name, url, description, logo, chains, gecko_id, cmcId, symbol, total24h, total48hto24h, total7d, total30d, total1y, change_1d, change_7d, change_1m}
+
+#### GET /api/v2/chart/{metric}/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol historical timeseries chart data.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, value]
+
+#### GET /api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol timeseries chart data breakdown by chain.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
+
+#### GET /api/v2/chart/{metric}/protocol/{protocol}/version-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol timeseries chart data breakdown by version (e.g. Aave V2, Aave V3).
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Version1: value, Version2: value, ...}]
+
+#### GET /api/v2/chart/{metric}/protocol/{protocol}/label-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol timeseries chart data breakdown by label (e.g. Borrow Interest, Flash Loans). Currently only supported for metric=fees.
+
+**Parameters:**
+  - `metric` (path, string, required) — must be `fees` Example: `fees`
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Label1: value, Label2: value, ...}]
+
+### For categories
+
+#### GET /api/v2/metrics/{metric}/category/{category}
+**Base URL:** `https://pro-api.llama.fi`
+Get category dimension data overview.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `category` (path, string, required) — category slug Example: `dexs`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: {category, allCategories, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
+
+#### GET /api/v2/chart/{metric}/category/{category}
+**Base URL:** `https://pro-api.llama.fi`
+Get category historical timeseries chart data.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `category` (path, string, required) — category slug Example: `dexs`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, value]
+
+#### GET /api/v2/chart/{metric}/category/{category}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get category timeseries chart data breakdown by chain.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `category` (path, string, required) — category slug Example: `dexs`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
+
+#### GET /api/v2/chart/{metric}/category/{category}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get category timeseries chart data breakdown by protocol.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `category` (path, string, required) — category slug Example: `dexs`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
+
+### For categories and chains
+
+#### GET /api/v2/metrics/{metric}/category/{category}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get category chain dimension data overview.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `category` (path, string, required) — category slug Example: `dexs`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: {category, chain, allCategories, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d}
+
+#### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get category chain historical timeseries chart data.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `category` (path, string, required) — category slug Example: `dexs`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, value]
+
+#### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get category chain timeseries chart data breakdown by protocol.
+
+**Parameters:**
+  - `metric` (path, string, required) — dimension metric type Example: `fees`
+  - `category` (path, string, required) — category slug Example: `dexs`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — metric-specific data type
+Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
+
+---
+
+## Financial Statements (Beta)
+
+### GET /api/v2/metrics/financial-statement/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol income statement report. Returns protocol metadata, child protocol methodology details, and aggregated financial data (yearly, quarterly, monthly).
+
+Each time period contains line items such as:
+- **Gross Protocol Revenue** — total fees collected (with label breakdown e.g. Borrow Interest, Liquidation Fees, Flashloan Fees)
+- **Cost Of Revenue** — fees distributed to suppliers/LPs
+- **Gross Profit** — revenue minus cost of revenue
+- **Token Holder Net Income** — value accruing to token holders (e.g. buybacks)
+- **Incentives** — token incentives distributed (e.g. staking rewards, lending rewards)
+- **Earnings** — net earnings after incentives
+
+Each line item has a `value` (total USD) and optional `by-label` object breaking down by revenue source.
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+Returns: {id, name, url, description, logo, chains, gecko_id, cmcId, symbol, address, twitter, github, linkedProtocols, childProtocols, hasLabelBreakdown, slug, protocolType, aggregates: {yearly: {period: {LineItem: {value, by-label?}}}, quarterly: {...}, monthly: {...}}}
