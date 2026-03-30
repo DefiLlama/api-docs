@@ -79,6 +79,14 @@
     {
       "name": "Equities",
       "description": "Stock market data for publicly traded companies"
+    },
+    {
+      "name": "Oracles",
+      "description": "Oracle TVL data and breakdowns by chain and protocol"
+    },
+    {
+      "name": "Forks",
+      "description": "Fork TVL data and breakdowns by protocol"
     }
   ],
   "paths": {
@@ -6559,6 +6567,448 @@
                     [1609459200, { "AAVE": 50000000, "USDC": 30000000, "WETH": 20000000 }],
                     [1609545600, { "AAVE": 51000000, "USDC": 30500000, "WETH": 20500000 }]
                   ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Protocol not found"
+          }
+        }
+      }
+    },
+    "/api/v2/metrics/oracle": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get oracle data overview",
+        "description": "Returns an object mapping oracle names to arrays of protocol names that use each oracle.",
+        "responses": {
+          "200": {
+            "description": "Oracle data overview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "oracles": {
+                      "type": "object",
+                      "description": "Mapping of oracle names to arrays of protocol names using that oracle",
+                      "additionalProperties": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      },
+                      "example": {
+                        "Chainlink": ["Aave V2", "Compound V2", "Synthetix v1+v2"],
+                        "Band": ["Mirror", "Anchor"],
+                        "TWAP": ["Uniswap V3"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chart/oracle": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get timeseries chart data for all oracles",
+        "description": "Returns an array of [timestamp, value] pairs representing total TVL across all oracles over time.",
+        "responses": {
+          "200": {
+            "description": "Array of [timestamp, value] pairs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "example": [1546560000, 273845651.27]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chart/oracle/chain-breakdown": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get timeseries chart data breakdown by chain",
+        "description": "Returns an array of objects with a timestamp and TVL values broken down by chain.",
+        "responses": {
+          "200": {
+            "description": "Array of timestamped chain breakdowns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number",
+                        "description": "Unix timestamp",
+                        "example": 1546560000
+                      }
+                    },
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "example": [
+                    { "timestamp": 1546560000, "Ethereum": 273845651.27 },
+                    { "timestamp": 1546646400, "Ethereum": 288674544.41 }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chart/oracle/protocol-breakdown": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get timeseries chart data breakdown by protocol",
+        "description": "Returns an array of objects with a timestamp and TVL values broken down by oracle/protocol.",
+        "responses": {
+          "200": {
+            "description": "Array of timestamped protocol breakdowns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number",
+                        "description": "Unix timestamp",
+                        "example": 1546560000
+                      }
+                    },
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "example": [
+                    { "timestamp": 1546560000, "Chronicle": 273845651.27 },
+                    { "timestamp": 1546646400, "Chronicle": 288674544.41 }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chart/oracle/protocol/{protocol}": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get timeseries chart data by protocol/oracle",
+        "description": "Returns an array of [timestamp, value] pairs representing TVL over time for a specific oracle/protocol.",
+        "parameters": [
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "description": "oracle/protocol name",
+            "schema": {
+              "type": "string",
+              "example": "Chainlink"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of [timestamp, value] pairs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "example": [1557273600, 9546.16]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Protocol not found"
+          }
+        }
+      }
+    },
+    "/api/v2/chart/oracle/protocol/{protocol}/chain-breakdown": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get chain breakdown timeseries chart data by protocol/oracle",
+        "description": "Returns an array of objects with a timestamp and TVL values broken down by chain for a specific oracle/protocol.",
+        "parameters": [
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "description": "oracle/protocol name",
+            "schema": {
+              "type": "string",
+              "example": "Chainlink"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of timestamped chain breakdowns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number",
+                        "description": "Unix timestamp",
+                        "example": 1557273600
+                      }
+                    },
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "example": [
+                    { "timestamp": 1557273600, "Ethereum": 9546.16 },
+                    { "timestamp": 1557360000, "Ethereum": 10826.13 }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Protocol not found"
+          }
+        }
+      }
+    },
+    "/api/v2/chart/oracle/chain/{chain}": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get timeseries chart data by chain",
+        "description": "Returns an array of [timestamp, value] pairs representing oracle TVL over time for a specific chain.",
+        "parameters": [
+          {
+            "name": "chain",
+            "in": "path",
+            "required": true,
+            "description": "chain name",
+            "schema": {
+              "type": "string",
+              "example": "Ethereum"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of [timestamp, value] pairs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "example": [1546560000, 273845651.27]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chain not found"
+          }
+        }
+      }
+    },
+    "/api/v2/chart/oracle/chain/{chain}/protocol-breakdown": {
+      "get": {
+        "tags": ["Oracles"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get protocol breakdown timeseries chart data by chain",
+        "description": "Returns an array of objects with a timestamp and TVL values broken down by oracle/protocol for a specific chain.",
+        "parameters": [
+          {
+            "name": "chain",
+            "in": "path",
+            "required": true,
+            "description": "chain name",
+            "schema": {
+              "type": "string",
+              "example": "Ethereum"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of timestamped protocol breakdowns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number",
+                        "description": "Unix timestamp",
+                        "example": 1546560000
+                      }
+                    },
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "example": [
+                    { "timestamp": 1546560000, "Chronicle": 273845651.27 },
+                    { "timestamp": 1546646400, "Chronicle": 288674544.41 }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chain not found"
+          }
+        }
+      }
+    },
+    "/api/v2/metrics/fork": {
+      "get": {
+        "tags": ["Forks"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get fork data overview",
+        "description": "Returns an object mapping fork names to arrays of protocol names that are forks of each protocol.",
+        "responses": {
+          "200": {
+            "description": "Fork data overview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "example": {
+                    "Uniswap V2": ["SushiSwap", "PancakeSwap AMM", "QuickSwap Dex"],
+                    "Aave V2": ["Geist Finance", "Hundred Finance"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chart/fork/protocol-breakdown": {
+      "get": {
+        "tags": ["Forks"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get timeseries chart data breakdown by protocol",
+        "description": "Returns an array of objects with a timestamp and TVL values broken down by fork protocol.",
+        "responses": {
+          "200": {
+            "description": "Array of timestamped protocol breakdowns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number",
+                        "description": "Unix timestamp",
+                        "example": 1599264000
+                      }
+                    },
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "example": [
+                    { "timestamp": 1599696000, "Uniswap V2": 1082367977.05 },
+                    { "timestamp": 1599868800, "Uniswap V2": 1456479137.61, "Saddle Finance": 41.34 }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/chart/fork/protocol/{protocol}": {
+      "get": {
+        "tags": ["Forks"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get timeseries chart data by protocol",
+        "description": "Returns an array of [timestamp, value] pairs representing TVL over time for all forks of a specific protocol.",
+        "parameters": [
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "description": "protocol slug",
+            "schema": {
+              "type": "string",
+              "example": "aave-v3"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of [timestamp, value] pairs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "example": [1682899200, 31.73]
+                  }
                 }
               }
             }

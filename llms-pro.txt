@@ -353,3 +353,81 @@ Get SEC filings for a company
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
 Returns: array of {filingDate, reportDate, form, primaryDocumentUrl, documentDescription}
+
+---
+
+## Oracles (Beta)
+
+### GET /api/v2/metrics/oracle
+**Base URL:** `https://pro-api.llama.fi`
+Get oracle data overview. Returns mapping of oracle names to arrays of protocol names using that oracle.
+Returns: {oracles: {OracleName: [protocol1, protocol2, ...], ...}}
+
+### GET /api/v2/chart/oracle
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data for all oracles. Returns array of [timestamp, value] pairs representing total oracle TVL over time.
+Returns: array of [timestamp, value]
+
+### GET /api/v2/chart/oracle/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by chain. Returns array of objects with timestamp and TVL per chain.
+Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
+
+### GET /api/v2/chart/oracle/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by protocol/oracle. Returns array of objects with timestamp and TVL per oracle.
+Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
+
+### GET /api/v2/chart/oracle/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by protocol/oracle. Returns array of [timestamp, value] pairs for a specific oracle.
+
+**Parameters:**
+  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
+Returns: array of [timestamp, value]
+
+### GET /api/v2/chart/oracle/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get chain breakdown timeseries chart data by protocol/oracle. Returns array of objects with timestamp and TVL per chain for a specific oracle.
+
+**Parameters:**
+  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
+Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
+
+### GET /api/v2/chart/oracle/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by chain. Returns array of [timestamp, value] pairs for oracle TVL on a specific chain.
+
+**Parameters:**
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+Returns: array of [timestamp, value]
+
+### GET /api/v2/chart/oracle/chain/{chain}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol breakdown timeseries chart data by chain. Returns array of objects with timestamp and TVL per oracle for a specific chain.
+
+**Parameters:**
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
+
+---
+
+## Forks (Beta)
+
+### GET /api/v2/metrics/fork
+**Base URL:** `https://pro-api.llama.fi`
+Get fork data overview. Returns mapping of fork protocol names to arrays of forked protocol names.
+Returns: {ForkName: [protocol1, protocol2, ...], ...}
+
+### GET /api/v2/chart/fork/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by protocol. Returns array of objects with timestamp and TVL per fork protocol.
+Returns: array of {timestamp, Fork1: value, Fork2: value, ...}
+
+### GET /api/v2/chart/fork/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by protocol. Returns array of [timestamp, value] pairs for all forks of a specific protocol.
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave-v3`
+Returns: array of [timestamp, value]
