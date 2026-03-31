@@ -8275,16 +8275,16 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get protocol income statement report",
-        "description": "Returns protocol metadata, child protocol methodology details, and aggregated financial statement data (yearly, quarterly, monthly). Each period contains line items such as Gross Protocol Revenue, Cost Of Revenue, Gross Profit, Token Holder Net Income, Incentives, and Earnings, with values and optional label breakdowns.",
+        "description": "Returns protocol metadata, methodology details, and aggregated financial statement data (yearly, quarterly, monthly). Each period contains line items such as Gross Protocol Revenue, Cost Of Revenue, Gross Profit, Token Holder Net Income, Incentives, and Earnings, with values and optional label breakdowns.\n\nWhen querying a parent protocol (e.g. `aave`), the response includes a `childProtocols` array with per-version methodology. When querying a child protocol (e.g. `aave-v3`), methodology and breakdownMethodology are at the top level.",
         "parameters": [
           {
             "name": "protocol",
             "in": "path",
             "required": true,
-            "description": "protocol slug (e.g. aave, hyperliquid)",
+            "description": "protocol slug (e.g. aave-v3, hyperliquid)",
             "schema": {
               "type": "string",
-              "example": "aave"
+              "example": "aave-v3"
             }
           }
         ],
@@ -8298,115 +8298,205 @@
                   "properties": {
                     "id": {
                       "type": "string",
-                      "example": "parent#aave"
+                      "description": "Protocol ID. Parent protocols use 'parent#slug' format.",
+                      "example": "1599"
                     },
                     "name": {
                       "type": "string",
-                      "example": "Aave"
+                      "example": "Aave V3"
                     },
-                    "url": {
-                      "type": "string",
-                      "example": "https://aave.com"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "logo": {
-                      "type": "string",
-                      "example": "https://icons.llama.fi/aave.png"
-                    },
-                    "chains": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "example": ["Ethereum", "Polygon", "Avalanche"]
-                    },
-                    "gecko_id": {
+                    "address": {
                       "type": "string",
                       "nullable": true,
-                      "example": "aave"
-                    },
-                    "cmcId": {
-                      "type": "string",
-                      "nullable": true,
-                      "example": "7278"
+                      "example": "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
                     },
                     "symbol": {
                       "type": "string",
                       "nullable": true,
                       "example": "AAVE"
                     },
-                    "address": {
+                    "url": {
                       "type": "string",
-                      "nullable": true
+                      "example": "https://aave.com"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Earn interest, borrow assets, and build applications"
+                    },
+                    "chain": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Primary chain (present for child protocols)",
+                      "example": "Optimism"
+                    },
+                    "logo": {
+                      "type": "string",
+                      "example": "https://icons.llamao.fi/icons/protocols/aave-v3.png"
+                    },
+                    "audits": {
+                      "type": "string",
+                      "nullable": true,
+                      "example": "2"
+                    },
+                    "audit_links": {
+                      "type": "array",
+                      "nullable": true,
+                      "items": { "type": "string" },
+                      "example": ["https://aave.com/security"]
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Protocol category (present for child protocols)",
+                      "example": "Lending"
+                    },
+                    "chains": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "example": ["Polygon", "Arbitrum", "Avalanche", "OP Mainnet", "Ethereum", "Base"]
+                    },
+                    "oraclesBreakdown": {
+                      "type": "array",
+                      "nullable": true,
+                      "description": "Oracles used by the protocol",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string", "example": "Chainlink" },
+                          "type": { "type": "string", "example": "Primary" },
+                          "proof": { "type": "array", "items": { "type": "string" } }
+                        }
+                      }
+                    },
+                    "module": {
+                      "type": "string",
+                      "nullable": true,
+                      "example": "aave-v3"
                     },
                     "twitter": {
                       "type": "string",
-                      "nullable": true
+                      "nullable": true,
+                      "example": "aave"
                     },
                     "github": {
                       "type": "array",
                       "nullable": true,
-                      "items": {
-                        "type": "string"
+                      "items": { "type": "string" }
+                    },
+                    "listedAt": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Unix timestamp when protocol was listed",
+                      "example": 1648776877
+                    },
+                    "parentProtocol": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Parent protocol ID (present for child protocols)",
+                      "example": "parent#aave"
+                    },
+                    "dimensions": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Available dimension adapters for this protocol",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "adapter": { "type": "string" },
+                          "genuineSpikes": { "type": "array" }
+                        }
+                      },
+                      "example": {
+                        "fees": { "genuineSpikes": [["2024-08-05", "-"]], "adapter": "aave-v3" }
                       }
+                    },
+                    "methodology": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Maps line item names to descriptions. Present at top level for child protocols, inside childProtocols for parent protocols.",
+                      "additionalProperties": { "type": "string" },
+                      "example": {
+                        "Gross Protocol Revenue": "Include borrow interest, flashloan fee, liquidation fee, penalty paid by borrowers and swap fees from Paraswap.",
+                        "Cost Of Revenue": "Amount of fees distributed to suppliers.",
+                        "Gross Profit": "Amount of fees go to Aave treasury.",
+                        "Token Holder Net Income": "Aave starts buy back AAVE tokens using Aave Treasury after 9th April 2025."
+                      }
+                    },
+                    "breakdownMethodology": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Maps line item names to objects mapping label names to descriptions. Present at top level for child protocols, inside childProtocols for parent protocols.",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": { "type": "string" }
+                      },
+                      "example": {
+                        "Gross Protocol Revenue": {
+                          "Borrow Interest": "All interest paid by borrowers from all markets (excluding GHO).",
+                          "Borrow Interest GHO": "All interest paid by borrowers from GHO only.",
+                          "Liquidation Fees": "Fees from liquidation penalty and bonuses.",
+                          "Flashloan Fees": "Flashloan fees paid by flashloan borrowers and executors.",
+                          "Paraswap Partner Fees": "Swap fees share from Paraswap from users by using Aave frontend."
+                        },
+                        "Cost Of Revenue": {
+                          "Borrow Interest": "Amount of interest distributed to lenders from all markets (excluding GHO).",
+                          "Liquidation Fees": "Fees from liquidation penalty and bonuses are distributed to lenders."
+                        },
+                        "Gross Profit": {
+                          "Borrow Interest": "A portion of interest paid by borrowers from all markets (excluding GHO).",
+                          "Borrow Interest GHO": "All 100% interest paid by GHO borrowers.",
+                          "Liquidation Fees": "A portion of fees from liquidation penalty and bonuses."
+                        },
+                        "Token Holder Net Income": {
+                          "Token Buy Back": "Aave starts buy back AAVE tokens using Aave Treasury after 9th April 2025."
+                        }
+                      }
+                    },
+                    "methodologyURL": {
+                      "type": "string",
+                      "nullable": true,
+                      "example": "https://github.com/DefiLlama/dimension-adapters/blob/master/fees/aave-v3.ts"
+                    },
+                    "tvlCodePath": {
+                      "type": "string",
+                      "nullable": true,
+                      "example": "https://github.com/DefiLlama/DefiLlama-Adapters/blob/main/projects/aave-v3/index.js"
+                    },
+                    "hallmarks": {
+                      "type": "array",
+                      "nullable": true,
+                      "description": "Notable events as [timestamp, description] pairs",
+                      "items": {
+                        "type": "array",
+                        "items": {}
+                      },
+                      "example": [[1650412800, "Start AVAX Rewards"], [1659571200, "Start OP Rewards"]]
                     },
                     "linkedProtocols": {
                       "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
+                      "items": { "type": "string" },
                       "example": ["Aave", "Aave V2", "Aave V3"]
                     },
                     "childProtocols": {
                       "type": "array",
-                      "description": "Child protocol versions with their methodology details",
+                      "nullable": true,
+                      "description": "Child protocol versions with their methodology details. Only present for parent protocols.",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "name": {
-                            "type": "string",
-                            "example": "Aave V3"
-                          },
-                          "defillamaId": {
-                            "type": "string",
-                            "example": "1599"
-                          },
-                          "displayName": {
-                            "type": "string"
-                          },
-                          "methodologyURL": {
-                            "type": "string",
-                            "nullable": true
-                          },
+                          "name": { "type": "string", "example": "Aave V3" },
+                          "defillamaId": { "type": "string", "example": "1599" },
+                          "displayName": { "type": "string" },
+                          "methodologyURL": { "type": "string", "nullable": true },
                           "methodology": {
                             "type": "object",
-                            "description": "Maps line item names to descriptions of what they measure",
-                            "additionalProperties": {
-                              "type": "string"
-                            },
-                            "example": {
-                              "Gross Protocol Revenue": "Include borrow interest, flashloan fee, liquidation fee and penalty paid by borrowers.",
-                              "Cost Of Revenue": "Amount of fees distributed to suppliers.",
-                              "Gross Profit": "Amount of fees go to Aave treasury."
-                            }
+                            "additionalProperties": { "type": "string" }
                           },
                           "breakdownMethodology": {
                             "type": "object",
-                            "description": "Maps line item names to objects mapping label names to descriptions",
                             "additionalProperties": {
                               "type": "object",
-                              "additionalProperties": {
-                                "type": "string"
-                              }
-                            },
-                            "example": {
-                              "Gross Protocol Revenue": {
-                                "Borrow Interest": "All interest paid by borrowers from all markets.",
-                                "Liquidation Fees": "Fees from liquidation penalty and bonuses.",
-                                "Flashloan Fees": "Flashloan fees paid by borrowers."
-                              }
+                              "additionalProperties": { "type": "string" }
                             }
                           }
                         }
@@ -8416,9 +8506,17 @@
                       "type": "boolean",
                       "example": true
                     },
+                    "defillamaId": {
+                      "type": "string",
+                      "example": "1599"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "example": "Aave V3"
+                    },
                     "slug": {
                       "type": "string",
-                      "example": "aave"
+                      "example": "aave-v3"
                     },
                     "protocolType": {
                       "type": "string",

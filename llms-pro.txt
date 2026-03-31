@@ -658,7 +658,9 @@ Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
 
 ### GET /api/v2/metrics/financial-statement/protocol/{protocol}
 **Base URL:** `https://pro-api.llama.fi`
-Get protocol income statement report. Returns protocol metadata, child protocol methodology details, and aggregated financial data (yearly, quarterly, monthly).
+Get protocol income statement report. Returns protocol metadata, methodology details, and aggregated financial data (yearly, quarterly, monthly).
+
+When querying a **parent protocol** (e.g. `aave`), the response includes `childProtocols` with per-version methodology. When querying a **child protocol** (e.g. `aave-v3`), `methodology` and `breakdownMethodology` are at the top level.
 
 Each time period contains line items such as:
 - **Gross Protocol Revenue** — total fees collected (with label breakdown e.g. Borrow Interest, Liquidation Fees, Flashloan Fees)
@@ -671,5 +673,5 @@ Each time period contains line items such as:
 Each line item has a `value` (total USD) and optional `by-label` object breaking down by revenue source.
 
 **Parameters:**
-  - `protocol` (path, string, required) — protocol slug Example: `aave`
-Returns: {id, name, url, description, logo, chains, gecko_id, cmcId, symbol, address, twitter, github, linkedProtocols, childProtocols, hasLabelBreakdown, slug, protocolType, aggregates: {yearly: {period: {LineItem: {value, by-label?}}}, quarterly: {...}, monthly: {...}}}
+  - `protocol` (path, string, required) — protocol slug Example: `aave-v3`
+Returns: {id, name, address, symbol, url, description, chain?, logo, audits?, audit_links?, category?, chains, oraclesBreakdown?, module?, twitter, github?, listedAt?, parentProtocol?, dimensions?, methodology?, breakdownMethodology?, methodologyURL?, tvlCodePath?, hallmarks?, linkedProtocols, childProtocols?, hasLabelBreakdown, defillamaId, displayName, slug, protocolType, aggregates: {yearly: {period: {LineItem: {value, by-label?}}}, quarterly: {...}, monthly: {...}}}
