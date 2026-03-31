@@ -8530,21 +8530,98 @@
                           "type": "object",
                           "description": "Keyed by year (e.g. '2024'). Each value is an object of line items.",
                           "additionalProperties": {
-                            "$ref": "#/components/schemas/FinancialPeriod"
+                            "type": "object",
+                            "description": "Financial line items for a time period. Common line items include Gross Protocol Revenue, Cost Of Revenue, Gross Profit, Token Holder Net Income, Incentives, and Earnings. Each line item has a value and optional by-label breakdown.",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "number",
+                                  "description": "Total USD value for this line item in the period",
+                                  "example": 456472580
+                                },
+                                "by-label": {
+                                  "type": "object",
+                                  "description": "Breakdown by label (e.g. Borrow Interest, Liquidation Fees, Flash Loans). Not present for all line items.",
+                                  "nullable": true,
+                                  "additionalProperties": { "type": "number" },
+                                  "example": {
+                                    "Borrow Interest": 416862749,
+                                    "Liquidation Fees": 31413361,
+                                    "Flashloan Fees": 1441
+                                  }
+                                }
+                              }
+                            },
+                            "example": {
+                              "Gross Protocol Revenue": {
+                                "value": 456472580,
+                                "by-label": {
+                                  "Borrow Interest": 416862749,
+                                  "Liquidation Fees": 31413361,
+                                  "Flashloan Fees": 1441
+                                }
+                              },
+                              "Cost Of Revenue": {
+                                "value": 384670312,
+                                "by-label": { "Borrow Interest": 356424169, "Liquidation Fees": 28246110 }
+                              },
+                              "Gross Profit": { "value": 71802305 },
+                              "Token Holder Net Income": { "value": 0 },
+                              "Incentives": {
+                                "value": 4895806.72,
+                                "by-label": { "stkAAVE Rewards": 19461161.65, "Lending/Borrowing Rewards": 1197840.72 }
+                              },
+                              "Earnings": { "value": 66906498.28 }
+                            }
                           }
                         },
                         "quarterly": {
                           "type": "object",
                           "description": "Keyed by quarter (e.g. '2024-Q1'). Each value is an object of line items.",
                           "additionalProperties": {
-                            "$ref": "#/components/schemas/FinancialPeriod"
+                            "type": "object",
+                            "description": "Financial line items for a time period.",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "number",
+                                  "description": "Total USD value for this line item in the period",
+                                  "example": 456472580
+                                },
+                                "by-label": {
+                                  "type": "object",
+                                  "description": "Breakdown by label. Not present for all line items.",
+                                  "nullable": true,
+                                  "additionalProperties": { "type": "number" }
+                                }
+                              }
+                            }
                           }
                         },
                         "monthly": {
                           "type": "object",
                           "description": "Keyed by month (e.g. '2024-01'). Each value is an object of line items.",
                           "additionalProperties": {
-                            "$ref": "#/components/schemas/FinancialPeriod"
+                            "type": "object",
+                            "description": "Financial line items for a time period.",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "number",
+                                  "description": "Total USD value for this line item in the period",
+                                  "example": 456472580
+                                },
+                                "by-label": {
+                                  "type": "object",
+                                  "description": "Breakdown by label. Not present for all line items.",
+                                  "nullable": true,
+                                  "additionalProperties": { "type": "number" }
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -14137,75 +14214,6 @@
           },
           "500": {
             "description": "Internal server error"
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "FinancialPeriod": {
-        "type": "object",
-        "description": "Financial line items for a time period. Common line items include Gross Protocol Revenue, Cost Of Revenue, Gross Profit, Token Holder Net Income, Incentives, and Earnings. Each line item has a value and optional by-label breakdown.",
-        "additionalProperties": {
-          "type": "object",
-          "properties": {
-            "value": {
-              "type": "number",
-              "description": "Total USD value for this line item in the period",
-              "example": 456472580
-            },
-            "by-label": {
-              "type": "object",
-              "description": "Breakdown by label (e.g. Borrow Interest, Liquidation Fees, Flash Loans). Not present for all line items.",
-              "nullable": true,
-              "additionalProperties": {
-                "type": "number"
-              },
-              "example": {
-                "Borrow Interest": 416862749,
-                "Liquidation Fees": 31413361,
-                "Flashloan Fees": 1441
-              }
-            }
-          }
-        },
-        "example": {
-          "Gross Protocol Revenue": {
-            "value": 456472580,
-            "by-label": {
-              "Borrow Interest": 416862749,
-              "Liquidation Fees": 31413361,
-              "Flashloan Fees": 1441
-            }
-          },
-          "Cost Of Revenue": {
-            "value": 384670312,
-            "by-label": {
-              "Borrow Interest": 356424169,
-              "Liquidation Fees": 28246110
-            }
-          },
-          "Gross Profit": {
-            "value": 71802305,
-            "by-label": {
-              "Borrow Interest": 60438576,
-              "Liquidation Fees": 3167210,
-              "Flashloan Fees": 1441
-            }
-          },
-          "Token Holder Net Income": {
-            "value": 0
-          },
-          "Incentives": {
-            "value": 4895806.72,
-            "by-label": {
-              "stkAAVE Rewards": 19461161.65,
-              "Lending/Borrowing Rewards": 1197840.72
-            }
-          },
-          "Earnings": {
-            "value": 66906498.28
           }
         }
       }
