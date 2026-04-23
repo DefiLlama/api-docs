@@ -11296,9 +11296,11 @@
                       "properties": {
                         "ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1": {
                           "type": "object",
+                          "required": ["price", "symbol", "timestamp"],
                           "properties": {
                             "decimals": {
                               "type": "number",
+                              "description": "Token decimals. Omitted for coingecko-native assets (e.g. coingecko:ethereum).",
                               "example": 8
                             },
                             "price": {
@@ -11311,6 +11313,11 @@
                             },
                             "timestamp": {
                               "type": "number",
+                              "example": 0.99
+                            },
+                            "confidence": {
+                              "type": "number",
+                              "description": "Confidence score between 0 and 1 indicating the reliability of the price.",
                               "example": 0.99
                             }
                           }
@@ -11390,9 +11397,11 @@
                       "properties": {
                         "ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1": {
                           "type": "object",
+                          "required": ["price", "symbol", "timestamp"],
                           "properties": {
                             "decimals": {
                               "type": "number",
+                              "description": "Token decimals. Omitted for coingecko-native assets (e.g. coingecko:ethereum).",
                               "example": 8
                             },
                             "price": {
@@ -11406,6 +11415,11 @@
                             "timestamp": {
                               "type": "number",
                               "example": 1648680149
+                            },
+                            "confidence": {
+                              "type": "number",
+                              "description": "Confidence score between 0 and 1 indicating the reliability of the price.",
+                              "example": 0.99
                             }
                           }
                         }
@@ -11606,13 +11620,16 @@
                       "properties": {
                         "ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1": {
                           "type": "object",
+                          "required": ["confidence", "prices", "symbol"],
                           "properties": {
                             "decimals": {
                               "type": "number",
+                              "description": "Token decimals. Omitted for coingecko-native assets (e.g. coingecko:ethereum).",
                               "example": 8
                             },
                             "confidence": {
                               "type": "number",
+                              "description": "Confidence score between 0 and 1 indicating the reliability of the price.",
                               "example": 0.99
                             },
                             "prices": {
