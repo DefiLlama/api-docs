@@ -11,7 +11,7 @@ The Free API and Pro API are entirely separate services.
 | Base URL | https://api.llama.fi | https://pro-api.llama.fi/{KEY} |
 | Auth Required | No | Yes ($300/mo) |
 | Rate Limit | Standard | Higher |
-| Endpoints | 31 | 38 exclusive + 31 free with prefix |
+| Endpoints | 31 | 77 exclusive + 31 free with prefix |
 
 Pro API authentication: insert your API key between the base URL and endpoint path:
 ```
@@ -85,15 +85,20 @@ Full documentation: [llms-pro.txt](/llms-pro.txt)
 
 Requires API key. Base URL: `https://pro-api.llama.fi`
 
-- **TVL**: `/api/tokenProtocols/{symbol}`, `/api/inflows/{protocol}/{timestamp}`, `/api/chainAssets`
-- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
+- **TVL**: `/api/tokenProtocols/{symbol}`, `/api/inflows/{protocol}/{timestamp}`, `/api/chainAssets`, `/api/v2/metrics/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/tvl/protocol/{protocol}/token-breakdown`
 - **Token Unlocks**: `/api/emissions`, `/api/emission/{protocol}`
 - **Protocol Analytics**: `/api/categories`, `/api/forks`, `/api/oracles`, `/api/hacks`, `/api/raises`, `/api/treasuries`, `/api/entities`
 - **Token Liquidity**: `/api/historicalLiquidity/{token}`
+- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
+- **Treasury**: `/api/v2/metrics/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/treasury/protocol/{protocol}/token-breakdown`
+- **Oracles**: `/api/v2/metrics/oracle`, `/api/v2/chart/oracle`, `/api/v2/chart/oracle/chain-breakdown`, `/api/v2/chart/oracle/protocol-breakdown`, `/api/v2/chart/oracle/protocol/{protocol}`, `/api/v2/chart/oracle/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/oracle/chain/{chain}`, `/api/v2/chart/oracle/chain/{chain}/protocol-breakdown`
+- **Forks**: `/api/v2/metrics/fork`, `/api/v2/chart/fork/protocol-breakdown`, `/api/v2/chart/fork/protocol/{protocol}`
+- **Dimensions**: `/api/v2/metrics/{metric}`, `/api/v2/chart/{metric}`, `/api/v2/chart/{metric}/chain-breakdown`, `/api/v2/chart/{metric}/protocol-breakdown`, `/api/v2/metrics/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}/protocol-breakdown`, `/api/v2/metrics/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/version-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/label-breakdown`, `/api/v2/metrics/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}/chain-breakdown`, `/api/v2/chart/{metric}/category/{category}/protocol-breakdown`, `/api/v2/metrics/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown`
+- **Financial Statements**: `/api/v2/metrics/financial-statement/protocol/{protocol}`
+- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
 - **Yields & APY**: `/yields/poolsOld`, `/yields/poolsBorrow`, `/yields/chartLendBorrow/{pool}`, `/yields/perps`, `/yields/lsdRates`
 - **ETFs**: `/etfs/snapshot`, `/etfs/flows`
 - **Narratives**: `/fdv/performance/{period}`
-- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
 - **Bridges**: `/bridges/bridges`, `/bridges/bridge/{id}`, `/bridges/bridgevolume/{chain}`, `/bridges/bridgedaystats/{timestamp}/{chain}`, `/bridges/transactions/{id}`
 - **API Key Management**: `/usage/APIKEY`
 - **Digital Asset Treasury**: `/dat/institutions`, `/dat/institutions/{symbol}`
@@ -101,5 +106,6 @@ Requires API key. Base URL: `https://pro-api.llama.fi`
 
 ## Optional
 
-- [OpenAPI spec (free)](/defillama-openapi-free.json): Full OpenAPI 3.0 specification for free endpoints
-- [OpenAPI spec (pro)](/defillama-openapi-pro.json): Full OpenAPI 3.0 specification for pro endpoints
+- [OpenAPI spec (free)](https://raw.githubusercontent.com/DefiLlama/api-docs/0bf9c31cf2d4fa2129fb69b377737fa60540eeeb/defillama-openapi-free.json): Full OpenAPI 3.0 specification for free endpoints
+- [OpenAPI spec (pro)](https://raw.githubusercontent.com/DefiLlama/api-docs/0bf9c31cf2d4fa2129fb69b377737fa60540eeeb/defillama-openapi-pro.json): Full OpenAPI 3.0 specification for pro endpoints
+
