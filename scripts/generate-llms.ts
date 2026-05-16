@@ -190,7 +190,7 @@ ${mappingTable}
 
 ## Free API Endpoints (api.llama.fi)
 
-Full documentation: [llms-free.txt](/llms-free.txt)
+Full documentation: [llms-free.txt](https://raw.githubusercontent.com/DefiLlama/api-docs/0bf9c31cf2d4fa2129fb69b377737fa60540eeeb/llms-free.txt)
 
 No authentication required. Base URL: \`https://api.llama.fi\`
 
@@ -200,7 +200,7 @@ ${Array.from(freeGroups.entries())
 
 ## Pro-Only API Endpoints (pro-api.llama.fi)
 
-Full documentation: [llms-pro.txt](/llms-pro.txt)
+Full documentation: [llms-pro.txt](https://raw.githubusercontent.com/DefiLlama/api-docs/0bf9c31cf2d4fa2129fb69b377737fa60540eeeb/llms-pro.txt)
 
 Requires API key. Base URL: \`https://pro-api.llama.fi\`
 
@@ -210,8 +210,9 @@ ${Array.from(proGroups.entries())
 
 ## Optional
 
-- [OpenAPI spec (free)](/defillama-openapi-free.json): Full OpenAPI 3.0 specification for free endpoints
-- [OpenAPI spec (pro)](/defillama-openapi-pro.json): Full OpenAPI 3.0 specification for pro endpoints
+- [OpenAPI spec (free)](https://raw.githubusercontent.com/DefiLlama/api-docs/0bf9c31cf2d4fa2129fb69b377737fa60540eeeb/defillama-openapi-free.json): Full OpenAPI 3.0 specification for free endpoints
+- [OpenAPI spec (pro)](https://raw.githubusercontent.com/DefiLlama/api-docs/0bf9c31cf2d4fa2129fb69b377737fa60540eeeb/defillama-openapi-pro.json): Full OpenAPI 3.0 specification for pro endpoints
+
 `
 }
 
