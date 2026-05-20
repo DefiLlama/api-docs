@@ -654,6 +654,51 @@ Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
 
 ---
 
+## Real World Assets
+
+### GET /rwa/current
+**Base URL:** `https://pro-api.llama.fi`
+List all current RWA assets with per-chain onchain market cap, active market cap, and DeFi active TVL maps.
+Returns: array of RWA asset objects
+
+### GET /rwa/stats
+**Base URL:** `https://pro-api.llama.fi`
+Get aggregate RWA stats by chain, category, platform, and asset group. For the default per-chain table, read `byChain[chain].base`: `assetIssuers.length`, `assetCount`, `activeMcap`, `onChainMcap`, and `defiActiveTvl`. Add `stablecoinsOnly`, `governanceOnly`, and `stablecoinsAndGovernance` when those buckets should be included.
+Returns: {totalOnChainMcap, totalActiveMcap, totalDefiActiveTvl, assetCount, assetIssuers, byChain, byCategory, byPlatform, byAssetGroup}
+
+### GET /rwa/list
+**Base URL:** `https://pro-api.llama.fi`
+List RWA canonical market ids, platforms, chains, categories, asset groups, and id mappings.
+Returns: {canonicalMarketIds, platforms, chains, categories, assetGroups, idMap}
+
+### GET /rwa/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+List current RWA assets on a chain.
+
+**Parameters:**
+  - `chain` (path, string, required) — chain display name, case-insensitive Example: `Ethereum`
+Returns: {data}
+
+### GET /rwa/chart/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get historical RWA onchain market cap, active market cap, and DeFi active TVL totals for a chain.
+
+**Parameters:**
+  - `chain` (path, string, required) — chain display name Example: `Ethereum`
+Returns: array of {timestamp, onChainMcap, activeMcap, defiActiveTvl}
+
+### GET /rwa/chart/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical RWA metric breakdown by chain.
+
+**Parameters:**
+  - `key` (query, string, optional) — metric to break down by chain, defaults to `onChainMcap` (one of: onChainMcap, activeMcap, defiActiveTvl) Example: `activeMcap`
+  - `includeStablecoin` (query, boolean, optional) — include stablecoin-token assets in chart totals Example: `false`
+  - `includeGovernance` (query, boolean, optional) — include governance-token assets in chart totals Example: `false`
+Returns: array of {timestamp, [chain]: value}
+
+---
+
 ## Financial Statements (Beta)
 
 ### GET /api/v2/metrics/financial-statement/protocol/{protocol}

@@ -145,6 +145,7 @@ function formatTagName(tag: string): string {
     'bridges': 'Bridges',
     'DAT': 'Digital Asset Treasury',
     'Equities': 'Equities',
+    'RWA': 'Real World Assets',
   }
   return map[tag] ?? tag
 }
