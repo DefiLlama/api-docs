@@ -462,6 +462,7 @@ Get dimension data overview. Returns aggregate metrics including totals and perc
 **Parameters:**
   - `metric` (path, string, required) — dimension metric type Example: `fees`
   - `dataType` (query, string, optional) — metric-specific data type
+  - Supports `metric=active-users` with `dataType` values: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
 Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
 
 #### GET /api/v2/chart/{metric}
@@ -471,6 +472,7 @@ Get historical timeseries chart data.
 **Parameters:**
   - `metric` (path, string, required) — dimension metric type Example: `fees`
   - `dataType` (query, string, optional) — metric-specific data type
+  - Supports `metric=active-users` with `dataType` values: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
 Returns: array of [timestamp, value]
 
 #### GET /api/v2/chart/{metric}/chain-breakdown
@@ -480,6 +482,7 @@ Get historical timeseries chart data breakdown by chain.
 **Parameters:**
   - `metric` (path, string, required) — dimension metric type Example: `fees`
   - `dataType` (query, string, optional) — metric-specific data type
+  - Supports `metric=active-users` with `dataType` values: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
 Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
 
 #### GET /api/v2/chart/{metric}/protocol-breakdown

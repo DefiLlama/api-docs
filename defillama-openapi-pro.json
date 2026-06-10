@@ -6511,7 +6511,8 @@
                 "aggregators",
                 "bridge-aggregators",
                 "open-interest",
-                "normalized-volume"
+                "normalized-volume",
+                "active-users"
               ],
               "example": "fees"
             }
@@ -6520,7 +6521,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6621,7 +6622,8 @@
                 "aggregators",
                 "bridge-aggregators",
                 "open-interest",
-                "normalized-volume"
+                "normalized-volume",
+                "active-users"
               ],
               "example": "fees"
             }
@@ -6630,7 +6632,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6683,7 +6685,8 @@
                 "aggregators",
                 "bridge-aggregators",
                 "open-interest",
-                "normalized-volume"
+                "normalized-volume",
+                "active-users"
               ],
               "example": "fees"
             }
@@ -6692,7 +6695,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -14241,9 +14244,7 @@
     },
     "/rwa/current": {
       "get": {
-        "tags": [
-          "RWA"
-        ],
+        "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "List all current RWA assets",
         "description": "Returns current Real World Asset rows with per-chain onchain market cap, active market cap, and DeFi active TVL maps.",
@@ -14291,10 +14292,7 @@
                         "items": {
                           "type": "string"
                         },
-                        "example": [
-                          "Ethereum",
-                          "Solana"
-                        ]
+                        "example": ["Ethereum", "Solana"]
                       },
                       "category": {
                         "type": "array",
@@ -14302,9 +14300,7 @@
                         "items": {
                           "type": "string"
                         },
-                        "example": [
-                          "Treasuries"
-                        ]
+                        "example": ["Treasuries"]
                       },
                       "assetClass": {
                         "type": "array",
@@ -14312,9 +14308,7 @@
                         "items": {
                           "type": "string"
                         },
-                        "example": [
-                          "Fixed Income"
-                        ]
+                        "example": ["Fixed Income"]
                       },
                       "type": {
                         "type": "string",
@@ -14419,9 +14413,7 @@
     },
     "/rwa/stats": {
       "get": {
-        "tags": [
-          "RWA"
-        ],
+        "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "Get aggregate RWA stats by chain, category, platform, and asset group",
         "description": "Returns RWA aggregates. For the default per-chain table, read byChain[chain].base: assetIssuers.length, assetCount, activeMcap, onChainMcap, and defiActiveTvl. Add stablecoinsOnly, governanceOnly, and stablecoinsAndGovernance when those buckets should be included.",
@@ -14482,10 +14474,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
                             "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
@@ -14514,10 +14503,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14545,10 +14531,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14576,10 +14559,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           }
@@ -14615,10 +14595,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
                             "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
@@ -14647,10 +14624,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14678,10 +14652,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14709,10 +14680,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           }
@@ -14748,10 +14716,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
                             "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
@@ -14780,10 +14745,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14811,10 +14773,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14842,10 +14801,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           }
@@ -14881,10 +14837,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
                             "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
@@ -14913,10 +14866,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14944,10 +14894,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           },
@@ -14975,10 +14922,7 @@
                                 "items": {
                                   "type": "string"
                                 },
-                                "example": [
-                                  "Ondo Finance",
-                                  "BlackRock"
-                                ]
+                                "example": ["Ondo Finance", "BlackRock"]
                               }
                             }
                           }
@@ -14995,9 +14939,7 @@
     },
     "/rwa/list": {
       "get": {
-        "tags": [
-          "RWA"
-        ],
+        "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "List RWA ids and filter values",
         "description": "Returns lightweight RWA lists used for discovery, search, and filters.",
@@ -15014,49 +14956,35 @@
                       "items": {
                         "type": "string"
                       },
-                      "example": [
-                        "ondo/usdy",
-                        "blackrock/buidl"
-                      ]
+                      "example": ["ondo/usdy", "blackrock/buidl"]
                     },
                     "platforms": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
-                      "example": [
-                        "Ondo Finance",
-                        "Securitize"
-                      ]
+                      "example": ["Ondo Finance", "Securitize"]
                     },
                     "chains": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
-                      "example": [
-                        "Ethereum",
-                        "Solana"
-                      ]
+                      "example": ["Ethereum", "Solana"]
                     },
                     "categories": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
-                      "example": [
-                        "Treasuries",
-                        "Private Credit"
-                      ]
+                      "example": ["Treasuries", "Private Credit"]
                     },
                     "assetGroups": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
-                      "example": [
-                        "Treasuries"
-                      ]
+                      "example": ["Treasuries"]
                     },
                     "idMap": {
                       "type": "object",
@@ -15077,9 +15005,7 @@
     },
     "/rwa/chain/{chain}": {
       "get": {
-        "tags": [
-          "RWA"
-        ],
+        "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "List current RWA assets on a chain",
         "description": "Returns current RWA assets that have onchain market cap, active market cap, or DeFi active TVL on the requested chain.",
@@ -15142,10 +15068,7 @@
                             "items": {
                               "type": "string"
                             },
-                            "example": [
-                              "Ethereum",
-                              "Solana"
-                            ]
+                            "example": ["Ethereum", "Solana"]
                           },
                           "category": {
                             "type": "array",
@@ -15153,9 +15076,7 @@
                             "items": {
                               "type": "string"
                             },
-                            "example": [
-                              "Treasuries"
-                            ]
+                            "example": ["Treasuries"]
                           },
                           "assetClass": {
                             "type": "array",
@@ -15163,9 +15084,7 @@
                             "items": {
                               "type": "string"
                             },
-                            "example": [
-                              "Fixed Income"
-                            ]
+                            "example": ["Fixed Income"]
                           },
                           "type": {
                             "type": "string",
@@ -15272,9 +15191,7 @@
     },
     "/rwa/chart/chain/{chain}": {
       "get": {
-        "tags": [
-          "RWA"
-        ],
+        "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "Get historical RWA chart data for a chain",
         "description": "Returns historical onchain market cap, active market cap, and DeFi active TVL totals for a chain.",
@@ -15330,9 +15247,7 @@
     },
     "/rwa/chart/chain-breakdown": {
       "get": {
-        "tags": [
-          "RWA"
-        ],
+        "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "Get historical RWA metric breakdown by chain",
         "description": "Returns time series rows with one column per chain for the selected RWA metric.",
@@ -15344,11 +15259,7 @@
             "description": "Metric to break down by chain. Defaults to onChainMcap.",
             "schema": {
               "type": "string",
-              "enum": [
-                "onChainMcap",
-                "activeMcap",
-                "defiActiveTvl"
-              ],
+              "enum": ["onChainMcap", "activeMcap", "defiActiveTvl"],
               "example": "activeMcap"
             }
           },
@@ -15382,9 +15293,7 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "timestamp"
-                    ],
+                    "required": ["timestamp"],
                     "properties": {
                       "timestamp": {
                         "type": "integer",
