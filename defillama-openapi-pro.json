@@ -13002,13 +13002,13 @@
         ]
       }
     },
-    "/equities/v1/companies": {
+    "/equities/v1/companies-list": {
       "get": {
         "tags": ["Equities"],
         "x-api-plan-only": true,
-        "x-scalar-stability": "beta",
+        "x-api-beta": true,
         "summary": "Get list of all tracked public companies",
-        "description": "Returns a list of all publicly traded companies tracked by DefiLlama, with current market summary data for each, sorted by market capitalization (largest first)",
+        "description": "Returns a list of all publicly traded companies tracked by DefiLlama, with company identity and country.",
         "security": [
           {
             "ApiKeyAuth": []
@@ -13028,83 +13028,17 @@
                         "type": "string",
                         "example": "NVDA"
                       },
-                      "name": {
+                      "companyName": {
                         "type": "string",
                         "example": "NVIDIA Corporation"
                       },
-                      "currentPrice": {
-                        "type": "number",
-                        "example": 172.7
-                      },
-                      "volume": {
-                        "type": "number",
-                        "example": 209815684
-                      },
-                      "marketCap": {
-                        "type": "number",
-                        "example": 4197473583104
-                      },
-                      "priceChangePercentage1d": {
-                        "type": "number",
-                        "example": -3.28
-                      },
-                      "trailingPE": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 35.24
-                      },
-                      "dividendYield": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 0.0224
-                      },
-                      "priceToBook": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 26.68
-                      },
-                      "lastUpdatedAt": {
+                      "country": {
                         "type": "string",
-                        "format": "date-time",
-                        "example": "2026-03-21T13:33:10Z"
+                        "example": "US"
                       },
-                      "priceChangePercentage7d": {
-                        "type": "number",
-                        "example": -5.74
-                      },
-                      "priceChangePercentage1m": {
-                        "type": "number",
-                        "example": -8.08
-                      },
-                      "revenueTTM": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 215938000000
-                      },
-                      "grossProfitTTM": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 153463000000
-                      },
-                      "totalAssets": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 206803000000
-                      },
-                      "earningsTTM": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 120067000000
-                      },
-                      "operatingProfitMargin": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 60.38
-                      },
-                      "totalLiabilities": {
-                        "type": "number",
-                        "nullable": true,
-                        "example": 49510000000
+                      "countryName": {
+                        "type": "string",
+                        "example": "United States"
                       }
                     }
                   }
@@ -13114,9 +13048,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Companies with summary not found"
           },
           "500": {
             "description": "Internal server error"
@@ -13128,7 +13059,7 @@
       "get": {
         "tags": ["Equities"],
         "x-api-plan-only": true,
-        "x-scalar-stability": "beta",
+        "x-api-beta": true,
         "summary": "Get financial statements for a company",
         "description": "Returns income statement, balance sheet, and cash flow statement for the given ticker, broken down by quarterly and annual periods.",
         "security": [
@@ -13145,6 +13076,16 @@
             "schema": {
               "type": "string",
               "example": "COIN"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "US"
             }
           }
         ],
@@ -13168,20 +13109,24 @@
                             "type": "string"
                           },
                           "example": [
-                            "Total Revenue",
+                            "Revenue",
                             "Cost of Revenue",
                             "Gross Profit",
-                            "Operating Expense",
+                            "Operating Expenses",
                             "Operating Income",
-                            "Non-operating Items",
+                            "Non-Operating Items",
                             "Income Before Tax",
                             "Income Tax",
                             "Net Income",
+                            "Minority Interests",
+                            "Preferred Stock Dividends",
                             "Net Income to Common",
-                            "EPS Basic",
-                            "EPS Diluted",
-                            "Weighted Average Shares Basic",
-                            "Weighted Average Shares Diluted"
+                            "Shares Outstanding (Basic)",
+                            "Shares Outstanding (Diluted)",
+                            "EPS (Basic)",
+                            "EPS (Diluted)",
+                            "EBIT",
+                            "EBITDA"
                           ]
                         },
                         "children": {
@@ -13225,14 +13170,6 @@
                           "type": "object",
                           "description": "Quarterly period data for the income statement.",
                           "properties": {
-                            "periods": {
-                              "type": "array",
-                              "description": "Period labels in `Q{N}-{YYYY}` format.",
-                              "items": {
-                                "type": "string"
-                              },
-                              "example": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"]
-                            },
                             "periodEnding": {
                               "type": "array",
                               "description": "ISO 8601 date each quarter ended.",
@@ -13244,7 +13181,7 @@
                             },
                             "values": {
                               "type": "array",
-                              "description": "Parallel to `labels`. Each inner array contains the values for that row across all `periods`. Values may be `null` when not reported.",
+                              "description": "Parallel to `labels`. Each inner array contains the values for that row across all `periodEnding` entries. Values may be `null` when not reported.",
                               "items": {
                                 "type": "array",
                                 "items": {
@@ -13279,14 +13216,6 @@
                           "type": "object",
                           "description": "Annual period data for the income statement.",
                           "properties": {
-                            "periods": {
-                              "type": "array",
-                              "description": "Period labels in `FY-{YYYY}` format.",
-                              "items": {
-                                "type": "string"
-                              },
-                              "example": ["FY-2022", "FY-2023", "FY-2024"]
-                            },
                             "periodEnding": {
                               "type": "array",
                               "description": "ISO 8601 date each fiscal year ended.",
@@ -13298,7 +13227,7 @@
                             },
                             "values": {
                               "type": "array",
-                              "description": "Parallel to `labels`. Each inner array contains the values for that row across all `periods`. Values may be `null`.",
+                              "description": "Parallel to `labels`. Each inner array contains the values for that row across all `periodEnding` entries. Values may be `null`.",
                               "items": {
                                 "type": "array",
                                 "items": {
@@ -13332,7 +13261,7 @@
                     },
                     "balanceSheet": {
                       "type": "object",
-                      "description": "Balance sheet data. Follows the same structure as `incomeStatement`: top-level `labels`, `children` metadata, and `quarterly`/`annual` period objects each containing `periods`, `periodEnding`, `values`, and `children`.",
+                      "description": "Balance sheet data. Follows the same structure as `incomeStatement`: top-level `labels`, `children` metadata, and `quarterly`/`annual` period objects each containing `periodEnding`, `values`, and `children`.",
                       "properties": {
                         "labels": {
                           "type": "array",
@@ -13347,8 +13276,8 @@
                             "Total Current Liabilities",
                             "Total Non-Current Liabilities",
                             "Total Liabilities",
-                            "Total Mezzanine Equity",
-                            "Total Stockholders Equity",
+                            "Total Shareholders Equity",
+                            "Minority Interest",
                             "Total Equity",
                             "Total Liabilities and Equity"
                           ]
@@ -13389,13 +13318,6 @@
                         "quarterly": {
                           "type": "object",
                           "properties": {
-                            "periods": {
-                              "type": "array",
-                              "items": {
-                                "type": "string"
-                              },
-                              "example": ["Q1-2024", "Q2-2024"]
-                            },
                             "periodEnding": {
                               "type": "array",
                               "items": {
@@ -13436,13 +13358,6 @@
                         "annual": {
                           "type": "object",
                           "properties": {
-                            "periods": {
-                              "type": "array",
-                              "items": {
-                                "type": "string"
-                              },
-                              "example": ["FY-2023", "FY-2024"]
-                            },
                             "periodEnding": {
                               "type": "array",
                               "items": {
@@ -13484,7 +13399,7 @@
                     },
                     "cashflow": {
                       "type": "object",
-                      "description": "Cash flow statement data. Follows the same structure as `incomeStatement`: top-level `labels`, `children` metadata, and `quarterly`/`annual` period objects each containing `periods`, `periodEnding`, `values`, and `children`.",
+                      "description": "Cash flow statement data. Follows the same structure as `incomeStatement`: top-level `labels`, `children` metadata, and `quarterly`/`annual` period objects each containing `periodEnding`, `values`, and `children`.",
                       "properties": {
                         "labels": {
                           "type": "array",
@@ -13493,11 +13408,14 @@
                             "type": "string"
                           },
                           "example": [
-                            "Cashflow From Operating Activities",
-                            "Cashflow From Investing Activities",
-                            "Cashflow From Financing Activities",
-                            "Effect of Exchange Rate Changes on Cash",
-                            "Net Cashflow"
+                            "Cash Flow from Operating Activities",
+                            "Cash Flow from Investing Activities",
+                            "Cash Flow from Financing Activities",
+                            "Net Cash Flow",
+                            "Free Cash Flow",
+                            "End Cash Position",
+                            "Income Tax Paid",
+                            "Interest Paid"
                           ]
                         },
                         "children": {
@@ -13536,13 +13454,6 @@
                         "quarterly": {
                           "type": "object",
                           "properties": {
-                            "periods": {
-                              "type": "array",
-                              "items": {
-                                "type": "string"
-                              },
-                              "example": ["Q1-2024", "Q2-2024"]
-                            },
                             "periodEnding": {
                               "type": "array",
                               "items": {
@@ -13583,13 +13494,6 @@
                         "annual": {
                           "type": "object",
                           "properties": {
-                            "periods": {
-                              "type": "array",
-                              "items": {
-                                "type": "string"
-                              },
-                              "example": ["FY-2023", "FY-2024"]
-                            },
                             "periodEnding": {
                               "type": "array",
                               "items": {
@@ -13634,116 +13538,126 @@
                 "example": {
                   "incomeStatement": {
                     "labels": [
-                      "Total Revenue",
+                      "Revenue",
                       "Cost of Revenue",
                       "Gross Profit",
-                      "Operating Expense",
+                      "Operating Expenses",
                       "Operating Income",
-                      "Non-operating Items",
+                      "Non-Operating Items",
                       "Income Before Tax",
-                      "Net Income"
+                      "Income Tax",
+                      "Net Income",
+                      "Minority Interests",
+                      "Preferred Stock Dividends",
+                      "Net Income to Common",
+                      "Shares Outstanding (Basic)",
+                      "Shares Outstanding (Diluted)",
+                      "EPS (Basic)",
+                      "EPS (Diluted)",
+                      "EBIT",
+                      "EBITDA"
                     ],
                     "children": {
                       "quarterly": {
-                        "Total Revenue": {
-                          "labels": ["Bank Servicing and Subscription and Circulation", "Remaining Items"]
-                        },
-                        "Operating Expense": {
+                        "Operating Expenses": {
                           "labels": [
-                            "General and Administrative Expense",
-                            "Research and Development Expense",
-                            "Selling and Marketing Expense",
-                            "Other Operating Income (Expense), Net",
-                            "Remaining Items"
+                            "Research and Development",
+                            "Selling, General, and Administrative",
+                            "Other Operating Expenses"
                           ]
                         },
-                        "Non-operating Items": {
-                          "labels": ["Other Nonoperating Income (Expense)", "Remaining Items"]
+                        "Non-Operating Items": {
+                          "labels": [
+                            "Non-Operating Interest Income",
+                            "Non-Operating Interest Expense",
+                            "Other Income/Expense"
+                          ]
                         }
                       },
                       "annual": {
-                        "Total Revenue": {
-                          "labels": ["Bank Servicing and Subscription and Circulation", "Remaining Items"]
-                        },
-                        "Operating Expense": {
+                        "Operating Expenses": {
                           "labels": [
-                            "General and Administrative Expense",
-                            "Research and Development Expense",
-                            "Selling and Marketing Expense",
-                            "Other Operating Income (Expense), Net",
-                            "Remaining Items"
+                            "Research and Development",
+                            "Selling, General, and Administrative",
+                            "Other Operating Expenses"
                           ]
                         },
-                        "Non-operating Items": {
-                          "labels": ["Other Nonoperating Income (Expense)", "Remaining Items"]
+                        "Non-Operating Items": {
+                          "labels": [
+                            "Non-Operating Interest Income",
+                            "Non-Operating Interest Expense",
+                            "Other Income/Expense"
+                          ]
                         }
                       }
                     },
                     "quarterly": {
-                      "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
                       "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
                       "values": [
                         [1801112000, 2227962000, 1311908000, 2498462000],
                         [234066000, 335426000, 197251000, 501181000],
                         [1567046000, 1892536000, 1114657000, 1997281000],
-                        [579333000, 1017811000, 822849000, null],
-                        [987713000, 874725000, 291808000, 922324000],
+                        [987713000, 874725000, 791808000, 922324000],
+                        [579333000, 1017811000, 322849000, 1074957000],
                         [8953000, -5844000, -20948000, -31784000],
-                        [996666000, 868881000, 270860000, 890540000],
-                        [771463000, 1606349000, 406100000, 840208000]
+                        [588286000, 1011967000, 301901000, 1043173000],
+                        [123540000, 212513000, 63399000, 219066000],
+                        [464746000, 799454000, 238502000, 824107000],
+                        [0, 0, 0, 0],
+                        [0, 0, 0, 0],
+                        [464746000, 799454000, 238502000, 824107000],
+                        [243000000, 245000000, 247000000, 249000000],
+                        [256000000, 258000000, 260000000, 262000000],
+                        [1.91, 3.26, 0.97, 3.31],
+                        [1.82, 3.1, 0.92, 3.15],
+                        [588286000, 1011967000, 301901000, 1043173000],
+                        [678286000, 1101967000, 391901000, 1133173000]
                       ],
                       "children": {
-                        "Total Revenue": {
+                        "Operating Expenses": {
                           "values": [
-                            [1596981000, 2033011000, 1234736000, 2490025000],
-                            [204131000, 194951000, 77172000, 8437000]
-                          ]
-                        },
-                        "Operating Expense": {
-                          "values": [
-                            [121231000, 248195000, 242642000, 297324000],
                             [184225000, 291461000, 356264000, 459611000],
-                            [117990000, 195733000, 105395000, 244571000],
-                            [null, 282422000, 118548000, 258627000],
-                            [155887000, 73451000, 144489000, -1035000]
+                            [682257000, 535713000, 405395000, 461678000],
+                            [121231000, 47551000, 30149000, 1035000]
                           ]
                         },
-                        "Non-operating Items": {
+                        "Non-Operating Items": {
                           "values": [
-                            [8953000, -5844000, -20948000, -31784000],
-                            [987713000, 868881000, 270860000, 890540000]
+                            [25000000, 28000000, 30000000, 32000000],
+                            [-12000000, -30000000, -45000000, -58000000],
+                            [-4047000, -3844000, -5948000, -5784000]
                           ]
                         }
                       }
                     },
                     "annual": {
-                      "periods": ["FY-2023", "FY-2024"],
                       "periodEnding": ["2023-12-31", "2024-12-31"],
                       "values": [
-                        [1166436000, 2271637000],
-                        [277826000, 317042000],
-                        [888610000, 1954595000],
-                        [1443073000, 920526000],
-                        [-554463000, 1034069000],
-                        [-54982000, 462807000],
-                        [-609445000, 1496876000],
-                        [-429659000, 1291176000]
+                        [3037428000, 7839444000],
+                        [811923000, 1267924000],
+                        [2225505000, 6571520000],
+                        [2890526000, 3576570000],
+                        [-665021000, 2994950000],
+                        [-54982000, -49623000],
+                        [-720003000, 2945327000],
+                        [-110000000, 615000000],
+                        [-610003000, 2330327000],
+                        [0, 0],
+                        [0, 0],
+                        [-610003000, 2330327000],
+                        [235000000, 246000000],
+                        [235000000, 259000000],
+                        [-2.6, 9.47],
+                        [-2.6, 9],
+                        [-720003000, 2945327000],
+                        [-540000000, 3300000000]
                       ],
                       "children": {
-                        "Total Revenue": {
-                          "values": [[1164891000, 2197030000], [1545000, 74607000]]
+                        "Operating Expenses": {
+                          "values": [[955264000, 1291561000], [1623040000, 2085743000], [312222000, 199266000]]
                         },
-                        "Operating Expense": {
-                          "values": [
-                            [413578000, 362519000],
-                            [570664000, 368691000],
-                            [200204000, 225827000],
-                            [258627000, -20270000],
-                            [42453000, -16241000]
-                          ]
-                        },
-                        "Non-operating Items": {
-                          "values": [[-54982000, 462807000], [-609445000, 1496876000]]
+                        "Non-Operating Items": {
+                          "values": [[85000000, 115000000], [-95000000, -145000000], [-44982000, -19623000]]
                         }
                       }
                     }
@@ -13754,37 +13668,170 @@
                       "Total Non-Current Assets",
                       "Total Assets",
                       "Total Current Liabilities",
+                      "Total Non-Current Liabilities",
                       "Total Liabilities",
-                      "Total Stockholders Equity",
+                      "Total Shareholders Equity",
+                      "Minority Interest",
+                      "Total Equity",
                       "Total Liabilities and Equity"
                     ],
                     "children": {
-                      "quarterly": {},
-                      "annual": {}
+                      "quarterly": {
+                        "Total Current Assets": {
+                          "labels": [
+                            "Cash",
+                            "Cash Equivalents",
+                            "Cash and Cash Equivalents",
+                            "Other Short-Term Investments",
+                            "Accounts Receivable",
+                            "Other Receivables",
+                            "Inventory",
+                            "Prepaid Assets",
+                            "Restricted Cash",
+                            "Assets Held for Sale",
+                            "Hedging Assets",
+                            "Other Current Assets"
+                          ]
+                        },
+                        "Total Non-Current Assets": {
+                          "labels": [
+                            "Properties",
+                            "Land and Improvements",
+                            "Machinery, Furniture and Equipment",
+                            "Construction in Progress",
+                            "Leases",
+                            "Accumulated Depreciation",
+                            "Goodwill",
+                            "Investment Properties",
+                            "Financial Assets",
+                            "Intangible Assets",
+                            "Investments and Advances",
+                            "Other Non-Current Assets"
+                          ]
+                        },
+                        "Total Current Liabilities": {
+                          "labels": [
+                            "Accounts Payable",
+                            "Accrued Expenses",
+                            "Short-Term Debt",
+                            "Deferred Revenue",
+                            "Tax Payable",
+                            "Pensions",
+                            "Other Current Liabilities"
+                          ]
+                        },
+                        "Total Non-Current Liabilities": {
+                          "labels": [
+                            "Long-Term Provisions",
+                            "Long-Term Debt",
+                            "Provision for Risks and Charges",
+                            "Deferred Liabilities",
+                            "Derivative Product Liabilities",
+                            "Other Non-Current Liabilities"
+                          ]
+                        },
+                        "Total Shareholders Equity": {
+                          "labels": [
+                            "Common Stock",
+                            "Retained Earnings",
+                            "Other Shareholders' Equity",
+                            "Additional Paid-In Capital",
+                            "Treasury Stock"
+                          ]
+                        }
+                      },
+                      "annual": {
+                        "Total Current Assets": {
+                          "labels": [
+                            "Cash",
+                            "Cash Equivalents",
+                            "Cash and Cash Equivalents",
+                            "Other Short-Term Investments",
+                            "Accounts Receivable",
+                            "Other Receivables",
+                            "Inventory",
+                            "Prepaid Assets",
+                            "Restricted Cash",
+                            "Assets Held for Sale",
+                            "Hedging Assets",
+                            "Other Current Assets"
+                          ]
+                        },
+                        "Total Non-Current Assets": {
+                          "labels": [
+                            "Properties",
+                            "Land and Improvements",
+                            "Machinery, Furniture and Equipment",
+                            "Construction in Progress",
+                            "Leases",
+                            "Accumulated Depreciation",
+                            "Goodwill",
+                            "Investment Properties",
+                            "Financial Assets",
+                            "Intangible Assets",
+                            "Investments and Advances",
+                            "Other Non-Current Assets"
+                          ]
+                        },
+                        "Total Current Liabilities": {
+                          "labels": [
+                            "Accounts Payable",
+                            "Accrued Expenses",
+                            "Short-Term Debt",
+                            "Deferred Revenue",
+                            "Tax Payable",
+                            "Pensions",
+                            "Other Current Liabilities"
+                          ]
+                        },
+                        "Total Non-Current Liabilities": {
+                          "labels": [
+                            "Long-Term Provisions",
+                            "Long-Term Debt",
+                            "Provision for Risks and Charges",
+                            "Deferred Liabilities",
+                            "Derivative Product Liabilities",
+                            "Other Non-Current Liabilities"
+                          ]
+                        },
+                        "Total Shareholders Equity": {
+                          "labels": [
+                            "Common Stock",
+                            "Retained Earnings",
+                            "Other Shareholders' Equity",
+                            "Additional Paid-In Capital",
+                            "Treasury Stock"
+                          ]
+                        }
+                      }
                     },
                     "quarterly": {
-                      "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
                       "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
                       "values": [
                         [79373000, 204728000, 209604000, 215571000],
                         [126996000, 248147000, 250536000, 254181000],
                         [206369000, 452875000, 460140000, 469752000],
-                        [217472000, 221034000, 223916000, 226930000],
+                        [108736000, 110517000, 111958000, 113465000],
+                        [108736000, 110517000, 111958000, 113465000],
                         [217472000, 221034000, 223916000, 226930000],
                         [231489000, 234641000, 237270000, 314164000],
-                        [448961000, 455675000, 457186000, 541094000]
+                        [0, 0, 0, 0],
+                        [231489000, 234641000, 237270000, 314164000],
+                        [448961000, 455675000, 461186000, 541094000]
                       ],
                       "children": {}
                     },
                     "annual": {
-                      "periods": ["FY-2023", "FY-2024"],
                       "periodEnding": ["2023-12-31", "2024-12-31"],
                       "values": [
                         [217472000, 226930000],
                         [217472000, 226930000],
                         [434944000, 453860000],
+                        [110517000, 113465000],
+                        [110517000, 113465000],
                         [221034000, 226930000],
-                        [221034000, 226930000],
+                        [234641000, 314164000],
+                        [0, 0],
                         [234641000, 314164000],
                         [455675000, 541094000]
                       ],
@@ -13793,36 +13840,237 @@
                   },
                   "cashflow": {
                     "labels": [
-                      "Cashflow From Operating Activities",
-                      "Cashflow From Investing Activities",
-                      "Cashflow From Financing Activities",
-                      "Net Cashflow"
+                      "Cash Flow from Operating Activities",
+                      "Cash Flow from Investing Activities",
+                      "Cash Flow from Financing Activities",
+                      "Net Cash Flow",
+                      "Free Cash Flow",
+                      "End Cash Position",
+                      "Income Tax Paid",
+                      "Interest Paid"
                     ],
                     "children": {
-                      "quarterly": {},
-                      "annual": {}
+                      "quarterly": {
+                        "Cash Flow from Operating Activities": {
+                          "labels": [
+                            "Net Income",
+                            "Depreciation",
+                            "Deferred Taxes",
+                            "Stock-Based Compensation",
+                            "Other Non-Cash Items",
+                            "Accounts Receivable",
+                            "Accounts Payable",
+                            "Other Assets and Liabilities"
+                          ]
+                        },
+                        "Cash Flow from Investing Activities": {
+                          "labels": [
+                            "Capital Expenditures",
+                            "Net Intangibles",
+                            "Net Acquisitions",
+                            "Purchase of Investments",
+                            "Sale of Investments",
+                            "Other Investing Activity"
+                          ]
+                        },
+                        "Cash Flow from Financing Activities": {
+                          "labels": [
+                            "Long-Term Debt Issuance",
+                            "Long-Term Debt Payments",
+                            "Short-Term Debt Issuance",
+                            "Common Stock Issuance",
+                            "Common Stock Repurchase",
+                            "Common Dividends",
+                            "Other Financing Charges"
+                          ]
+                        }
+                      },
+                      "annual": {
+                        "Cash Flow from Operating Activities": {
+                          "labels": [
+                            "Net Income",
+                            "Depreciation",
+                            "Deferred Taxes",
+                            "Stock-Based Compensation",
+                            "Other Non-Cash Items",
+                            "Accounts Receivable",
+                            "Accounts Payable",
+                            "Other Assets and Liabilities"
+                          ]
+                        },
+                        "Cash Flow from Investing Activities": {
+                          "labels": [
+                            "Capital Expenditures",
+                            "Net Intangibles",
+                            "Net Acquisitions",
+                            "Purchase of Investments",
+                            "Sale of Investments",
+                            "Other Investing Activity"
+                          ]
+                        },
+                        "Cash Flow from Financing Activities": {
+                          "labels": [
+                            "Long-Term Debt Issuance",
+                            "Long-Term Debt Payments",
+                            "Short-Term Debt Issuance",
+                            "Common Stock Issuance",
+                            "Common Stock Repurchase",
+                            "Common Dividends",
+                            "Other Financing Charges"
+                          ]
+                        }
+                      }
                     },
                     "quarterly": {
-                      "periods": ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
                       "periodEnding": ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"],
                       "values": [
                         [234066000, 335426000, 197251000, 501181000],
                         [-121231000, -248195000, -242642000, -297324000],
                         [-98771300, -87472500, -29180800, -92232400],
-                        [14221670, 13119700, -7440700, 111211600]
+                        [14063400, -291300, -74572000, 111624400],
+                        [112835000, 87231000, -45391000, 203857000],
+                        [450000000, 449708700, 375136700, 486761100],
+                        [123540000, 212513000, 63399000, 219066000],
+                        [12000000, 30000000, 45000000, 58000000]
                       ],
                       "children": {}
                     },
                     "annual": {
-                      "periods": ["FY-2023", "FY-2024"],
                       "periodEnding": ["2023-12-31", "2024-12-31"],
                       "values": [
                         [277826000, 317042000],
                         [-413578000, -362519000],
                         [-55446300, 103406900],
-                        [-19123600, 45811400]
+                        [-191198300, 57929900],
+                        [-135752000, -45477000],
+                        [450000000, 507929900],
+                        [110000000, 615000000],
+                        [95000000, 145000000]
                       ],
                       "children": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required ticker parameter"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Ticker not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/equities/v1/dimensions": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get financial dimensions for a company",
+        "description": "Returns time-series financial dimension metrics (such as revenue, holders revenue, and earnings) for the given ticker, each broken down into annual and quarterly series. Every data point is a two-element array: ISO 8601 period-ending date, then the numeric value. Series are sorted by date descending (newest first).",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "COIN"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Map of metric name to its annual and quarterly time series. Keys vary by company and by which metrics are available (for example `revenue`, `holdersRevenue`, `earnings`).",
+                  "additionalProperties": {
+                    "type": "object",
+                    "description": "A single dimension metric, split into annual and quarterly series.",
+                    "properties": {
+                      "annual": {
+                        "type": "array",
+                        "description": "Annual data points, newest first. Each item is `[periodEnding, value]`.",
+                        "items": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 2,
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "ISO 8601 period-ending date"
+                              },
+                              {
+                                "type": "number",
+                                "description": "Metric value"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "quarterly": {
+                        "type": "array",
+                        "description": "Quarterly data points, newest first. Each item is `[periodEnding, value]`.",
+                        "items": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 2,
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "ISO 8601 period-ending date"
+                              },
+                              {
+                                "type": "number",
+                                "description": "Metric value"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "example": {
+                    "revenue": {
+                      "annual": [["2025-12-31", 7181325000], ["2024-12-31", 6564028000], ["2023-12-31", 3108383000]],
+                      "quarterly": [["2026-03-31", 1412982000], ["2025-12-31", 1781129000], ["2025-09-30", 1868693000]]
+                    },
+                    "holdersRevenue": {
+                      "annual": [["2025-12-31", 790195000]],
+                      "quarterly": [["2026-03-31", 1062234000]]
+                    },
+                    "earnings": {
+                      "annual": [["2025-12-31", 1260327000], ["2024-12-31", 2577755000], ["2023-12-31", 94752000]],
+                      "quarterly": [["2026-03-31", -394117000], ["2025-12-31", -666733000], ["2025-09-30", 432552000]]
                     }
                   }
                 }
@@ -13848,7 +14096,7 @@
       "get": {
         "tags": ["Equities"],
         "x-api-plan-only": true,
-        "x-scalar-stability": "beta",
+        "x-api-beta": true,
         "summary": "Get historical price data for a company",
         "description": "Returns daily closing prices as two-element arrays: ISO 8601 date-time string, then numeric price. Sorted by date descending (newest first).",
         "security": [
@@ -13865,6 +14113,16 @@
             "schema": {
               "type": "string",
               "example": "AAPL"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "US"
             }
           },
           {
@@ -13949,7 +14207,7 @@
       "get": {
         "tags": ["Equities"],
         "x-api-plan-only": true,
-        "x-scalar-stability": "beta",
+        "x-api-beta": true,
         "summary": "Get OHLCV candle data for a company",
         "description": "Returns daily OHLCV bars as six-number arrays: Unix timestamp in seconds (UTC), open, high, low, close, volume. Sorted by time descending (newest first). Optional `timeframe` filters how far back data goes; omit or empty for full history (`MAX`).",
         "security": [
@@ -13966,6 +14224,16 @@
             "schema": {
               "type": "string",
               "example": "AAPL"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "US"
             }
           },
           {
@@ -14044,9 +14312,9 @@
       "get": {
         "tags": ["Equities"],
         "x-api-plan-only": true,
-        "x-scalar-stability": "beta",
+        "x-api-beta": true,
         "summary": "Get live market summary for a company",
-        "description": "Returns current market data for a single ticker. This is a compact snapshot (no `ticker` / `name` fields); use `GET /equities/v1/companies` for the list shape that includes company identity and balance-sheet highlights.",
+        "description": "Returns current market data for a single ticker. This is a compact snapshot (no `ticker` / `name` fields); use `GET /equities/v1/companies-list` for the list of tracked companies with their identity details.",
         "security": [
           {
             "ApiKeyAuth": []
@@ -14062,6 +14330,16 @@
               "type": "string",
               "example": "AAPL"
             }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "US"
+            }
           }
         ],
         "responses": {
@@ -14074,75 +14352,183 @@
                   "properties": {
                     "currentPrice": {
                       "type": "number",
-                      "example": 247.99
+                      "example": 159.73
                     },
                     "volume": {
                       "type": "number",
-                      "example": 87981315
+                      "example": 6475902
                     },
                     "marketCap": {
                       "type": "number",
-                      "example": 3644938780672
+                      "example": 42074657239.22
+                    },
+                    "circulatingMarketCap": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 35036279538.35
+                    },
+                    "enterpriseValue": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 39601081568.22
                     },
                     "fiftyTwoWeekHigh": {
                       "type": "number",
-                      "example": 288.62
+                      "example": 444.65
                     },
                     "fiftyTwoWeekLow": {
                       "type": "number",
-                      "example": 169.21
+                      "example": 139.36
                     },
                     "dividendYield": {
                       "type": "number",
                       "nullable": true,
-                      "example": 0.4137
+                      "example": null
                     },
                     "trailingPE": {
                       "type": "number",
                       "nullable": true,
-                      "example": 31.35
+                      "example": 52.55
+                    },
+                    "priceToRevenue": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 6.414
                     },
                     "priceChangePercentage1d": {
                       "type": "number",
-                      "example": -0.39
+                      "example": -0.4363
+                    },
+                    "priceChangePercentage7d": {
+                      "type": "number",
+                      "example": 4.843
+                    },
+                    "priceChangePercentage1m": {
+                      "type": "number",
+                      "example": -20.82
+                    },
+                    "priceChange1d": {
+                      "type": "number",
+                      "example": -0.7
+                    },
+                    "marketCapChange1d": {
+                      "type": "number",
+                      "example": -184387779.8
                     },
                     "priceToBook": {
                       "type": "number",
                       "nullable": true,
-                      "example": 41.35
+                      "example": 3.121
+                    },
+                    "enterpriseValueToEbitda": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 40.48
+                    },
+                    "holdersYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 2.525
                     },
                     "updatedAt": {
                       "type": "string",
                       "format": "date-time",
-                      "example": "2026-03-21T07:31:15Z"
-                    },
-                    "priceChangePercentage7d": {
-                      "type": "number",
-                      "example": -1.91
-                    },
-                    "priceChangePercentage1m": {
-                      "type": "number",
-                      "example": -4.83
+                      "example": "2026-06-12T19:59:00Z"
                     },
                     "revenueTTM": {
                       "type": "number",
                       "nullable": true,
-                      "example": 435617000000
+                      "example": 6560012000
                     },
                     "grossProfitTTM": {
                       "type": "number",
                       "nullable": true,
-                      "example": 206157000000
-                    },
-                    "totalAssets": {
-                      "type": "number",
-                      "nullable": true,
-                      "example": 379297000000
+                      "example": 4812835000
                     },
                     "earningsTTM": {
                       "type": "number",
                       "nullable": true,
-                      "example": 117777000000
+                      "example": 800602000
+                    },
+                    "ebitdaTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 978345000
+                    },
+                    "operatingProfitMarginTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 11.12
+                    },
+                    "holdersRevenueTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 1062234000
+                    },
+                    "holderEarningsTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 1062234000
+                    },
+                    "dividendsTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 0
+                    },
+                    "stockRepurchaseTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 1062234000
+                    },
+                    "stockIssuanceTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 0
+                    },
+                    "stockBasedCompensationTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 896766000
+                    },
+                    "cashAndCashEquivalents": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 10205022000
+                    },
+                    "totalAssets": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 28848792000
+                    },
+                    "totalLiabilities": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 15368219000
+                    },
+                    "totalShareholdersEquity": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 13480573000
+                    },
+                    "totalDebt": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 7964423000
+                    },
+                    "circulatingSupply": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 219346895
+                    },
+                    "totalSupply": {
+                      "type": "number",
+                      "nullable": true,
+                      "example": 263411114
+                    },
+                    "employeeCount": {
+                      "type": "integer",
+                      "nullable": true,
+                      "example": 4951
                     }
                   }
                 }
@@ -14168,9 +14554,9 @@
       "get": {
         "tags": ["Equities"],
         "x-api-plan-only": true,
-        "x-scalar-stability": "beta",
-        "summary": "Get SEC filings for a company",
-        "description": "Returns a list of SEC filings (10-K, 10-Q, etc.) for the given ticker, sorted by filing date descending (newest first).",
+        "x-api-beta": true,
+        "summary": "Get filings for a company",
+        "description": "Returns a list of company filings (such as annual reports, quarterly reports, and other important filings) for the given ticker, sorted by filing date descending (newest first).",
         "security": [
           {
             "ApiKeyAuth": []
@@ -14185,6 +14571,16 @@
             "schema": {
               "type": "string",
               "example": "COIN"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "US"
             }
           }
         ],

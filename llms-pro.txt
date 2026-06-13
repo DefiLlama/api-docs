@@ -307,12 +307,14 @@ Returns: {institutionId, ticker, name, type, rank, price, priceChange24h, volume
 
 ---
 
-## Equities
+## Equities (beta)
 
-### GET /equities/v1/companies
+> **Beta:** The Equities endpoints are in beta. Behavior, parameters, and response shapes may change.
+
+### GET /equities/v1/companies-list
 **Base URL:** `https://pro-api.llama.fi`
-Get list of all tracked public companies
-Returns: array of {ticker, name, currentPrice, volume, marketCap, priceChangePercentage1d, trailingPE, dividendYield, priceToBook, lastUpdatedAt, priceChangePercentage7d, priceChangePercentage1m, revenueTTM, grossProfitTTM, totalAssets, earningsTTM, operatingProfitMargin, totalLiabilities}
+Get list of all tracked public companies. Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.
+Returns: array of tracked companies, each `{ticker, companyName, country (ISO 3166-1 alpha-2), countryName}`
 
 ### GET /equities/v1/statements
 **Base URL:** `https://pro-api.llama.fi`
@@ -320,7 +322,17 @@ Get financial statements for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
-Returns: {incomeStatement, balanceSheet, cashflow}
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: income statement, balance sheet, and cash flow statement for the ticker, each broken down by quarterly and annual periods. `{incomeStatement, balanceSheet, cashflow}`
+
+### GET /equities/v1/dimensions
+**Base URL:** `https://pro-api.llama.fi`
+Get financial dimensions for a company
+
+**Parameters:**
+  - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: time-series financial dimension metrics (such as revenue, holders revenue, and earnings), each split into annual and quarterly series. Every data point is a two-element array `[date, value]` (ISO 8601 period-ending date, then numeric value), sorted by date descending (newest first).
 
 ### GET /equities/v1/price-history
 **Base URL:** `https://pro-api.llama.fi`
@@ -328,7 +340,9 @@ Get historical price data for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
   - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive). Omit or empty for full history (`MAX`). (one of: 1W, 1M, 6M, 1Y, 5Y, MAX) Example: `1Y`
+Returns: array of daily closing prices, each a two-element array `[timestamp, price]` (ISO 8601 date-time string, then numeric closing price). Sorted by date descending (newest first).
 
 ### GET /equities/v1/ohlcv
 **Base URL:** `https://pro-api.llama.fi`
@@ -336,7 +350,9 @@ Get OHLCV candle data for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
   - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive). Same values as price history. Omit or empty for full history (`MAX`). (one of: 1W, 1M, 6M, 1Y, 5Y, MAX) Example: `6M`
+Returns: array of daily OHLCV bars, each a six-number array `[timestamp, open, high, low, close, volume]` where `timestamp` is Unix epoch seconds (UTC). Sorted by time descending (newest first).
 
 ### GET /equities/v1/summary
 **Base URL:** `https://pro-api.llama.fi`
@@ -344,15 +360,17 @@ Get live market summary for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
-Returns: {currentPrice, volume, marketCap, fiftyTwoWeekHigh, fiftyTwoWeekLow, dividendYield, trailingPE, priceChangePercentage1d, priceToBook, updatedAt, priceChangePercentage7d, priceChangePercentage1m, revenueTTM, grossProfitTTM, totalAssets, earningsTTM}
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: compact live market snapshot for the ticker (no `ticker`/`name` fields; use `GET /equities/v1/companies-list` for company identity). {currentPrice, volume, marketCap, circulatingMarketCap, enterpriseValue, fiftyTwoWeekHigh, fiftyTwoWeekLow, dividendYield, trailingPE, priceToRevenue, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChange1d, marketCapChange1d, priceToBook, enterpriseValueToEbitda, holdersYield, updatedAt, revenueTTM, grossProfitTTM, earningsTTM, ebitdaTTM, operatingProfitMarginTTM, holdersRevenueTTM, holderEarningsTTM, dividendsTTM, stockRepurchaseTTM, stockIssuanceTTM, stockBasedCompensationTTM, cashAndCashEquivalents, totalAssets, totalLiabilities, totalShareholdersEquity, totalDebt, circulatingSupply, totalSupply, employeeCount}
 
 ### GET /equities/v1/filings
 **Base URL:** `https://pro-api.llama.fi`
-Get SEC filings for a company
+Get company filings for a company (e.g. annual reports, quarterly reports, and other important filings)
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
-Returns: array of {filingDate, reportDate, form, primaryDocumentUrl, documentDescription}
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: array of filings, each `{filingDate, reportDate, form, primaryDocumentUrl, documentDescription}` (`form` is the filing type, e.g. annual or quarterly report). Sorted by filing date descending (newest first).
 
 ---
 
