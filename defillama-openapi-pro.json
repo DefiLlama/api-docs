@@ -82,7 +82,7 @@
     },
     {
       "name": "Equities",
-      "description": "Stock market data for publicly traded companies"
+      "description": "Stock market data for publicly traded companies.\n\nData provided by [Twelve Data](https://twelvedata.com/)"
     },
     {
       "name": "Oracles",

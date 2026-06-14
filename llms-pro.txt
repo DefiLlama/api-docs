@@ -311,6 +311,8 @@ Returns: {institutionId, ticker, name, type, rank, price, priceChange24h, volume
 
 > **Beta:** The Equities endpoints are in beta. Behavior, parameters, and response shapes may change.
 
+Data provided by [Twelve Data](https://twelvedata.com/).
+
 ### GET /equities/v1/companies-list
 **Base URL:** `https://pro-api.llama.fi`
 Get list of all tracked public companies. Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.
