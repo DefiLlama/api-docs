@@ -94,7 +94,7 @@
     },
     {
       "name": "Dimensions",
-      "description": "Unified dimension endpoints for fees, DEX volumes, derivatives, options, aggregators, bridge aggregators, open interest, and normalized volume"
+      "description": "Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, options, aggregators, bridge aggregators, open interest, and normalized volume"
     },
     {
       "name": "Financial Statements",
@@ -6505,6 +6505,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -6521,7 +6522,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6616,6 +6617,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -6632,7 +6634,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6679,6 +6681,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -6695,7 +6698,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6749,6 +6752,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -6764,7 +6768,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6818,6 +6822,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -6843,7 +6848,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6945,6 +6950,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -6970,7 +6976,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7020,6 +7026,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7045,7 +7052,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7102,6 +7109,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7127,7 +7135,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7276,6 +7284,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7301,7 +7310,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7351,6 +7360,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7376,7 +7386,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7433,6 +7443,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7458,7 +7469,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7514,6 +7525,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7539,7 +7551,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7595,6 +7607,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7620,7 +7633,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7729,6 +7742,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7754,7 +7768,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7804,6 +7818,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7829,7 +7844,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7886,6 +7901,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -7911,7 +7927,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7968,6 +7984,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -8003,7 +8020,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -8116,6 +8133,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -8151,7 +8169,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -8201,6 +8219,7 @@
               "type": "string",
               "enum": [
                 "fees",
+                "liquidations",
                 "dexs",
                 "derivatives",
                 "options",
@@ -8236,7 +8255,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
             "schema": {
               "type": "string",
               "example": "dailyFees"

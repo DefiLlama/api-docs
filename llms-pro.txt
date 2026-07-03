@@ -456,12 +456,13 @@ Returns: array of [timestamp, value]
 
 ## Dimensions (Beta)
 
-Unified dimension endpoints for fees, DEX volumes, derivatives, options, aggregators, bridge aggregators, open interest, and normalized volume.
+Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, options, aggregators, bridge aggregators, open interest, and normalized volume.
 
-**`{metric}` values:** fees, dexs, derivatives, options, aggregators, bridge-aggregators, open-interest, normalized-volume
+**`{metric}` values:** fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, open-interest, normalized-volume
 
 **`dataType` query parameter** (optional, metric-specific):
 - **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
 - **dexs**: dailyVolume (default), dailyNotionalVolume
 - **derivatives**: dailyVolume (default), dailyNotionalVolume
 - **options**: dailyNotionalVolume (default), dailyPremiumVolume
