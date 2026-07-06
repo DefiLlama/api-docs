@@ -8426,14 +8426,20 @@
                       "nullable": true,
                       "description": "Available dimension adapters for this protocol",
                       "additionalProperties": {
-                        "type": "object",
-                        "properties": {
-                          "adapter": { "type": "string" },
-                          "genuineSpikes": { "type": "array" }
-                        }
+                        "oneOf": [
+                          { "type": "string", "example": "aave-v3" },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "adapter": { "type": "string" },
+                              "genuineSpikes": { "type": "array" }
+                            }
+                          }
+                        ]
                       },
                       "example": {
-                        "fees": { "genuineSpikes": [["2024-08-05", "-"]], "adapter": "aave-v3" }
+                        "fees": { "genuineSpikes": [["2024-08-05", "-"]], "adapter": "aave-v3" },
+                        "liquidations": "aave-v3"
                       }
                     },
                     "methodology": {
