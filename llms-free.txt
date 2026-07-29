@@ -55,7 +55,6 @@ Get current prices of tokens by contract address
 
 **Parameters:**
   - `coins` (path, string, required) — set of comma-separated tokens defined as {chain}:{address} Example: `ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1,coingecko:ethereum,bsc:0x762539b45a1dcce3d36d080f74d1aed37844b878,ethereum:0xdB25f211AB05b1c97D595516F45794528a807ad8`
-  - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 6 hours Example: `4h`
 Returns: {coins}
 
 ### GET /prices/historical/{timestamp}/{coins}
@@ -65,7 +64,6 @@ Get historical prices of tokens by contract address
 **Parameters:**
   - `coins` (path, string, required) — set of comma-separated tokens defined as {chain}:{address} Example: `ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1,coingecko:ethereum,bsc:0x762539b45a1dcce3d36d080f74d1aed37844b878,ethereum:0xdB25f211AB05b1c97D595516F45794528a807ad8`
   - `timestamp` (path, number, required) — UNIX timestamp of time when you want historical prices Example: `1648680149`
-  - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 6 hours Example: `4h`
 Returns: {coins}
 
 ### GET /batchHistorical
@@ -75,7 +73,6 @@ Get historical prices for multiple tokens at multiple different timestamps
 **Parameters:**
   - `coins` (query, string, required) — object where keys are coins in the form {chain}:{address}, and values are arrays of requested timestamps Example: `{"avax:0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e": [1666876743, 1666862343], "coingecko:ethereum": [1666869543, 1666862343]}
 `
-  - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 6 hours Example: `600`
 Returns: {coins}
 
 ### GET /chart/{coins}
@@ -88,7 +85,6 @@ Get token prices at regular time intervals
   - `end` (query, number, optional) — unix timestamp of latest data point requested
   - `span` (query, number, optional) — number of data points returned, defaults to 0 Example: `10`
   - `period` (query, string, optional) — duration between data points, defaults to 24 hours Example: `2d`
-  - `searchWidth` (query, string, optional) — time range on either side to find price data, defaults to 10% of period Example: `600`
 Returns: {coins}
 
 ### GET /percentage/{coins}

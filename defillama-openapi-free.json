@@ -502,16 +502,6 @@
               "type": "string",
               "example": "ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1,coingecko:ethereum,bsc:0x762539b45a1dcce3d36d080f74d1aed37844b878,ethereum:0xdB25f211AB05b1c97D595516F45794528a807ad8"
             }
-          },
-          {
-            "name": "searchWidth",
-            "in": "query",
-            "required": false,
-            "description": "time range on either side to find price data, defaults to 6 hours",
-            "schema": {
-              "type": "string",
-              "example": "4h"
-            }
           }
         ],
         "responses": {
@@ -608,16 +598,6 @@
               "type": "number",
               "example": 1648680149
             }
-          },
-          {
-            "name": "searchWidth",
-            "in": "query",
-            "required": false,
-            "description": "time range on either side to find price data, defaults to 6 hours",
-            "schema": {
-              "type": "string",
-              "example": "4h"
-            }
           }
         ],
         "responses": {
@@ -688,7 +668,6 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get historical prices for multiple tokens at multiple different timestamps",
-        "description": "Strings accepted by period and searchWidth:\nCan use regular chart candle notion like ‘4h’ etc where:\nW = week, D = day, H = hour, M = minute (not case sensitive)\n",
         "servers": [
           {
             "url": "https://coins.llama.fi"
@@ -703,16 +682,6 @@
             "schema": {
               "type": "string",
               "example": "{\"avax:0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e\": [1666876743, 1666862343], \"coingecko:ethereum\": [1666869543, 1666862343]}\n"
-            }
-          },
-          {
-            "name": "searchWidth",
-            "in": "query",
-            "required": false,
-            "description": "time range on either side to find price data, defaults to 6 hours",
-            "schema": {
-              "type": "string",
-              "example": 600
             }
           }
         ],
@@ -785,7 +754,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get token prices at regular time intervals",
-        "description": "Strings accepted by period and searchWidth:\nCan use regular chart candle notion like ‘4h’ etc where:\nW = week, D = day, H = hour, M = minute (not case sensitive)\n",
+        "description": "Strings accepted by period:\nCan use regular chart candle notion like ‘4h’ etc where:\nW = week, D = day, H = hour, M = minute (not case sensitive)\n",
         "servers": [
           {
             "url": "https://coins.llama.fi"
@@ -840,16 +809,6 @@
             "schema": {
               "type": "string",
               "example": "2d"
-            }
-          },
-          {
-            "name": "searchWidth",
-            "in": "query",
-            "required": false,
-            "description": "time range on either side to find price data, defaults to 10% of period",
-            "schema": {
-              "type": "string",
-              "example": 600
             }
           }
         ],
