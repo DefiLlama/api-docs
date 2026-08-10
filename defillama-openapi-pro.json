@@ -65,10 +65,6 @@
       "description": "Data from our yields/APY dashboard"
     },
     {
-      "name": "yields v2",
-      "description": "V2 yields API: earn pools, borrow markets, borrow routes and leveraged loop strategies with APY attributed into base / reward / intrinsic components over current, 7-day and 30-day windows"
-    },
-    {
       "name": "ETFs",
       "description": "Tradfi ETFs"
     },
@@ -9716,9 +9712,8 @@
     },
     "/yields/v2/earn": {
       "get": {
-        "tags": [
-          "yields v2"
-        ],
+        "tags": ["yields"],
+        "x-api-plan-only": true,
         "summary": "Retrieve the latest data for all earn pools",
         "description": "Returns every tracked earn pool (supply-side yield), sorted by TVL descending. APY values are percentages, attributed into `base` (organic), `reward` (incentive emissions) and `total` (base + reward) over `current`, `avg_7d` and `avg_30d` windows. Pools whose underlying token is itself yield-bearing additionally report that yield under `intrinsic`; it is not included in the pool APY. For a filtered, paginated variant of the same rows use `/yields/v2/earn/query`.",
         "responses": {
@@ -9745,10 +9740,7 @@
                             "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84-ethereum"
                           },
                           "pool_token": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Receipt / vault token representing the position; null when the pool has no transferable pool token",
                             "properties": {
                               "address": {
@@ -9756,17 +9748,11 @@
                                 "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                               },
                               "symbol": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "stETH"
                               },
                               "name": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "Liquid staked Ether 2.0"
                               }
                             }
@@ -9776,34 +9762,22 @@
                             "description": "Display strings for listings",
                             "properties": {
                               "label": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "stETH"
                               },
                               "detail": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "Liquid staked Ether 2.0"
                               }
                             }
                           },
                           "reference_asset_symbol": {
-                            "type": [
-                              "string",
-                              "null"
-                            ],
+                            "type": ["string", "null"],
                             "description": "The asset you provide to enter the pool (e.g. ETH, USDC, BTC)",
                             "example": "ETH"
                           },
                           "url": {
-                            "type": [
-                              "string",
-                              "null"
-                            ],
+                            "type": ["string", "null"],
                             "description": "Pool page on the protocol app",
                             "example": "https://lido.fi/#networks"
                           },
@@ -9828,17 +9802,11 @@
                                   "example": "0x0000000000000000000000000000000000000000"
                                 },
                                 "symbol": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ],
+                                  "type": ["string", "null"],
                                   "example": "ETH"
                                 },
                                 "decimals": {
-                                  "type": [
-                                    "integer",
-                                    "null"
-                                  ],
+                                  "type": ["integer", "null"],
                                   "example": 18
                                 }
                               }
@@ -9855,27 +9823,18 @@
                                   "example": "0xd533a949740bb3306d119cc777fa900ba034cd52"
                                 },
                                 "symbol": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ],
+                                  "type": ["string", "null"],
                                   "example": "CRV"
                                 },
                                 "decimals": {
-                                  "type": [
-                                    "integer",
-                                    "null"
-                                  ],
+                                  "type": ["integer", "null"],
                                   "example": 18
                                 }
                               }
                             }
                           },
                           "tvl_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total value locked in USD",
                             "example": 18050422129
                           },
@@ -9888,26 +9847,17 @@
                                 "description": "Latest observed values",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.206
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.206
                                   }
@@ -9918,26 +9868,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.18932
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.18932
                                   }
@@ -9948,26 +9889,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.22409
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.22409
                                   }
@@ -9976,10 +9908,7 @@
                             }
                           },
                           "intrinsic": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Yield accruing inside a yield-bearing underlying token, e.g. the stETH staking yield inside a wstETH pool. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                             "properties": {
                               "apy": {
@@ -9991,10 +9920,7 @@
                                     "description": "Latest observed value",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.11
                                       }
                                     }
@@ -10004,10 +9930,7 @@
                                     "description": "Trailing 7-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.05
                                       }
                                     }
@@ -10017,10 +9940,7 @@
                                     "description": "Trailing 30-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.02
                                       }
                                     }
@@ -10041,10 +9961,7 @@
                                     "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                                   },
                                   "symbol": {
-                                    "type": [
-                                      "string",
-                                      "null"
-                                    ],
+                                    "type": ["string", "null"],
                                     "example": "stETH"
                                   }
                                 }
@@ -10056,48 +9973,30 @@
                             "description": "Stability score (0 to 1) of the trailing 30-day APY series, computed as 1 / (1 + coefficient of variation); higher is steadier. Keyed by APY composition: read the leaf matching the APY components you consume (base, base + reward, base + intrinsic, base + reward + intrinsic).",
                             "properties": {
                               "base": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               },
                               "base_reward": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               },
                               "base_intrinsic": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               },
                               "base_reward_intrinsic": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               }
                             }
                           },
                           "price_per_share": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Pool token price per share for vault-style pools; null otherwise",
                             "example": null
                           },
                           "volume_1d_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Trailing 24h trading volume in USD for DEX pools; null otherwise",
                             "example": null
                           },
@@ -10127,36 +10026,24 @@
                             "description": "Pool token holder statistics; values are null where holder data is not tracked",
                             "properties": {
                               "count": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Number of pool token holders",
                                 "example": 618311
                               },
                               "avg_position_usd": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Average position size in USD",
                                 "example": 29423.56
                               },
                               "top_10_share_pct": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Share of supply held by the top 10 holders, in percent",
                                 "example": 61.97
                               }
                             }
                           },
                           "available_supply_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Remaining deposit capacity in USD for lending pools with a supply cap (cap minus TVL, floored at 0); null when the pool has no cap",
                             "example": null
                           }
@@ -10173,9 +10060,8 @@
     },
     "/yields/v2/earn/query": {
       "get": {
-        "tags": [
-          "yields v2"
-        ],
+        "tags": ["yields"],
+        "x-api-plan-only": true,
         "summary": "Retrieve a filtered, paginated page of earn pools",
         "description": "Same rows as `/yields/v2/earn`, filtered and paginated server-side while keeping the TVL-descending order. All filters combine with AND; `chain` and `protocol` may be repeated to match any of up to 20 values. Unknown query parameters and out-of-range values are rejected with `400 INVALID_QUERY_PARAM`. Without parameters the top 100 pools by TVL are returned.",
         "parameters": [
@@ -10287,10 +10173,7 @@
                             "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84-ethereum"
                           },
                           "pool_token": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Receipt / vault token representing the position; null when the pool has no transferable pool token",
                             "properties": {
                               "address": {
@@ -10298,17 +10181,11 @@
                                 "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                               },
                               "symbol": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "stETH"
                               },
                               "name": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "Liquid staked Ether 2.0"
                               }
                             }
@@ -10318,34 +10195,22 @@
                             "description": "Display strings for listings",
                             "properties": {
                               "label": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "stETH"
                               },
                               "detail": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "Liquid staked Ether 2.0"
                               }
                             }
                           },
                           "reference_asset_symbol": {
-                            "type": [
-                              "string",
-                              "null"
-                            ],
+                            "type": ["string", "null"],
                             "description": "The asset you provide to enter the pool (e.g. ETH, USDC, BTC)",
                             "example": "ETH"
                           },
                           "url": {
-                            "type": [
-                              "string",
-                              "null"
-                            ],
+                            "type": ["string", "null"],
                             "description": "Pool page on the protocol app",
                             "example": "https://lido.fi/#networks"
                           },
@@ -10370,17 +10235,11 @@
                                   "example": "0x0000000000000000000000000000000000000000"
                                 },
                                 "symbol": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ],
+                                  "type": ["string", "null"],
                                   "example": "ETH"
                                 },
                                 "decimals": {
-                                  "type": [
-                                    "integer",
-                                    "null"
-                                  ],
+                                  "type": ["integer", "null"],
                                   "example": 18
                                 }
                               }
@@ -10397,27 +10256,18 @@
                                   "example": "0xd533a949740bb3306d119cc777fa900ba034cd52"
                                 },
                                 "symbol": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ],
+                                  "type": ["string", "null"],
                                   "example": "CRV"
                                 },
                                 "decimals": {
-                                  "type": [
-                                    "integer",
-                                    "null"
-                                  ],
+                                  "type": ["integer", "null"],
                                   "example": 18
                                 }
                               }
                             }
                           },
                           "tvl_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total value locked in USD",
                             "example": 18050422129
                           },
@@ -10430,26 +10280,17 @@
                                 "description": "Latest observed values",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.206
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.206
                                   }
@@ -10460,26 +10301,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.18932
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.18932
                                   }
@@ -10490,26 +10322,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.22409
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.22409
                                   }
@@ -10518,10 +10341,7 @@
                             }
                           },
                           "intrinsic": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Yield accruing inside a yield-bearing underlying token, e.g. the stETH staking yield inside a wstETH pool. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                             "properties": {
                               "apy": {
@@ -10533,10 +10353,7 @@
                                     "description": "Latest observed value",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.11
                                       }
                                     }
@@ -10546,10 +10363,7 @@
                                     "description": "Trailing 7-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.05
                                       }
                                     }
@@ -10559,10 +10373,7 @@
                                     "description": "Trailing 30-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.02
                                       }
                                     }
@@ -10583,10 +10394,7 @@
                                     "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                                   },
                                   "symbol": {
-                                    "type": [
-                                      "string",
-                                      "null"
-                                    ],
+                                    "type": ["string", "null"],
                                     "example": "stETH"
                                   }
                                 }
@@ -10598,48 +10406,30 @@
                             "description": "Stability score (0 to 1) of the trailing 30-day APY series, computed as 1 / (1 + coefficient of variation); higher is steadier. Keyed by APY composition: read the leaf matching the APY components you consume (base, base + reward, base + intrinsic, base + reward + intrinsic).",
                             "properties": {
                               "base": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               },
                               "base_reward": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               },
                               "base_intrinsic": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               },
                               "base_reward_intrinsic": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "example": 0.9804
                               }
                             }
                           },
                           "price_per_share": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Pool token price per share for vault-style pools; null otherwise",
                             "example": null
                           },
                           "volume_1d_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Trailing 24h trading volume in USD for DEX pools; null otherwise",
                             "example": null
                           },
@@ -10669,36 +10459,24 @@
                             "description": "Pool token holder statistics; values are null where holder data is not tracked",
                             "properties": {
                               "count": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Number of pool token holders",
                                 "example": 618311
                               },
                               "avg_position_usd": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Average position size in USD",
                                 "example": 29423.56
                               },
                               "top_10_share_pct": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Share of supply held by the top 10 holders, in percent",
                                 "example": 61.97
                               }
                             }
                           },
                           "available_supply_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Remaining deposit capacity in USD for lending pools with a supply cap (cap minus TVL, floored at 0); null when the pool has no cap",
                             "example": null
                           }
@@ -10758,9 +10536,8 @@
     },
     "/yields/v2/earn/{id}/history": {
       "get": {
-        "tags": [
-          "yields v2"
-        ],
+        "tags": ["yields"],
+        "x-api-plan-only": true,
         "summary": "Retrieve daily history for an earn pool",
         "description": "Daily TVL, attributed APY and price per share for one earn pool, oldest first. APY carries `avg_1d` (that day), `avg_7d` and `avg_30d` (trailing averages ending that day) windows, each attributed into base/reward/total.",
         "parameters": [
@@ -10781,11 +10558,7 @@
             "description": "History window; defaults to max (the full series)",
             "schema": {
               "type": "string",
-              "enum": [
-                "30d",
-                "90d",
-                "max"
-              ],
+              "enum": ["30d", "90d", "max"],
               "example": "90d"
             }
           }
@@ -10809,10 +10582,7 @@
                             "example": "2026-07-27"
                           },
                           "tvl_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total value locked in USD at that day",
                             "example": 18233358161
                           },
@@ -10825,26 +10595,17 @@
                                 "description": "Average over that day",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.26695
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.26695
                                   }
@@ -10855,26 +10616,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.18878
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.18878
                                   }
@@ -10885,26 +10637,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.22396
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.22396
                                   }
@@ -10913,10 +10656,7 @@
                             }
                           },
                           "intrinsic": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Intrinsic yield of a yield-bearing underlying token. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                             "properties": {
                               "apy": {
@@ -10928,10 +10668,7 @@
                                     "description": "Average over that day",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.11
                                       }
                                     }
@@ -10941,10 +10678,7 @@
                                     "description": "Trailing 7-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.05
                                       }
                                     }
@@ -10954,10 +10688,7 @@
                                     "description": "Trailing 30-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.02
                                       }
                                     }
@@ -10967,10 +10698,7 @@
                             }
                           },
                           "price_per_share": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Pool token price per share for vault-style pools; null otherwise",
                             "example": null
                           }
@@ -11012,9 +10740,8 @@
     },
     "/yields/v2/borrow/markets": {
       "get": {
-        "tags": [
-          "yields v2"
-        ],
+        "tags": ["yields"],
+        "x-api-plan-only": true,
         "summary": "Retrieve the latest data for all borrow markets",
         "description": "One row per borrow market: collateral and debt token, maximum loan-to-value, USD supply/borrow totals and attributed APY for both sides over `current`, `avg_7d` and `avg_30d` windows. Reward emissions offset borrowing costs, so `borrow_cost_apy` totals can be negative (the borrower is net paid).",
         "responses": {
@@ -11041,10 +10768,7 @@
                             "example": "0x4d5f47fa6a74757f35c14fd3a6ef8e3c9bc514e8-ethereum"
                           },
                           "pool_token": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Receipt / vault token representing the position; null when the market has no transferable pool token",
                             "properties": {
                               "address": {
@@ -11052,17 +10776,11 @@
                                 "example": "0x4d5f47fa6a74757f35c14fd3a6ef8e3c9bc514e8"
                               },
                               "symbol": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "aEthWETH"
                               },
                               "name": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "Aave Ethereum WETH"
                               }
                             }
@@ -11072,27 +10790,18 @@
                             "description": "Display strings for listings",
                             "properties": {
                               "label": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "description": "Collateral symbol, or \"COLLATERAL / DEBT\" for isolated pairs",
                                 "example": "WETH"
                               },
                               "detail": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": null
                               }
                             }
                           },
                           "url": {
-                            "type": [
-                              "string",
-                              "null"
-                            ],
+                            "type": ["string", "null"],
                             "description": "Market page on the protocol app",
                             "example": "https://app.aave.com/reserve-overview/?underlyingAsset=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2&marketName=proto_mainnet_v3"
                           },
@@ -11115,17 +10824,11 @@
                                 "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
                               },
                               "symbol": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "WETH"
                               },
                               "decimals": {
-                                "type": [
-                                  "integer",
-                                  "null"
-                                ],
+                                "type": ["integer", "null"],
                                 "example": 18
                               }
                             }
@@ -11139,17 +10842,11 @@
                                 "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
                               },
                               "symbol": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "WETH"
                               },
                               "decimals": {
-                                "type": [
-                                  "integer",
-                                  "null"
-                                ],
+                                "type": ["integer", "null"],
                                 "example": 18
                               }
                             }
@@ -11165,51 +10862,33 @@
                                   "example": "0xd533a949740bb3306d119cc777fa900ba034cd52"
                                 },
                                 "symbol": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ],
+                                  "type": ["string", "null"],
                                   "example": "CRV"
                                 },
                                 "decimals": {
-                                  "type": [
-                                    "integer",
-                                    "null"
-                                  ],
+                                  "type": ["integer", "null"],
                                   "example": 18
                                 }
                               }
                             }
                           },
                           "loan_to_value": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Maximum loan-to-value as a fraction (0.805 = 80.5%)",
                             "example": 0.805
                           },
                           "total_supply_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total supplied to the market, in USD",
                             "example": 3683494475
                           },
                           "total_borrow_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total borrowed from the market, in USD",
                             "example": 3022727877
                           },
                           "available_borrow_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Liquidity still available to borrow, in USD",
                             "example": 568755149
                           },
@@ -11222,26 +10901,17 @@
                                 "description": "Latest observed values",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 1.49954
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 1.49954
                                   }
@@ -11252,26 +10922,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 1.46669
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 1.46669
                                   }
@@ -11282,26 +10943,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 1.40929
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 1.40929
                                   }
@@ -11318,26 +10970,17 @@
                                 "description": "Latest observed values",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.14984
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": 2.14984
                                   }
@@ -11348,26 +10991,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.12582
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": 2.12582
                                   }
@@ -11378,26 +11012,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.08412
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": 2.08412
                                   }
@@ -11410,10 +11035,7 @@
                             "description": "Intrinsic yield of yield-bearing tokens on either side of the market",
                             "properties": {
                               "supply": {
-                                "type": [
-                                  "object",
-                                  "null"
-                                ],
+                                "type": ["object", "null"],
                                 "description": "Intrinsic yield of the supply-side token. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                                 "properties": {
                                   "apy": {
@@ -11425,10 +11047,7 @@
                                         "description": "Latest observed value",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.11
                                           }
                                         }
@@ -11438,10 +11057,7 @@
                                         "description": "Trailing 7-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.05
                                           }
                                         }
@@ -11451,10 +11067,7 @@
                                         "description": "Trailing 30-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.02
                                           }
                                         }
@@ -11475,10 +11088,7 @@
                                         "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                                       },
                                       "symbol": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ],
+                                        "type": ["string", "null"],
                                         "example": "stETH"
                                       }
                                     }
@@ -11486,10 +11096,7 @@
                                 }
                               },
                               "borrow": {
-                                "type": [
-                                  "object",
-                                  "null"
-                                ],
+                                "type": ["object", "null"],
                                 "description": "Intrinsic yield of the borrowed token. Borrowing a yield-bearing token adds this rate to the effective borrow cost, since the debt appreciates by it. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                                 "properties": {
                                   "apy": {
@@ -11501,10 +11108,7 @@
                                         "description": "Latest observed value",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.11
                                           }
                                         }
@@ -11514,10 +11118,7 @@
                                         "description": "Trailing 7-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.05
                                           }
                                         }
@@ -11527,10 +11128,7 @@
                                         "description": "Trailing 30-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.02
                                           }
                                         }
@@ -11551,10 +11149,7 @@
                                         "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                                       },
                                       "symbol": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ],
+                                        "type": ["string", "null"],
                                         "example": "stETH"
                                       }
                                     }
@@ -11576,9 +11171,8 @@
     },
     "/yields/v2/borrow/markets/{id}/history": {
       "get": {
-        "tags": [
-          "yields v2"
-        ],
+        "tags": ["yields"],
+        "x-api-plan-only": true,
         "summary": "Retrieve daily borrow-side history for a borrow market",
         "description": "Daily borrow totals and borrow-cost APY for one market, oldest first. APY carries `avg_1d` (that day), `avg_7d` and `avg_30d` (trailing averages ending that day) windows, each attributed into base/reward/total. Supply-side history for the same id lives at `/yields/v2/earn/{id}/history`.",
         "parameters": [
@@ -11599,11 +11193,7 @@
             "description": "History window; defaults to max (the full series)",
             "schema": {
               "type": "string",
-              "enum": [
-                "30d",
-                "90d",
-                "max"
-              ],
+              "enum": ["30d", "90d", "max"],
               "example": "90d"
             }
           }
@@ -11627,18 +11217,12 @@
                             "example": "2026-08-10"
                           },
                           "total_borrow_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total borrowed from the market, in USD",
                             "example": 3339035741
                           },
                           "available_borrow_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Liquidity still available to borrow, in USD",
                             "example": 733495225
                           },
@@ -11651,26 +11235,17 @@
                                 "description": "Average over that day",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.09904
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": 2.09904
                                   }
@@ -11681,26 +11256,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.10884
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": 2.10884
                                   }
@@ -11711,26 +11277,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.09608
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": 2.09608
                                   }
@@ -11739,10 +11296,7 @@
                             }
                           },
                           "intrinsic": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Intrinsic yield of the borrowed token. Borrowing a yield-bearing token adds this rate to the effective borrow cost, since the debt appreciates by it. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                             "properties": {
                               "apy": {
@@ -11754,10 +11308,7 @@
                                     "description": "Average over that day",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 2.76481
                                       }
                                     }
@@ -11767,10 +11318,7 @@
                                     "description": "Trailing 7-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.97675
                                       }
                                     }
@@ -11780,10 +11328,7 @@
                                     "description": "Trailing 30-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 4.99742
                                       }
                                     }
@@ -11830,9 +11375,8 @@
     },
     "/yields/v2/borrow/routes": {
       "get": {
-        "tags": [
-          "yields v2"
-        ],
+        "tags": ["yields"],
+        "x-api-plan-only": true,
         "summary": "Retrieve the latest data for all borrow routes",
         "description": "Every supported borrowing route: a collateral position paired with a debt market on the same protocol and chain. Each row reports the collateral side (supply APY earned on the collateral), the borrow side (cost APY of the debt token) and `net_apy` (collateral yield minus borrow cost). Negative net APY means the position costs more than the collateral earns.",
         "responses": {
@@ -11853,10 +11397,7 @@
                             "description": "Display strings for listings",
                             "properties": {
                               "detail": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "description": "Market variant label; null when there is only one market",
                                 "example": "Prime Instance"
                               }
@@ -11887,10 +11428,7 @@
                                 "example": "0xfa1fdbbd71b0aa16162d76914d69cd8cb3ef92da-lido"
                               },
                               "url": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "https://app.aave.com/reserve-overview/?underlyingAsset=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2&marketName=proto_lido_v3"
                               },
                               "token": {
@@ -11902,34 +11440,22 @@
                                     "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
                                   },
                                   "symbol": {
-                                    "type": [
-                                      "string",
-                                      "null"
-                                    ],
+                                    "type": ["string", "null"],
                                     "example": "WETH"
                                   },
                                   "decimals": {
-                                    "type": [
-                                      "integer",
-                                      "null"
-                                    ],
+                                    "type": ["integer", "null"],
                                     "example": 18
                                   }
                                 }
                               },
                               "loan_to_value": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Maximum loan-to-value as a fraction (0.84 = 84%)",
                                 "example": 0.84
                               },
                               "total_supply_usd": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Total supplied to the collateral pool, in USD",
                                 "example": 35187139
                               },
@@ -11942,26 +11468,17 @@
                                     "description": "Latest observed values",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "Organic APY in percent, excluding incentive rewards",
                                         "example": 1.56065
                                       },
                                       "reward": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "APY in percent from incentive token emissions; null when there are none",
                                         "example": null
                                       },
                                       "total": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "base plus reward, in percent",
                                         "example": 1.56065
                                       }
@@ -11972,26 +11489,17 @@
                                     "description": "Trailing 7-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "Organic APY in percent, excluding incentive rewards",
                                         "example": 1.48621
                                       },
                                       "reward": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "APY in percent from incentive token emissions; null when there are none",
                                         "example": null
                                       },
                                       "total": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "base plus reward, in percent",
                                         "example": 1.48621
                                       }
@@ -12002,26 +11510,17 @@
                                     "description": "Trailing 30-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "Organic APY in percent, excluding incentive rewards",
                                         "example": 1.46718
                                       },
                                       "reward": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "APY in percent from incentive token emissions; null when there are none",
                                         "example": null
                                       },
                                       "total": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "base plus reward, in percent",
                                         "example": 1.46718
                                       }
@@ -12030,10 +11529,7 @@
                                 }
                               },
                               "intrinsic": {
-                                "type": [
-                                  "object",
-                                  "null"
-                                ],
+                                "type": ["object", "null"],
                                 "description": "Intrinsic yield of the collateral token. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                                 "properties": {
                                   "apy": {
@@ -12045,10 +11541,7 @@
                                         "description": "Latest observed value",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.11
                                           }
                                         }
@@ -12058,10 +11551,7 @@
                                         "description": "Trailing 7-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.05
                                           }
                                         }
@@ -12071,10 +11561,7 @@
                                         "description": "Trailing 30-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.02
                                           }
                                         }
@@ -12095,10 +11582,7 @@
                                         "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                                       },
                                       "symbol": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ],
+                                        "type": ["string", "null"],
                                         "example": "stETH"
                                       }
                                     }
@@ -12116,17 +11600,11 @@
                                       "example": "0xd533a949740bb3306d119cc777fa900ba034cd52"
                                     },
                                     "symbol": {
-                                      "type": [
-                                        "string",
-                                        "null"
-                                      ],
+                                      "type": ["string", "null"],
                                       "example": "CRV"
                                     },
                                     "decimals": {
-                                      "type": [
-                                        "integer",
-                                        "null"
-                                      ],
+                                      "type": ["integer", "null"],
                                       "example": 18
                                     }
                                   }
@@ -12149,10 +11627,7 @@
                                 "example": "0x2a1fbcb52ed4d9b23dad17e1e8aed4bb0e6079b8-lido"
                               },
                               "url": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "https://app.aave.com/reserve-overview/?underlyingAsset=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48&marketName=proto_lido_v3"
                               },
                               "token": {
@@ -12164,34 +11639,22 @@
                                     "example": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
                                   },
                                   "symbol": {
-                                    "type": [
-                                      "string",
-                                      "null"
-                                    ],
+                                    "type": ["string", "null"],
                                     "example": "USDC"
                                   },
                                   "decimals": {
-                                    "type": [
-                                      "integer",
-                                      "null"
-                                    ],
+                                    "type": ["integer", "null"],
                                     "example": 6
                                   }
                                 }
                               },
                               "total_borrow_usd": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Total borrowed from the market, in USD",
                                 "example": 3377912
                               },
                               "available_borrow_usd": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Liquidity still available to borrow, in USD",
                                 "example": 1838568
                               },
@@ -12204,26 +11667,17 @@
                                     "description": "Latest observed values",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "Organic APY in percent, excluding incentive rewards",
                                         "example": 3.8712
                                       },
                                       "reward": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "APY in percent from incentive token emissions; null when there are none",
                                         "example": null
                                       },
                                       "total": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "base minus reward, in percent; negative means the borrower is net paid",
                                         "example": 3.8712
                                       }
@@ -12234,26 +11688,17 @@
                                     "description": "Trailing 7-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "Organic APY in percent, excluding incentive rewards",
                                         "example": 3.895
                                       },
                                       "reward": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "APY in percent from incentive token emissions; null when there are none",
                                         "example": null
                                       },
                                       "total": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "base minus reward, in percent; negative means the borrower is net paid",
                                         "example": 3.895
                                       }
@@ -12264,26 +11709,17 @@
                                     "description": "Trailing 30-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "Organic APY in percent, excluding incentive rewards",
                                         "example": 3.89527
                                       },
                                       "reward": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "APY in percent from incentive token emissions; null when there are none",
                                         "example": null
                                       },
                                       "total": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "description": "base minus reward, in percent; negative means the borrower is net paid",
                                         "example": 3.89527
                                       }
@@ -12292,10 +11728,7 @@
                                 }
                               },
                               "intrinsic": {
-                                "type": [
-                                  "object",
-                                  "null"
-                                ],
+                                "type": ["object", "null"],
                                 "description": "Intrinsic yield of the borrowed token. Borrowing a yield-bearing token adds this rate to the effective borrow cost, since the debt appreciates by it. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                                 "properties": {
                                   "apy": {
@@ -12307,10 +11740,7 @@
                                         "description": "Latest observed value",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.11
                                           }
                                         }
@@ -12320,10 +11750,7 @@
                                         "description": "Trailing 7-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.05
                                           }
                                         }
@@ -12333,10 +11760,7 @@
                                         "description": "Trailing 30-day average",
                                         "properties": {
                                           "base": {
-                                            "type": [
-                                              "number",
-                                              "null"
-                                            ],
+                                            "type": ["number", "null"],
                                             "example": 3.02
                                           }
                                         }
@@ -12357,10 +11781,7 @@
                                         "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                                       },
                                       "symbol": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ],
+                                        "type": ["string", "null"],
                                         "example": "stETH"
                                       }
                                     }
@@ -12378,17 +11799,11 @@
                                       "example": "0xd533a949740bb3306d119cc777fa900ba034cd52"
                                     },
                                     "symbol": {
-                                      "type": [
-                                        "string",
-                                        "null"
-                                      ],
+                                      "type": ["string", "null"],
                                       "example": "CRV"
                                     },
                                     "decimals": {
-                                      "type": [
-                                        "integer",
-                                        "null"
-                                      ],
+                                      "type": ["integer", "null"],
                                       "example": 18
                                     }
                                   }
@@ -12405,31 +11820,19 @@
                                 "description": "Latest observed values",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.31055
                                   },
                                   "base_reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.31055
                                   },
                                   "base_intrinsic": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.31055
                                   },
                                   "base_reward_intrinsic": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.31055
                                   }
                                 }
@@ -12439,31 +11842,19 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.40879
                                   },
                                   "base_reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.40879
                                   },
                                   "base_intrinsic": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.40879
                                   },
                                   "base_reward_intrinsic": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.40879
                                   }
                                 }
@@ -12473,31 +11864,19 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.42809
                                   },
                                   "base_reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.42809
                                   },
                                   "base_intrinsic": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.42809
                                   },
                                   "base_reward_intrinsic": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "example": -2.42809
                                   }
                                 }
@@ -12517,9 +11896,8 @@
     },
     "/yields/v2/loops": {
       "get": {
-        "tags": [
-          "yields v2"
-        ],
+        "tags": ["yields"],
+        "x-api-plan-only": true,
         "summary": "Retrieve the latest data for all loop strategies",
         "description": "Leveraged looping opportunities: supply a token, borrow against it and re-supply, repeated `loop_count` times at the market maximum loan-to-value. `loop_apy.total` is the resulting net APY at that leverage; `leverage` reports the accumulated supply and borrow multipliers relative to the initial capital. Borrow reward emissions offset the borrowing cost, so looped APY can exceed the plain supply APY substantially.",
         "responses": {
@@ -12545,10 +11923,7 @@
                             "description": "Display strings for listings",
                             "properties": {
                               "detail": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "description": "Market variant label; null when there is only one market",
                                 "example": null
                               }
@@ -12573,58 +11948,37 @@
                                 "example": "0x0041f9f9344cac094454cd574e333c4fdb132d7bcc9379bcd4aab485b2a63942::wbtc::wbtc"
                               },
                               "symbol": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ],
+                                "type": ["string", "null"],
                                 "example": "WBTC"
                               },
                               "decimals": {
-                                "type": [
-                                  "integer",
-                                  "null"
-                                ],
+                                "type": ["integer", "null"],
                                 "example": 8
                               }
                             }
                           },
                           "url": {
-                            "type": [
-                              "string",
-                              "null"
-                            ],
+                            "type": ["string", "null"],
                             "description": "Market page on the protocol app",
                             "example": "https://app.scallop.io/"
                           },
                           "loan_to_value": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Maximum loan-to-value as a fraction (0.7 = 70%)",
                             "example": 0.7
                           },
                           "total_supply_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total supplied to the market, in USD",
                             "example": 99384
                           },
                           "total_borrow_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Total borrowed from the market, in USD",
                             "example": 40704
                           },
                           "available_borrow_usd": {
-                            "type": [
-                              "number",
-                              "null"
-                            ],
+                            "type": ["number", "null"],
                             "description": "Liquidity still available to borrow, in USD",
                             "example": 58680
                           },
@@ -12637,26 +11991,17 @@
                                 "description": "Latest observed values",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.50779
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.50779
                                   }
@@ -12667,26 +12012,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.38329
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.38329
                                   }
@@ -12697,26 +12033,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 2.35421
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": null
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base plus reward, in percent",
                                     "example": 2.35421
                                   }
@@ -12733,26 +12060,17 @@
                                 "description": "Latest observed values",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 7.852
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": 21.73055
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": -13.87855
                                   }
@@ -12763,26 +12081,17 @@
                                 "description": "Trailing 7-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 7.74822
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": 38.54927
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": -30.80105
                                   }
@@ -12793,26 +12102,17 @@
                                 "description": "Trailing 30-day average",
                                 "properties": {
                                   "base": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "Organic APY in percent, excluding incentive rewards",
                                     "example": 7.70641
                                   },
                                   "reward": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "APY in percent from incentive token emissions; null when there are none",
                                     "example": 25.32701
                                   },
                                   "total": {
-                                    "type": [
-                                      "number",
-                                      "null"
-                                    ],
+                                    "type": ["number", "null"],
                                     "description": "base minus reward, in percent; negative means the borrower is net paid",
                                     "example": -17.6206
                                   }
@@ -12825,18 +12125,12 @@
                             "description": "Looped position APY",
                             "properties": {
                               "loop_count": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Number of borrow/re-supply iterations",
                                 "example": 5
                               },
                               "total": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Net APY in percent of the looped position at loop_count iterations",
                                 "example": 34.31646
                               }
@@ -12847,28 +12141,19 @@
                             "description": "Accumulated leverage after loop_count iterations",
                             "properties": {
                               "supply_multiplier": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Total supplied relative to initial capital",
                                 "example": 2.94117
                               },
                               "borrow_multiplier": {
-                                "type": [
-                                  "number",
-                                  "null"
-                                ],
+                                "type": ["number", "null"],
                                 "description": "Total borrowed relative to initial capital",
                                 "example": 1.94117
                               }
                             }
                           },
                           "intrinsic": {
-                            "type": [
-                              "object",
-                              "null"
-                            ],
+                            "type": ["object", "null"],
                             "description": "Intrinsic yield of the looped token. Intrinsic yield is reported separately and is NOT included in the base/reward/total APY. Null when there is no intrinsic yield source.",
                             "properties": {
                               "apy": {
@@ -12880,10 +12165,7 @@
                                     "description": "Latest observed value",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.11
                                       }
                                     }
@@ -12893,10 +12175,7 @@
                                     "description": "Trailing 7-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.05
                                       }
                                     }
@@ -12906,10 +12185,7 @@
                                     "description": "Trailing 30-day average",
                                     "properties": {
                                       "base": {
-                                        "type": [
-                                          "number",
-                                          "null"
-                                        ],
+                                        "type": ["number", "null"],
                                         "example": 3.02
                                       }
                                     }
@@ -12930,10 +12206,7 @@
                                     "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                                   },
                                   "symbol": {
-                                    "type": [
-                                      "string",
-                                      "null"
-                                    ],
+                                    "type": ["string", "null"],
                                     "example": "stETH"
                                   }
                                 }
@@ -12955,17 +12228,11 @@
                                       "example": "0x5ca17430c1d046fae9edeaa8fd76c7b4193a00d764a0ecfa9418d733ad27bc1e::scallop_sca::scallop_sca"
                                     },
                                     "symbol": {
-                                      "type": [
-                                        "string",
-                                        "null"
-                                      ],
+                                      "type": ["string", "null"],
                                       "example": "sSCA"
                                     },
                                     "decimals": {
-                                      "type": [
-                                        "integer",
-                                        "null"
-                                      ],
+                                      "type": ["integer", "null"],
                                       "example": 9
                                     }
                                   }
@@ -12982,17 +12249,11 @@
                                       "example": "0x5ca17430c1d046fae9edeaa8fd76c7b4193a00d764a0ecfa9418d733ad27bc1e::scallop_sca::scallop_sca"
                                     },
                                     "symbol": {
-                                      "type": [
-                                        "string",
-                                        "null"
-                                      ],
+                                      "type": ["string", "null"],
                                       "example": "sSCA"
                                     },
                                     "decimals": {
-                                      "type": [
-                                        "integer",
-                                        "null"
-                                      ],
+                                      "type": ["integer", "null"],
                                       "example": 9
                                     }
                                   }
