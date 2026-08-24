@@ -9630,10 +9630,11 @@
         ]
       }
     },
-    "/yields/lsdRates": {
+    "/api/lstRates": {
       "get": {
         "tags": ["yields"],
-        "summary": "APY rates of multiple LSDs",
+        "summary": "Exchange rates and ETH peg of liquid staking tokens",
+        "description": "Latest expected (contract) redemption rate, executable market rate and resulting ETH peg for major LSTs.",
         "responses": {
           "200": {
             "description": "successful operation",
@@ -9646,49 +9647,75 @@
                     "properties": {
                       "name": {
                         "type": "string",
-                        "description": "The name of the LSD token"
+                        "description": "The name of the protocol issuing the LST"
                       },
                       "symbol": {
                         "type": "string",
-                        "description": "The symbol of the LSD token"
+                        "nullable": true,
+                        "description": "The symbol of the LST"
                       },
                       "address": {
                         "type": "string",
-                        "description": "The contract address of the LSD token"
+                        "description": "The contract address of the LST"
                       },
                       "type": {
                         "type": "string",
-                        "description": "The type of the LSD token (e.g., accruing)"
+                        "nullable": true,
+                        "description": "The type of the LST (rebase or accruing)"
                       },
                       "expectedRate": {
                         "type": "number",
-                        "description": "The expected rate of the LSD token"
+                        "nullable": true,
+                        "description": "ETH per token owed by the protocol, read from its contract"
                       },
                       "marketRate": {
                         "type": "number",
-                        "description": "The current market rate of the LSD token"
+                        "nullable": true,
+                        "description": "Executable market rate in ETH per token; null when no credible market quote exists"
                       },
                       "ethPeg": {
                         "type": "number",
-                        "description": "The ETH peg value"
+                        "nullable": true,
+                        "description": "Percent deviation of the market rate from the expected rate"
                       },
                       "fee": {
                         "type": "number",
-                        "description": "The fee percentage"
+                        "nullable": true,
+                        "description": "The protocol fee percentage"
                       }
                     }
                   }
                 },
                 "example": [
                   {
-                    "name": "Dinero (pxETH)",
-                    "symbol": "APXETH",
-                    "address": "0x04c154b66cb340f3ae24111cc767e0184ed00cc6",
-                    "type": "accruing",
+                    "name": "Lido",
+                    "symbol": "stETH",
+                    "address": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84",
+                    "type": "rebase",
                     "expectedRate": 1,
-                    "marketRate": 0.9976125452932897,
-                    "ethPeg": -0.23874547067103125,
+                    "marketRate": 0.9997,
+                    "ethPeg": -0.03,
                     "fee": 0.1
+                  },
+                  {
+                    "name": "StakeWise V3",
+                    "symbol": "osETH",
+                    "address": "0xf1C9acDc66974dFB6dEcB12aA385b9cD01190E38",
+                    "type": "accruing",
+                    "expectedRate": 1.0775,
+                    "marketRate": 1.0615,
+                    "ethPeg": -1.48,
+                    "fee": 0.05
+                  },
+                  {
+                    "name": "Bifrost Liquid Staking",
+                    "symbol": "vETH",
+                    "address": "0x4Bc3263Eb5bb2Ef7Ad9aB6FB68be80E43b43801F",
+                    "type": "accruing",
+                    "expectedRate": 1.1353,
+                    "marketRate": null,
+                    "ethPeg": null,
+                    "fee": null
                   }
                 ]
               }
@@ -9700,12 +9727,12 @@
           {
             "lang": "javascript",
             "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getLsdRates()"
+            "source": "const result = await proClient.yields.getLstRates()"
           },
           {
             "lang": "python",
             "label": "Python SDK",
-            "source": "result = pro_client.yields.getLsdRates()"
+            "source": "result = pro_client.yields.getLstRates()"
           }
         ]
       }
