@@ -9634,7 +9634,7 @@
       "get": {
         "tags": ["yields"],
         "summary": "Exchange rates and ETH peg of liquid staking tokens",
-        "description": "Latest expected (contract) redemption rate, executable market rate and resulting ETH peg for major LSTs. Updated hourly. Replaces the retired `/yields/lsdRates` endpoint (same response shape, new path).",
+        "description": "Latest expected (contract) redemption rate, executable market rate and resulting ETH peg for major LSTs.",
         "responses": {
           "200": {
             "description": "successful operation",
