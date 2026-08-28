@@ -86,7 +86,7 @@
     },
     {
       "name": "Pre-IPO",
-      "description": "Valuation history, funding rounds, and live tradeable markets for private, pre-IPO companies.\n\nValuations are DefiLlama estimates reconciled from secondary marketplaces and disclosed funding rounds, not official company figures. Sources: Yahoo Finance, SecondLane, Hiive, Notice, and DefiLlama raises."
+      "description": "Valuation history, funding rounds, and live tradeable markets for private, pre-IPO companies.\n\nValuations are DefiLlama estimates reconciled from secondary marketplaces and disclosed funding rounds, not official company figures."
     },
     {
       "name": "Oracles",

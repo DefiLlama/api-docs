@@ -389,7 +389,7 @@ Returns: `{perps, tokens}`. Each perp is `{pair, price, volume24h, openInterest,
 
 > **Beta:** The Pre-IPO endpoints are in beta. Behavior, parameters, and response shapes may change.
 
-Valuation history, funding rounds, and live tradeable markets for private, pre-IPO companies. Valuations are DefiLlama estimates reconciled from secondary marketplaces and disclosed funding rounds, not official company figures. Sources: Yahoo Finance, SecondLane, Hiive, Notice, and DefiLlama raises.
+Valuation history, funding rounds, and live tradeable markets for private, pre-IPO companies. Valuations are DefiLlama estimates reconciled from secondary marketplaces and disclosed funding rounds, not official company figures.
 
 Every response is wrapped in a snapshot envelope `{updatedAt, data}`, where `updatedAt` is an ISO 8601 date-time for when the snapshot was generated. The section is served as static files, so anything other than `200` means there is no such file: an unknown `company` or a snapshot that has not been generated yet both return `502`.
 
