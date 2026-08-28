@@ -85,6 +85,10 @@
       "description": "Stock market data for publicly traded companies.\n\nData provided by [Twelve Data](https://twelvedata.com/)"
     },
     {
+      "name": "Pre-IPO",
+      "description": "Valuation history, funding rounds, and live tradeable markets for private, pre-IPO companies.\n\nValuations are DefiLlama estimates reconciled from secondary marketplaces and disclosed funding rounds, not official company figures."
+    },
+    {
       "name": "Oracles",
       "description": "Oracle TVL data and breakdowns by chain and protocol"
     },
@@ -16548,7 +16552,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get financial dimensions for a company",
-        "description": "Returns time-series financial dimension metrics (such as revenue, holders revenue, and earnings) for the given ticker, each broken down into annual and quarterly series. Every data point is a two-element array: ISO 8601 period-ending date, then the numeric value. Series are sorted by date descending (newest first).",
+        "description": "Returns time-series financial dimension metrics (revenue, holders revenue, earnings, and basic shares outstanding) for the given ticker, each broken down into annual and quarterly series. Every data point is a two-element array: ISO 8601 period-ending date, then the numeric value. Series are sorted by date descending (newest first).",
         "security": [
           {
             "ApiKeyAuth": []
@@ -16583,7 +16587,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "description": "Map of metric name to its annual and quarterly time series. Keys vary by company and by which metrics are available (for example `revenue`, `holdersRevenue`, `earnings`).",
+                  "description": "Map of metric name to its annual and quarterly time series. Keys vary by company and by which metrics are available (for example `revenue`, `holdersRevenue`, `earnings`, `basicSharesOutstanding`).",
                   "additionalProperties": {
                     "type": "object",
                     "description": "A single dimension metric, split into annual and quarterly series.",
@@ -16644,6 +16648,10 @@
                     "earnings": {
                       "annual": [["2025-12-31", 1260327000], ["2024-12-31", 2577755000], ["2023-12-31", 94752000]],
                       "quarterly": [["2026-03-31", -394117000], ["2025-12-31", -666733000], ["2025-09-30", 432552000]]
+                    },
+                    "basicSharesOutstanding": {
+                      "annual": [["2025-12-31", 254730000], ["2024-12-31", 245186000], ["2023-12-31", 234258000]],
+                      "quarterly": [["2026-03-31", 258413000], ["2025-12-31", 256109000], ["2025-09-30", 254730000]]
                     }
                   }
                 }
@@ -16671,7 +16679,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get historical price data for a company",
-        "description": "Returns daily closing prices as two-element arrays: ISO 8601 date-time string, then numeric price. Sorted by date descending (newest first).",
+        "description": "Returns closing prices as two-element arrays: ISO 8601 date-time string, then numeric price. Sorted by date descending (newest first). Resolution follows `timeframe`: `1D`, `7D` and `1W` are 5-minute intraday bars whose date-time carries a real time of day, while `1M` and longer are daily closes stamped `T00:00:00Z`.",
         "security": [
           {
             "ApiKeyAuth": []
@@ -16701,11 +16709,11 @@
           {
             "name": "timeframe",
             "in": "query",
-            "description": "Optional lookback window (case-insensitive). Omit or empty for full history (`MAX`).",
+            "description": "Optional lookback window (case-insensitive). `1D` returns the most recent trading session and `7D`/`1W` (aliases) the last 7 days, both at 5-minute resolution; `1M` and longer are daily. `YTD` runs from January 1 of the current year. Omit or empty for full history (`MAX`). Intraday coverage is best-effort — a ticker without intraday data falls back to daily bars, and `1D` then returns the single most recent daily bar.",
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["1W", "1M", "6M", "1Y", "5Y", "MAX"],
+              "enum": ["1D", "7D", "1W", "1M", "3M", "6M", "YTD", "1Y", "5Y", "MAX"],
               "default": "MAX",
               "example": "1Y"
             }
@@ -16736,7 +16744,23 @@
                       ]
                     }
                   },
-                  "example": [["2026-03-21T13:33:10Z", 197.5], ["2026-03-20T00:00:00Z", 196.2]]
+                  "example": [["2026-03-20T00:00:00Z", 247.99], ["2026-03-19T00:00:00Z", 248.96]]
+                },
+                "examples": {
+                  "daily": {
+                    "summary": "Daily closes — `1M` and longer, or `MAX`",
+                    "description": "Daily bars are stamped `T00:00:00Z`.",
+                    "value": [["2026-03-20T00:00:00Z", 247.99], ["2026-03-19T00:00:00Z", 248.96]]
+                  },
+                  "intraday": {
+                    "summary": "5-minute bars — `1D`, `7D`, `1W`",
+                    "description": "Intraday bars carry a real time of day. These are the last three bars of a session.",
+                    "value": [
+                      ["2026-06-05T19:55:00Z", 251.34],
+                      ["2026-06-05T19:50:00Z", 251.11],
+                      ["2026-06-05T19:45:00Z", 250.88]
+                    ]
+                  }
                 }
               }
             }
@@ -16757,7 +16781,7 @@
                       "items": {
                         "type": "string"
                       },
-                      "example": ["1W", "1M", "6M", "1Y", "5Y", "MAX"]
+                      "example": ["1D", "7D", "1W", "1M", "3M", "6M", "YTD", "1Y", "5Y", "MAX"]
                     }
                   }
                 }
@@ -16782,7 +16806,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get OHLCV candle data for a company",
-        "description": "Returns daily OHLCV bars as six-number arrays: Unix timestamp in seconds (UTC), open, high, low, close, volume. Sorted by time descending (newest first). Optional `timeframe` filters how far back data goes; omit or empty for full history (`MAX`).",
+        "description": "Returns OHLCV bars as six-number arrays: Unix timestamp in seconds (UTC), open, high, low, close, volume. Sorted by time descending (newest first). Optional `timeframe` controls both how far back data goes and the bar resolution: `1D`, `7D` and `1W` return 5-minute bars, `1M` and longer return daily bars. Omit or empty for full history (`MAX`).",
         "security": [
           {
             "ApiKeyAuth": []
@@ -16812,11 +16836,11 @@
           {
             "name": "timeframe",
             "in": "query",
-            "description": "Optional lookback window (case-insensitive). Same values as price history. Omit or empty for full history (`MAX`).",
+            "description": "Optional lookback window (case-insensitive), same values as price history. `1D` returns the most recent trading session and `7D`/`1W` (aliases) the last 7 days, both as 5-minute bars; `1M` and longer are daily bars. `YTD` runs from January 1 of the current year. Omit or empty for full history (`MAX`). Intraday coverage is best-effort — a ticker without intraday data falls back to daily bars.",
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["1W", "1M", "6M", "1Y", "5Y", "MAX"],
+              "enum": ["1D", "7D", "1W", "1M", "3M", "6M", "YTD", "1Y", "5Y", "MAX"],
               "default": "MAX",
               "example": "6M"
             }
@@ -16842,6 +16866,25 @@
                     [1773964800, 247.98, 249.2, 246, 247.99, 88268000],
                     [1773878400, 249.4, 251.83, 247.3, 248.96, 34864100]
                   ]
+                },
+                "examples": {
+                  "daily": {
+                    "summary": "Daily bars — `1M` and longer, or `MAX`",
+                    "description": "One bar per trading day, timestamped at midnight UTC.",
+                    "value": [
+                      [1773964800, 247.98, 249.2, 246, 247.99, 88268000],
+                      [1773878400, 249.4, 251.83, 247.3, 248.96, 34864100]
+                    ]
+                  },
+                  "intraday": {
+                    "summary": "5-minute bars — `1D`, `7D`, `1W`",
+                    "description": "One bar per 5 minutes of the session. These are the last three bars of a session.",
+                    "value": [
+                      [1780689300, 251.12, 251.4, 251.05, 251.34, 412300],
+                      [1780689000, 250.9, 251.2, 250.82, 251.11, 388120],
+                      [1780688700, 250.75, 250.95, 250.7, 250.88, 351940]
+                    ]
+                  }
                 }
               }
             }
@@ -16862,7 +16905,7 @@
                       "items": {
                         "type": "string"
                       },
-                      "example": ["1W", "1M", "6M", "1Y", "5Y", "MAX"]
+                      "example": ["1D", "7D", "1W", "1M", "3M", "6M", "YTD", "1Y", "5Y", "MAX"]
                     }
                   }
                 }
@@ -17207,6 +17250,829 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/equities/v1/onchain": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get on-chain tradeable markets for a company",
+        "description": "Returns where the stock can be traded on-chain: `perps` are perpetual futures markets across exchanges, and `tokens` are tokenised-equity issuers. This is a live snapshot refreshed hourly and no history is kept. On-chain data is only collected for US-listed tickers, so a ticker in another market comes back with empty `perps` and `tokens` arrays rather than an error.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "AAPL"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "perps": {
+                      "type": "array",
+                      "description": "Perpetual futures markets tracking the stock.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "pair": {
+                            "type": "string",
+                            "description": "Market pair as the venue names it.",
+                            "example": "AAPL-USDC"
+                          },
+                          "price": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Last traded price of the contract, in USD.",
+                            "example": 307.86
+                          },
+                          "volume24h": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "24 hour volume, in USD.",
+                            "example": 1823545.15
+                          },
+                          "openInterest": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Open interest, in USD.",
+                            "example": 24278916.49
+                          },
+                          "annualizedFundingRate": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Annualised funding rate, in percent, so `-70.13` is -70.13% a year. Negative means shorts pay longs.",
+                            "example": -70.13
+                          },
+                          "tradeUrl": {
+                            "type": "string",
+                            "description": "Direct link to the market on the venue.",
+                            "example": "https://app.hyperliquid.xyz/trade/xyz:AAPL"
+                          },
+                          "contractSlug": {
+                            "type": "string",
+                            "description": "DefiLlama market identifier, `{venue}:{symbol}`.",
+                            "example": "xyz:AAPL"
+                          },
+                          "exchangeProtocolSlug": {
+                            "type": "string",
+                            "description": "DefiLlama protocol slug for the exchange, when it has one.",
+                            "example": "hyperliquid-perps"
+                          },
+                          "rwaPlatformSlug": {
+                            "type": "string",
+                            "description": "DefiLlama RWA platform slug for the venue, when it has one.",
+                            "example": "trade-xyz"
+                          },
+                          "exchangeType": {
+                            "type": "string",
+                            "enum": ["CEX", "DEX"],
+                            "description": "Whether the venue is a centralised or an on-chain exchange.",
+                            "example": "DEX"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "When this market was last refreshed.",
+                            "example": "2026-06-07T10:04:21Z"
+                          }
+                        }
+                      }
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "description": "Tokenised equity products tracking the stock.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "issuer": {
+                            "type": "string",
+                            "description": "Legal entity issuing the tokenised share, not the listed company.",
+                            "example": "Backed Assets (JE) Limited"
+                          },
+                          "issuerRwaPlatformSlug": {
+                            "type": "string",
+                            "description": "DefiLlama RWA platform slug for the issuer.",
+                            "example": "backed-finance"
+                          },
+                          "price": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Token price, in USD.",
+                            "example": 308.7
+                          },
+                          "assetSlug": {
+                            "type": "string",
+                            "description": "Token symbol as the issuer lists it.",
+                            "example": "AAPLx"
+                          },
+                          "activeMarketcap": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Market cap of the token across active markets, in USD. `null` when no market reports one.",
+                            "example": 30068771
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "example": {
+                    "perps": [
+                      {
+                        "pair": "AAPL-USDC",
+                        "price": 307.86,
+                        "volume24h": 1823545.15,
+                        "openInterest": 24278916.49,
+                        "annualizedFundingRate": -70.13,
+                        "tradeUrl": "https://app.hyperliquid.xyz/trade/xyz:AAPL",
+                        "contractSlug": "xyz:AAPL",
+                        "exchangeProtocolSlug": "hyperliquid-perps",
+                        "rwaPlatformSlug": "trade-xyz",
+                        "exchangeType": "DEX",
+                        "updatedAt": "2026-06-07T10:04:21Z"
+                      }
+                    ],
+                    "tokens": [
+                      {
+                        "issuer": "Backed Assets (JE) Limited",
+                        "issuerRwaPlatformSlug": "backed-finance",
+                        "price": 308.7,
+                        "assetSlug": "AAPLx",
+                        "activeMarketcap": 30068771
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required `ticker` or `country`"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "On-chain data not found for ticker"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/pre-ipo/v1/companies-list": {
+      "get": {
+        "tags": ["Pre-IPO"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get list of all tracked pre-IPO companies",
+        "description": "Returns every private company in the pre-IPO registry with its latest estimated valuation and derived funding metrics. Use this to discover valid `company` ids for the other pre-IPO endpoints. Companies come back in registry order, so the list is not sorted by valuation.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Snapshot envelope. `data` holds one row per tracked company.",
+                  "properties": {
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this snapshot was generated.",
+                      "example": "2026-08-26T08:58:51.554Z"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Company id. Pass this as the `company` query parameter on the other pre-IPO endpoints.",
+                            "example": "anthropic"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Anthropic"
+                          },
+                          "description": {
+                            "type": "string",
+                            "example": "Anthropic is an AI safety and research company founded by former OpenAI executives, including siblings Dario and Daniela Amodei."
+                          },
+                          "website": {
+                            "type": "string",
+                            "example": "https://anthropic.com"
+                          },
+                          "sector": {
+                            "type": "string",
+                            "example": "Artificial Intelligence"
+                          },
+                          "latestEstimatedValuation": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Most recent monthly secondary-market estimate, in USD. Falls back to the latest funding round post-money valuation when no marketplace lists the company.",
+                            "example": 1377871934500
+                          },
+                          "latestRaise": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Amount raised in the most recent funding round, in USD.",
+                            "example": 3566564608
+                          },
+                          "latestFundingValuation": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Post-money valuation of the most recent funding round, in USD.",
+                            "example": 964999970816
+                          },
+                          "latestFundingDate": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "date",
+                            "example": "2026-05-28"
+                          },
+                          "lastValuationDate": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "date",
+                            "description": "Date of the most recent secondary mark behind `latestEstimatedValuation`.",
+                            "example": "2026-08-25"
+                          },
+                          "totalRaised": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Sum of all disclosed funding rounds, in USD.",
+                            "example": 52036464736
+                          },
+                          "valuationChange1YPercentage": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Change in the secondary estimate against the same month a year earlier, in percent. `null` when the company has no secondary marks.",
+                            "example": 715.68
+                          },
+                          "premiumVsLatestFundingPercentage": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Premium of the secondary estimate over the latest round post-money valuation, in percent. `null` when the company has no secondary marks.",
+                            "example": 42.78
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/pre-ipo/v1/valuations": {
+      "get": {
+        "tags": ["Pre-IPO"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get valuation history for a pre-IPO company",
+        "description": "Returns one aggregated valuation point per calendar month, oldest first. Within a month every source's marks are averaged and then the source averages are averaged, so a source that reports daily does not outvote one that reports monthly. Points are rounded to the nearest 100 and dated `YYYY-MM-01`; months with no data are skipped, and the current month is month-to-date.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company",
+            "in": "query",
+            "description": "Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "anthropic"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Snapshot envelope. `data` holds the monthly valuation series, oldest first.",
+                  "properties": {
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this snapshot was generated.",
+                      "example": "2026-08-26T08:58:51.554Z"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "format": "date",
+                            "description": "First day of the month the point covers.",
+                            "example": "2026-08-01"
+                          },
+                          "estimatedValuation": {
+                            "type": "number",
+                            "description": "Aggregated valuation estimate for that month, in USD.",
+                            "example": 1377871934500
+                          }
+                        }
+                      },
+                      "example": [
+                        {
+                          "date": "2026-06-01",
+                          "estimatedValuation": 1412295009600
+                        },
+                        {
+                          "date": "2026-07-01",
+                          "estimatedValuation": 1414523445700
+                        },
+                        {
+                          "date": "2026-08-01",
+                          "estimatedValuation": 1377871934500
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "502": {
+            "description": "Unknown `company`, or no snapshot has been generated for it yet. The pre-IPO section is served as static files, so anything other than `200` means there is no such file."
+          }
+        }
+      }
+    },
+    "/pre-ipo/v1/raises": {
+      "get": {
+        "tags": ["Pre-IPO"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get funding rounds for a pre-IPO company",
+        "description": "Returns disclosed funding rounds, oldest first. The same round is usually reported by several sources with different dates and amounts, so rounds are reconciled before being served: each cluster collapses to one canonical raise taking the earliest date, the median amount, the median valuation, and the highest-ranked series label.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company",
+            "in": "query",
+            "description": "Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "anthropic"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Snapshot envelope. `data` holds the reconciled funding rounds, oldest first.",
+                  "properties": {
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this snapshot was generated.",
+                      "example": "2026-08-26T08:58:51.554Z"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "format": "date",
+                            "description": "Date the round was announced.",
+                            "example": "2026-05-28"
+                          },
+                          "amountRaised": {
+                            "type": "number",
+                            "description": "Amount raised in the round, in USD.",
+                            "example": 3566564608
+                          },
+                          "valuation": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Post-money valuation of the round, in USD. `null` when no source disclosed one.",
+                            "example": 964999970816
+                          },
+                          "series": {
+                            "type": "string",
+                            "description": "Round label, for example `Series C` or `Series H-4`.",
+                            "example": "Series H-4"
+                          }
+                        }
+                      },
+                      "example": [
+                        {
+                          "date": "2025-09-02",
+                          "amountRaised": 420020512,
+                          "valuation": 183000006656,
+                          "series": "Series F-2"
+                        },
+                        {
+                          "date": "2026-02-12",
+                          "amountRaised": 30600000000,
+                          "valuation": 380000000000,
+                          "series": "Series G"
+                        },
+                        {
+                          "date": "2026-05-28",
+                          "amountRaised": 3566564608,
+                          "valuation": 964999970816,
+                          "series": "Series H-4"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "502": {
+            "description": "Unknown `company`, or no snapshot has been generated for it yet. The pre-IPO section is served as static files, so anything other than `200` means there is no such file."
+          }
+        }
+      }
+    },
+    "/pre-ipo/v1/summary": {
+      "get": {
+        "tags": ["Pre-IPO"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get profile and latest valuation for a pre-IPO company",
+        "description": "Returns the company profile together with its latest estimated valuation and its most recent funding round.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company",
+            "in": "query",
+            "description": "Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "anthropic"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Snapshot envelope. `data` holds the company profile.",
+                  "properties": {
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this snapshot was generated.",
+                      "example": "2026-08-26T08:58:51.554Z"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "example": "anthropic"
+                        },
+                        "name": {
+                          "type": "string",
+                          "example": "Anthropic"
+                        },
+                        "description": {
+                          "type": "string",
+                          "example": "Anthropic is an AI safety and research company founded by former OpenAI executives, including siblings Dario and Daniela Amodei."
+                        },
+                        "summary": {
+                          "type": "string",
+                          "description": "Short-form company summary. Currently identical to `description`.",
+                          "example": "Anthropic is an AI safety and research company founded by former OpenAI executives, including siblings Dario and Daniela Amodei."
+                        },
+                        "website": {
+                          "type": "string",
+                          "example": "https://anthropic.com"
+                        },
+                        "sector": {
+                          "type": "string",
+                          "example": "Artificial Intelligence"
+                        },
+                        "latestEstimatedValuation": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Most recent monthly secondary-market estimate, in USD. Falls back to the latest funding round post-money valuation when no marketplace lists the company.",
+                          "example": 1377871934500
+                        },
+                        "lastValuationDate": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "date",
+                          "example": "2026-08-25"
+                        },
+                        "latestRaise": {
+                          "type": "object",
+                          "properties": {
+                            "date": {
+                              "type": "string",
+                              "format": "date",
+                              "description": "Date the round was announced.",
+                              "example": "2026-05-28"
+                            },
+                            "amountRaised": {
+                              "type": "number",
+                              "description": "Amount raised in the round, in USD.",
+                              "example": 3566564608
+                            },
+                            "valuation": {
+                              "type": "number",
+                              "nullable": true,
+                              "description": "Post-money valuation of the round, in USD. `null` when no source disclosed one.",
+                              "example": 964999970816
+                            },
+                            "series": {
+                              "type": "string",
+                              "description": "Round label, for example `Series C` or `Series H-4`.",
+                              "example": "Series H-4"
+                            }
+                          },
+                          "nullable": true,
+                          "description": "Most recent funding round, or `null` when no round is on record."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "502": {
+            "description": "Unknown `company`, or no snapshot has been generated for it yet. The pre-IPO section is served as static files, so anything other than `200` means there is no such file."
+          }
+        }
+      }
+    },
+    "/pre-ipo/v1/integrations": {
+      "get": {
+        "tags": ["Pre-IPO"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get tradeable markets for a pre-IPO company",
+        "description": "Returns where the company can actually be traded right now: perpetual futures venues and tokenised-share issuers. A pre-IPO perp settles in stablecoins against the venue's reference price, so no shares change hands and the same company can trade at a slightly different price on every venue. This is a live snapshot refreshed hourly and no history is kept. Every company in the registry gets a response: one with no listings returns empty `perps` and `tokenIssuers` arrays rather than a miss.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company",
+            "in": "query",
+            "description": "Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "anthropic"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Snapshot envelope. `data` holds the live markets for the company.",
+                  "properties": {
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this snapshot was generated.",
+                      "example": "2026-08-26T08:58:51.554Z"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "perps": {
+                          "type": "array",
+                          "description": "Perpetual futures markets tracking the company.",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "exchangeName": {
+                                "type": "string",
+                                "example": "Gate"
+                              },
+                              "platformSlug": {
+                                "type": "string",
+                                "description": "DefiLlama slug for the venue.",
+                                "example": "gate"
+                              },
+                              "defillamaContract": {
+                                "type": "string",
+                                "description": "DefiLlama market identifier, `{venue}:{pair}`.",
+                                "example": "gate:ANDURIL_USDT"
+                              },
+                              "exchangeType": {
+                                "type": "string",
+                                "enum": ["CEX", "DEX"],
+                                "description": "Whether the venue is a centralised or an on-chain exchange.",
+                                "example": "CEX"
+                              },
+                              "openInterest": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "Open interest, in USD.",
+                                "example": 53713.26
+                              },
+                              "volume": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "24 hour volume, in USD.",
+                                "example": 1889
+                              },
+                              "price": {
+                                "type": "number",
+                                "description": "Last traded price of the contract, in USD.",
+                                "example": 129.83
+                              },
+                              "annualizedFundingRate": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "Annualised funding rate, in percent, so `5.2` is 5.2% a year. Negative means shorts pay longs.",
+                                "example": 0
+                              },
+                              "tradeUrl": {
+                                "type": "string",
+                                "example": "https://www.gate.com/futures/USDT/ANDURIL_USDT"
+                              },
+                              "estimatedValuation": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "Company valuation implied by this venue's price, in USD.",
+                                "example": 129830000000
+                              }
+                            }
+                          }
+                        },
+                        "tokenIssuers": {
+                          "type": "array",
+                          "description": "Tokenised exposure to the company's private shares.",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "issuerName": {
+                                "type": "string",
+                                "description": "The token issuer, not the private company.",
+                                "example": "PreStocks"
+                              },
+                              "slug": {
+                                "type": "string",
+                                "nullable": true,
+                                "description": "DefiLlama RWA platform slug for the issuer, when it has one.",
+                                "example": "prestocks"
+                              },
+                              "backing": {
+                                "type": "string",
+                                "enum": [
+                                  "Direct shares",
+                                  "Trust-held SPV",
+                                  "SPV interest",
+                                  "Unsecured note",
+                                  "Synthetic"
+                                ],
+                                "description": "What the token is a claim on, ordered from the most direct claim on the underlying shares to the least. `Direct shares` and `Trust-held SPV` are asset-backed and bankruptcy-remote, `SPV interest` is asset-backed but held one layer removed through a vehicle, and `Unsecured note` and `Synthetic` are not asset-backed at all.",
+                                "example": "SPV interest"
+                              },
+                              "productUrl": {
+                                "type": "string",
+                                "example": "https://prestocks.com/anduril"
+                              },
+                              "price": {
+                                "type": "number",
+                                "description": "Token price, in USD.",
+                                "example": 137.47
+                              },
+                              "marketCap": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "Market cap of the token, in USD. Only populated for issuers that publish one.",
+                                "example": 1406088.07
+                              },
+                              "estimatedValuation": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "Company valuation implied by the token price, in USD.",
+                                "example": 111741315858
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "example": {
+                        "perps": [
+                          {
+                            "exchangeName": "Gate",
+                            "platformSlug": "gate",
+                            "defillamaContract": "gate:ANDURIL_USDT",
+                            "exchangeType": "CEX",
+                            "openInterest": 53713.26,
+                            "volume": 1889,
+                            "price": 129.83,
+                            "annualizedFundingRate": 0,
+                            "tradeUrl": "https://www.gate.com/futures/USDT/ANDURIL_USDT",
+                            "estimatedValuation": 129830000000
+                          }
+                        ],
+                        "tokenIssuers": [
+                          {
+                            "issuerName": "PreStocks",
+                            "slug": "prestocks",
+                            "backing": "SPV interest",
+                            "productUrl": "https://prestocks.com/anduril",
+                            "price": 137.47,
+                            "marketCap": 1406088.07,
+                            "estimatedValuation": 111741315858
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "502": {
+            "description": "Unknown `company`, or no snapshot has been generated for it yet. The pre-IPO section is served as static files, so anything other than `200` means there is no such file."
           }
         }
       }

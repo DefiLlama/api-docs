@@ -334,7 +334,7 @@ Get financial dimensions for a company
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
   - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-Returns: time-series financial dimension metrics (such as revenue, holders revenue, and earnings), each split into annual and quarterly series. Every data point is a two-element array `[date, value]` (ISO 8601 period-ending date, then numeric value), sorted by date descending (newest first).
+Returns: time-series financial dimension metrics (`revenue`, `holdersRevenue`, `earnings`, `basicSharesOutstanding`), each split into annual and quarterly series. Every data point is a two-element array `[date, value]` (ISO 8601 period-ending date, then numeric value), sorted by date descending (newest first).
 
 ### GET /equities/v1/price-history
 **Base URL:** `https://pro-api.llama.fi`
@@ -343,8 +343,8 @@ Get historical price data for a company
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
   - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-  - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive). Omit or empty for full history (`MAX`). (one of: 1W, 1M, 6M, 1Y, 5Y, MAX) Example: `1Y`
-Returns: array of daily closing prices, each a two-element array `[timestamp, price]` (ISO 8601 date-time string, then numeric closing price). Sorted by date descending (newest first).
+  - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive). `1D` returns the most recent trading session and `7D`/`1W` (aliases) the last 7 days, both at 5-minute resolution; `1M` and longer are daily. `YTD` runs from January 1 of the current year. Omit or empty for full history (`MAX`). Intraday coverage is best-effort — a ticker without intraday data falls back to daily bars, and `1D` then returns the single most recent daily bar. (one of: 1D, 7D, 1W, 1M, 3M, 6M, YTD, 1Y, 5Y, MAX) Example: `1Y`
+Returns: array of closing prices, each a two-element array `[timestamp, price]` (ISO 8601 date-time string, then numeric closing price). Sorted by date descending (newest first). Intraday timeframes (`1D`, `7D`, `1W`) carry a real time of day, e.g. `["2026-06-05T19:55:00Z", 251.34]`; daily timeframes are stamped `T00:00:00Z`, e.g. `["2026-03-20T00:00:00Z", 247.99]`.
 
 ### GET /equities/v1/ohlcv
 **Base URL:** `https://pro-api.llama.fi`
@@ -353,8 +353,8 @@ Get OHLCV candle data for a company
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
   - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-  - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive). Same values as price history. Omit or empty for full history (`MAX`). (one of: 1W, 1M, 6M, 1Y, 5Y, MAX) Example: `6M`
-Returns: array of daily OHLCV bars, each a six-number array `[timestamp, open, high, low, close, volume]` where `timestamp` is Unix epoch seconds (UTC). Sorted by time descending (newest first).
+  - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive), same values as price history. `1D` returns the most recent trading session and `7D`/`1W` (aliases) the last 7 days, both as 5-minute bars; `1M` and longer are daily bars. `YTD` runs from January 1 of the current year. Omit or empty for full history (`MAX`). Intraday coverage is best-effort — a ticker without intraday data falls back to daily bars. (one of: 1D, 7D, 1W, 1M, 3M, 6M, YTD, 1Y, 5Y, MAX) Example: `6M`
+Returns: array of OHLCV bars, each a six-number array `[timestamp, open, high, low, close, volume]` where `timestamp` is Unix epoch seconds (UTC). Sorted by time descending (newest first). `1D`, `7D` and `1W` return 5-minute bars; `1M` and longer return daily bars.
 
 ### GET /equities/v1/summary
 **Base URL:** `https://pro-api.llama.fi`
@@ -373,6 +373,62 @@ Get company filings for a company (e.g. annual reports, quarterly reports, and o
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
   - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
 Returns: array of filings, each `{filingDate, reportDate, form, primaryDocumentUrl, documentDescription}` (`form` is the filing type, e.g. annual or quarterly report). Sorted by filing date descending (newest first).
+
+### GET /equities/v1/onchain
+**Base URL:** `https://pro-api.llama.fi`
+Get on-chain tradeable markets for a company (perpetual futures venues and tokenised-equity issuers)
+
+**Parameters:**
+  - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: `{perps, tokens}`. Each perp is `{pair, price, volume24h, openInterest, annualizedFundingRate, tradeUrl, contractSlug, exchangeProtocolSlug, rwaPlatformSlug, exchangeType (CEX or DEX), updatedAt}` (`annualizedFundingRate` is a percent, so `-70.13` is -70.13% a year); each token is `{issuer, issuerRwaPlatformSlug, price, assetSlug, activeMarketcap}` (`issuer` is the token issuer, not the listed company). A live hourly snapshot with no history. On-chain data is only collected for US-listed tickers, so a ticker in another market returns empty arrays rather than an error.
+
+---
+
+## Pre-IPO (beta)
+
+> **Beta:** The Pre-IPO endpoints are in beta. Behavior, parameters, and response shapes may change.
+
+Valuation history, funding rounds, and live tradeable markets for private, pre-IPO companies. Valuations are DefiLlama estimates reconciled from secondary marketplaces and disclosed funding rounds, not official company figures.
+
+Every response is wrapped in a snapshot envelope `{updatedAt, data}`, where `updatedAt` is an ISO 8601 date-time for when the snapshot was generated. The section is served as static files, so anything other than `200` means there is no such file: an unknown `company` or a snapshot that has not been generated yet both return `502`.
+
+### GET /pre-ipo/v1/companies-list
+**Base URL:** `https://pro-api.llama.fi`
+Get list of all tracked pre-IPO companies. Use this to discover valid `company` ids for the other pre-IPO endpoints.
+Returns: `{updatedAt, data}` where `data` is an array of companies, each `{id, name, description, website, sector, latestEstimatedValuation, latestRaise, latestFundingValuation, latestFundingDate, lastValuationDate, totalRaised, valuationChange1YPercentage, premiumVsLatestFundingPercentage}`. All USD. Returned in registry order, not sorted by valuation. `latestEstimatedValuation` is the latest monthly secondary-market estimate, falling back to the last funding round's post-money valuation when no marketplace lists the company; `valuationChange1YPercentage` and `premiumVsLatestFundingPercentage` are `null` when a company has no secondary marks.
+
+### GET /pre-ipo/v1/valuations
+**Base URL:** `https://pro-api.llama.fi`
+Get valuation history for a pre-IPO company
+
+**Parameters:**
+  - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
+Returns: `{updatedAt, data}` where `data` is one aggregated point per calendar month, oldest first, each `{date, estimatedValuation}` (`date` is the first day of the month, `estimatedValuation` in USD). Within a month each source's marks are averaged and then the source averages are averaged, so a source that reports daily does not outvote one that reports monthly. Values are rounded to the nearest 100, months with no data are skipped, and the current month is month-to-date.
+
+### GET /pre-ipo/v1/raises
+**Base URL:** `https://pro-api.llama.fi`
+Get funding rounds for a pre-IPO company
+
+**Parameters:**
+  - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
+Returns: `{updatedAt, data}` where `data` is an array of disclosed funding rounds, oldest first, each `{date, amountRaised, valuation, series}` (amounts in USD, `valuation` is post-money and may be `null`, `series` is a label such as `Series G`). The same round reported by several sources is reconciled into one canonical raise using the earliest date, median amount, median valuation, and highest-ranked series label.
+
+### GET /pre-ipo/v1/summary
+**Base URL:** `https://pro-api.llama.fi`
+Get profile and latest valuation for a pre-IPO company
+
+**Parameters:**
+  - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
+Returns: `{updatedAt, data}` where `data` is `{id, name, description, summary, website, sector, latestEstimatedValuation, lastValuationDate, latestRaise}`. `latestRaise` is the most recent round `{date, amountRaised, valuation, series}` or `null`. `summary` currently mirrors `description`.
+
+### GET /pre-ipo/v1/integrations
+**Base URL:** `https://pro-api.llama.fi`
+Get tradeable markets for a pre-IPO company (perpetual futures venues and tokenised-share issuers)
+
+**Parameters:**
+  - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
+Returns: `{updatedAt, data}` where `data` is `{perps, tokenIssuers}`. Each perp is `{exchangeName, platformSlug, defillamaContract, exchangeType (CEX or DEX), openInterest, volume, price, annualizedFundingRate, tradeUrl, estimatedValuation}` (`annualizedFundingRate` is a percent, so `5.2` is 5.2% a year); each token issuer is `{issuerName, slug, backing, productUrl, price, marketCap, estimatedValuation}` where `backing` is one of `Direct shares`, `Trust-held SPV`, `SPV interest`, `Unsecured note`, `Synthetic`, ordered from the most direct claim on the underlying shares to the least. A live hourly snapshot with no history; a company with no listings returns empty arrays rather than a miss.
 
 ---
 
