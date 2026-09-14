@@ -10769,6 +10769,656 @@
         }
       }
     },
+    "/yields/v2/earn/verified": {
+      "get": {
+        "tags": ["yields"],
+        "x-api-plan-only": true,
+        "summary": "Retrieve the latest verified data for all measured earn pools",
+        "description": "Measured yield for the `/yields/v2/earn` pools we simulate, sorted by verified TVL descending. Each figure is replayed from a real holder's withdrawal against archive state, so it shows what an exit would have paid rather than what the protocol reports; the two can disagree without either being wrong. APY is always the base leg, since a withdrawal cannot see reward emissions, and is unclamped, so it can be negative. A pool appears here only while it is listed on `/yields/v2/earn`, is not withheld for review, and has at least one measured day; join on `id`.",
+        "responses": {
+          "200": {
+            "description": "Array of all verified earn pools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Pool id (UUID); joins to `/yields/v2/earn`",
+                            "example": "e880e828-ca59-4ec6-8d4f-27182a4dc23d"
+                          },
+                          "apy": {
+                            "type": "object",
+                            "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions, and unclamped, so it can be negative. All three windows end at `apy_as_of`.",
+                            "properties": {
+                              "avg_1d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 1-day average",
+                                "example": 1.45698
+                              },
+                              "avg_7d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 7-day average",
+                                "example": 1.44895
+                              },
+                              "avg_30d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 30-day average",
+                                "example": 1.47156
+                              }
+                            }
+                          },
+                          "apy_as_of": {
+                            "type": ["string", "null"],
+                            "description": "Timestamp the APY windows end at",
+                            "example": "2026-09-14T09:19:11.000Z"
+                          },
+                          "apy_note": {
+                            "type": ["string", "null"],
+                            "description": "Why the APY is absent or qualified. Show it wherever the APY renders blank; null for most pools.",
+                            "example": null
+                          },
+                          "apy_confidence": {
+                            "type": ["string", "null"],
+                            "description": "How closely independent holders agreed on the redemption rate. Grades the measurement, not the pool.",
+                            "enum": ["high", "medium", "low", "conflict"],
+                            "example": "high"
+                          },
+                          "exit": {
+                            "type": "object",
+                            "description": "Exit health from the most recent simulated withdrawal.",
+                            "properties": {
+                              "status": {
+                                "type": ["string", "null"],
+                                "description": "What a withdrawal would do today: `instant` all of it leaves now, `queued` accepted but paid later, `partial` bounded by `exit_liquidity`, `depleted` the lane is dust (under 0.1% of TVL and under $10k), `unavailable` nothing was accepted, `blocked` reverted as paused or unrecognized. Null when unclassified.",
+                                "enum": ["instant", "queued", "partial", "depleted", "unavailable", "blocked"],
+                                "example": "instant"
+                              },
+                              "eta_seconds": {
+                                "type": ["number", "null"],
+                                "description": "Wait before a queued withdrawal can be claimed. Only set while `status` is `queued`.",
+                                "example": null
+                              },
+                              "fee_bps": {
+                                "type": ["number", "null"],
+                                "description": "Hidden exit fee: median discount against the reported rate over the last 30 discount observations. Null when never observed, never a claimed zero.",
+                                "example": 0
+                              },
+                              "as_of": {
+                                "type": ["string", "null"],
+                                "description": "Timestamp of the exit observation",
+                                "example": "2026-09-14T09:19:11.000Z"
+                              }
+                            }
+                          },
+                          "exit_liquidity": {
+                            "type": "object",
+                            "description": "Funded exit capacity, not backing inventory; for queued pools this is the on-chain funding buffer, not instant liquidity. Null means no on-chain capacity is exposed, not zero.",
+                            "properties": {
+                              "amount": {
+                                "type": ["string", "null"],
+                                "description": "Raw base units of `denomination`, as a decimal string; parse with BigInt, not Number.",
+                                "example": "302770028148448411826143"
+                              },
+                              "usd": {
+                                "type": ["number", "null"],
+                                "description": "Capacity in USD. Null when `denomination` is, since the conversion needs its decimals.",
+                                "example": 749593682.56
+                              },
+                              "slippage_bps": {
+                                "type": ["number", "null"],
+                                "description": "Price impact of the simulated exit, in basis points",
+                                "example": 0
+                              },
+                              "as_of": {
+                                "type": ["string", "null"],
+                                "description": "Day (UTC) the capacity was measured",
+                                "example": "2026-09-14"
+                              }
+                            }
+                          },
+                          "tvl": {
+                            "type": "object",
+                            "description": "Receipt supply priced at the rate an exit actually paid, not the reported figure.",
+                            "properties": {
+                              "amount": {
+                                "type": ["string", "null"],
+                                "description": "Receipt supply at the executed redemption rate. Raw base units of `denomination`, as a decimal string; parse with BigInt, not Number.",
+                                "example": "2120826166919814406207431"
+                              },
+                              "usd": {
+                                "type": ["number", "null"],
+                                "description": "Verified TVL in USD. Null when `denomination` is.",
+                                "example": 5250710931.5
+                              },
+                              "as_of": {
+                                "type": ["string", "null"],
+                                "description": "Day (UTC) the TVL was measured",
+                                "example": "2026-09-14"
+                              }
+                            }
+                          },
+                          "price_per_share": {
+                            "type": ["number", "null"],
+                            "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute.",
+                            "example": 1.0706808832358203
+                          },
+                          "denomination": {
+                            "type": ["object", "null"],
+                            "description": "Asset an exit pays out, and the decimals its raw amounts use. Null when it could not be pinned; the USD fields go null with it, and you must not assume 18.",
+                            "properties": {
+                              "address": {
+                                "type": "string",
+                                "description": "Payout token address",
+                                "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                              },
+                              "decimals": {
+                                "type": ["integer", "null"],
+                                "description": "Decimals of the payout token",
+                                "example": 18
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown query parameter or invalid value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "INVALID_QUERY_PARAM"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "unknown query parameter: chain"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/yields/v2/earn/verified/{id}": {
+      "get": {
+        "tags": ["yields"],
+        "x-api-plan-only": true,
+        "summary": "Retrieve the latest verified data for one earn pool",
+        "description": "The same row `/yields/v2/earn/verified` serves for this pool, plus `methods`: the on-chain calls the simulation executes, in order.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Earn pool id (UUID)",
+            "schema": {
+              "type": "string",
+              "example": "e880e828-ca59-4ec6-8d4f-27182a4dc23d"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified data for the pool",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Pool id (UUID); joins to `/yields/v2/earn`",
+                          "example": "e880e828-ca59-4ec6-8d4f-27182a4dc23d"
+                        },
+                        "apy": {
+                          "type": "object",
+                          "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions, and unclamped, so it can be negative. All three windows end at `apy_as_of`.",
+                          "properties": {
+                            "avg_1d": {
+                              "type": ["number", "null"],
+                              "description": "Trailing 1-day average",
+                              "example": 1.45698
+                            },
+                            "avg_7d": {
+                              "type": ["number", "null"],
+                              "description": "Trailing 7-day average",
+                              "example": 1.44895
+                            },
+                            "avg_30d": {
+                              "type": ["number", "null"],
+                              "description": "Trailing 30-day average",
+                              "example": 1.47156
+                            }
+                          }
+                        },
+                        "apy_as_of": {
+                          "type": ["string", "null"],
+                          "description": "Timestamp the APY windows end at",
+                          "example": "2026-09-14T09:19:11.000Z"
+                        },
+                        "apy_note": {
+                          "type": ["string", "null"],
+                          "description": "Why the APY is absent or qualified. Show it wherever the APY renders blank; null for most pools.",
+                          "example": null
+                        },
+                        "apy_confidence": {
+                          "type": ["string", "null"],
+                          "description": "How closely independent holders agreed on the redemption rate. Grades the measurement, not the pool.",
+                          "enum": ["high", "medium", "low", "conflict"],
+                          "example": "high"
+                        },
+                        "exit": {
+                          "type": "object",
+                          "description": "Exit health from the most recent simulated withdrawal.",
+                          "properties": {
+                            "status": {
+                              "type": ["string", "null"],
+                              "description": "What a withdrawal would do today: `instant` all of it leaves now, `queued` accepted but paid later, `partial` bounded by `exit_liquidity`, `depleted` the lane is dust (under 0.1% of TVL and under $10k), `unavailable` nothing was accepted, `blocked` reverted as paused or unrecognized. Null when unclassified.",
+                              "enum": ["instant", "queued", "partial", "depleted", "unavailable", "blocked"],
+                              "example": "instant"
+                            },
+                            "eta_seconds": {
+                              "type": ["number", "null"],
+                              "description": "Wait before a queued withdrawal can be claimed. Only set while `status` is `queued`.",
+                              "example": null
+                            },
+                            "fee_bps": {
+                              "type": ["number", "null"],
+                              "description": "Hidden exit fee: median discount against the reported rate over the last 30 discount observations. Null when never observed, never a claimed zero.",
+                              "example": 0
+                            },
+                            "as_of": {
+                              "type": ["string", "null"],
+                              "description": "Timestamp of the exit observation",
+                              "example": "2026-09-14T09:19:11.000Z"
+                            }
+                          }
+                        },
+                        "exit_liquidity": {
+                          "type": "object",
+                          "description": "Funded exit capacity, not backing inventory; for queued pools this is the on-chain funding buffer, not instant liquidity. Null means no on-chain capacity is exposed, not zero.",
+                          "properties": {
+                            "amount": {
+                              "type": ["string", "null"],
+                              "description": "Raw base units of `denomination`, as a decimal string; parse with BigInt, not Number.",
+                              "example": "302770028148448411826143"
+                            },
+                            "usd": {
+                              "type": ["number", "null"],
+                              "description": "Capacity in USD. Null when `denomination` is, since the conversion needs its decimals.",
+                              "example": 749593682.56
+                            },
+                            "slippage_bps": {
+                              "type": ["number", "null"],
+                              "description": "Price impact of the simulated exit, in basis points",
+                              "example": 0
+                            },
+                            "as_of": {
+                              "type": ["string", "null"],
+                              "description": "Day (UTC) the capacity was measured",
+                              "example": "2026-09-14"
+                            }
+                          }
+                        },
+                        "tvl": {
+                          "type": "object",
+                          "description": "Receipt supply priced at the rate an exit actually paid, not the reported figure.",
+                          "properties": {
+                            "amount": {
+                              "type": ["string", "null"],
+                              "description": "Receipt supply at the executed redemption rate. Raw base units of `denomination`, as a decimal string; parse with BigInt, not Number.",
+                              "example": "2120826166919814406207431"
+                            },
+                            "usd": {
+                              "type": ["number", "null"],
+                              "description": "Verified TVL in USD. Null when `denomination` is.",
+                              "example": 5250710931.5
+                            },
+                            "as_of": {
+                              "type": ["string", "null"],
+                              "description": "Day (UTC) the TVL was measured",
+                              "example": "2026-09-14"
+                            }
+                          }
+                        },
+                        "price_per_share": {
+                          "type": ["number", "null"],
+                          "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute.",
+                          "example": 1.0706808832358203
+                        },
+                        "denomination": {
+                          "type": ["object", "null"],
+                          "description": "Asset an exit pays out, and the decimals its raw amounts use. Null when it could not be pinned; the USD fields go null with it, and you must not assume 18.",
+                          "properties": {
+                            "address": {
+                              "type": "string",
+                              "description": "Payout token address",
+                              "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                            },
+                            "decimals": {
+                              "type": ["integer", "null"],
+                              "description": "Decimals of the payout token",
+                              "example": 18
+                            }
+                          }
+                        },
+                        "methods": {
+                          "type": ["array", "null"],
+                          "description": "On-chain calls the simulation executes, in order. Null when not recorded.",
+                          "items": {
+                            "type": "string",
+                            "example": "Pool.withdraw(underlying, type(uint256).max, holder) — EXECUTED as the holder; returns underlying actually received"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown query parameter or invalid value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "INVALID_QUERY_PARAM"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "unknown query parameter: range"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No verified pool with this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "VERIFIED_POOL_NOT_FOUND"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "verified pool not found"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/yields/v2/earn/verified/{id}/history": {
+      "get": {
+        "tags": ["yields"],
+        "x-api-plan-only": true,
+        "summary": "Retrieve daily verified history for an earn pool",
+        "description": "Daily measured APY, share price, verified TVL and exit health for one pool, oldest first. APY carries `avg_1d` (that day), `avg_7d` and `avg_30d` (trailing averages ending that day). Days the pool was not measured are omitted, so the dates are not contiguous. Every `range` is sliced from the same cached series.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Earn pool id (UUID)",
+            "schema": {
+              "type": "string",
+              "example": "e880e828-ca59-4ec6-8d4f-27182a4dc23d"
+            }
+          },
+          {
+            "name": "range",
+            "in": "query",
+            "required": false,
+            "description": "History window; defaults to max (the full series)",
+            "schema": {
+              "type": "string",
+              "enum": ["30d", "90d", "max"],
+              "example": "90d"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily verified history rows, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "description": "Day (UTC)",
+                            "example": "2026-09-14"
+                          },
+                          "outcome": {
+                            "type": ["string", "null"],
+                            "description": "Raw measurement outcome for that day, the uninterpreted form of `exit.status`. The `reverted_*` values are days a real withdrawal would have failed.",
+                            "enum": [
+                              "ok_full",
+                              "ok_partial",
+                              "delayed",
+                              "no_exit_primary",
+                              "reverted_liquidity",
+                              "reverted_paused",
+                              "reverted_unknown",
+                              "error_rpc"
+                            ],
+                            "example": "ok_full"
+                          },
+                          "eta_seconds": {
+                            "type": ["number", "null"],
+                            "description": "Wait before that day's queued withdrawal could be claimed. Only set when `outcome` is `delayed`.",
+                            "example": null
+                          },
+                          "confidence": {
+                            "type": ["string", "null"],
+                            "description": "Holder-consensus confidence in that day's measurement",
+                            "enum": ["high", "medium", "low", "conflict"],
+                            "example": "high"
+                          },
+                          "apy": {
+                            "type": "object",
+                            "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions, and unclamped, so it can be negative.",
+                            "properties": {
+                              "avg_1d": {
+                                "type": ["number", "null"],
+                                "description": "Average over that day",
+                                "example": 1.45698
+                              },
+                              "avg_7d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 7-day average ending that day",
+                                "example": 1.44895
+                              },
+                              "avg_30d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 30-day average ending that day",
+                                "example": 1.47156
+                              }
+                            }
+                          },
+                          "price_per_share": {
+                            "type": ["number", "null"],
+                            "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute.",
+                            "example": 1.0706808832358203
+                          },
+                          "price_per_share_quoted": {
+                            "type": ["number", "null"],
+                            "description": "The pool's reported price, for days the executed exit could not price one. A quote, not a measurement, so mark it differently in a chart. Null unless corroborated.",
+                            "example": 1.0706808832358203
+                          },
+                          "reason": {
+                            "type": ["string", "null"],
+                            "description": "Why `price_per_share` is null on a day that was otherwise measured; null when it is present.",
+                            "enum": ["rate_quality_floor", "nav_quote_no_exit_path", "no_executed_exit_path"],
+                            "example": null
+                          },
+                          "exit_liquidity": {
+                            "type": "object",
+                            "description": "Funded exit capacity, not backing inventory; for queued pools this is the on-chain funding buffer, not instant liquidity. Null means no on-chain capacity is exposed, not zero.",
+                            "properties": {
+                              "amount": {
+                                "type": ["string", "null"],
+                                "description": "Raw base units of `denomination`, as a decimal string; parse with BigInt, not Number.",
+                                "example": "302770028148448411826143"
+                              },
+                              "usd": {
+                                "type": ["number", "null"],
+                                "description": "Capacity in USD. Null when `denomination` is, since the conversion needs its decimals.",
+                                "example": 749593682.56
+                              },
+                              "slippage_bps": {
+                                "type": ["number", "null"],
+                                "description": "Price impact of the simulated exit, in basis points",
+                                "example": 0
+                              }
+                            }
+                          },
+                          "tvl": {
+                            "type": "object",
+                            "description": "Receipt supply priced at the rate an exit actually paid, not the reported figure.",
+                            "properties": {
+                              "amount": {
+                                "type": ["string", "null"],
+                                "description": "Receipt supply at the executed redemption rate. Raw base units of `denomination`, as a decimal string; parse with BigInt, not Number.",
+                                "example": "2120826166919814406207431"
+                              },
+                              "usd": {
+                                "type": ["number", "null"],
+                                "description": "Verified TVL in USD. Null when `denomination` is.",
+                                "example": 5250710931.5
+                              }
+                            }
+                          },
+                          "tvl_quoted": {
+                            "type": "object",
+                            "description": "Supply valued at the reported rate, for the days `tvl` is null. A valuation, not an exit measure.",
+                            "properties": {
+                              "amount": {
+                                "type": ["string", "null"],
+                                "description": "Raw base units of `denomination`, as a decimal string; parse with BigInt, not Number.",
+                                "example": "2120826166919814406207431"
+                              },
+                              "usd": {
+                                "type": ["number", "null"],
+                                "description": "Quoted valuation in USD",
+                                "example": 5250710931.5
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown query parameter or invalid value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "INVALID_QUERY_PARAM"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "range must be one of: 30d, 90d, max"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No verified pool with this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "VERIFIED_POOL_NOT_FOUND"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "verified pool not found"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/yields/v2/borrow/markets": {
       "get": {
         "tags": ["yields"],
