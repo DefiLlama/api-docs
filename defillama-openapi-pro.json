@@ -8769,188 +8769,15 @@
         ]
       }
     },
-    "/yields/pools": {
+    "/yields/v1/pools": {
       "get": {
         "tags": ["yields"],
-        "summary": "Retrieve the latest data for all pools, including enriched information such as predictions",
+        "x-api-plan-only": true,
+        "summary": "Retrieve the latest data for all pools in the legacy v1 response format",
+        "description": "Serves the former `/yields/pools` response format, including the extra fields from `/yields/poolsOld`. Frozen for compatibility: the shape will not change and no new fields will be added - use `/yields/v2/earn` for new integrations.",
         "responses": {
           "200": {
-            "description": "Array of all yield farming pools with their data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "success"
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "chain": {
-                            "type": "string",
-                            "example": "Ethereum"
-                          },
-                          "project": {
-                            "type": "string",
-                            "example": "lido"
-                          },
-                          "symbol": {
-                            "type": "string",
-                            "example": "STETH"
-                          },
-                          "tvlUsd": {
-                            "type": "number",
-                            "example": 32493036117
-                          },
-                          "apyBase": {
-                            "type": "number",
-                            "example": 2.84
-                          },
-                          "apyReward": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "apy": {
-                            "type": "number",
-                            "example": 2.84
-                          },
-                          "rewardTokens": {
-                            "type": ["array", "null"],
-                            "items": {
-                              "type": "string"
-                            },
-                            "example": null
-                          },
-                          "pool": {
-                            "type": "string",
-                            "example": "747c1d2a-c668-4682-b9f9-296708a3dd90"
-                          },
-                          "apyPct1D": {
-                            "type": "number",
-                            "example": -0.04
-                          },
-                          "apyPct7D": {
-                            "type": "number",
-                            "example": -0.056
-                          },
-                          "apyPct30D": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "stablecoin": {
-                            "type": "boolean",
-                            "example": false
-                          },
-                          "ilRisk": {
-                            "type": "string",
-                            "example": "no"
-                          },
-                          "exposure": {
-                            "type": "string",
-                            "example": "single"
-                          },
-                          "predictions": {
-                            "type": "object",
-                            "properties": {
-                              "predictedClass": {
-                                "type": "string",
-                                "example": "Stable/Up"
-                              },
-                              "predictedProbability": {
-                                "type": "number",
-                                "example": 74
-                              },
-                              "binnedConfidence": {
-                                "type": "number",
-                                "example": 2
-                              }
-                            }
-                          },
-                          "poolMeta": {
-                            "type": ["string", "null"],
-                            "example": null
-                          },
-                          "mu": {
-                            "type": "number",
-                            "example": 3.7747
-                          },
-                          "sigma": {
-                            "type": "number",
-                            "example": 0.05236
-                          },
-                          "count": {
-                            "type": "number",
-                            "example": 1141
-                          },
-                          "outlier": {
-                            "type": "boolean",
-                            "example": false
-                          },
-                          "underlyingTokens": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            },
-                            "example": ["0x0000000000000000000000000000000000000000"]
-                          },
-                          "il7d": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "apyBase7d": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "apyMean30d": {
-                            "type": "number",
-                            "example": 2.73539
-                          },
-                          "volumeUsd1d": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "volumeUsd7d": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "apyBaseInception": {
-                            "type": ["number", "null"],
-                            "example": null
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "javascript",
-            "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getPools()"
-          },
-          {
-            "lang": "python",
-            "label": "Python SDK",
-            "source": "result = pro_client.yields.getPools()"
-          }
-        ]
-      }
-    },
-    "/yields/poolsOld": {
-      "get": {
-        "tags": ["yields"],
-        "summary": "Same as /pools but it also includes a new parameter `pool_old` which usually contains pool address (but not guaranteed)",
-        "responses": {
-          "200": {
-            "description": "successful operation",
+            "description": "Array of all pools in the legacy v1 format",
             "content": {
               "application/json": {
                 "schema": {
@@ -8967,11 +8794,13 @@
                         "properties": {
                           "pool": {
                             "type": "string",
+                            "description": "Pool id (UUID). Same id space as the v2 yields API.",
                             "example": "747c1d2a-c668-4682-b9f9-296708a3dd90"
                           },
                           "timestamp": {
                             "type": "string",
-                            "example": "2025-07-18T16:01:37.482Z"
+                            "description": "Timestamp of the latest data point.",
+                            "example": "2026-09-17T14:10:48.521Z"
                           },
                           "project": {
                             "type": "string",
@@ -8983,6 +8812,7 @@
                           },
                           "symbol": {
                             "type": "string",
+                            "description": "Uppercase symbol.",
                             "example": "STETH"
                           },
                           "poolMeta": {
@@ -8990,7 +8820,8 @@
                             "example": null
                           },
                           "underlyingTokens": {
-                            "type": "array",
+                            "type": ["array", "null"],
+                            "description": "Underlying token addresses, lowercase.",
                             "items": {
                               "type": "string"
                             },
@@ -8998,22 +8829,29 @@
                           },
                           "rewardTokens": {
                             "type": ["array", "null"],
+                            "description": "Reward token addresses, lowercase; null when no rewards are currently flowing.",
                             "items": {
                               "type": "string"
                             },
                             "example": null
                           },
+                          "poolTokenAddress": {
+                            "type": ["string", "null"],
+                            "description": "Receipt/pool token address, lowercase.",
+                            "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
+                          },
                           "tvlUsd": {
                             "type": "number",
-                            "example": 32414496934
+                            "description": "TVL in USD; for lending markets this is available liquidity, not total supplied.",
+                            "example": 23592091898
                           },
                           "apy": {
                             "type": "number",
-                            "example": 2.84
+                            "example": 2.212
                           },
                           "apyBase": {
-                            "type": "number",
-                            "example": 2.84
+                            "type": ["number", "null"],
+                            "example": 2.212
                           },
                           "apyReward": {
                             "type": ["number", "null"],
@@ -9021,10 +8859,12 @@
                           },
                           "il7d": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           },
                           "apyBase7d": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           },
                           "volumeUsd1d": {
@@ -9033,10 +8873,12 @@
                           },
                           "volumeUsd7d": {
                             "type": ["number", "null"],
+                            "description": "7-day volume in USD.",
                             "example": null
                           },
                           "apyBaseInception": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           },
                           "url": {
@@ -9044,23 +8886,26 @@
                             "example": "https://lido.fi/#networks"
                           },
                           "apyPct1D": {
-                            "type": "number",
-                            "example": -0.04
+                            "type": ["number", "null"],
+                            "description": "Absolute APY change vs 1 day ago, in percentage points.",
+                            "example": -0.02227
                           },
                           "apyPct7D": {
-                            "type": "number",
-                            "example": -0.056
+                            "type": ["number", "null"],
+                            "example": -0.06154
                           },
                           "apyPct30D": {
                             "type": ["number", "null"],
-                            "example": null
+                            "example": 0.01517
                           },
                           "apyMean30d": {
-                            "type": "number",
-                            "example": 2.73524
+                            "type": ["number", "null"],
+                            "description": "30-day mean APY.",
+                            "example": 2.21043
                           },
                           "stablecoin": {
                             "type": "boolean",
+                            "description": "Whether every underlying asset is a stablecoin.",
                             "example": false
                           },
                           "ilRisk": {
@@ -9072,61 +8917,72 @@
                             "example": "single"
                           },
                           "return": {
-                            "type": "number",
-                            "example": 0.00008
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "count": {
-                            "type": "number",
-                            "example": 1141
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "apyMeanExpanding": {
-                            "type": "number",
-                            "example": 3.77993
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "apyStdExpanding": {
-                            "type": "number",
-                            "example": 1.04969
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "mu": {
-                            "type": "number",
-                            "example": 3.7747
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "sigma": {
-                            "type": "number",
-                            "example": 0.05236
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "outlier": {
-                            "type": "boolean",
-                            "example": false
+                            "type": ["boolean", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "project_factorized": {
-                            "type": "number",
-                            "example": -1
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "chain_factorized": {
-                            "type": "number",
-                            "example": 0
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "predictions": {
                             "type": "object",
+                            "description": "Always null; no longer computed.",
                             "properties": {
                               "predictedClass": {
-                                "type": "string",
-                                "example": "Stable/Up"
+                                "type": ["string", "null"],
+                                "example": null
                               },
                               "predictedProbability": {
-                                "type": "number",
-                                "example": 74
+                                "type": ["number", "null"],
+                                "example": null
                               },
                               "binnedConfidence": {
-                                "type": "number",
-                                "example": 2
+                                "type": ["number", "null"],
+                                "example": null
                               }
                             }
                           },
                           "pool_old": {
                             "type": "string",
-                            "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84-ethereum"
+                            "description": "The original pool key (usually contains a pool address).",
+                            "example": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
                           }
                         }
                       }
@@ -9136,32 +8992,21 @@
               }
             }
           }
-        },
-        "x-api-plan-only": true,
-        "x-codeSamples": [
-          {
-            "lang": "javascript",
-            "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getPoolsOld()"
-          },
-          {
-            "lang": "python",
-            "label": "Python SDK",
-            "source": "result = pro_client.yields.getPoolsOld()"
-          }
-        ]
+        }
       }
     },
-    "/yields/chart/{pool}": {
+    "/yields/v1/chart/{pool}": {
       "get": {
         "tags": ["yields"],
-        "summary": "Get historical APY and TVL of a pool",
+        "x-api-plan-only": true,
+        "summary": "Get historical APY and TVL of a pool in the legacy v1 response format",
+        "description": "Daily history in the legacy v1 format. APY values are the day's intraday average; TVL and price-per-share are the day's last observation. Unknown pool ids return an empty `data` array.",
         "parameters": [
           {
             "name": "pool",
             "in": "path",
             "required": true,
-            "description": "pool id, can be retrieved from /pools (property is called pool)",
+            "description": "pool id (UUID), from /yields/v1/pools (property is called pool)",
             "schema": {
               "type": "string",
               "example": "747c1d2a-c668-4682-b9f9-296708a3dd90"
@@ -9170,7 +9015,7 @@
         ],
         "responses": {
           "200": {
-            "description": "successful operation",
+            "description": "Historical APY and TVL data for the specified pool",
             "content": {
               "application/json": {
                 "schema": {
@@ -9190,15 +9035,17 @@
                             "example": "2022-05-03T00:00:00.000Z"
                           },
                           "tvlUsd": {
-                            "type": "number",
+                            "type": ["number", "null"],
+                            "description": "The day's last observation.",
                             "example": 11074372760
                           },
                           "apy": {
-                            "type": "number",
+                            "type": ["number", "null"],
+                            "description": "The day's intraday average.",
                             "example": 3.6
                           },
                           "apyBase": {
-                            "type": "number",
+                            "type": ["number", "null"],
                             "example": 3.6
                           },
                           "apyReward": {
@@ -9207,10 +9054,17 @@
                           },
                           "il7d": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           },
                           "apyBase7d": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
+                          },
+                          "pricePerShare": {
+                            "type": ["number", "null"],
+                            "description": "The day's last observation.",
                             "example": null
                           }
                         }
@@ -9221,28 +9075,18 @@
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "javascript",
-            "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getPoolChart('<pool>')"
-          },
-          {
-            "lang": "python",
-            "label": "Python SDK",
-            "source": "result = pro_client.yields.getPoolChart('<pool>')"
-          }
-        ]
+        }
       }
     },
-    "/yields/poolsBorrow": {
+    "/yields/v1/poolsBorrow": {
       "get": {
         "tags": ["yields"],
-        "summary": "Borrow costs APY of assets from lending markets",
+        "x-api-plan-only": true,
+        "summary": "Borrow costs APY of assets from lending markets in the legacy v1 response format",
+        "description": "Serves the former `/yields/poolsBorrow` response format. Markets that cannot currently be borrowed from are not listed. Frozen for compatibility: the shape will not change and no new fields will be added - use `/yields/v2/borrow/markets` for new integrations.",
         "responses": {
           "200": {
-            "description": "successful operation",
+            "description": "Array of lending markets in the legacy v1 format",
             "content": {
               "application/json": {
                 "schema": {
@@ -9267,26 +9111,29 @@
                           },
                           "symbol": {
                             "type": "string",
+                            "description": "Uppercase symbol.",
                             "example": "WETH"
                           },
                           "tvlUsd": {
-                            "type": "number",
-                            "example": 604781668
+                            "type": ["number", "null"],
+                            "description": "TVL in USD; for lending markets this is available liquidity, not total supplied.",
+                            "example": 727935089
                           },
                           "apyBase": {
-                            "type": "number",
-                            "example": 3.98975
+                            "type": ["number", "null"],
+                            "example": 1.45716
                           },
                           "apyReward": {
                             "type": ["number", "null"],
                             "example": null
                           },
                           "apy": {
-                            "type": "number",
-                            "example": 3.98975
+                            "type": ["number", "null"],
+                            "example": 1.45716
                           },
                           "rewardTokens": {
                             "type": ["array", "null"],
+                            "description": "Reward token addresses, lowercase; null when no rewards are currently flowing.",
                             "items": {
                               "type": "string"
                             },
@@ -9294,22 +9141,25 @@
                           },
                           "pool": {
                             "type": "string",
+                            "description": "Pool id (UUID). Same id space as the v2 yields API.",
                             "example": "e880e828-ca59-4ec6-8d4f-27182a4dc23d"
                           },
                           "apyPct1D": {
-                            "type": "number",
-                            "example": 0.54117
+                            "type": ["number", "null"],
+                            "description": "Absolute APY change vs 1 day ago, in percentage points.",
+                            "example": -0.05531
                           },
                           "apyPct7D": {
-                            "type": "number",
-                            "example": 1.93811
+                            "type": ["number", "null"],
+                            "example": -0.06874
                           },
                           "apyPct30D": {
-                            "type": "number",
-                            "example": 2.08545
+                            "type": ["number", "null"],
+                            "example": -0.02456
                           },
                           "stablecoin": {
                             "type": "boolean",
+                            "description": "Whether every underlying asset is a stablecoin.",
                             "example": false
                           },
                           "ilRisk": {
@@ -9322,18 +9172,19 @@
                           },
                           "predictions": {
                             "type": "object",
+                            "description": "Always null; no longer computed.",
                             "properties": {
                               "predictedClass": {
-                                "type": "string",
-                                "example": "Stable/Up"
+                                "type": ["string", "null"],
+                                "example": null
                               },
                               "predictedProbability": {
-                                "type": "number",
-                                "example": 72
+                                "type": ["number", "null"],
+                                "example": null
                               },
                               "binnedConfidence": {
-                                "type": "number",
-                                "example": 2
+                                "type": ["number", "null"],
+                                "example": null
                               }
                             }
                           },
@@ -9341,36 +9192,48 @@
                             "type": ["string", "null"],
                             "example": null
                           },
+                          "mu": {
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
+                          },
                           "sigma": {
-                            "type": "number",
-                            "example": 0.02094
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "count": {
-                            "type": "number",
-                            "example": 891
+                            "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "outlier": {
-                            "type": "boolean",
-                            "example": false
+                            "type": ["boolean", "null"],
+                            "description": "Always null; no longer computed.",
+                            "example": null
                           },
                           "underlyingTokens": {
-                            "type": "array",
+                            "type": ["array", "null"],
+                            "description": "Underlying token addresses, lowercase.",
                             "items": {
                               "type": "string"
                             },
-                            "example": ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"]
+                            "example": ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"]
                           },
                           "il7d": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           },
                           "apyBase7d": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           },
                           "apyMean30d": {
-                            "type": "number",
-                            "example": 2.15424
+                            "type": ["number", "null"],
+                            "description": "30-day mean APY.",
+                            "example": 1.4662
                           },
                           "volumeUsd1d": {
                             "type": ["number", "null"],
@@ -9378,46 +9241,50 @@
                           },
                           "volumeUsd7d": {
                             "type": ["number", "null"],
+                            "description": "7-day volume in USD.",
                             "example": null
                           },
                           "apyBaseInception": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           },
                           "apyBaseBorrow": {
-                            "type": "number",
-                            "example": 5.0324
+                            "type": ["number", "null"],
+                            "example": 2.05028
                           },
                           "apyRewardBorrow": {
                             "type": ["number", "null"],
                             "example": null
                           },
                           "totalSupplyUsd": {
-                            "type": "number",
-                            "example": 8988967658
+                            "type": ["number", "null"],
+                            "example": 5234129189
                           },
                           "totalBorrowUsd": {
-                            "type": "number",
-                            "example": 8384185990
+                            "type": ["number", "null"],
+                            "example": 4376489739
                           },
                           "debtCeilingUsd": {
                             "type": ["number", "null"],
                             "example": null
                           },
                           "ltv": {
-                            "type": "number",
+                            "type": ["number", "null"],
                             "example": 0.805
                           },
                           "borrowable": {
-                            "type": "boolean",
+                            "type": ["boolean", "null"],
                             "example": true
                           },
                           "mintedCoin": {
                             "type": ["string", "null"],
+                            "description": "The borrowed token's symbol when it differs from the deposited asset (CDP-style markets).",
                             "example": null
                           },
                           "borrowFactor": {
                             "type": ["number", "null"],
+                            "description": "Always null; no longer computed.",
                             "example": null
                           }
                         }
@@ -9428,41 +9295,30 @@
               }
             }
           }
-        },
-        "x-api-plan-only": true,
-        "x-codeSamples": [
-          {
-            "lang": "javascript",
-            "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getBorrowPools()"
-          },
-          {
-            "lang": "python",
-            "label": "Python SDK",
-            "source": "result = pro_client.yields.getBorrowPools()"
-          }
-        ]
+        }
       }
     },
-    "/yields/chartLendBorrow/{pool}": {
+    "/yields/v1/chartLendBorrow/{pool}": {
       "get": {
         "tags": ["yields"],
-        "summary": "Historical borrow cost APY from a pool on a lending market, pool ids should be obtained from /poolsBorrow",
+        "x-api-plan-only": true,
+        "summary": "Historical borrow cost APY from a pool on a lending market in the legacy v1 response format",
+        "description": "Daily borrow-market history in the legacy v1 format. APY values are the day's intraday average; balances are the day's last observation. Unknown pool ids return an empty `data` array.",
         "parameters": [
           {
             "name": "pool",
             "in": "path",
             "required": true,
-            "description": "pool id, can be retrieved from /poolsBorrow (property is called pool)",
+            "description": "pool id (UUID), from /yields/v1/poolsBorrow (property is called pool)",
             "schema": {
               "type": "string",
-              "example": "e880e828-ca59-4ec6-8d4f-27182a4dc23d"
+              "example": "747c1d2a-c668-4682-b9f9-296708a3dd90"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "successful operation",
+            "description": "Historical lend/borrow data for the specified pool",
             "content": {
               "application/json": {
                 "schema": {
@@ -9483,10 +9339,12 @@
                           },
                           "totalSupplyUsd": {
                             "type": ["number", "null"],
+                            "description": "The day's last observation.",
                             "example": 60767153
                           },
                           "totalBorrowUsd": {
                             "type": ["number", "null"],
+                            "description": "The day's last observation.",
                             "example": 33150230
                           },
                           "debtCeilingUsd": {
@@ -9495,6 +9353,7 @@
                           },
                           "apyBase": {
                             "type": ["number", "null"],
+                            "description": "The day's intraday average.",
                             "example": 1.66533
                           },
                           "apyReward": {
@@ -9503,6 +9362,7 @@
                           },
                           "apyBaseBorrow": {
                             "type": ["number", "null"],
+                            "description": "The day's intraday average.",
                             "example": 3.59132
                           },
                           "apyRewardBorrow": {
@@ -9517,228 +9377,7 @@
               }
             }
           }
-        },
-        "x-api-plan-only": true,
-        "x-codeSamples": [
-          {
-            "lang": "javascript",
-            "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getLendBorrowChart('<pool>')"
-          },
-          {
-            "lang": "python",
-            "label": "Python SDK",
-            "source": "result = pro_client.yields.getLendBorrowChart('<pool>')"
-          }
-        ]
-      }
-    },
-    "/yields/perps": {
-      "get": {
-        "tags": ["yields"],
-        "summary": "Funding rates and Open Interest of perps across exchanges, including both Decentralized and Centralized",
-        "responses": {
-          "200": {
-            "description": "successful operation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "success"
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "perp_id": {
-                            "type": "string",
-                            "example": "61533906-1626-45fc-b3ed-9a1103705373"
-                          },
-                          "timestamp": {
-                            "type": "string",
-                            "example": "2025-07-18T18:01:44.811Z"
-                          },
-                          "marketplace": {
-                            "type": "string",
-                            "example": "Binance"
-                          },
-                          "market": {
-                            "type": "string",
-                            "example": "1000000BOBUSDT"
-                          },
-                          "baseAsset": {
-                            "type": "string",
-                            "example": "1000000BOT"
-                          },
-                          "fundingRate": {
-                            "type": "number",
-                            "example": 0.00005
-                          },
-                          "fundingRatePrevious": {
-                            "type": "number",
-                            "example": 0.00045224
-                          },
-                          "fundingTimePrevious": {
-                            "type": "number",
-                            "example": 1752854400000
-                          },
-                          "openInterest": {
-                            "type": "number",
-                            "example": 51144394
-                          },
-                          "indexPrice": {
-                            "type": "number",
-                            "example": 0.05108
-                          },
-                          "fundingRate7dAverage": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "fundingRate7dSum": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "fundingRate30dAverage": {
-                            "type": ["number", "null"],
-                            "example": null
-                          },
-                          "fundingRate30dSum": {
-                            "type": ["number", "null"],
-                            "example": null
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-api-plan-only": true,
-        "x-codeSamples": [
-          {
-            "lang": "javascript",
-            "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getPerps()"
-          },
-          {
-            "lang": "python",
-            "label": "Python SDK",
-            "source": "result = pro_client.yields.getPerps()"
-          }
-        ]
-      }
-    },
-    "/api/lstRates": {
-      "get": {
-        "tags": ["yields"],
-        "summary": "Exchange rates and ETH peg of liquid staking tokens",
-        "description": "Latest expected (contract) redemption rate, executable market rate and resulting ETH peg for major LSTs.",
-        "responses": {
-          "200": {
-            "description": "successful operation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "description": "The name of the protocol issuing the LST"
-                      },
-                      "symbol": {
-                        "type": "string",
-                        "nullable": true,
-                        "description": "The symbol of the LST"
-                      },
-                      "address": {
-                        "type": "string",
-                        "description": "The contract address of the LST"
-                      },
-                      "type": {
-                        "type": "string",
-                        "nullable": true,
-                        "description": "The type of the LST (rebase or accruing)"
-                      },
-                      "expectedRate": {
-                        "type": "number",
-                        "nullable": true,
-                        "description": "ETH per token owed by the protocol, read from its contract"
-                      },
-                      "marketRate": {
-                        "type": "number",
-                        "nullable": true,
-                        "description": "Executable market rate in ETH per token; null when no credible market quote exists"
-                      },
-                      "ethPeg": {
-                        "type": "number",
-                        "nullable": true,
-                        "description": "Percent deviation of the market rate from the expected rate"
-                      },
-                      "fee": {
-                        "type": "number",
-                        "nullable": true,
-                        "description": "The protocol fee percentage"
-                      }
-                    }
-                  }
-                },
-                "example": [
-                  {
-                    "name": "Lido",
-                    "symbol": "stETH",
-                    "address": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84",
-                    "type": "rebase",
-                    "expectedRate": 1,
-                    "marketRate": 0.9997,
-                    "ethPeg": -0.03,
-                    "fee": 0.1
-                  },
-                  {
-                    "name": "StakeWise V3",
-                    "symbol": "osETH",
-                    "address": "0xf1C9acDc66974dFB6dEcB12aA385b9cD01190E38",
-                    "type": "accruing",
-                    "expectedRate": 1.0775,
-                    "marketRate": 1.0615,
-                    "ethPeg": -1.48,
-                    "fee": 0.05
-                  },
-                  {
-                    "name": "Bifrost Liquid Staking",
-                    "symbol": "vETH",
-                    "address": "0x4Bc3263Eb5bb2Ef7Ad9aB6FB68be80E43b43801F",
-                    "type": "accruing",
-                    "expectedRate": 1.1353,
-                    "marketRate": null,
-                    "ethPeg": null,
-                    "fee": null
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "x-api-plan-only": true,
-        "x-codeSamples": [
-          {
-            "lang": "javascript",
-            "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getLstRates()"
-          },
-          {
-            "lang": "python",
-            "label": "Python SDK",
-            "source": "result = pro_client.yields.getLstRates()"
-          }
-        ]
+        }
       }
     },
     "/yields/v2/earn": {
@@ -12301,6 +11940,214 @@
             }
           }
         }
+      }
+    },
+    "/yields/perps": {
+      "get": {
+        "tags": ["yields"],
+        "summary": "Funding rates and Open Interest of perps across exchanges, including both Decentralized and Centralized",
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "perp_id": {
+                            "type": "string",
+                            "example": "61533906-1626-45fc-b3ed-9a1103705373"
+                          },
+                          "timestamp": {
+                            "type": "string",
+                            "example": "2025-07-18T18:01:44.811Z"
+                          },
+                          "marketplace": {
+                            "type": "string",
+                            "example": "Binance"
+                          },
+                          "market": {
+                            "type": "string",
+                            "example": "1000000BOBUSDT"
+                          },
+                          "baseAsset": {
+                            "type": "string",
+                            "example": "1000000BOT"
+                          },
+                          "fundingRate": {
+                            "type": "number",
+                            "example": 0.00005
+                          },
+                          "fundingRatePrevious": {
+                            "type": "number",
+                            "example": 0.00045224
+                          },
+                          "fundingTimePrevious": {
+                            "type": "number",
+                            "example": 1752854400000
+                          },
+                          "openInterest": {
+                            "type": "number",
+                            "example": 51144394
+                          },
+                          "indexPrice": {
+                            "type": "number",
+                            "example": 0.05108
+                          },
+                          "fundingRate7dAverage": {
+                            "type": ["number", "null"],
+                            "example": null
+                          },
+                          "fundingRate7dSum": {
+                            "type": ["number", "null"],
+                            "example": null
+                          },
+                          "fundingRate30dAverage": {
+                            "type": ["number", "null"],
+                            "example": null
+                          },
+                          "fundingRate30dSum": {
+                            "type": ["number", "null"],
+                            "example": null
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-api-plan-only": true,
+        "x-codeSamples": [
+          {
+            "lang": "javascript",
+            "label": "JavaScript SDK",
+            "source": "const result = await proClient.yields.getPerps()"
+          },
+          {
+            "lang": "python",
+            "label": "Python SDK",
+            "source": "result = pro_client.yields.getPerps()"
+          }
+        ]
+      }
+    },
+    "/api/lstRates": {
+      "get": {
+        "tags": ["yields"],
+        "summary": "Exchange rates and ETH peg of liquid staking tokens",
+        "description": "Latest expected (contract) redemption rate, executable market rate and resulting ETH peg for major LSTs.",
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "The name of the protocol issuing the LST"
+                      },
+                      "symbol": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "The symbol of the LST"
+                      },
+                      "address": {
+                        "type": "string",
+                        "description": "The contract address of the LST"
+                      },
+                      "type": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "The type of the LST (rebase or accruing)"
+                      },
+                      "expectedRate": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "ETH per token owed by the protocol, read from its contract"
+                      },
+                      "marketRate": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Executable market rate in ETH per token; null when no credible market quote exists"
+                      },
+                      "ethPeg": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Percent deviation of the market rate from the expected rate"
+                      },
+                      "fee": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "The protocol fee percentage"
+                      }
+                    }
+                  }
+                },
+                "example": [
+                  {
+                    "name": "Lido",
+                    "symbol": "stETH",
+                    "address": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84",
+                    "type": "rebase",
+                    "expectedRate": 1,
+                    "marketRate": 0.9997,
+                    "ethPeg": -0.03,
+                    "fee": 0.1
+                  },
+                  {
+                    "name": "StakeWise V3",
+                    "symbol": "osETH",
+                    "address": "0xf1C9acDc66974dFB6dEcB12aA385b9cD01190E38",
+                    "type": "accruing",
+                    "expectedRate": 1.0775,
+                    "marketRate": 1.0615,
+                    "ethPeg": -1.48,
+                    "fee": 0.05
+                  },
+                  {
+                    "name": "Bifrost Liquid Staking",
+                    "symbol": "vETH",
+                    "address": "0x4Bc3263Eb5bb2Ef7Ad9aB6FB68be80E43b43801F",
+                    "type": "accruing",
+                    "expectedRate": 1.1353,
+                    "marketRate": null,
+                    "ethPeg": null,
+                    "fee": null
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-api-plan-only": true,
+        "x-codeSamples": [
+          {
+            "lang": "javascript",
+            "label": "JavaScript SDK",
+            "source": "const result = await proClient.yields.getLstRates()"
+          },
+          {
+            "lang": "python",
+            "label": "Python SDK",
+            "source": "result = pro_client.yields.getLstRates()"
+          }
+        ]
       }
     },
     "/etfs/snapshot": {
