@@ -10466,7 +10466,7 @@
                           "apy_confidence": {
                             "type": ["string", "null"],
                             "description": "How closely independent holders agreed on the redemption rate. Grades the measurement, not the pool.",
-                            "enum": ["high", "medium", "low", "conflict"],
+                            "enum": ["high", "medium", "low", "conflict", null],
                             "example": "high"
                           },
                           "exit": {
@@ -10476,7 +10476,7 @@
                               "status": {
                                 "type": ["string", "null"],
                                 "description": "What a withdrawal would do today: `instant` all of it leaves now, `queued` accepted but paid later, `partial` bounded by `exit_liquidity`, `depleted` the lane is dust (under 0.1% of TVL and under $10k), `unavailable` nothing was accepted, `blocked` reverted as paused or unrecognized. Null when unclassified.",
-                                "enum": ["instant", "queued", "partial", "depleted", "unavailable", "blocked"],
+                                "enum": ["instant", "queued", "partial", "depleted", "unavailable", "blocked", null],
                                 "example": "instant"
                               },
                               "eta_seconds": {
@@ -10668,7 +10668,7 @@
                         "apy_confidence": {
                           "type": ["string", "null"],
                           "description": "How closely independent holders agreed on the redemption rate. Grades the measurement, not the pool.",
-                          "enum": ["high", "medium", "low", "conflict"],
+                          "enum": ["high", "medium", "low", "conflict", null],
                           "example": "high"
                         },
                         "exit": {
@@ -10678,7 +10678,7 @@
                             "status": {
                               "type": ["string", "null"],
                               "description": "What a withdrawal would do today: `instant` all of it leaves now, `queued` accepted but paid later, `partial` bounded by `exit_liquidity`, `depleted` the lane is dust (under 0.1% of TVL and under $10k), `unavailable` nothing was accepted, `blocked` reverted as paused or unrecognized. Null when unclassified.",
-                              "enum": ["instant", "queued", "partial", "depleted", "unavailable", "blocked"],
+                              "enum": ["instant", "queued", "partial", "depleted", "unavailable", "blocked", null],
                               "example": "instant"
                             },
                             "eta_seconds": {
@@ -10892,7 +10892,8 @@
                               "reverted_liquidity",
                               "reverted_paused",
                               "reverted_unknown",
-                              "error_rpc"
+                              "error_rpc",
+                              null
                             ],
                             "example": "ok_full"
                           },
@@ -10904,7 +10905,7 @@
                           "confidence": {
                             "type": ["string", "null"],
                             "description": "Holder-consensus confidence in that day's measurement",
-                            "enum": ["high", "medium", "low", "conflict"],
+                            "enum": ["high", "medium", "low", "conflict", null],
                             "example": "high"
                           },
                           "apy": {
@@ -10941,7 +10942,7 @@
                           "reason": {
                             "type": ["string", "null"],
                             "description": "Why `price_per_share` is null on a day that was otherwise measured; null when it is present.",
-                            "enum": ["rate_quality_floor", "nav_quote_no_exit_path", "no_executed_exit_path"],
+                            "enum": ["rate_quality_floor", "nav_quote_no_exit_path", "no_executed_exit_path", null],
                             "example": null
                           },
                           "exit_liquidity": {
