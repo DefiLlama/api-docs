@@ -16083,10 +16083,32 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get list of all tracked public companies",
-        "description": "Returns a list of all publicly traded companies tracked by DefiLlama, with company identity and country.",
+        "description": "Returns the tracked US-listed companies with their identity and sector and industry slugs, sorted by market cap (largest first). Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.",
         "security": [
           {
             "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sector",
+            "in": "query",
+            "description": "Only return companies in this sector, as a slug (`technology`, `financial-services`) or as its label in any case (`Financial Services`). Valid values are the `sectorSlug`s returned by `GET /equities/v1/sectors`. An unknown value returns an empty list.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "technology"
+            }
+          },
+          {
+            "name": "industry",
+            "in": "query",
+            "description": "Only return companies in this industry, as a slug (`semiconductors`) or as its label in any case. Valid values are the `industrySlug`s returned by `GET /equities/v1/industries`. An unknown value returns an empty list.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "semiconductors"
+            }
           }
         ],
         "responses": {
@@ -16114,9 +16136,37 @@
                       "countryName": {
                         "type": "string",
                         "example": "United States"
+                      },
+                      "sectorSlug": {
+                        "type": "string",
+                        "description": "Sector id, the same value `GET /equities/v1/sectors` returns. `unknown` when the vendor left the company unclassified.",
+                        "example": "technology"
+                      },
+                      "industrySlug": {
+                        "type": "string",
+                        "description": "Industry id, the same value `GET /equities/v1/industries` returns.",
+                        "example": "semiconductors"
                       }
                     }
-                  }
+                  },
+                  "example": [
+                    {
+                      "ticker": "NVDA",
+                      "companyName": "NVIDIA Corporation",
+                      "country": "US",
+                      "countryName": "United States",
+                      "sectorSlug": "technology",
+                      "industrySlug": "semiconductors"
+                    },
+                    {
+                      "ticker": "AAPL",
+                      "companyName": "Apple Inc.",
+                      "country": "US",
+                      "countryName": "United States",
+                      "sectorSlug": "technology",
+                      "industrySlug": "consumer-electronics"
+                    }
+                  ]
                 }
               }
             }
@@ -17939,6 +17989,2029 @@
           },
           "404": {
             "description": "On-chain data not found for ticker"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/equities/v1/sectors": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get all sectors",
+        "description": "Returns one row per sector, sorted by market cap (largest first): market cap and weight, traded value, valuation ratios, price changes over seven windows, and the three largest holdings.\n\nCovers US-listed companies. All monetary values are in USD.\n\nSector and industry names come from the data vendor (a Morningstar-style list of 11 sectors and about 140 industries), not GICS. Companies with no sector are grouped as `Unknown` rather than dropped, so sector market caps add up to the market total.\n\nRatios such as `trailingPE` are aggregates (total market cap / total earnings), so the group is valued as one company rather than averaging its constituents' ratios. Price changes are weighted by market cap at the start of each window. Percentages are in percent, not fractions: `1.82` means +1.82%.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sector": {
+                        "type": "string",
+                        "description": "Sector name as the data vendor labels it (not GICS). Companies the vendor left unclassified roll up into `Unknown`.",
+                        "example": "Technology"
+                      },
+                      "sectorSlug": {
+                        "type": "string",
+                        "description": "URL-safe sector id. Pass it as `sector` to the other equities endpoints.",
+                        "example": "technology"
+                      },
+                      "rank": {
+                        "type": "integer",
+                        "description": "Position by market cap, starting at 1.",
+                        "example": 1
+                      },
+                      "weight": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Share of all tracked US equity market cap, in percent. Sums to 100 across sectors, `Unknown` included.",
+                        "example": 35.54
+                      },
+                      "dollarVolumeShare24h": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Share of all tracked US value traded in the latest session, in percent.",
+                        "example": 40.1
+                      },
+                      "industryCount": {
+                        "type": "integer",
+                        "description": "Number of distinct industries in the sector.",
+                        "example": 12
+                      },
+                      "marketCap": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total market cap of the constituents, in USD.",
+                        "example": 29484487070530.91
+                      },
+                      "marketCapChange1d": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Change in total market cap over the latest session, in USD. Reconciles exactly with `priceChangePercentage1d`.",
+                        "example": 251664986364.37
+                      },
+                      "dollarVolume24h": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Value traded in the latest session (shares traded × price, summed), in USD. Reads low while a session is still open; `volumeAsOf` says when it was taken.",
+                        "example": 233706720783.08
+                      },
+                      "revenueTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total trailing twelve month revenue, in USD.",
+                        "example": 3618619651351
+                      },
+                      "earningsTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total trailing twelve month earnings, in USD.",
+                        "example": 729280268773
+                      },
+                      "ebitdaTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total trailing twelve month EBITDA, in USD.",
+                        "example": 1159818834166
+                      },
+                      "enterpriseValue": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total enterprise value, in USD.",
+                        "example": 30012989630394.37
+                      },
+                      "employeeCount": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total employees across the constituents that report a headcount. `null` when none do.",
+                        "example": 6808759
+                      },
+                      "trailingPE": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate price to earnings: total market cap / total TTM earnings. `null` when total earnings are zero or negative; use `earningsYield` then.",
+                        "example": 40.3
+                      },
+                      "earningsYield": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "100 × total TTM earnings / total market cap, in percent. Signed, so it stays defined when `trailingPE` is `null` for a loss-making group.",
+                        "example": 2.482
+                      },
+                      "priceToRevenue": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate price to sales: total market cap / total TTM revenue.",
+                        "example": 8.121
+                      },
+                      "priceToBook": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate price to book: total market cap / total shareholders' equity.",
+                        "example": 12.1
+                      },
+                      "enterpriseValueToEbitda": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate EV/EBITDA: total enterprise value / total TTM EBITDA.",
+                        "example": 25.8
+                      },
+                      "dividendYield": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "100 × total TTM dividends / total market cap, in percent.",
+                        "example": 0.5053
+                      },
+                      "holdersYield": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "100 × total TTM holders' revenue (dividends plus buybacks, net of share issuance) / total market cap, in percent.",
+                        "example": 1.719
+                      },
+                      "operatingProfitMarginTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total TTM operating income / total TTM revenue, in percent. Weighted by revenue, not market cap.",
+                        "example": 24.65
+                      },
+                      "priceChangePercentage1d": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the latest session, in percent (`0.86` is +0.86%).",
+                        "example": 0.861
+                      },
+                      "priceChangePercentage7d": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 7 days, in percent.",
+                        "example": 2.951
+                      },
+                      "priceChangePercentage1m": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 30 days, in percent.",
+                        "example": 6.681
+                      },
+                      "priceChangePercentage3m": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 3 calendar months, in percent.",
+                        "example": 11.65
+                      },
+                      "priceChangePercentage6m": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 6 calendar months, in percent.",
+                        "example": 45.56
+                      },
+                      "priceChangePercentageYtd": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change since January 1, in percent.",
+                        "example": 29.18
+                      },
+                      "priceChangePercentage1y": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last year, in percent.",
+                        "example": 30.25
+                      },
+                      "companyCount": {
+                        "type": "integer",
+                        "description": "Number of constituents.",
+                        "example": 475
+                      },
+                      "coverage": {
+                        "type": "object",
+                        "description": "Share of the constituents' market cap that supplied each metric's inputs, from 0 to 1, keyed by metric name. A ratio is served as `null` when its coverage is below 0.6, rather than as a figure computed over the wrong subset.",
+                        "additionalProperties": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "example": {
+                          "priceChangePercentage1d": 1,
+                          "priceChangePercentage7d": 1,
+                          "priceChangePercentage1m": 1,
+                          "priceChangePercentage3m": 0.9998,
+                          "priceChangePercentage6m": 0.9979,
+                          "priceChangePercentageYtd": 0.9976,
+                          "priceChangePercentage1y": 0.9964,
+                          "trailingPE": 0.9967,
+                          "earningsYield": 0.9967,
+                          "priceToRevenue": 0.9967,
+                          "priceToBook": 1,
+                          "enterpriseValueToEbitda": 0.9967,
+                          "dividendYield": 0.8057,
+                          "holdersYield": 0.9594,
+                          "operatingProfitMarginTTM": 0.9967
+                        }
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true,
+                        "description": "Most recent quote time across the constituents.",
+                        "example": "2026-09-25T19:59:00Z"
+                      },
+                      "volumeAsOf": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true,
+                        "description": "When `dollarVolume24h` was taken.",
+                        "example": "2026-09-25T19:59:00Z"
+                      },
+                      "topHoldings": {
+                        "type": "array",
+                        "description": "The three largest constituents by market cap. `GET /equities/v1/sector` returns ten.",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "ticker": {
+                              "type": "string",
+                              "example": "NVDA"
+                            },
+                            "name": {
+                              "type": "string",
+                              "example": "NVIDIA Corporation"
+                            },
+                            "marketCap": {
+                              "type": "number",
+                              "nullable": true,
+                              "description": "Market cap, in USD.",
+                              "example": 5451313781934.43
+                            },
+                            "sectorWeight": {
+                              "type": "number",
+                              "nullable": true,
+                              "description": "Share of this sector's market cap, in percent.",
+                              "example": 18.49
+                            },
+                            "priceChangePercentage1d": {
+                              "type": "number",
+                              "nullable": true,
+                              "description": "Price change over the latest session, in percent.",
+                              "example": 0.2182
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "example": [
+                    {
+                      "sector": "Technology",
+                      "sectorSlug": "technology",
+                      "marketCap": 29484487070530.91,
+                      "marketCapChange1d": 251664986364.37,
+                      "dollarVolume24h": 233706720783.08,
+                      "revenueTTM": 3618619651351,
+                      "earningsTTM": 729280268773,
+                      "ebitdaTTM": 1159818834166,
+                      "enterpriseValue": 30012989630394.37,
+                      "employeeCount": 6808759,
+                      "trailingPE": 40.3,
+                      "earningsYield": 2.482,
+                      "priceToRevenue": 8.121,
+                      "priceToBook": 12.1,
+                      "enterpriseValueToEbitda": 25.8,
+                      "dividendYield": 0.5053,
+                      "holdersYield": 1.719,
+                      "operatingProfitMarginTTM": 24.65,
+                      "priceChangePercentage1d": 0.861,
+                      "priceChangePercentage7d": 2.951,
+                      "priceChangePercentage1m": 6.681,
+                      "priceChangePercentage3m": 11.65,
+                      "priceChangePercentage6m": 45.56,
+                      "priceChangePercentageYtd": 29.18,
+                      "priceChangePercentage1y": 30.25,
+                      "companyCount": 475,
+                      "coverage": {
+                        "priceChangePercentage1d": 1,
+                        "priceChangePercentage7d": 1,
+                        "priceChangePercentage1m": 1,
+                        "priceChangePercentage3m": 0.9998,
+                        "priceChangePercentage6m": 0.9979,
+                        "priceChangePercentageYtd": 0.9976,
+                        "priceChangePercentage1y": 0.9964,
+                        "trailingPE": 0.9967,
+                        "earningsYield": 0.9967,
+                        "priceToRevenue": 0.9967,
+                        "priceToBook": 1,
+                        "enterpriseValueToEbitda": 0.9967,
+                        "dividendYield": 0.8057,
+                        "holdersYield": 0.9594,
+                        "operatingProfitMarginTTM": 0.9967
+                      },
+                      "weight": 35.54,
+                      "dollarVolumeShare24h": 40.1,
+                      "industryCount": 12,
+                      "topHoldings": [
+                        {
+                          "ticker": "NVDA",
+                          "name": "NVIDIA Corporation",
+                          "marketCap": 5451313781934.43,
+                          "sectorWeight": 18.49,
+                          "priceChangePercentage1d": 0.2182
+                        },
+                        {
+                          "ticker": "AAPL",
+                          "name": "Apple Inc.",
+                          "marketCap": 5009416613731.49,
+                          "sectorWeight": 16.99,
+                          "priceChangePercentage1d": 1.533
+                        },
+                        {
+                          "ticker": "MSFT",
+                          "name": "Microsoft Corporation Common Stock",
+                          "marketCap": 3833594441460,
+                          "sectorWeight": 13,
+                          "priceChangePercentage1d": 3.663
+                        }
+                      ],
+                      "updatedAt": "2026-09-25T19:59:00Z",
+                      "volumeAsOf": "2026-09-25T19:59:00Z",
+                      "rank": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sector data not published yet"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/equities/v1/sectors-overview": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get market-wide sector overview",
+        "description": "Returns totals across all tracked US companies, which the per-sector rows cannot carry: the market cap every sector `weight` is measured against, aggregate and median valuation ratios for the whole market, and the best, worst, and largest sector.\n\nThe constituents here are every tracked US company. Fields shared with `GET /equities/v1/sectors` mean the same thing.\n\nCovers US-listed companies. All monetary values are in USD.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "marketCap": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total market cap of the constituents, in USD.",
+                      "example": 82964660714713.33
+                    },
+                    "marketCapChange1d": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Change in total market cap over the latest session, in USD. Reconciles exactly with `priceChangePercentage1d`.",
+                      "example": 345803139721.38
+                    },
+                    "dollarVolume24h": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Value traded in the latest session (shares traded × price, summed), in USD. Reads low while a session is still open; `volumeAsOf` says when it was taken.",
+                      "example": 582767711903.08
+                    },
+                    "revenueTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total trailing twelve month revenue, in USD.",
+                      "example": 24757148479483
+                    },
+                    "earningsTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total trailing twelve month earnings, in USD.",
+                      "example": 2642725287768
+                    },
+                    "ebitdaTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total trailing twelve month EBITDA, in USD.",
+                      "example": 4436690488724
+                    },
+                    "enterpriseValue": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total enterprise value, in USD.",
+                      "example": 100074056247123.19
+                    },
+                    "employeeCount": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total employees across the constituents that report a headcount. `null` when none do.",
+                      "example": 45614558
+                    },
+                    "trailingPE": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate price to earnings: total market cap / total TTM earnings. `null` when total earnings are zero or negative; use `earningsYield` then.",
+                      "example": 30.43
+                    },
+                    "earningsYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "100 × total TTM earnings / total market cap, in percent. Signed, so it stays defined when `trailingPE` is `null` for a loss-making group.",
+                      "example": 3.287
+                    },
+                    "priceToRevenue": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate price to sales: total market cap / total TTM revenue.",
+                      "example": 3.247
+                    },
+                    "priceToBook": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate price to book: total market cap / total shareholders' equity.",
+                      "example": 4.871
+                    },
+                    "enterpriseValueToEbitda": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate EV/EBITDA: total enterprise value / total TTM EBITDA.",
+                      "example": 18.39
+                    },
+                    "dividendYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "100 × total TTM dividends / total market cap, in percent.",
+                      "example": 1.344
+                    },
+                    "holdersYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "100 × total TTM holders' revenue (dividends plus buybacks, net of share issuance) / total market cap, in percent.",
+                      "example": 2.915
+                    },
+                    "operatingProfitMarginTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total TTM operating income / total TTM revenue, in percent. Weighted by revenue, not market cap.",
+                      "example": 13.77
+                    },
+                    "priceChangePercentage1d": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the latest session, in percent (`0.86` is +0.86%).",
+                      "example": 0.4196
+                    },
+                    "priceChangePercentage7d": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 7 days, in percent.",
+                      "example": 0.8979
+                    },
+                    "priceChangePercentage1m": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 30 days, in percent.",
+                      "example": 0.3504
+                    },
+                    "priceChangePercentage3m": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 3 calendar months, in percent.",
+                      "example": 3.812
+                    },
+                    "priceChangePercentage6m": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 6 calendar months, in percent.",
+                      "example": 20.51
+                    },
+                    "priceChangePercentageYtd": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change since January 1, in percent.",
+                      "example": 12.33
+                    },
+                    "priceChangePercentage1y": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last year, in percent.",
+                      "example": 15
+                    },
+                    "companyCount": {
+                      "type": "integer",
+                      "description": "Number of constituents.",
+                      "example": 3196
+                    },
+                    "coverage": {
+                      "type": "object",
+                      "description": "Share of the constituents' market cap that supplied each metric's inputs, from 0 to 1, keyed by metric name. A ratio is served as `null` when its coverage is below 0.6, rather than as a figure computed over the wrong subset.",
+                      "additionalProperties": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "example": {
+                        "priceChangePercentage1d": 1,
+                        "priceChangePercentage7d": 1,
+                        "priceChangePercentage1m": 1,
+                        "priceChangePercentage3m": 0.9997,
+                        "priceChangePercentage6m": 0.9743,
+                        "priceChangePercentageYtd": 0.9732,
+                        "priceChangePercentage1y": 0.9718,
+                        "trailingPE": 0.9692,
+                        "earningsYield": 0.9692,
+                        "priceToRevenue": 0.969,
+                        "priceToBook": 0.9995,
+                        "enterpriseValueToEbitda": 0.8866,
+                        "dividendYield": 0.7692,
+                        "holdersYield": 0.8687,
+                        "operatingProfitMarginTTM": 0.8866
+                      }
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "Most recent quote time across the constituents.",
+                      "example": "2026-09-25T19:59:00Z"
+                    },
+                    "volumeAsOf": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "When `dollarVolume24h` was taken.",
+                      "example": "2026-09-25T19:59:00Z"
+                    },
+                    "medianTrailingPE": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Median of the constituents' own P/E, over those with a positive one.",
+                      "example": 20.12
+                    },
+                    "medianPriceToRevenue": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Median of the constituents' own price to sales, over those with a positive one.",
+                      "example": 2.656
+                    },
+                    "medianPriceToBook": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Median of the constituents' own price to book, over those with a positive one.",
+                      "example": 2.226
+                    },
+                    "medianEnterpriseValueToEbitda": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Median of the constituents' own EV/EBITDA, over those with a positive one.",
+                      "example": 12.91
+                    },
+                    "medianOperatingProfitMarginTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Median of the constituents' own TTM operating margin, in percent.",
+                      "example": 8.51
+                    },
+                    "medianDividendYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Median of the constituents' own dividend yield, in percent.",
+                      "example": 2.318
+                    },
+                    "medianMarketCap": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Median constituent market cap, in USD.",
+                      "example": 2372244950.07
+                    },
+                    "sectorCount": {
+                      "type": "integer",
+                      "description": "Number of sectors, not counting `Unknown`.",
+                      "example": 11
+                    },
+                    "industryCount": {
+                      "type": "integer",
+                      "description": "Number of distinct industries.",
+                      "example": 144
+                    },
+                    "bestSector1d": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Sector with the highest `priceChangePercentage1d`. Never `Unknown`.",
+                      "properties": {
+                        "sector": {
+                          "type": "string",
+                          "description": "Sector name as the data vendor labels it (not GICS). Companies the vendor left unclassified roll up into `Unknown`.",
+                          "example": "Technology"
+                        },
+                        "sectorSlug": {
+                          "type": "string",
+                          "description": "URL-safe sector id. Pass it as `sector` to the other equities endpoints.",
+                          "example": "technology"
+                        },
+                        "priceChangePercentage1d": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Cap-weighted price change over the latest session, in percent.",
+                          "example": 0.861
+                        },
+                        "weight": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Share of all tracked US equity market cap, in percent.",
+                          "example": 35.54
+                        }
+                      }
+                    },
+                    "worstSector1d": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Sector with the lowest `priceChangePercentage1d`. Never `Unknown`.",
+                      "properties": {
+                        "sector": {
+                          "type": "string",
+                          "description": "Sector name as the data vendor labels it (not GICS). Companies the vendor left unclassified roll up into `Unknown`.",
+                          "example": "Energy"
+                        },
+                        "sectorSlug": {
+                          "type": "string",
+                          "description": "URL-safe sector id. Pass it as `sector` to the other equities endpoints.",
+                          "example": "energy"
+                        },
+                        "priceChangePercentage1d": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Cap-weighted price change over the latest session, in percent.",
+                          "example": -0.9536
+                        },
+                        "weight": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Share of all tracked US equity market cap, in percent.",
+                          "example": 3.368
+                        }
+                      }
+                    },
+                    "largestSector": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Sector with the largest market cap. Never `Unknown`.",
+                      "properties": {
+                        "sector": {
+                          "type": "string",
+                          "description": "Sector name as the data vendor labels it (not GICS). Companies the vendor left unclassified roll up into `Unknown`.",
+                          "example": "Technology"
+                        },
+                        "sectorSlug": {
+                          "type": "string",
+                          "description": "URL-safe sector id. Pass it as `sector` to the other equities endpoints.",
+                          "example": "technology"
+                        },
+                        "priceChangePercentage1d": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Cap-weighted price change over the latest session, in percent.",
+                          "example": 0.861
+                        },
+                        "weight": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Share of all tracked US equity market cap, in percent.",
+                          "example": 35.54
+                        }
+                      }
+                    }
+                  },
+                  "example": {
+                    "marketCap": 82964660714713.33,
+                    "marketCapChange1d": 345803139721.38,
+                    "dollarVolume24h": 582767711903.08,
+                    "revenueTTM": 24757148479483,
+                    "earningsTTM": 2642725287768,
+                    "ebitdaTTM": 4436690488724,
+                    "enterpriseValue": 100074056247123.19,
+                    "employeeCount": 45614558,
+                    "trailingPE": 30.43,
+                    "earningsYield": 3.287,
+                    "priceToRevenue": 3.247,
+                    "priceToBook": 4.871,
+                    "enterpriseValueToEbitda": 18.39,
+                    "dividendYield": 1.344,
+                    "holdersYield": 2.915,
+                    "operatingProfitMarginTTM": 13.77,
+                    "priceChangePercentage1d": 0.4196,
+                    "priceChangePercentage7d": 0.8979,
+                    "priceChangePercentage1m": 0.3504,
+                    "priceChangePercentage3m": 3.812,
+                    "priceChangePercentage6m": 20.51,
+                    "priceChangePercentageYtd": 12.33,
+                    "priceChangePercentage1y": 15,
+                    "companyCount": 3196,
+                    "coverage": {
+                      "priceChangePercentage1d": 1,
+                      "priceChangePercentage7d": 1,
+                      "priceChangePercentage1m": 1,
+                      "priceChangePercentage3m": 0.9997,
+                      "priceChangePercentage6m": 0.9743,
+                      "priceChangePercentageYtd": 0.9732,
+                      "priceChangePercentage1y": 0.9718,
+                      "trailingPE": 0.9692,
+                      "earningsYield": 0.9692,
+                      "priceToRevenue": 0.969,
+                      "priceToBook": 0.9995,
+                      "enterpriseValueToEbitda": 0.8866,
+                      "dividendYield": 0.7692,
+                      "holdersYield": 0.8687,
+                      "operatingProfitMarginTTM": 0.8866
+                    },
+                    "medianTrailingPE": 20.12,
+                    "medianPriceToRevenue": 2.656,
+                    "medianPriceToBook": 2.226,
+                    "medianEnterpriseValueToEbitda": 12.91,
+                    "medianOperatingProfitMarginTTM": 8.51,
+                    "medianDividendYield": 2.318,
+                    "medianMarketCap": 2372244950.07,
+                    "sectorCount": 11,
+                    "industryCount": 144,
+                    "bestSector1d": {
+                      "sector": "Technology",
+                      "sectorSlug": "technology",
+                      "priceChangePercentage1d": 0.861,
+                      "weight": 35.54
+                    },
+                    "worstSector1d": {
+                      "sector": "Energy",
+                      "sectorSlug": "energy",
+                      "priceChangePercentage1d": -0.9536,
+                      "weight": 3.368
+                    },
+                    "largestSector": {
+                      "sector": "Technology",
+                      "sectorSlug": "technology",
+                      "priceChangePercentage1d": 0.861,
+                      "weight": 35.54
+                    },
+                    "updatedAt": "2026-09-25T19:59:00Z",
+                    "volumeAsOf": "2026-09-25T19:59:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sector data not published yet"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/equities/v1/sector": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get details for one sector",
+        "description": "Returns one sector in full: everything its `GET /equities/v1/sectors` row has, plus a short description, the ten largest holdings, aggregate and median valuation ratios side by side, and how concentrated the sector is.\n\nCovers US-listed companies. All monetary values are in USD.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sector",
+            "in": "query",
+            "description": "Sector to return, as a slug (`technology`, `financial-services`) or as its label in any case (`Financial Services`). Valid values are the `sectorSlug`s returned by `GET /equities/v1/sectors`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "technology"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sector": {
+                      "type": "string",
+                      "description": "Sector name as the data vendor labels it (not GICS). Companies the vendor left unclassified roll up into `Unknown`.",
+                      "example": "Technology"
+                    },
+                    "sectorSlug": {
+                      "type": "string",
+                      "description": "URL-safe sector id. Pass it as `sector` to the other equities endpoints.",
+                      "example": "technology"
+                    },
+                    "rank": {
+                      "type": "integer",
+                      "description": "Position by market cap, starting at 1.",
+                      "example": 1
+                    },
+                    "weight": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Share of all tracked US equity market cap, in percent. Sums to 100 across sectors, `Unknown` included.",
+                      "example": 35.54
+                    },
+                    "dollarVolumeShare24h": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Share of all tracked US value traded in the latest session, in percent.",
+                      "example": 40.1
+                    },
+                    "industryCount": {
+                      "type": "integer",
+                      "description": "Number of distinct industries in the sector.",
+                      "example": 12
+                    },
+                    "marketCap": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total market cap of the constituents, in USD.",
+                      "example": 29484487070530.91
+                    },
+                    "marketCapChange1d": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Change in total market cap over the latest session, in USD. Reconciles exactly with `priceChangePercentage1d`.",
+                      "example": 251664986364.37
+                    },
+                    "dollarVolume24h": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Value traded in the latest session (shares traded × price, summed), in USD. Reads low while a session is still open; `volumeAsOf` says when it was taken.",
+                      "example": 233706720783.08
+                    },
+                    "revenueTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total trailing twelve month revenue, in USD.",
+                      "example": 3618619651351
+                    },
+                    "earningsTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total trailing twelve month earnings, in USD.",
+                      "example": 729280268773
+                    },
+                    "ebitdaTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total trailing twelve month EBITDA, in USD.",
+                      "example": 1159818834166
+                    },
+                    "enterpriseValue": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total enterprise value, in USD.",
+                      "example": 30012989630394.37
+                    },
+                    "employeeCount": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total employees across the constituents that report a headcount. `null` when none do.",
+                      "example": 6808759
+                    },
+                    "trailingPE": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate price to earnings: total market cap / total TTM earnings. `null` when total earnings are zero or negative; use `earningsYield` then.",
+                      "example": 40.3
+                    },
+                    "earningsYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "100 × total TTM earnings / total market cap, in percent. Signed, so it stays defined when `trailingPE` is `null` for a loss-making group.",
+                      "example": 2.482
+                    },
+                    "priceToRevenue": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate price to sales: total market cap / total TTM revenue.",
+                      "example": 8.121
+                    },
+                    "priceToBook": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate price to book: total market cap / total shareholders' equity.",
+                      "example": 12.1
+                    },
+                    "enterpriseValueToEbitda": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Aggregate EV/EBITDA: total enterprise value / total TTM EBITDA.",
+                      "example": 25.8
+                    },
+                    "dividendYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "100 × total TTM dividends / total market cap, in percent.",
+                      "example": 0.5053
+                    },
+                    "holdersYield": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "100 × total TTM holders' revenue (dividends plus buybacks, net of share issuance) / total market cap, in percent.",
+                      "example": 1.719
+                    },
+                    "operatingProfitMarginTTM": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Total TTM operating income / total TTM revenue, in percent. Weighted by revenue, not market cap.",
+                      "example": 24.65
+                    },
+                    "priceChangePercentage1d": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the latest session, in percent (`0.86` is +0.86%).",
+                      "example": 0.861
+                    },
+                    "priceChangePercentage7d": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 7 days, in percent.",
+                      "example": 2.951
+                    },
+                    "priceChangePercentage1m": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 30 days, in percent.",
+                      "example": 6.681
+                    },
+                    "priceChangePercentage3m": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 3 calendar months, in percent.",
+                      "example": 11.65
+                    },
+                    "priceChangePercentage6m": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last 6 calendar months, in percent.",
+                      "example": 45.56
+                    },
+                    "priceChangePercentageYtd": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change since January 1, in percent.",
+                      "example": 29.18
+                    },
+                    "priceChangePercentage1y": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Cap-weighted price change over the last year, in percent.",
+                      "example": 30.25
+                    },
+                    "companyCount": {
+                      "type": "integer",
+                      "description": "Number of constituents.",
+                      "example": 475
+                    },
+                    "coverage": {
+                      "type": "object",
+                      "description": "Share of the constituents' market cap that supplied each metric's inputs, from 0 to 1, keyed by metric name. A ratio is served as `null` when its coverage is below 0.6, rather than as a figure computed over the wrong subset.",
+                      "additionalProperties": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "example": {
+                        "priceChangePercentage1d": 1,
+                        "priceChangePercentage7d": 1,
+                        "priceChangePercentage1m": 1,
+                        "priceChangePercentage3m": 0.9998,
+                        "priceChangePercentage6m": 0.9979,
+                        "priceChangePercentageYtd": 0.9976,
+                        "priceChangePercentage1y": 0.9964,
+                        "trailingPE": 0.9967,
+                        "earningsYield": 0.9967,
+                        "priceToRevenue": 0.9967,
+                        "priceToBook": 1,
+                        "enterpriseValueToEbitda": 0.9967,
+                        "dividendYield": 0.8057,
+                        "holdersYield": 0.9594,
+                        "operatingProfitMarginTTM": 0.9967
+                      }
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "Most recent quote time across the constituents.",
+                      "example": "2026-09-25T19:59:00Z"
+                    },
+                    "volumeAsOf": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "When `dollarVolume24h` was taken.",
+                      "example": "2026-09-25T19:59:00Z"
+                    },
+                    "topHoldings": {
+                      "type": "array",
+                      "description": "The ten largest constituents by market cap.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ticker": {
+                            "type": "string",
+                            "example": "NVDA"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "NVIDIA Corporation"
+                          },
+                          "marketCap": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Market cap, in USD.",
+                            "example": 5451313781934.43
+                          },
+                          "sectorWeight": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Share of this sector's market cap, in percent.",
+                            "example": 18.49
+                          },
+                          "priceChangePercentage1d": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Price change over the latest session, in percent.",
+                            "example": 0.2182
+                          }
+                        }
+                      }
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Short description of what the sector covers.",
+                      "example": "Semiconductors, software, hardware and IT services."
+                    },
+                    "valuation": {
+                      "type": "object",
+                      "description": "The sector's aggregate ratios (same values as the top-level fields) next to the median of its constituents' own ratios. Compare aggregate with aggregate and median with median, for example against `GET /equities/v1/sectors-overview`.",
+                      "properties": {
+                        "trailingPE": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Aggregate P/E.",
+                          "example": 40.3
+                        },
+                        "earningsYield": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Aggregate earnings yield, in percent.",
+                          "example": 2.482
+                        },
+                        "priceToRevenue": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Aggregate price to sales.",
+                          "example": 8.121
+                        },
+                        "priceToBook": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Aggregate price to book.",
+                          "example": 12.1
+                        },
+                        "enterpriseValueToEbitda": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Aggregate EV/EBITDA.",
+                          "example": 25.8
+                        },
+                        "operatingProfitMarginTTM": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Revenue-weighted TTM operating margin, in percent.",
+                          "example": 24.65
+                        },
+                        "dividendYield": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Aggregate dividend yield, in percent.",
+                          "example": 0.5053
+                        },
+                        "medianTrailingPE": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Median of the constituents' own P/E, over those with a positive one.",
+                          "example": 32.53
+                        },
+                        "medianPriceToRevenue": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Median of the constituents' own price to sales, over those with a positive one.",
+                          "example": 3.601
+                        },
+                        "medianPriceToBook": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Median of the constituents' own price to book, over those with a positive one.",
+                          "example": 4.45
+                        },
+                        "medianEnterpriseValueToEbitda": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Median of the constituents' own EV/EBITDA, over those with a positive one.",
+                          "example": 18.73
+                        },
+                        "medianOperatingProfitMarginTTM": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Median of the constituents' own TTM operating margin, in percent.",
+                          "example": 6.05
+                        },
+                        "medianDividendYield": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Median of the constituents' own dividend yield, in percent.",
+                          "example": 0.9544
+                        }
+                      }
+                    },
+                    "concentration": {
+                      "type": "object",
+                      "description": "How much of the sector's market cap sits in its largest constituents.",
+                      "properties": {
+                        "top10MarketCapShare": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Share of the sector's market cap held by its ten largest constituents, in percent.",
+                          "example": 68.24
+                        },
+                        "hhi": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Herfindahl-Hirschman index over the constituents' percentage shares of sector market cap, from 0 to 10,000. A single-company sector is 10,000 and ten equal constituents are 1,000.",
+                          "example": 889
+                        },
+                        "megaCapCount": {
+                          "type": "integer",
+                          "description": "Number of constituents with a market cap of at least `megaCapThreshold`.",
+                          "example": 24
+                        },
+                        "megaCapThreshold": {
+                          "type": "number",
+                          "description": "Market cap, in USD, from which a company counts as mega cap.",
+                          "example": 200000000000
+                        },
+                        "medianMarketCap": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Median constituent market cap, in USD.",
+                          "example": 3171914000
+                        }
+                      }
+                    }
+                  },
+                  "example": {
+                    "sector": "Technology",
+                    "sectorSlug": "technology",
+                    "marketCap": 29484487070530.91,
+                    "marketCapChange1d": 251664986364.37,
+                    "dollarVolume24h": 233706720783.08,
+                    "revenueTTM": 3618619651351,
+                    "earningsTTM": 729280268773,
+                    "ebitdaTTM": 1159818834166,
+                    "enterpriseValue": 30012989630394.37,
+                    "employeeCount": 6808759,
+                    "trailingPE": 40.3,
+                    "earningsYield": 2.482,
+                    "priceToRevenue": 8.121,
+                    "priceToBook": 12.1,
+                    "enterpriseValueToEbitda": 25.8,
+                    "dividendYield": 0.5053,
+                    "holdersYield": 1.719,
+                    "operatingProfitMarginTTM": 24.65,
+                    "priceChangePercentage1d": 0.861,
+                    "priceChangePercentage7d": 2.951,
+                    "priceChangePercentage1m": 6.681,
+                    "priceChangePercentage3m": 11.65,
+                    "priceChangePercentage6m": 45.56,
+                    "priceChangePercentageYtd": 29.18,
+                    "priceChangePercentage1y": 30.25,
+                    "companyCount": 475,
+                    "coverage": {
+                      "priceChangePercentage1d": 1,
+                      "priceChangePercentage7d": 1,
+                      "priceChangePercentage1m": 1,
+                      "priceChangePercentage3m": 0.9998,
+                      "priceChangePercentage6m": 0.9979,
+                      "priceChangePercentageYtd": 0.9976,
+                      "priceChangePercentage1y": 0.9964,
+                      "trailingPE": 0.9967,
+                      "earningsYield": 0.9967,
+                      "priceToRevenue": 0.9967,
+                      "priceToBook": 1,
+                      "enterpriseValueToEbitda": 0.9967,
+                      "dividendYield": 0.8057,
+                      "holdersYield": 0.9594,
+                      "operatingProfitMarginTTM": 0.9967
+                    },
+                    "weight": 35.54,
+                    "dollarVolumeShare24h": 40.1,
+                    "industryCount": 12,
+                    "topHoldings": [
+                      {
+                        "ticker": "NVDA",
+                        "name": "NVIDIA Corporation",
+                        "marketCap": 5451313781934.43,
+                        "sectorWeight": 18.49,
+                        "priceChangePercentage1d": 0.2182
+                      },
+                      {
+                        "ticker": "AAPL",
+                        "name": "Apple Inc.",
+                        "marketCap": 5009416613731.49,
+                        "sectorWeight": 16.99,
+                        "priceChangePercentage1d": 1.533
+                      },
+                      {
+                        "ticker": "MSFT",
+                        "name": "Microsoft Corporation Common Stock",
+                        "marketCap": 3833594441460,
+                        "sectorWeight": 13,
+                        "priceChangePercentage1d": 3.663
+                      },
+                      {
+                        "ticker": "AVGO",
+                        "name": "Broadcom Inc.",
+                        "marketCap": 1684314940000,
+                        "sectorWeight": 5.713,
+                        "priceChangePercentage1d": 0.6993
+                      },
+                      {
+                        "ticker": "MU",
+                        "name": "Micron Technology Inc.",
+                        "marketCap": 1222319653346.07,
+                        "sectorWeight": 4.146,
+                        "priceChangePercentage1d": 0.162
+                      },
+                      {
+                        "ticker": "AMD",
+                        "name": "Advanced Micro Devices Inc.",
+                        "marketCap": 1029188160000,
+                        "sectorWeight": 3.491,
+                        "priceChangePercentage1d": 0.2177
+                      },
+                      {
+                        "ticker": "INTC",
+                        "name": "Intel Corporation",
+                        "marketCap": 617829000000,
+                        "sectorWeight": 2.095,
+                        "priceChangePercentage1d": -3.446
+                      },
+                      {
+                        "ticker": "PLTR",
+                        "name": "Palantir Technologies Inc. Class A Common Stock",
+                        "marketCap": 455757473990,
+                        "sectorWeight": 1.546,
+                        "priceChangePercentage1d": -1.516
+                      },
+                      {
+                        "ticker": "CSCO",
+                        "name": "Cisco Systems, Inc.",
+                        "marketCap": 421038200000,
+                        "sectorWeight": 1.428,
+                        "priceChangePercentage1d": -0.2524
+                      },
+                      {
+                        "ticker": "ORCL",
+                        "name": "Oracle Corporation",
+                        "marketCap": 394848028800,
+                        "sectorWeight": 1.339,
+                        "priceChangePercentage1d": -1.749
+                      }
+                    ],
+                    "updatedAt": "2026-09-25T19:59:00Z",
+                    "volumeAsOf": "2026-09-25T19:59:00Z",
+                    "rank": 1,
+                    "description": "Semiconductors, software, hardware and IT services.",
+                    "valuation": {
+                      "trailingPE": 40.3,
+                      "earningsYield": 2.482,
+                      "priceToRevenue": 8.121,
+                      "priceToBook": 12.1,
+                      "enterpriseValueToEbitda": 25.8,
+                      "operatingProfitMarginTTM": 24.65,
+                      "dividendYield": 0.5053,
+                      "medianTrailingPE": 32.53,
+                      "medianPriceToRevenue": 3.601,
+                      "medianPriceToBook": 4.45,
+                      "medianEnterpriseValueToEbitda": 18.73,
+                      "medianOperatingProfitMarginTTM": 6.05,
+                      "medianDividendYield": 0.9544
+                    },
+                    "concentration": {
+                      "top10MarketCapShare": 68.24,
+                      "hhi": 889,
+                      "megaCapCount": 24,
+                      "megaCapThreshold": 200000000000,
+                      "medianMarketCap": 3171914000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or unknown `sector`"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/equities/v1/industries": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get industries",
+        "description": "Returns one row per industry, sorted by market cap (largest first), with the same metrics as a `GET /equities/v1/sectors` row plus the parent sector. Filter to one sector with `sector`, or to one industry with `industry`.\n\nEach row carries two weights: `weight` is the share of all tracked US equity, and `sectorWeight` is the share of the parent sector. For Technology's industries, `sectorWeight` sums to 100 while `weight` sums to Technology's own weight in the market.\n\n`rank` counts within the selected sector when `sector` is set, and across all industries otherwise. Filtering by `industry` alone keeps each row's market-wide rank.\n\nThe same industry name can exist under two sectors, so `industry` alone can return more than one row.\n\nCovers US-listed companies. All monetary values are in USD.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sector",
+            "in": "query",
+            "description": "Only return industries in this sector, as a slug (`technology`, `financial-services`) or as its label in any case (`Financial Services`). Valid values are the `sectorSlug`s returned by `GET /equities/v1/sectors`. An unknown value returns an empty list.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "technology"
+            }
+          },
+          {
+            "name": "industry",
+            "in": "query",
+            "description": "Only return this industry, as a slug (`semiconductors`) or as its label in any case (`Semiconductors`). An unknown value returns an empty list.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "semiconductors"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "industry": {
+                        "type": "string",
+                        "description": "Industry name as the data vendor labels it.",
+                        "example": "Semiconductors"
+                      },
+                      "industrySlug": {
+                        "type": "string",
+                        "description": "URL-safe industry id. Pass it as `industry` to filter.",
+                        "example": "semiconductors"
+                      },
+                      "sector": {
+                        "type": "string",
+                        "description": "Sector name as the data vendor labels it (not GICS). Companies the vendor left unclassified roll up into `Unknown`.",
+                        "example": "Technology"
+                      },
+                      "sectorSlug": {
+                        "type": "string",
+                        "description": "URL-safe sector id. Pass it as `sector` to the other equities endpoints.",
+                        "example": "technology"
+                      },
+                      "rank": {
+                        "type": "integer",
+                        "description": "Position by market cap, starting at 1. See the note on ranking above.",
+                        "example": 1
+                      },
+                      "weight": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Share of all tracked US equity market cap, in percent.",
+                        "example": 13.8
+                      },
+                      "sectorWeight": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Share of the parent sector's market cap, in percent.",
+                        "example": 38.83
+                      },
+                      "dollarVolumeShare24h": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Share of all tracked US value traded in the latest session, in percent.",
+                        "example": 15.74
+                      },
+                      "marketCap": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total market cap of the constituents, in USD.",
+                        "example": 11449062913733.04
+                      },
+                      "marketCapChange1d": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Change in total market cap over the latest session, in USD. Reconciles exactly with `priceChangePercentage1d`.",
+                        "example": 45052557957.41
+                      },
+                      "dollarVolume24h": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Value traded in the latest session (shares traded × price, summed), in USD. Reads low while a session is still open; `volumeAsOf` says when it was taken.",
+                        "example": 91746535047
+                      },
+                      "revenueTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total trailing twelve month revenue, in USD.",
+                        "example": 676181976411
+                      },
+                      "earningsTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total trailing twelve month earnings, in USD.",
+                        "example": 281424204118
+                      },
+                      "ebitdaTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total trailing twelve month EBITDA, in USD.",
+                        "example": 390274528397
+                      },
+                      "enterpriseValue": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total enterprise value, in USD.",
+                        "example": 11425992099839.04
+                      },
+                      "employeeCount": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total employees across the constituents that report a headcount. `null` when none do.",
+                        "example": 527732
+                      },
+                      "trailingPE": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate price to earnings: total market cap / total TTM earnings. `null` when total earnings are zero or negative; use `earningsYield` then.",
+                        "example": 40.51
+                      },
+                      "earningsYield": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "100 × total TTM earnings / total market cap, in percent. Signed, so it stays defined when `trailingPE` is `null` for a loss-making group.",
+                        "example": 2.469
+                      },
+                      "priceToRevenue": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate price to sales: total market cap / total TTM revenue.",
+                        "example": 16.86
+                      },
+                      "priceToBook": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate price to book: total market cap / total shareholders' equity.",
+                        "example": 15.31
+                      },
+                      "enterpriseValueToEbitda": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Aggregate EV/EBITDA: total enterprise value / total TTM EBITDA.",
+                        "example": 29.17
+                      },
+                      "dividendYield": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "100 × total TTM dividends / total market cap, in percent.",
+                        "example": 0.2731
+                      },
+                      "holdersYield": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "100 × total TTM holders' revenue (dividends plus buybacks, net of share issuance) / total market cap, in percent.",
+                        "example": 0.9171
+                      },
+                      "operatingProfitMarginTTM": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Total TTM operating income / total TTM revenue, in percent. Weighted by revenue, not market cap.",
+                        "example": 45.36
+                      },
+                      "priceChangePercentage1d": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the latest session, in percent (`0.86` is +0.86%).",
+                        "example": 0.3951
+                      },
+                      "priceChangePercentage7d": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 7 days, in percent.",
+                        "example": 3.745
+                      },
+                      "priceChangePercentage1m": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 30 days, in percent.",
+                        "example": 10.31
+                      },
+                      "priceChangePercentage3m": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 3 calendar months, in percent.",
+                        "example": 7.26
+                      },
+                      "priceChangePercentage6m": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last 6 calendar months, in percent.",
+                        "example": 55.79
+                      },
+                      "priceChangePercentageYtd": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change since January 1, in percent.",
+                        "example": 44.12
+                      },
+                      "priceChangePercentage1y": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "Cap-weighted price change over the last year, in percent.",
+                        "example": 53.79
+                      },
+                      "companyCount": {
+                        "type": "integer",
+                        "description": "Number of constituents.",
+                        "example": 50
+                      },
+                      "coverage": {
+                        "type": "object",
+                        "description": "Share of the constituents' market cap that supplied each metric's inputs, from 0 to 1, keyed by metric name. A ratio is served as `null` when its coverage is below 0.6, rather than as a figure computed over the wrong subset.",
+                        "additionalProperties": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "example": {
+                          "priceChangePercentage1d": 1,
+                          "priceChangePercentage7d": 1,
+                          "priceChangePercentage1m": 1,
+                          "priceChangePercentage3m": 1,
+                          "priceChangePercentage6m": 0.9959,
+                          "priceChangePercentageYtd": 0.9959,
+                          "priceChangePercentage1y": 0.9958,
+                          "trailingPE": 0.9957,
+                          "earningsYield": 0.9957,
+                          "priceToRevenue": 0.9957,
+                          "priceToBook": 1,
+                          "enterpriseValueToEbitda": 0.9957,
+                          "dividendYield": 0.8788,
+                          "holdersYield": 0.9821,
+                          "operatingProfitMarginTTM": 0.9957
+                        }
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true,
+                        "description": "Most recent quote time across the constituents.",
+                        "example": "2026-09-25T19:59:00Z"
+                      },
+                      "volumeAsOf": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true,
+                        "description": "When `dollarVolume24h` was taken.",
+                        "example": "2026-09-25T19:59:00Z"
+                      },
+                      "topHoldings": {
+                        "type": "array",
+                        "description": "The three largest constituents by market cap.",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "ticker": {
+                              "type": "string",
+                              "example": "NVDA"
+                            },
+                            "name": {
+                              "type": "string",
+                              "example": "NVIDIA Corporation"
+                            },
+                            "marketCap": {
+                              "type": "number",
+                              "nullable": true,
+                              "description": "Market cap, in USD.",
+                              "example": 5451313781934.43
+                            },
+                            "sectorWeight": {
+                              "type": "number",
+                              "nullable": true,
+                              "description": "Share of this industry's market cap, in percent. The name matches the sector holdings.",
+                              "example": 47.61
+                            },
+                            "priceChangePercentage1d": {
+                              "type": "number",
+                              "nullable": true,
+                              "description": "Price change over the latest session, in percent.",
+                              "example": 0.2182
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "example": [
+                    {
+                      "industry": "Semiconductors",
+                      "industrySlug": "semiconductors",
+                      "sector": "Technology",
+                      "sectorSlug": "technology",
+                      "marketCap": 11449062913733.04,
+                      "marketCapChange1d": 45052557957.41,
+                      "dollarVolume24h": 91746535047,
+                      "revenueTTM": 676181976411,
+                      "earningsTTM": 281424204118,
+                      "ebitdaTTM": 390274528397,
+                      "enterpriseValue": 11425992099839.04,
+                      "employeeCount": 527732,
+                      "trailingPE": 40.51,
+                      "earningsYield": 2.469,
+                      "priceToRevenue": 16.86,
+                      "priceToBook": 15.31,
+                      "enterpriseValueToEbitda": 29.17,
+                      "dividendYield": 0.2731,
+                      "holdersYield": 0.9171,
+                      "operatingProfitMarginTTM": 45.36,
+                      "priceChangePercentage1d": 0.3951,
+                      "priceChangePercentage7d": 3.745,
+                      "priceChangePercentage1m": 10.31,
+                      "priceChangePercentage3m": 7.26,
+                      "priceChangePercentage6m": 55.79,
+                      "priceChangePercentageYtd": 44.12,
+                      "priceChangePercentage1y": 53.79,
+                      "companyCount": 50,
+                      "coverage": {
+                        "priceChangePercentage1d": 1,
+                        "priceChangePercentage7d": 1,
+                        "priceChangePercentage1m": 1,
+                        "priceChangePercentage3m": 1,
+                        "priceChangePercentage6m": 0.9959,
+                        "priceChangePercentageYtd": 0.9959,
+                        "priceChangePercentage1y": 0.9958,
+                        "trailingPE": 0.9957,
+                        "earningsYield": 0.9957,
+                        "priceToRevenue": 0.9957,
+                        "priceToBook": 1,
+                        "enterpriseValueToEbitda": 0.9957,
+                        "dividendYield": 0.8788,
+                        "holdersYield": 0.9821,
+                        "operatingProfitMarginTTM": 0.9957
+                      },
+                      "weight": 13.8,
+                      "sectorWeight": 38.83,
+                      "dollarVolumeShare24h": 15.74,
+                      "topHoldings": [
+                        {
+                          "ticker": "NVDA",
+                          "name": "NVIDIA Corporation",
+                          "marketCap": 5451313781934.43,
+                          "sectorWeight": 47.61,
+                          "priceChangePercentage1d": 0.2182
+                        },
+                        {
+                          "ticker": "AVGO",
+                          "name": "Broadcom Inc.",
+                          "marketCap": 1684314940000,
+                          "sectorWeight": 14.71,
+                          "priceChangePercentage1d": 0.6993
+                        },
+                        {
+                          "ticker": "MU",
+                          "name": "Micron Technology Inc.",
+                          "marketCap": 1222319653346.07,
+                          "sectorWeight": 10.68,
+                          "priceChangePercentage1d": 0.162
+                        }
+                      ],
+                      "updatedAt": "2026-09-25T19:59:00Z",
+                      "volumeAsOf": "2026-09-25T19:59:00Z",
+                      "rank": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/equities/v1/earnings-calendar": {
+      "get": {
+        "tags": ["Equities"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get earnings calendar",
+        "description": "Returns earnings report dates built from SEC EDGAR filings: past reports, plus the next four expected dates projected from each company's own filing history. Covers US-listed companies.\n\nThe same path serves two shapes:\n\n- **With `ticker`**: that company's full history plus its upcoming estimates.\n- **Without `ticker`**: the market-wide calendar over a rolling window from about 1 month back to about 13 months ahead. Use the `ticker` form for older history.\n\nRows are sorted by `report_date`, oldest first, so `limit` keeps the earliest matches. `?ticker=AAPL&status=estimated&limit=1` is Apple's next report.\n\nEvery row says what kind of date it is in `date_status`. A future date is `estimated`, with a `max_drift_days` range, and is not a confirmed schedule.\n\nCompany names are not included. Join on `ticker` against `GET /equities/v1/companies-list`.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Stock ticker symbol (case-insensitive). When set, returns that company's full calendar.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "AAPL"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Earliest `report_date` to include, as `YYYY-MM-DD` (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-10-26"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Latest `report_date` to include, as `YYYY-MM-DD` (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-10-30"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only return rows with this `date_status` (case-insensitive). `confirmed` is accepted but nothing produces it yet, so it returns an empty list.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["reported", "inferred", "confirmed", "estimated"],
+              "example": "estimated"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum rows to return, taken from the earliest `report_date`. Positive integer; values above 20000 are capped at 20000.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20000,
+              "default": 20000,
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-Total-Matches": {
+                "description": "Rows matching the filters before `limit` was applied.",
+                "schema": {
+                  "type": "integer",
+                  "example": 4
+                }
+              },
+              "X-Result-Truncated": {
+                "description": "`true` when `limit` cut the result short.",
+                "schema": {
+                  "type": "string",
+                  "enum": ["true", "false"],
+                  "example": "true"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ticker": {
+                        "type": "string",
+                        "example": "AAPL"
+                      },
+                      "iso2_country_code": {
+                        "type": "string",
+                        "example": "US"
+                      },
+                      "cik": {
+                        "type": "string",
+                        "description": "SEC CIK of the registrant that filed the row. Differs from the company's current CIK for rows inherited from a predecessor after a reorganisation.",
+                        "example": "320193"
+                      },
+                      "event_key": {
+                        "type": "string",
+                        "description": "`<fiscal_year>-<fiscal_period>`, the row's identity. When the report arrives, its row replaces the estimate with the same key.",
+                        "example": "2026-Q3"
+                      },
+                      "date_status": {
+                        "type": "string",
+                        "enum": ["reported", "inferred", "confirmed", "estimated"],
+                        "description": "`reported`: an earnings release (8-K Item 2.02) was filed. `inferred`: no release that quarter, so the date comes from the 10-Q or 10-K (filing-backed, but weaker). `estimated`: projected from the company's past cadence. `confirmed`: announced by the company; not produced yet.",
+                        "example": "reported"
+                      },
+                      "report_date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "US Eastern date of the report, from the SEC acceptance timestamp rather than EDGAR's filing date.",
+                        "example": "2026-07-30"
+                      },
+                      "report_time": {
+                        "type": "string",
+                        "enum": ["bmo", "dmt", "amc", "unknown"],
+                        "description": "`bmo`: before 09:30 ET. `dmt`: during market hours. `amc`: after 16:00 ET. `unknown`: no timestamp, as on estimates. Taken from the SEC acceptance time, not the newswire.",
+                        "example": "amc"
+                      },
+                      "accepted_at": {
+                        "type": "string",
+                        "description": "Raw SEC acceptance timestamp, in UTC. Empty on estimates.",
+                        "example": "2026-07-30T20:30:28.000Z"
+                      },
+                      "fiscal_year": {
+                        "type": "integer",
+                        "description": "Fiscal year the quarter belongs to, named for the calendar year it ends in.",
+                        "example": 2026
+                      },
+                      "fiscal_period": {
+                        "type": "string",
+                        "enum": ["Q1", "Q2", "Q3", "Q4"],
+                        "example": "Q3"
+                      },
+                      "period_end": {
+                        "type": "string",
+                        "description": "Last day of the fiscal period the report covers. Empty for a release whose 10-Q has not been filed yet, and for estimates projected from one.",
+                        "example": "2026-06-27"
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": ["8k_item_202", "periodic_filing", "cadence_model"],
+                        "description": "`8k_item_202`: an earnings release. `periodic_filing`: a 10-Q or 10-K, used when there was no release. `cadence_model`: an estimate.",
+                        "example": "8k_item_202"
+                      },
+                      "source_form": {
+                        "type": "string",
+                        "description": "SEC form the date comes from, such as `8-K`, `10-Q` or `10-K`. Empty on estimates.",
+                        "example": "8-K"
+                      },
+                      "accession_number": {
+                        "type": "string",
+                        "description": "SEC accession number of that filing. Empty on estimates.",
+                        "example": "0000320193-26-000018"
+                      },
+                      "max_drift_days": {
+                        "type": "integer",
+                        "nullable": true,
+                        "description": "On estimates, how many days either side of `report_date` the real date may land. 96% of real dates fell inside this range when tested against past reports. Wider for small caps and short histories. `null` on filing-backed rows.",
+                        "example": 7
+                      },
+                      "first_published_at": {
+                        "type": "string",
+                        "description": "When this `event_key` was first published (`YYYY-MM-DD HH:MM:SS.sss`).",
+                        "example": "2026-09-21 12:47:28.451"
+                      },
+                      "revision_count": {
+                        "type": "integer",
+                        "description": "How many times the filing-backed date has moved since it was first published.",
+                        "example": 0
+                      },
+                      "previous_report_date": {
+                        "type": "string",
+                        "description": "The `report_date` before the most recent move. Empty if it never moved.",
+                        "example": ""
+                      },
+                      "inserted_at": {
+                        "type": "string",
+                        "description": "When this row was last written (`YYYY-MM-DD HH:MM:SS.sss`).",
+                        "example": "2026-09-27 03:15:57.342"
+                      }
+                    }
+                  },
+                  "example": [
+                    {
+                      "ticker": "AAPL",
+                      "iso2_country_code": "US",
+                      "cik": "320193",
+                      "event_key": "2026-Q3",
+                      "date_status": "reported",
+                      "report_date": "2026-07-30",
+                      "report_time": "amc",
+                      "accepted_at": "2026-07-30T20:30:28.000Z",
+                      "fiscal_year": 2026,
+                      "fiscal_period": "Q3",
+                      "period_end": "2026-06-27",
+                      "source": "8k_item_202",
+                      "source_form": "8-K",
+                      "accession_number": "0000320193-26-000018",
+                      "max_drift_days": null,
+                      "first_published_at": "2026-09-21 12:47:28.451",
+                      "revision_count": 0,
+                      "previous_report_date": "",
+                      "inserted_at": "2026-09-27 03:15:57.342"
+                    },
+                    {
+                      "ticker": "AAPL",
+                      "iso2_country_code": "US",
+                      "cik": "320193",
+                      "event_key": "2026-Q4",
+                      "date_status": "estimated",
+                      "report_date": "2026-10-29",
+                      "report_time": "unknown",
+                      "accepted_at": "",
+                      "fiscal_year": 2026,
+                      "fiscal_period": "Q4",
+                      "period_end": "2026-09-26",
+                      "source": "cadence_model",
+                      "source_form": "",
+                      "accession_number": "",
+                      "max_drift_days": 7,
+                      "first_published_at": "2026-09-21 12:47:28.451",
+                      "revision_count": 0,
+                      "previous_report_date": "",
+                      "inserted_at": "2026-09-27 03:15:57.342"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid `limit`"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "`ticker` is not a tracked company"
           },
           "500": {
             "description": "Internal server error"

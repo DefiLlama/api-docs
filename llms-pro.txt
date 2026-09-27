@@ -315,8 +315,12 @@ Data provided by [Twelve Data](https://twelvedata.com/).
 
 ### GET /equities/v1/companies-list
 **Base URL:** `https://pro-api.llama.fi`
-Get list of all tracked public companies. Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.
-Returns: array of tracked companies, each `{ticker, companyName, country (ISO 3166-1 alpha-2), countryName}`
+Get list of all tracked US-listed companies. Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.
+
+**Parameters:**
+  - `sector` (query, string, optional) — Only return companies in this sector, as a slug (`technology`) or its label in any case (`Financial Services`). Valid values are the `sectorSlug`s from `GET /equities/v1/sectors`. Example: `technology`
+  - `industry` (query, string, optional) — Only return companies in this industry, as a slug (`semiconductors`) or its label in any case. Valid values are the `industrySlug`s from `GET /equities/v1/industries`. Example: `semiconductors`
+Returns: array of tracked companies sorted by market cap (largest first), each `{ticker, companyName, country (ISO 3166-1 alpha-2), countryName, sectorSlug, industrySlug}`. An unknown `sector` or `industry` value returns an empty array.
 
 ### GET /equities/v1/statements
 **Base URL:** `https://pro-api.llama.fi`
@@ -382,6 +386,51 @@ Get on-chain tradeable markets for a company (perpetual futures venues and token
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
   - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
 Returns: `{perps, tokens}`. Each perp is `{pair, price, volume24h, openInterest, annualizedFundingRate, tradeUrl, contractSlug, exchangeProtocolSlug, rwaPlatformSlug, exchangeType (CEX or DEX), updatedAt}` (`annualizedFundingRate` is a percent, so `-70.13` is -70.13% a year); each token is `{issuer, issuerRwaPlatformSlug, price, assetSlug, activeMarketcap}` (`issuer` is the token issuer, not the listed company). A live hourly snapshot with no history. On-chain data is only collected for US-listed tickers, so a ticker in another market returns empty arrays rather than an error.
+
+### Sectors and industries
+
+The sector and industry endpoints cover US-listed companies; all monetary values are in USD. Sector and industry names are the data vendor's labels (11 sectors, about 140 industries), not GICS; companies with no sector are grouped as `Unknown` so sector market caps sum to the market total. Ratios such as `trailingPE` are aggregates (total market cap / total earnings), not averages of constituent ratios, and are `null` when the denominator is zero or negative or when less than 60% of the group's market cap supplied the inputs (see `coverage`). Price changes are cap-weighted from the start of each window. Percentages are percent, not fractions: `1.82` means +1.82%.
+
+Every sector and industry row carries the same metric block: `{marketCap, marketCapChange1d, dollarVolume24h, revenueTTM, earningsTTM, ebitdaTTM, enterpriseValue, employeeCount, trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, dividendYield, holdersYield, operatingProfitMarginTTM, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChangePercentage3m, priceChangePercentage6m, priceChangePercentageYtd, priceChangePercentage1y, companyCount, coverage, updatedAt, volumeAsOf}`. `earningsYield` is signed, so it stays defined when `trailingPE` is `null` for a loss-making group. `coverage` maps each metric name to the share (0 to 1) of market cap that supplied its inputs.
+
+### GET /equities/v1/sectors
+**Base URL:** `https://pro-api.llama.fi`
+Get all sectors
+Returns: array of sectors sorted by market cap (largest first), each `{sector, sectorSlug, rank, weight, dollarVolumeShare24h, industryCount, topHoldings, ...metric block}`. `weight` is the share of all tracked US equity market cap and sums to 100 across sectors. `topHoldings` lists the 3 largest constituents, each `{ticker, name, marketCap, sectorWeight, priceChangePercentage1d}` where `sectorWeight` is the share of the sector's market cap. Pass `sectorSlug` as `sector` to the other endpoints.
+
+### GET /equities/v1/sectors-overview
+**Base URL:** `https://pro-api.llama.fi`
+Get market-wide totals across all tracked US companies
+Returns: `{...metric block, medianTrailingPE, medianPriceToRevenue, medianPriceToBook, medianEnterpriseValueToEbitda, medianOperatingProfitMarginTTM, medianDividendYield, medianMarketCap, sectorCount, industryCount, bestSector1d, worstSector1d, largestSector}`. `marketCap` is the denominator behind every sector `weight`. Aggregate and median ratios sit side by side; compare aggregate with aggregate and median with median. `bestSector1d`, `worstSector1d` and `largestSector` are each `{sector, sectorSlug, priceChangePercentage1d, weight}` and never `Unknown`. `sectorCount` excludes `Unknown`.
+
+### GET /equities/v1/sector
+**Base URL:** `https://pro-api.llama.fi`
+Get details for one sector
+
+**Parameters:**
+  - `sector` (query, string, required) — Sector as a slug (`technology`, `financial-services`) or its label in any case (`Financial Services`). Valid values are the `sectorSlug`s from `GET /equities/v1/sectors`. Example: `technology`
+Returns: the sector's `GET /equities/v1/sectors` row plus `{description, valuation, concentration}`, with `topHoldings` expanded to the 10 largest constituents. `valuation` is `{trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, operatingProfitMarginTTM, dividendYield, medianTrailingPE, medianPriceToRevenue, medianPriceToBook, medianEnterpriseValueToEbitda, medianOperatingProfitMarginTTM, medianDividendYield}`. `concentration` is `{top10MarketCapShare, hhi, megaCapCount, megaCapThreshold, medianMarketCap}`: `hhi` is the Herfindahl-Hirschman index on a 0 to 10,000 scale, and `megaCapThreshold` is the USD market cap from which a company counts as mega cap. A missing or unknown `sector` returns `400`.
+
+### GET /equities/v1/industries
+**Base URL:** `https://pro-api.llama.fi`
+Get industries, optionally within one sector
+
+**Parameters:**
+  - `sector` (query, string, optional) — Only return industries in this sector, as a slug or its label in any case. Example: `technology`
+  - `industry` (query, string, optional) — Only return this industry, as a slug (`semiconductors`) or its label in any case. Example: `semiconductors`
+Returns: array of industries sorted by market cap (largest first), each `{industry, industrySlug, sector, sectorSlug, rank, weight, sectorWeight, dollarVolumeShare24h, topHoldings, ...metric block}`. `weight` is the share of all tracked US equity market cap; `sectorWeight` is the share of the parent sector's market cap. `rank` counts within the sector when `sector` is set, and across all industries otherwise (`industry` alone keeps the market-wide rank). `topHoldings` lists the 3 largest constituents; their `sectorWeight` is the share of the industry's market cap. The same industry name can exist in two sectors, so `industry` alone can return more than one row. An unknown `sector` or `industry` returns an empty array.
+
+### GET /equities/v1/earnings-calendar
+**Base URL:** `https://pro-api.llama.fi`
+Get earnings report dates for US-listed companies, built from SEC EDGAR filings
+
+**Parameters:**
+  - `ticker` (query, string, optional) — Stock ticker symbol (case-insensitive). When set, returns that company's full history plus upcoming estimates; when omitted, returns the market-wide calendar from about 1 month back to about 13 months ahead. Example: `AAPL`
+  - `from` (query, string, optional) — Earliest `report_date` to include, `YYYY-MM-DD` (inclusive). Example: `2026-10-26`
+  - `to` (query, string, optional) — Latest `report_date` to include, `YYYY-MM-DD` (inclusive). Example: `2026-10-30`
+  - `status` (query, string, optional) — Only return rows with this `date_status` (case-insensitive). `confirmed` is accepted but nothing produces it yet. (one of: reported, inferred, confirmed, estimated) Example: `estimated`
+  - `limit` (query, integer, optional) — Maximum rows, taken from the earliest `report_date`. Positive integer, capped at 20000 (the default). Example: `1`
+Returns: array of report dates sorted by `report_date`, oldest first, so `limit` keeps the earliest matches (`?ticker=AAPL&status=estimated&limit=1` is Apple's next report). Each row is `{ticker, iso2_country_code, cik, event_key, date_status, report_date, report_time, accepted_at, fiscal_year, fiscal_period, period_end, source, source_form, accession_number, max_drift_days, first_published_at, revision_count, previous_report_date, inserted_at}`. `event_key` is `<fiscal_year>-<fiscal_period>` (e.g. `2026-Q4`). `date_status`: `reported` (8-K Item 2.02 earnings release), `inferred` (no release that quarter, dated from the 10-Q/10-K), `estimated` (projected from the company's filing cadence, with `max_drift_days` giving the ± range in days; `null` on filing-backed rows). `report_date` is the US Eastern date of the SEC acceptance time; `report_time` is `bmo` (before 09:30 ET), `dmt` (market hours), `amc` (after 16:00 ET) or `unknown`. `source` is `8k_item_202`, `periodic_filing` or `cadence_model`. Company names are not included: join on `ticker` against `GET /equities/v1/companies-list`. Response headers `X-Total-Matches` (rows matched before `limit`) and `X-Result-Truncated` (`true`/`false`) say whether `limit` cut the result. A `ticker` that is not tracked returns `404`; an invalid `limit` returns `400`.
 
 ---
 
