@@ -16171,11 +16171,8 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -17079,17 +17076,11 @@
               }
             }
           },
-          "400": {
-            "description": "Missing required ticker parameter"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
-            "description": "Ticker not found"
+            "description": "Missing, malformed or untracked `ticker` or `country` (`{\"error\": \"Not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -17206,17 +17197,11 @@
               }
             }
           },
-          "400": {
-            "description": "Missing required ticker parameter"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
-            "description": "Ticker not found"
+            "description": "Missing, malformed or untracked `ticker` or `country` (`{\"error\": \"Not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -17313,37 +17298,11 @@
               }
             }
           },
-          "400": {
-            "description": "Missing required `ticker` or invalid `timeframe`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Invalid timeframe"
-                    },
-                    "validTimeframes": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "example": ["1D", "7D", "1W", "1M", "3M", "6M", "YTD", "1Y", "5Y", "MAX"]
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
-            "description": "Prices not found for ticker"
+            "description": "Missing, malformed or untracked `ticker` or `country`, or an unsupported `timeframe` (`{\"error\": \"Not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -17437,37 +17396,11 @@
               }
             }
           },
-          "400": {
-            "description": "Missing required `ticker` or invalid `timeframe`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Invalid timeframe"
-                    },
-                    "validTimeframes": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "example": ["1D", "7D", "1W", "1M", "3M", "6M", "YTD", "1Y", "5Y", "MAX"]
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
-            "description": "OHLCV not found for ticker"
+            "description": "Missing, malformed or untracked `ticker` or `country`, or an unsupported `timeframe` (`{\"error\": \"Not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -17699,17 +17632,11 @@
               }
             }
           },
-          "400": {
-            "description": "Missing required ticker parameter"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
-            "description": "Summary not found for ticker"
+            "description": "Missing, malformed or untracked `ticker` or `country` (`{\"error\": \"Not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -17787,17 +17714,11 @@
               }
             }
           },
-          "400": {
-            "description": "Missing required ticker parameter"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
-            "description": "Filings not found for ticker"
+            "description": "Missing, malformed or untracked `ticker` or `country` (`{\"error\": \"Not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -17981,17 +17902,11 @@
               }
             }
           },
-          "400": {
-            "description": "Missing required `ticker` or `country`"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
-            "description": "On-chain data not found for ticker"
+            "description": "Missing, malformed or untracked `ticker` or `country` (`{\"error\": \"Not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -18350,14 +18265,11 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Sector data not published yet"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -18781,14 +18693,11 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Sector data not published yet"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -19350,13 +19259,10 @@
             }
           },
           "400": {
-            "description": "Missing or unknown `sector`"
-          },
-          "401": {
-            "description": "Unauthorized"
+            "description": "Missing or unknown `sector` (`{\"error\": \"Unknown sector\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -19750,11 +19656,8 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
@@ -20005,16 +19908,13 @@
             }
           },
           "400": {
-            "description": "Invalid `limit`"
-          },
-          "401": {
-            "description": "Unauthorized"
+            "description": "`limit` is not a positive integer (`{\"error\": \"Invalid limit\"}`)"
           },
           "404": {
-            "description": "`ticker` is not a tracked company"
+            "description": "`ticker` is not a tracked company (`{\"error\": \"Earnings calendar not found\"}`)"
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Invalid or missing API key (`{\"error\": \"API Key is wrong\"}`), or an internal server error"
           }
         }
       }
