@@ -40,7 +40,7 @@ const baseMappings = new Map([
   ['/chart/{pool}', mapEntry('yields', 'getPoolChart', ["'<pool>'"], true)],
   ['/poolsBorrow', mapEntry('yields', 'getBorrowPools', [], true)],
   ['/chartLendBorrow/{pool}', mapEntry('yields', 'getLendBorrowChart', ["'<pool>'"], true)],
-  ['/perps', mapEntry('yields', 'getPerps', [], true)],
+  ['/perpFundingRates', mapEntry('yields', 'getPerpFundingRates', [], true)],
   ['/lstRates', mapEntry('yields', 'getLstRates', [], true)],
   ['/overview/dexs', mapEntry('volumes', 'getDexOverview')],
   ['/overview/dexs/{chain}', mapEntry('volumes', 'getDexOverviewByChain', ["'<chain>'"])],
