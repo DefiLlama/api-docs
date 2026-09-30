@@ -12593,10 +12593,11 @@
         }
       }
     },
-    "/yields/perps": {
+    "/api/perpFundingRates": {
       "get": {
         "tags": ["yields"],
-        "summary": "Funding rates and Open Interest of perps across exchanges, including both Decentralized and Centralized",
+        "summary": "Funding rates and open interest of perpetual futures",
+        "description": "Latest funding rate, open interest and index price for Binance and OKX perpetual markets, with the 7d and 30d average and sum of settled funding rates.",
         "responses": {
           "200": {
             "description": "successful operation",
@@ -12684,12 +12685,12 @@
           {
             "lang": "javascript",
             "label": "JavaScript SDK",
-            "source": "const result = await proClient.yields.getPerps()"
+            "source": "const result = await proClient.yields.getPerpFundingRates()"
           },
           {
             "lang": "python",
             "label": "Python SDK",
-            "source": "result = pro_client.yields.getPerps()"
+            "source": "result = pro_client.yields.getPerpFundingRates()"
           }
         ]
       }
