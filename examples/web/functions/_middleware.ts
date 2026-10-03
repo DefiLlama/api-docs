@@ -13,16 +13,11 @@ const AI_USER_AGENTS = [
   'openai',
   'gptbot',
   'chatgpt',
-  'bingbot',
-  'googlebot',
-  'google-extended',
   'perplexitybot',
   'amazonbot',
   'meta-externalagent',
   'cohere-ai',
   'diffbot',
-  'curl',
-  'wget',
 ]
 
 function isAIUserAgent(userAgent: string | null): boolean {
