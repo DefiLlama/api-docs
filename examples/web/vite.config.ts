@@ -1,26 +1,7 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
 import { resolve } from 'path'
-import { readFileSync, existsSync, mkdirSync, copyFileSync, cpSync } from 'fs'
-
-const AI_USER_AGENTS = [
-  'anthropic-ai',
-  'claude',
-  'openai',
-  'gptbot',
-  'chatgpt',
-  'perplexitybot',
-  'amazonbot',
-  'meta-externalagent',
-  'cohere-ai',
-  'diffbot',
-]
-
-function isAIRequest(userAgent: string | undefined): boolean {
-  if (!userAgent) return false
-  const ua = userAgent.toLowerCase()
-  return AI_USER_AGENTS.some((agent) => ua.includes(agent))
-}
+import { readFileSync, existsSync, mkdirSync, copyFileSync } from 'fs'
 
 function llmsTxtPlugin(): Plugin {
   let llmsContent: string
@@ -38,8 +19,6 @@ function llmsTxtPlugin(): Plugin {
       llmsProContent = readFileSync(llmsProPath, 'utf-8')
 
       server.middlewares.use((req, res, next) => {
-        const userAgent = req.headers['user-agent']
-
         if (req.url === '/llms.txt') {
           res.setHeader('Content-Type', 'text/plain; charset=utf-8')
           res.end(llmsContent)
@@ -58,13 +37,6 @@ function llmsTxtPlugin(): Plugin {
           return
         }
 
-        if (req.url === '/' && isAIRequest(userAgent)) {
-          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-          res.setHeader('X-Served-As', 'llms.txt')
-          res.end(llmsContent)
-          return
-        }
-
         next()
       })
     },
@@ -78,14 +50,6 @@ function llmsTxtPlugin(): Plugin {
       copyFileSync(llmsFreePath, resolve(outputDir, 'llms-free.txt'))
       copyFileSync(llmsProPath, resolve(outputDir, 'llms-pro.txt'))
       console.log('✓ Copied llms.txt, llms-free.txt, and llms-pro.txt to dist/')
-
-      // Copy functions/ directory to dist/ for Cloudflare Pages
-      const functionsDir = resolve(__dirname, 'functions')
-      const distFunctionsDir = resolve(outputDir, 'functions')
-      if (existsSync(functionsDir)) {
-        cpSync(functionsDir, distFunctionsDir, { recursive: true })
-        console.log('✓ Copied functions/ to dist/functions/')
-      }
     },
   }
 }

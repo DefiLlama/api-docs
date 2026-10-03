@@ -12,6 +12,10 @@ This example demonstrates how to use the Scalar API Reference components in a Vu
 - Path routing support
 - Monaco editor integration
 
+## Crawling and AI access
+
+The homepage serves the same HTML to every user agent, including search and AI crawlers. AI clients can request `/llms.txt`, `/llms-free.txt`, or `/llms-pro.txt` directly instead of relying on user-agent detection. The public assets include `robots.txt` and `sitemap.xml`; unknown routes return the top-level `404.html` rather than an indexable copy of the homepage.
+
 ## API Specification
 
 The example uses the DefiLlama API specification located in `defillama-openapi.json`. This file contains a comprehensive OpenAPI 3.0 specification with:
