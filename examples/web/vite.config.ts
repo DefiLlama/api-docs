@@ -2,6 +2,7 @@ import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
 import { resolve } from 'path'
 import { readFileSync, existsSync, mkdirSync, copyFileSync } from 'fs'
+import { crawlerResourceBudgetPlugin } from './src/crawler-resource-budget'
 
 function llmsTxtPlugin(): Plugin {
   let llmsContent: string
@@ -56,12 +57,24 @@ function llmsTxtPlugin(): Plugin {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [llmsTxtPlugin(), vue()],
+  plugins: [llmsTxtPlugin(), vue(), crawlerResourceBudgetPlugin()],
   server: {
     port: 5050,
     open: true,
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks(moduleId) {
+          if (/\/defillama-openapi-(free|pro)\.json$/.test(moduleId)) {
+            return 'api-specifications'
+          }
+          if (moduleId.includes('/node_modules/')) {
+            return 'vendor'
+          }
+        },
+      },
+    },
   },
 })

@@ -16,6 +16,8 @@ This example demonstrates how to use the Scalar API Reference components in a Vu
 
 The homepage serves the same HTML to every user agent, including search and AI crawlers. AI clients can request `/llms.txt`, `/llms-free.txt`, or `/llms-pro.txt` directly instead of relying on user-agent detection. The public assets include `robots.txt` and `sitemap.xml`; unknown routes return the top-level `404.html` rather than an indexable copy of the homepage.
 
+Production builds split third-party dependencies and API specifications into separate chunks. The build rejects HTML, CSS, or JavaScript resources larger than 2,000,000 uncompressed bytes, conservatively staying within [Googlebot's documented 2 MB resource fetch limit](https://developers.google.com/search/docs/crawling-indexing/googlebot). Compression does not reduce the size used for that limit. A passing build verifies resource size, not Google's indexing decision.
+
 ## API Specification
 
 The example uses the DefiLlama API specification located in `defillama-openapi.json`. This file contains a comprehensive OpenAPI 3.0 specification with:
