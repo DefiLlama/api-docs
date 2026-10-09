@@ -1,0 +1,1 @@
+Keep this directory. The Cloudflare Pages build command copies examples/web/functions to the repository root, and cp fails if the directory is missing. With no route files in here, Cloudflare skips Functions and serves the site as static files.
