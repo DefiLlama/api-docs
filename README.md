@@ -11,8 +11,9 @@ The site is the Vue app in `examples/web`, built on top of the Scalar monorepo i
 | OpenAPI specs | `defillama-openapi-free.json`, `defillama-openapi-pro.json` |
 | LLM text files | `llms.txt`, `llms-free.txt`, `llms-pro.txt` (served at `/llms.txt`, `/llms-free.txt`, `/llms-pro.txt`) |
 | Crawler files | `examples/web/public/robots.txt`, `sitemap.xml`, `404.html` |
+| Pages Functions dir | `examples/web/functions` (intentionally empty, see below) |
 
-Every user agent gets the same HTML homepage. There is no user-agent detection and no Pages Function; the site is static.
+Every user agent gets the same HTML homepage. There is no user-agent detection; the site is static.
 
 ## Local development
 
@@ -40,10 +41,10 @@ The site is a Cloudflare Pages project connected to this GitHub repository.
 Build command:
 
 ```bash
-pnpm --filter @scalar-examples/web --filter @scalar-examples/web^... build
+pnpm --filter @scalar-examples/web --filter @scalar-examples/web^... build && cd examples/web && pnpm build && mv ../../llms.txt dist/llms.txt && cp -r functions ../../functions
 ```
 
-Do not append `cp -r functions ../../functions` to the build command. The `functions` directory was removed, so that step exits with an error and the whole build fails. The llms text files are copied into `dist` by the Vite build, so no `mv` step is needed either.
+The last step copies `examples/web/functions` to the repository root, where Cloudflare looks for Pages Functions. That directory must exist or `cp` fails and the whole build fails. It only holds a `.gitkeep`, so Cloudflare finds no routes, skips Functions, and serves the site as static files. Do not add route files there unless you want a Worker in front of every request again.
 
 ## Deployment steps
 
