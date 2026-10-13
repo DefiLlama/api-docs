@@ -2,7 +2,7 @@
 
 > Free API — no authentication required. All endpoints below use base URL https://api.llama.fi
 
-**Base URL for ALL endpoints below:** `https://api.llama.fi`
+**Base URL for endpoints below:** `https://api.llama.fi` (unless an endpoint lists its own)
 
 ## TVL
 
