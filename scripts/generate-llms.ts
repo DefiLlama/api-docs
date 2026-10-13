@@ -181,7 +181,7 @@ WRONG  https://pro-api.llama.fi/api/overview/derivatives?apikey={YOUR_API_KEY}
 RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives
 \`\`\`
 
-A 402 from \`api.llama.fi\` means the endpoint needs the Pro API.
+A 402 from \`api.llama.fi\` means the endpoint needs the Pro API. There are only two tiers: free (no key) and the API plan. One API plan key unlocks every Pro endpoint. There are no add-ons or separate keys for volumes, derivatives, or other data.
 
 **Pro users accessing free endpoints:** Pro API key holders can also call free endpoints on \`pro-api.llama.fi\` for higher rate limits. Use the exact path mappings below.
 
@@ -308,7 +308,7 @@ function main(): void {
     'Free API — no authentication required. All endpoints below use base URL https://api.llama.fi',
     freeEndpoints,
   )
-  const proNote = `Pro API — requires a paid API key ($300/mo). Authentication: insert API key in URL path like https://pro-api.llama.fi/{YOUR_API_KEY}/endpoint. The pro-only endpoints below are NOT available on the free API. Do NOT send the key as a query parameter (?apikey=) or header.
+  const proNote = `Pro API — requires a paid API key ($300/mo). Authentication: insert API key in URL path like https://pro-api.llama.fi/{YOUR_API_KEY}/endpoint. The pro-only endpoints below are NOT available on the free API. Do NOT send the key as a query parameter (?apikey=) or header. There are only two tiers: free (no key) and the API plan. One API plan key unlocks every Pro endpoint. There are no add-ons or separate keys for volumes, derivatives, or other data.
 
 Pro users can also call free endpoints with higher rate limits using the path mappings below.
 
