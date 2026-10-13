@@ -48,8 +48,8 @@ Use base URL https://pro-api.llama.fi/{YOUR_API_KEY} with the pro path column.
 | `/stablecoin/{asset}` | `/stablecoins/stablecoin/{asset}` | Get historical mcap and historical chain distribution of a stablecoin |
 | `/stablecoinchains` | `/stablecoins/stablecoinchains` | Get current mcap sum of all stablecoins on each chain |
 | `/stablecoinprices` | `/stablecoins/stablecoinprices` | Get historical prices of all stablecoins |
-| `/pools` | `/yields/pools` | Retrieve the latest data for all pools, including enriched information such as predictions |
-| `/chart/{pool}` | `/yields/chart/{pool}` | Get historical APY and TVL of a pool |
+| `/pools` | `/yields/v1/pools` | Retrieve the latest data for all pools, including enriched information such as predictions |
+| `/chart/{pool}` | `/yields/v1/chart/{pool}` | Get historical APY and TVL of a pool |
 | `/overview/dexs` | `/api/overview/dexs` | List all dexs along with summaries of their volumes and dataType history data |
 | `/overview/dexs/{chain}` | `/api/overview/dexs/{chain}` | List all dexs along with summaries of their volumes and dataType history data filtering by chain |
 | `/summary/dexs/{protocol}` | `/api/summary/dexs/{protocol}` | Get summary of dex volume with historical data |
@@ -86,6 +86,39 @@ Returns: {outflows, oldTokens, currentTokens}
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get assets of all chains
 Returns: {chain, timestamp}
+
+### GET /api/v2/metrics/tvl/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get aggregate TVL metrics for a protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+Returns: {id, name, address, symbol, url, referralUrl, description, chain, logo, audits, audit_note, gecko_id, cmcId, category, tags, chains, module, treasury, twitter, audit_links, openSource, forkedFrom, oraclesByChain, parentProtocol, governanceID, github, currentChainTvls, isParentProtocol, mcap, methodology, raises, otherProtocols, hallmarks, stablecoins, misrepresentedTokens, deprecated, rugged, deadUrl, warningBanners, tokenRights, wrongLiquidity, tvlCodePath}
+
+### GET /api/v2/chart/tvl/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get historical TVL chart for a protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `uniswap`
+  - `key` (query, string, optional) — Metric to return. Omit for default TVL. Use "all" for the sum of tvl+borrowed+staking+pool2+vesting, or a specific metric like "staking", "borrowed", "vesting", "pool2". (one of: all, staking, borrowed, vesting, pool2) Example: `all`
+
+### GET /api/v2/chart/tvl/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get historical TVL chart for a protocol broken down by chain
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `euler`
+  - `key` (query, string, optional) — Metric to return. Omit for default TVL. Use "all" for the sum of tvl+borrowed+staking+pool2+vesting, or a specific metric like "staking", "borrowed", "vesting", "pool2". (one of: all, staking, borrowed, vesting, pool2) Example: `borrowed`
+
+### GET /api/v2/chart/tvl/protocol/{protocol}/token-breakdown
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get historical TVL chart for a protocol broken down by token
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `key` (query, string, optional) — Metric to return. Omit for default TVL. Use "all" for the sum of tvl+borrowed+staking+pool2+vesting, or a specific metric like "staking", "borrowed", "vesting", "pool2". (one of: all, staking, borrowed, vesting, pool2)
+  - `currency` (query, string, optional) — Set to "tokens" to return values denominated in raw token amounts instead of USD (one of: usd, token, raw) Example: `usd`
 
 ---
 
@@ -171,32 +204,144 @@ Provides the name of contracts on a determined chain
 
 ## Yields & APY
 
-### GET /yields/poolsOld
+Data from our yields/APY dashboard
+
+> [!WARNING]
+> **The yield endpoints on the left of the arrows below stop working on November 13, 2026.** Migrate before then. From that date the yield API requires the [API plan](https://defillama.com/subscription).
+
+### How to migrate
+
+**Option 1, minimal: swap the URL.** The `/yields/v1/` routes serve the same response format as the endpoints they replace, so the URL is the only thing you change. They exist for compatibility only: all new features land on v2.
+
+- `/pools`, `/yields/pools`, `/yields/poolsOld` → `/yields/v1/pools`
+- `/chart/{pool}`, `/yields/chart/{pool}` → `/yields/v1/chart/{pool}`
+- `/yields/poolsBorrow` → `/yields/v1/poolsBorrow`
+- `/yields/chartLendBorrow/{pool}` → `/yields/v1/chartLendBorrow/{pool}`
+- `/yields/lsdRates` → `/api/lstRates`
+
+**Option 2, recommended: move to v2.** New response format, so this takes some integration work, but you get all the new features: Verified APY, 10-minute refreshes, the borrow router, and APYs split into components.
+
+- `/pools`, `/yields/pools`, `/yields/poolsOld` → `/yields/v2/earn`
+- `/chart/{pool}`, `/yields/chart/{pool}` → `/yields/v2/earn/{id}/history`
+- `/yields/poolsBorrow` → `/yields/v2/borrow/markets`
+- `/yields/chartLendBorrow/{pool}` → `/yields/v2/borrow/markets/{id}/history` (borrow side) and `/yields/v2/earn/{id}/history` (lend side)
+- `/yields/lsdRates` → `/api/lstRates` (no v2 version)
+
+Good to know:
+
+- Pool IDs are unchanged, so nothing needs re-mapping.
+- `/yields/v1/pools` serves the `/poolsOld` format, which contains all the `/pools` fields, so parsers for either endpoint keep working.
+- Some legacy statistics fields (e.g. `predictions`) are always null on the `/yields/v1/` routes.
+
+### GET /yields/v1/pools
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Same as /pools but it also includes a new parameter `pool_old` which usually contains pool address (but not guaranteed)
+Retrieve the latest data for all pools in the legacy v1 response format
 Returns: {status, data}
 
-### GET /yields/poolsBorrow
+### GET /yields/v1/chart/{pool}
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Borrow costs APY of assets from lending markets
-Returns: {status, data}
-
-### GET /yields/chartLendBorrow/{pool}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Historical borrow cost APY from a pool on a lending market, pool ids should be obtained from /poolsBorrow
+Get historical APY and TVL of a pool in the legacy v1 response format
 
 **Parameters:**
-  - `pool` (path, string, required) — pool id, can be retrieved from /poolsBorrow (property is called pool) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+  - `pool` (path, string, required) — pool id (UUID), from /yields/v1/pools (property is called pool) Example: `747c1d2a-c668-4682-b9f9-296708a3dd90`
 Returns: {status, data}
 
-### GET /yields/perps
+### GET /yields/v1/poolsBorrow
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Funding rates and Open Interest of perps across exchanges, including both Decentralized and Centralized
+Borrow costs APY of assets from lending markets in the legacy v1 response format
 Returns: {status, data}
 
-### GET /yields/lsdRates
+### GET /yields/v1/chartLendBorrow/{pool}
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-APY rates of multiple LSDs
+Historical borrow cost APY from a pool on a lending market in the legacy v1 response format
+
+**Parameters:**
+  - `pool` (path, string, required) — pool id (UUID), from /yields/v1/poolsBorrow (property is called pool) Example: `747c1d2a-c668-4682-b9f9-296708a3dd90`
+Returns: {status, data}
+
+### GET /yields/v2/earn
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve the latest data for all earn pools
+Returns: {data}
+
+### GET /yields/v2/earn/query
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve a filtered, paginated page of earn pools
+
+**Parameters:**
+  - `chain` (query, string, optional) — Chain slug (lowercase). Repeat the parameter to match any of several chains, e.g. chain=ethereum&chain=arbitrum (at most 20 values) Example: `ethereum`
+  - `protocol` (query, string, optional) — Protocol slug (lowercase, e.g. aave-v3). Repeat the parameter to match any of several protocols (at most 20 values) Example: `lido`
+  - `stablecoin` (query, boolean, optional) — true keeps only pools whose assets are all stablecoins, false only the rest Example: `true`
+  - `single_asset_exposure` (query, boolean, optional) — true keeps only pools exposed to a single asset, false only the rest Example: `true`
+  - `impermanent_loss_risk` (query, boolean, optional) — true keeps only pools with impermanent loss risk, false only the rest Example: `false`
+  - `min_tvl` (query, number, optional) — Minimum pool TVL in USD (inclusive) Example: `1000000`
+  - `page` (query, integer, optional) — 1-based page number; default 1 Example: `1`
+  - `limit` (query, integer, optional) — Page size between 1 and 300; default 100. Values above 300 are rejected, not clamped Example: `100`
+Returns: {data, pagination}
+
+### GET /yields/v2/earn/{id}/history
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve daily history for an earn pool
+
+**Parameters:**
+  - `id` (path, string, required) — Earn pool id (UUID) Example: `747c1d2a-c668-4682-b9f9-296708a3dd90`
+  - `range` (query, string, optional) — History window; defaults to max (the full series) (one of: 30d, 90d, max) Example: `90d`
+Returns: {data}
+
+### GET /yields/v2/earn/verified
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve the latest verified data for all measured earn pools
+Returns: {data}
+
+### GET /yields/v2/earn/verified/{id}
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve the latest verified data for one earn pool
+
+**Parameters:**
+  - `id` (path, string, required) — Earn pool id (UUID) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+Returns: {data}
+
+### GET /yields/v2/earn/verified/{id}/history
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve daily verified history for an earn pool
+
+**Parameters:**
+  - `id` (path, string, required) — Earn pool id (UUID) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+  - `range` (query, string, optional) — History window; defaults to max (the full series) (one of: 30d, 90d, max) Example: `90d`
+Returns: {data}
+
+### GET /yields/v2/borrow/markets
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve the latest data for all borrow markets
+Returns: {data}
+
+### GET /yields/v2/borrow/markets/{id}/history
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve daily borrow-side history for a borrow market
+
+**Parameters:**
+  - `id` (path, string, required) — Borrow market id (UUID) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+  - `range` (query, string, optional) — History window; defaults to max (the full series) (one of: 30d, 90d, max) Example: `90d`
+Returns: {data}
+
+### GET /yields/v2/borrow/routes
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve the latest data for all borrow routes
+Returns: {data}
+
+### GET /yields/v2/loops
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Retrieve the latest data for all loop strategies
+Returns: {data}
+
+### GET /api/perpFundingRates
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Funding rates and open interest of perpetual futures
+Returns: {status, data}
+
+### GET /api/lstRates
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Exchange rates and ETH peg of liquid staking tokens
 Returns: array of {name, symbol, address, type, expectedRate, marketRate, ethPeg, fee}
 
 ---
@@ -247,6 +392,43 @@ Volume Details about a specific perp protocol
   - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
   - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
 Returns: {id, name, url, referralUrl, description, logo, gecko_id, cmcId, chains, twitter, github, symbol, address, childProtocols, linkedProtocols, defillamaId, disabled, displayName, module, category, methodologyURL, methodology, forkedFrom, audits, audit_links, versionKey, governanceID, treasury, parentProtocol, previousNames, latestFetchIsOk, slug, protocolType, total24h, total48hto24h, total7d, totalAllTime, totalDataChart, totalDataChartBreakdown, change_1d}
+
+---
+
+## Treasury
+
+### GET /api/v2/metrics/treasury/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get aggregate treasury metrics for a protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+Returns: {id, name, address, symbol, url, referralUrl, description, chain, logo, audits, audit_note, gecko_id, cmcId, category, tags, chains, module, treasury, twitter, audit_links, openSource, forkedFrom, oraclesByChain, parentProtocol, governanceID, github, currentChainTvls, isParentProtocol, mcap, methodology, raises, otherProtocols, hallmarks, stablecoins, misrepresentedTokens, deprecated, rugged, deadUrl, warningBanners, tokenRights, wrongLiquidity, tvlCodePath}
+
+### GET /api/v2/chart/treasury/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get historical treasury chart for a protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `uniswap`
+  - `key` (query, string, optional) — Token filter. Omit to exclude OwnTokens (default). Use "OwnTokens" to return only the protocol's own tokens, or "all" for the sum of all tokens including OwnTokens. (one of: OwnTokens, all) Example: `all`
+
+### GET /api/v2/chart/treasury/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get historical treasury chart for a protocol broken down by chain
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `key` (query, string, optional) — Token filter. Omit to exclude OwnTokens (default). Use "OwnTokens" to return only the protocol's own tokens, or "all" for the sum of all tokens including OwnTokens. (one of: OwnTokens, all) Example: `OwnTokens`
+
+### GET /api/v2/chart/treasury/protocol/{protocol}/token-breakdown
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Get historical treasury chart for a protocol broken down by token
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `key` (query, string, optional) — Token filter. Omit to exclude OwnTokens (default). Use "OwnTokens" to return only the protocol's own tokens, or "all" for the sum of all tokens including OwnTokens. (one of: OwnTokens, all) Example: `OwnTokens`
+  - `currency` (query, string, optional) — Set to "tokens" to return values denominated in raw token amounts instead of USD (one of: usd, token, raw) Example: `usd`
 
 ---
 
