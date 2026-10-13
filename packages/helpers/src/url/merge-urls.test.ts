@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it } from 'vitest'
-import { mergeSearchParams, mergeUrls, combineUrlAndPath, injectApiKeyInPath } from './merge-urls'
+import { mergeSearchParams, mergeUrls, combineUrlAndPath, injectApiKeyInPath, placeApiKeyInPath } from './merge-urls'
 
 describe('mergeSearchParams', () => {
   it('should merge basic params', () => {
@@ -203,6 +203,36 @@ describe('injectApiKeyInPath', () => {
     const result = injectApiKeyInPath('https://api.example.com', 'key', '')
     expect(result).toBe('https://api.example.com/key')
   })
+
+  it('puts the key at the end for the usage endpoint', () => {
+    const result = injectApiKeyInPath('https://pro-api.llama.fi', 'test:key', '/usage/%7BYOUR_API_KEY%7D')
+    expect(result).toBe('https://pro-api.llama.fi/usage/test%3Akey')
+  })
+})
+
+describe('placeApiKeyInPath', () => {
+  it('puts the key in front of regular paths', () => {
+    expect(placeApiKeyInPath('/api/overview/derivatives', 'KEY')).toBe('/KEY/api/overview/derivatives')
+  })
+
+  // The usage endpoint carries the key as its last segment, so whatever sits there gets replaced
+  it.each([
+    ['/usage/{YOUR_API_KEY}'],
+    ['/usage/%7BYOUR_API_KEY%7D'],
+    ['/usage/APIKEY'],
+    ['/usage/some-old-key'],
+    ['/usage/'],
+  ])('puts the key at the end of %s', (path) => {
+    expect(placeApiKeyInPath(path, 'KEY')).toBe('/usage/KEY')
+  })
+
+  it('keeps placeholders as given', () => {
+    expect(placeApiKeyInPath('/usage/{YOUR_API_KEY}', '<API-KEY>')).toBe('/usage/<API-KEY>')
+  })
+
+  it.each([['/usage'], ['/usage/a/b'], ['/api/usage/x'], ['/coins/usage/x']])('treats %s as a regular path', (path) => {
+    expect(placeApiKeyInPath(path, 'KEY')).toBe(`/KEY${path}`)
+  })
 })
 
 describe('mergeUrls', () => {
@@ -253,6 +283,18 @@ describe('mergeUrls', () => {
       const params = new URLSearchParams('token=123')
       const result = mergeUrls('https://pro-api.example.com', '/coins/latest', params, false, 'testkey', true)
       expect(result).toBe('https://pro-api.example.com/testkey/coins/latest?token=123')
+    })
+
+    it('puts the key at the end of the usage endpoint and keeps the query', () => {
+      const result = mergeUrls(
+        'https://pro-api.llama.fi',
+        '/usage/{YOUR_API_KEY}',
+        new URLSearchParams('a=1'),
+        false,
+        'testkey',
+        true,
+      )
+      expect(result).toBe('https://pro-api.llama.fi/usage/testkey?a=1')
     })
 
     it('should not inject API key when not required', () => {
