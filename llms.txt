@@ -27,6 +27,8 @@ RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives
 
 A 402 from `api.llama.fi` means the endpoint needs the Pro API. There are only two tiers: free (no key) and the API plan. One API plan key unlocks every Pro endpoint. There are no add-ons or separate keys for volumes, derivatives, or other data.
 
+To check that your key works, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns your remaining credits, like `{"creditsLeft": 1000000}`.
+
 **Pro users accessing free endpoints:** Pro API key holders can also call free endpoints on `pro-api.llama.fi` for higher rate limits. Use the exact path mappings below.
 
 ## Free-to-Pro Path Mapping
