@@ -1,6 +1,25 @@
 # DefiLlama Pro API (Paid)
 
-> Pro API — requires a paid API key ($300/mo). Authentication: insert API key in URL path like https://pro-api.llama.fi/{YOUR_API_KEY}/endpoint. The pro-only endpoints below are NOT available on the free API.
+> Pro API — requires a paid API key ($300/mo). The pro-only endpoints below are NOT available on the free API.
+
+## Pro API authentication
+
+Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (`?apikey=`) or header. Do NOT put it in `api.llama.fi` URLs.
+
+```
+WRONG  https://pro-api.llama.fi/api/overview/derivatives?apikey={YOUR_API_KEY}
+RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives
+```
+
+There are only two tiers: free (no key) and the API plan. One API plan key unlocks every Pro endpoint. There are no add-ons or separate keys for volumes, derivatives, or other data.
+
+## Troubleshooting
+
+A 200 from `/protocols` or `/overview/fees` on `api.llama.fi` does not validate your API key. Those endpoints require no authentication. A 402 from `api.llama.fi` does not prove your subscription expired. It means the endpoint needs the Pro API.
+
+1. Check the host and key placement: `https://pro-api.llama.fi/{YOUR_API_KEY}/...`, not `api.llama.fi` and not `?apikey=`.
+2. Call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns your remaining credits, like `{"creditsLeft": 1000000}`.
+3. Retry the keyed URL: `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives`.
 
 Pro users can also call free endpoints with higher rate limits using the path mappings below.
 
@@ -42,12 +61,12 @@ Use base URL https://pro-api.llama.fi/{YOUR_API_KEY} with the pro path column.
 | `/overview/fees/{chain}` | `/api/overview/fees/{chain}` | List all protocols along with summaries of their fees and revenue and dataType history data by chain |
 | `/summary/fees/{protocol}` | `/api/summary/fees/{protocol}` | Get summary of protocol fees and revenue with historical data |
 
-**Base URL for ALL endpoints below:** `https://pro-api.llama.fi`
+**Base URL for endpoints below:** `https://pro-api.llama.fi/{YOUR_API_KEY}` (unless an endpoint lists its own)
 
 ## TVL
 
 ### GET /api/tokenProtocols/{symbol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Lists the amount of a certain token within all protocols. Data for the Token Usage page
 
 **Parameters:**
@@ -55,7 +74,7 @@ Lists the amount of a certain token within all protocols. Data for the Token Usa
 Returns: array of {name, category, amountUsd}
 
 ### GET /api/inflows/{protocol}/{timestamp}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Lists the amount of inflows and outflows for a protocol at a given date
 
 **Parameters:**
@@ -64,7 +83,7 @@ Lists the amount of inflows and outflows for a protocol at a given date
 Returns: {outflows, oldTokens, currentTokens}
 
 ### GET /api/chainAssets
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get assets of all chains
 Returns: {chain, timestamp}
 
@@ -73,7 +92,7 @@ Returns: {chain, timestamp}
 ## Stablecoins
 
 ### GET /stablecoins/stablecoindominance/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get stablecoin dominance per chain along with the info about the larges coin in a chain
 
 **Parameters:**
@@ -86,12 +105,12 @@ Returns: array of {date, totalCirculatingUSD, greatestMcap}
 ## Token Unlocks
 
 ### GET /api/emissions
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 List of all tokens along with basic info for each
 Returns: array of {token, sources, protocolId, name, circSupply, circSupply30d, totalLocked, maxSupply, gecko_id, events, nextEvent, unlocksPerDay, mcap}
 
 ### GET /api/emission/{protocol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Unlocks data for a given token/protocol. You can find a list of available slugs to query by querying /emissions and then extracting the key `gecko_id`
 
 **Parameters:**
@@ -103,37 +122,37 @@ Returns: {body, lastModified}
 ## Protocol Analytics
 
 ### GET /api/categories
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Overview of all categories accross all protocols
 Returns: {chart, categories}
 
 ### GET /api/forks
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Overview of all forks accross all protocols
 Returns: {chart, forks}
 
 ### GET /api/oracles
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Overview of all oracles accross all protocols
 Returns: {chart, oracles, chainsByOracle}
 
 ### GET /api/hacks
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Overview of all hacks on our Hacks dashboard
 Returns: array of {date, name, classification, technique, amount, chain, bridgeHack, targetType, source, returnedFunds, defillamaId, language}
 
 ### GET /api/raises
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Overview of all raises on our Raises dashboard
 Returns: {raises}
 
 ### GET /api/treasuries
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 List all protocols on our Treasuries dashboard
 Returns: array of {id, name, address, symbol, url, description, chain, logo, audits, audit_note, gecko_id, cmcId, category, chains, module, treasury, forkedFromIds, twitter, slug, tvl, chainTvls, change_1h, change_1d, change_7d, tokenBreakdowns, mcap}
 
 ### GET /api/entities
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 List all entities
 Returns: array of {id, name, url, description, logo, category, module, twitter, symbol, chain, gecko_id, cmcId, chains, slug, tvl, chainTvls, change_1h, change_1d, change_7d, tokenBreakdowns, mcap}
 
@@ -142,7 +161,7 @@ Returns: array of {id, name, url, description, logo, category, module, twitter, 
 ## Token Liquidity
 
 ### GET /api/historicalLiquidity/{token}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Provides the name of contracts on a determined chain
 
 **Parameters:**
@@ -153,17 +172,17 @@ Provides the name of contracts on a determined chain
 ## Yields & APY
 
 ### GET /yields/poolsOld
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Same as /pools but it also includes a new parameter `pool_old` which usually contains pool address (but not guaranteed)
 Returns: {status, data}
 
 ### GET /yields/poolsBorrow
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Borrow costs APY of assets from lending markets
 Returns: {status, data}
 
 ### GET /yields/chartLendBorrow/{pool}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Historical borrow cost APY from a pool on a lending market, pool ids should be obtained from /poolsBorrow
 
 **Parameters:**
@@ -171,12 +190,12 @@ Historical borrow cost APY from a pool on a lending market, pool ids should be o
 Returns: {status, data}
 
 ### GET /yields/perps
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Funding rates and Open Interest of perps across exchanges, including both Decentralized and Centralized
 Returns: {status, data}
 
 ### GET /yields/lsdRates
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 APY rates of multiple LSDs
 Returns: array of {name, symbol, address, type, expectedRate, marketRate, ethPeg, fee}
 
@@ -185,12 +204,12 @@ Returns: array of {name, symbol, address, type, expectedRate, marketRate, ethPeg
 ## ETFs
 
 ### GET /etfs/snapshot
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get ETFs and their metrics (aum, flows, fees...)
 Returns: array of {ticker, timestamp, asset, issuer, etf_name, custodian, pct_fee, url, flows, aum, volume}
 
 ### GET /etfs/flows
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Historical Flows at the Asset Level
 Returns: array of {gecko_id, day, total_flow_usd}
 
@@ -199,7 +218,7 @@ Returns: array of {gecko_id, day, total_flow_usd}
 ## Narratives
 
 ### GET /fdv/performance/{period}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get chart of narratives based on category performance (with individual coins weighted by mcap)
 
 **Parameters:**
@@ -211,7 +230,7 @@ Returns: array of {date, Analytics, Artificial Intelligence (AI), Bitcoin, Bridg
 ## Perpetuals & Open Interest
 
 ### GET /api/overview/derivatives
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Lists all derivatives along summaries of their volumes filtering by chain
 
 **Parameters:**
@@ -220,7 +239,7 @@ Lists all derivatives along summaries of their volumes filtering by chain
 Returns: {totalDataChart, totalDataChartBreakdown, breakdown24h, breakdown30d, chain, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d, total7DaysAgo, total30DaysAgo, totalAllTime, protocols}
 
 ### GET /api/summary/derivatives/{protocol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Volume Details about a specific perp protocol
 
 **Parameters:**
@@ -234,7 +253,7 @@ Returns: {id, name, url, referralUrl, description, logo, gecko_id, cmcId, chains
 ## Bridges
 
 ### GET /bridges/bridges
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 List all bridges along with summaries of recent bridge volumes.
 
 **Parameters:**
@@ -242,7 +261,7 @@ List all bridges along with summaries of recent bridge volumes.
 Returns: {bridges}
 
 ### GET /bridges/bridge/{id}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get summary of bridge volume and volume breakdown by chain
 
 **Parameters:**
@@ -250,7 +269,7 @@ Get summary of bridge volume and volume breakdown by chain
 Returns: {id, name, displayName, lastHourlyVolume, currentDayVolume, lastDailyVolume, dayBeforeLastVolume, weeklyVolume, monthlyVolume, lastHourlyTxs, currentDayTxs, prevDayTxs, dayBeforeLastTxs, weeklyTxs, monthlyTxs, chainBreakdown, destinationChain}
 
 ### GET /bridges/bridgevolume/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get historical volumes for a bridge, chain, or bridge on a particular chain
 
 **Parameters:**
@@ -259,7 +278,7 @@ Get historical volumes for a bridge, chain, or bridge on a particular chain
 Returns: array of {date, depositUSD, withdrawUSD, depositTxs, withdrawTxs}
 
 ### GET /bridges/bridgedaystats/{timestamp}/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get a 24hr token and address volume breakdown for a bridge
 
 **Parameters:**
@@ -269,7 +288,7 @@ Get a 24hr token and address volume breakdown for a bridge
 Returns: {date, totalTokensDeposited, totalTokensWithdrawn, totalAddressDeposited, totalAddressWithdrawn}
 
 ### GET /bridges/transactions/{id}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get all transactions for a bridge within a date range
 
 **Parameters:**
@@ -284,21 +303,24 @@ Get all transactions for a bridge within a date range
 
 ## API Key Management
 
-### GET /usage/APIKEY
+### GET /usage/{YOUR_API_KEY}
 **Base URL:** `https://pro-api.llama.fi`
 Get amount of credits left in the api key, these reset on the 1st of each month
+
+**Parameters:**
+  - `YOUR_API_KEY` (path, string, required) — Your DefiLlama API plan key. For this endpoint only, the key goes at the end of the path.
 
 ---
 
 ## Digital Asset Treasury
 
 ### GET /dat/institutions
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get list of all institutions with Digital Asset Treasury data
 Returns: {institutionMetadata, assetMetadata, institutions, assets, totalCompanies, flows, mNAV, lastUpdated}
 
 ### GET /dat/institutions/{symbol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get individual institution Digital Asset Treasury details
 
 **Parameters:**
@@ -314,7 +336,7 @@ Returns: {institutionId, ticker, name, type, rank, price, priceChange24h, volume
 Data provided by [Twelve Data](https://twelvedata.com/).
 
 ### GET /equities/v1/companies-list
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get list of all tracked US-listed companies. Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.
 
 **Parameters:**
@@ -323,7 +345,7 @@ Get list of all tracked US-listed companies. Use this to discover valid `ticker`
 Returns: array of tracked companies sorted by market cap (largest first), each `{ticker, companyName, country (ISO 3166-1 alpha-2), countryName, sectorSlug, industrySlug}`. An unknown `sector` or `industry` value returns an empty array.
 
 ### GET /equities/v1/statements
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get financial statements for a company
 
 **Parameters:**
@@ -332,7 +354,7 @@ Get financial statements for a company
 Returns: income statement, balance sheet, and cash flow statement for the ticker, each broken down by quarterly and annual periods. `{incomeStatement, balanceSheet, cashflow}`
 
 ### GET /equities/v1/dimensions
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get financial dimensions for a company
 
 **Parameters:**
@@ -341,7 +363,7 @@ Get financial dimensions for a company
 Returns: time-series financial dimension metrics (`revenue`, `holdersRevenue`, `earnings`, `basicSharesOutstanding`), each split into annual and quarterly series. Every data point is a two-element array `[date, value]` (ISO 8601 period-ending date, then numeric value), sorted by date descending (newest first).
 
 ### GET /equities/v1/price-history
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get historical price data for a company
 
 **Parameters:**
@@ -351,7 +373,7 @@ Get historical price data for a company
 Returns: array of closing prices, each a two-element array `[timestamp, price]` (ISO 8601 date-time string, then numeric closing price). Sorted by date descending (newest first). Intraday timeframes (`1D`, `7D`, `1W`) carry a real time of day, e.g. `["2026-06-05T19:55:00Z", 251.34]`; daily timeframes are stamped `T00:00:00Z`, e.g. `["2026-03-20T00:00:00Z", 247.99]`.
 
 ### GET /equities/v1/ohlcv
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get OHLCV candle data for a company
 
 **Parameters:**
@@ -361,7 +383,7 @@ Get OHLCV candle data for a company
 Returns: array of OHLCV bars, each a six-number array `[timestamp, open, high, low, close, volume]` where `timestamp` is Unix epoch seconds (UTC). Sorted by time descending (newest first). `1D`, `7D` and `1W` return 5-minute bars; `1M` and longer return daily bars.
 
 ### GET /equities/v1/summary
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get live market summary for a company
 
 **Parameters:**
@@ -370,7 +392,7 @@ Get live market summary for a company
 Returns: compact live market snapshot for the ticker (no `ticker`/`name` fields; use `GET /equities/v1/companies-list` for company identity). {currentPrice, volume, marketCap, circulatingMarketCap, enterpriseValue, fiftyTwoWeekHigh, fiftyTwoWeekLow, dividendYield, trailingPE, priceToRevenue, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChange1d, marketCapChange1d, priceToBook, enterpriseValueToEbitda, holdersYield, updatedAt, revenueTTM, grossProfitTTM, earningsTTM, ebitdaTTM, operatingProfitMarginTTM, holdersRevenueTTM, holderEarningsTTM, dividendsTTM, stockRepurchaseTTM, stockIssuanceTTM, stockBasedCompensationTTM, cashAndCashEquivalents, totalAssets, totalLiabilities, totalShareholdersEquity, totalDebt, circulatingSupply, totalSupply, employeeCount}
 
 ### GET /equities/v1/filings
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get company filings for a company (e.g. annual reports, quarterly reports, and other important filings)
 
 **Parameters:**
@@ -379,7 +401,7 @@ Get company filings for a company (e.g. annual reports, quarterly reports, and o
 Returns: array of filings, each `{filingDate, reportDate, form, primaryDocumentUrl, documentDescription}` (`form` is the filing type, e.g. annual or quarterly report). Sorted by filing date descending (newest first).
 
 ### GET /equities/v1/onchain
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get on-chain tradeable markets for a company (perpetual futures venues and tokenised-equity issuers)
 
 **Parameters:**
@@ -394,17 +416,17 @@ The sector and industry endpoints cover US-listed companies; all monetary values
 Every sector and industry row carries the same metric block: `{marketCap, marketCapChange1d, dollarVolume24h, revenueTTM, earningsTTM, ebitdaTTM, enterpriseValue, employeeCount, trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, dividendYield, holdersYield, operatingProfitMarginTTM, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChangePercentage3m, priceChangePercentage6m, priceChangePercentageYtd, priceChangePercentage1y, companyCount, coverage, updatedAt, volumeAsOf}`. `earningsYield` is signed, so it stays defined when `trailingPE` is `null` for a loss-making group. `coverage` maps each metric name to the share (0 to 1) of market cap that supplied its inputs.
 
 ### GET /equities/v1/sectors
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get all sectors
 Returns: array of sectors sorted by market cap (largest first), each `{sector, sectorSlug, rank, weight, dollarVolumeShare24h, industryCount, topHoldings, ...metric block}`. `weight` is the share of all tracked US equity market cap and sums to 100 across sectors. `topHoldings` lists the 3 largest constituents, each `{ticker, name, marketCap, sectorWeight, priceChangePercentage1d}` where `sectorWeight` is the share of the sector's market cap. Pass `sectorSlug` as `sector` to the other endpoints.
 
 ### GET /equities/v1/sectors-overview
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get market-wide totals across all tracked US companies
 Returns: `{...metric block, medianTrailingPE, medianPriceToRevenue, medianPriceToBook, medianEnterpriseValueToEbitda, medianOperatingProfitMarginTTM, medianDividendYield, medianMarketCap, sectorCount, industryCount, bestSector1d, worstSector1d, largestSector}`. `marketCap` is the denominator behind every sector `weight`. Aggregate and median ratios sit side by side; compare aggregate with aggregate and median with median. `bestSector1d`, `worstSector1d` and `largestSector` are each `{sector, sectorSlug, priceChangePercentage1d, weight}` and never `Unknown`. `sectorCount` excludes `Unknown`.
 
 ### GET /equities/v1/sector
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get details for one sector
 
 **Parameters:**
@@ -412,7 +434,7 @@ Get details for one sector
 Returns: the sector's `GET /equities/v1/sectors` row plus `{description, valuation, concentration}`, with `topHoldings` expanded to the 10 largest constituents. `valuation` is `{trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, operatingProfitMarginTTM, dividendYield, medianTrailingPE, medianPriceToRevenue, medianPriceToBook, medianEnterpriseValueToEbitda, medianOperatingProfitMarginTTM, medianDividendYield}`. `concentration` is `{top10MarketCapShare, hhi, megaCapCount, megaCapThreshold, medianMarketCap}`: `hhi` is the Herfindahl-Hirschman index on a 0 to 10,000 scale, and `megaCapThreshold` is the USD market cap from which a company counts as mega cap. A missing or unknown `sector` returns `400`.
 
 ### GET /equities/v1/industries
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get industries, optionally within one sector
 
 **Parameters:**
@@ -421,7 +443,7 @@ Get industries, optionally within one sector
 Returns: array of industries sorted by market cap (largest first), each `{industry, industrySlug, sector, sectorSlug, rank, weight, sectorWeight, dollarVolumeShare24h, topHoldings, ...metric block}`. `weight` is the share of all tracked US equity market cap; `sectorWeight` is the share of the parent sector's market cap. `rank` counts within the sector when `sector` is set, and across all industries otherwise (`industry` alone keeps the market-wide rank). `topHoldings` lists the 3 largest constituents; their `sectorWeight` is the share of the industry's market cap. The same industry name can exist in two sectors, so `industry` alone can return more than one row. An unknown `sector` or `industry` returns an empty array.
 
 ### GET /equities/v1/earnings-calendar
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get earnings report dates for US-listed companies, built from SEC EDGAR filings
 
 **Parameters:**
@@ -443,12 +465,12 @@ Valuation history, funding rounds, and live tradeable markets for private, pre-I
 Every response is wrapped in a snapshot envelope `{updatedAt, data}`, where `updatedAt` is an ISO 8601 date-time for when the snapshot was generated. The section is served as static files, so anything other than `200` means there is no such file: an unknown `company` or a snapshot that has not been generated yet both return `502`.
 
 ### GET /pre-ipo/v1/companies-list
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get list of all tracked pre-IPO companies. Use this to discover valid `company` ids for the other pre-IPO endpoints.
 Returns: `{updatedAt, data}` where `data` is an array of companies, each `{id, name, description, website, sector, latestEstimatedValuation, latestRaise, latestFundingValuation, latestFundingDate, lastValuationDate, totalRaised, valuationChange1YPercentage, premiumVsLatestFundingPercentage}`. All USD. Returned in registry order, not sorted by valuation. `latestEstimatedValuation` is the latest monthly secondary-market estimate, falling back to the last funding round's post-money valuation when no marketplace lists the company; `valuationChange1YPercentage` and `premiumVsLatestFundingPercentage` are `null` when a company has no secondary marks.
 
 ### GET /pre-ipo/v1/valuations
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get valuation history for a pre-IPO company
 
 **Parameters:**
@@ -456,7 +478,7 @@ Get valuation history for a pre-IPO company
 Returns: `{updatedAt, data}` where `data` is one aggregated point per calendar month, oldest first, each `{date, estimatedValuation}` (`date` is the first day of the month, `estimatedValuation` in USD). Within a month each source's marks are averaged and then the source averages are averaged, so a source that reports daily does not outvote one that reports monthly. Values are rounded to the nearest 100, months with no data are skipped, and the current month is month-to-date.
 
 ### GET /pre-ipo/v1/raises
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get funding rounds for a pre-IPO company
 
 **Parameters:**
@@ -464,7 +486,7 @@ Get funding rounds for a pre-IPO company
 Returns: `{updatedAt, data}` where `data` is an array of disclosed funding rounds, oldest first, each `{date, amountRaised, valuation, series}` (amounts in USD, `valuation` is post-money and may be `null`, `series` is a label such as `Series G`). The same round reported by several sources is reconciled into one canonical raise using the earliest date, median amount, median valuation, and highest-ranked series label.
 
 ### GET /pre-ipo/v1/summary
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get profile and latest valuation for a pre-IPO company
 
 **Parameters:**
@@ -472,7 +494,7 @@ Get profile and latest valuation for a pre-IPO company
 Returns: `{updatedAt, data}` where `data` is `{id, name, description, summary, website, sector, latestEstimatedValuation, lastValuationDate, latestRaise}`. `latestRaise` is the most recent round `{date, amountRaised, valuation, series}` or `null`. `summary` currently mirrors `description`.
 
 ### GET /pre-ipo/v1/integrations
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get tradeable markets for a pre-IPO company (perpetual futures venues and tokenised-share issuers)
 
 **Parameters:**
@@ -484,27 +506,27 @@ Returns: `{updatedAt, data}` where `data` is `{perps, tokenIssuers}`. Each perp 
 ## Oracles (Beta)
 
 ### GET /api/v2/metrics/oracle
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get oracle data overview. Returns mapping of oracle names to arrays of protocol names using that oracle.
 Returns: {oracles: {OracleName: [protocol1, protocol2, ...], ...}}
 
 ### GET /api/v2/chart/oracle
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get timeseries chart data for all oracles. Returns array of [timestamp, value] pairs representing total oracle TVL over time.
 Returns: array of [timestamp, value]
 
 ### GET /api/v2/chart/oracle/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get timeseries chart data breakdown by chain. Returns array of objects with timestamp and TVL per chain.
 Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
 
 ### GET /api/v2/chart/oracle/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get timeseries chart data breakdown by protocol/oracle. Returns array of objects with timestamp and TVL per oracle.
 Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
 
 ### GET /api/v2/chart/oracle/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get timeseries chart data by protocol/oracle. Returns array of [timestamp, value] pairs for a specific oracle.
 
 **Parameters:**
@@ -512,7 +534,7 @@ Get timeseries chart data by protocol/oracle. Returns array of [timestamp, value
 Returns: array of [timestamp, value]
 
 ### GET /api/v2/chart/oracle/protocol/{protocol}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get chain breakdown timeseries chart data by protocol/oracle. Returns array of objects with timestamp and TVL per chain for a specific oracle.
 
 **Parameters:**
@@ -520,7 +542,7 @@ Get chain breakdown timeseries chart data by protocol/oracle. Returns array of o
 Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
 
 ### GET /api/v2/chart/oracle/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get timeseries chart data by chain. Returns array of [timestamp, value] pairs for oracle TVL on a specific chain.
 
 **Parameters:**
@@ -528,7 +550,7 @@ Get timeseries chart data by chain. Returns array of [timestamp, value] pairs fo
 Returns: array of [timestamp, value]
 
 ### GET /api/v2/chart/oracle/chain/{chain}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get protocol breakdown timeseries chart data by chain. Returns array of objects with timestamp and TVL per oracle for a specific chain.
 
 **Parameters:**
@@ -540,17 +562,17 @@ Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
 ## Forks (Beta)
 
 ### GET /api/v2/metrics/fork
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get fork data overview. Returns mapping of fork protocol names to arrays of forked protocol names.
 Returns: {ForkName: [protocol1, protocol2, ...], ...}
 
 ### GET /api/v2/chart/fork/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get timeseries chart data breakdown by protocol. Returns array of objects with timestamp and TVL per fork protocol.
 Returns: array of {timestamp, Fork1: value, Fork2: value, ...}
 
 ### GET /api/v2/chart/fork/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get timeseries chart data by protocol. Returns array of [timestamp, value] pairs for all forks of a specific protocol.
 
 **Parameters:**
@@ -582,7 +604,7 @@ Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, op
 ### Overview
 
 #### GET /api/v2/metrics/{metric}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get dimension data overview. Returns aggregate metrics including totals and percentage changes.
 
 **Parameters:**
@@ -592,7 +614,7 @@ Get dimension data overview. Returns aggregate metrics including totals and perc
 Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
 
 #### GET /api/v2/chart/{metric}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get historical timeseries chart data.
 
 **Parameters:**
@@ -602,7 +624,7 @@ Get historical timeseries chart data.
 Returns: array of [timestamp, value]
 
 #### GET /api/v2/chart/{metric}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get historical timeseries chart data breakdown by chain.
 
 **Parameters:**
@@ -612,7 +634,7 @@ Get historical timeseries chart data breakdown by chain.
 Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
 
 #### GET /api/v2/chart/{metric}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get historical timeseries chart data breakdown by protocol.
 
 **Parameters:**
@@ -623,7 +645,7 @@ Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
 ### For chains
 
 #### GET /api/v2/metrics/{metric}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get chain dimension data overview.
 
 **Parameters:**
@@ -633,7 +655,7 @@ Get chain dimension data overview.
 Returns: {chain, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
 
 #### GET /api/v2/chart/{metric}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get chain historical timeseries chart data.
 
 **Parameters:**
@@ -643,7 +665,7 @@ Get chain historical timeseries chart data.
 Returns: array of [timestamp, value]
 
 #### GET /api/v2/chart/{metric}/chain/{chain}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get chain timeseries chart data breakdown by protocol.
 
 **Parameters:**
@@ -655,7 +677,7 @@ Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
 ### For protocols
 
 #### GET /api/v2/metrics/{metric}/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get protocol dimension data overview. Returns protocol metadata along with aggregate metrics.
 
 **Parameters:**
@@ -665,7 +687,7 @@ Get protocol dimension data overview. Returns protocol metadata along with aggre
 Returns: {id, name, url, description, logo, chains, gecko_id, cmcId, symbol, total24h, total48hto24h, total7d, total30d, total1y, change_1d, change_7d, change_1m}
 
 #### GET /api/v2/chart/{metric}/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get protocol historical timeseries chart data.
 
 **Parameters:**
@@ -675,7 +697,7 @@ Get protocol historical timeseries chart data.
 Returns: array of [timestamp, value]
 
 #### GET /api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get protocol timeseries chart data breakdown by chain.
 
 **Parameters:**
@@ -685,7 +707,7 @@ Get protocol timeseries chart data breakdown by chain.
 Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
 
 #### GET /api/v2/chart/{metric}/protocol/{protocol}/version-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get protocol timeseries chart data breakdown by version (e.g. Aave V2, Aave V3).
 
 **Parameters:**
@@ -695,7 +717,7 @@ Get protocol timeseries chart data breakdown by version (e.g. Aave V2, Aave V3).
 Returns: array of [timestamp, {Version1: value, Version2: value, ...}]
 
 #### GET /api/v2/chart/{metric}/protocol/{protocol}/label-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get protocol timeseries chart data breakdown by label (e.g. Borrow Interest, Flash Loans). Currently only supported for metric=fees.
 
 **Parameters:**
@@ -707,7 +729,7 @@ Returns: array of [timestamp, {Label1: value, Label2: value, ...}]
 ### For categories
 
 #### GET /api/v2/metrics/{metric}/category/{category}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get category dimension data overview.
 
 **Parameters:**
@@ -717,7 +739,7 @@ Get category dimension data overview.
 Returns: {category, allCategories, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
 
 #### GET /api/v2/chart/{metric}/category/{category}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get category historical timeseries chart data.
 
 **Parameters:**
@@ -727,7 +749,7 @@ Get category historical timeseries chart data.
 Returns: array of [timestamp, value]
 
 #### GET /api/v2/chart/{metric}/category/{category}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get category timeseries chart data breakdown by chain.
 
 **Parameters:**
@@ -737,7 +759,7 @@ Get category timeseries chart data breakdown by chain.
 Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
 
 #### GET /api/v2/chart/{metric}/category/{category}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get category timeseries chart data breakdown by protocol.
 
 **Parameters:**
@@ -749,7 +771,7 @@ Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
 ### For categories and chains
 
 #### GET /api/v2/metrics/{metric}/category/{category}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get category chain dimension data overview.
 
 **Parameters:**
@@ -760,7 +782,7 @@ Get category chain dimension data overview.
 Returns: {category, chain, allCategories, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d}
 
 #### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get category chain historical timeseries chart data.
 
 **Parameters:**
@@ -771,7 +793,7 @@ Get category chain historical timeseries chart data.
 Returns: array of [timestamp, value]
 
 #### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get category chain timeseries chart data breakdown by protocol.
 
 **Parameters:**
@@ -786,22 +808,22 @@ Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
 ## Real World Assets
 
 ### GET /rwa/current
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 List all current RWA assets with per-chain onchain market cap, active market cap, and DeFi active TVL maps.
 Returns: array of RWA asset objects
 
 ### GET /rwa/stats
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get aggregate RWA stats by chain, category, platform, and asset group. For the default per-chain table, read `byChain[chain].base`: `assetIssuers.length`, `assetCount`, `activeMcap`, `onChainMcap`, and `defiActiveTvl`. Add `stablecoinsOnly`, `governanceOnly`, and `stablecoinsAndGovernance` when those buckets should be included.
 Returns: {totalOnChainMcap, totalActiveMcap, totalDefiActiveTvl, assetCount, assetIssuers, byChain, byCategory, byPlatform, byAssetGroup}
 
 ### GET /rwa/list
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 List RWA canonical market ids, platforms, chains, categories, asset groups, and id mappings.
 Returns: {canonicalMarketIds, platforms, chains, categories, assetGroups, idMap}
 
 ### GET /rwa/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 List current RWA assets on a chain.
 
 **Parameters:**
@@ -809,7 +831,7 @@ List current RWA assets on a chain.
 Returns: {data}
 
 ### GET /rwa/chart/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get historical RWA onchain market cap, active market cap, and DeFi active TVL totals for a chain.
 
 **Parameters:**
@@ -817,7 +839,7 @@ Get historical RWA onchain market cap, active market cap, and DeFi active TVL to
 Returns: array of {timestamp, onChainMcap, activeMcap, defiActiveTvl}
 
 ### GET /rwa/chart/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get historical RWA metric breakdown by chain.
 
 **Parameters:**
@@ -831,7 +853,7 @@ Returns: array of {timestamp, [chain]: value}
 ## Financial Statements (Beta)
 
 ### GET /api/v2/metrics/financial-statement/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi`
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
 Get protocol income statement report. Returns protocol metadata, methodology details, and aggregated financial data (yearly, quarterly, monthly).
 
 When querying a **parent protocol** (e.g. `aave`), the response includes `childProtocols` with per-version methodology. When querying a **child protocol** (e.g. `aave-v3`), `methodology` and `breakdownMethodology` are at the top level.

@@ -150,6 +150,29 @@ function formatTagName(tag: string): string {
   return map[tag] ?? tag
 }
 
+/**
+ * Shared by llms.txt and llms-pro.txt so agents get the same auth rules from either file.
+ * Agents kept sending the key as ?apikey= to api.llama.fi and reading the 402 as a lapsed plan.
+ */
+const PRO_AUTH = `## Pro API authentication
+
+Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (\`?apikey=\`) or header. Do NOT put it in \`api.llama.fi\` URLs.
+
+\`\`\`
+WRONG  https://pro-api.llama.fi/api/overview/derivatives?apikey={YOUR_API_KEY}
+RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives
+\`\`\`
+
+There are only two tiers: free (no key) and the API plan. One API plan key unlocks every Pro endpoint. There are no add-ons or separate keys for volumes, derivatives, or other data.
+
+## Troubleshooting
+
+A 200 from \`/protocols\` or \`/overview/fees\` on \`api.llama.fi\` does not validate your API key. Those endpoints require no authentication. A 402 from \`api.llama.fi\` does not prove your subscription expired. It means the endpoint needs the Pro API.
+
+1. Check the host and key placement: \`https://pro-api.llama.fi/{YOUR_API_KEY}/...\`, not \`api.llama.fi\` and not \`?apikey=\`.
+2. Call \`https://pro-api.llama.fi/usage/{YOUR_API_KEY}\` (key at the end, for this endpoint only). It returns your remaining credits, like \`{"creditsLeft": 1000000}\`.
+3. Retry the keyed URL: \`https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives\`.`
+
 function generateIndex(freeEndpoints: Endpoint[], proEndpoints: Endpoint[], mappingTable: string): string {
   const freeGroups = groupByTag(freeEndpoints)
   const proGroups = groupByTag(proEndpoints)
@@ -169,12 +192,7 @@ The Free API and Pro API are entirely separate services.
 | Rate Limit | Standard | Higher |
 | Endpoints | ${freeEndpoints.length} | ${proEndpoints.length} exclusive + ${freeEndpoints.length} free with prefix |
 
-Pro API authentication: insert your API key between the base URL and endpoint path:
-\`\`\`
-https://pro-api.llama.fi/{YOUR_API_KEY}/api/protocols
-\`\`\`
-
-Do NOT use \`pro-api.llama.fi\` without an API key. Do NOT put API keys in \`api.llama.fi\` URLs.
+${PRO_AUTH}
 
 **Pro users accessing free endpoints:** Pro API key holders can also call free endpoints on \`pro-api.llama.fi\` for higher rate limits. Use the exact path mappings below.
 
@@ -203,7 +221,7 @@ ${Array.from(freeGroups.entries())
 
 Full documentation: [llms-pro.txt](/llms-pro.txt)
 
-Requires API key. Base URL: \`https://pro-api.llama.fi\`
+Requires API key. Base URL: \`https://pro-api.llama.fi/{YOUR_API_KEY}\`
 
 ${Array.from(proGroups.entries())
   .map(([tag, eps]) => `- **${formatTagName(tag)}**: ${eps.map((e) => `\`${e.path}\``).join(', ')}`)
@@ -222,7 +240,10 @@ function generateDetailedFile(title: string, baseUrl: string, auth: string, endp
   const sections = Array.from(groups.entries())
     .map(([tag, eps]) => {
       const header = `## ${formatTagName(tag)}`
-      const entries = eps.map((e) => formatEndpoint(e, baseUrl)).join('\n\n')
+      // /usage/{YOUR_API_KEY} already carries the key in its own path, so it keeps the bare host
+      const entries = eps
+        .map((e) => formatEndpoint(e, e.path.includes('{YOUR_API_KEY}') ? 'https://pro-api.llama.fi' : baseUrl))
+        .join('\n\n')
       return `${header}\n\n${entries}`
     })
     .join('\n\n---\n\n')
@@ -231,7 +252,7 @@ function generateDetailedFile(title: string, baseUrl: string, auth: string, endp
 
 > ${auth}
 
-**Base URL for ALL endpoints below:** \`${baseUrl}\`
+**Base URL for endpoints below:** \`${baseUrl}\` (unless an endpoint lists its own)
 
 ${sections}
 `
@@ -301,7 +322,9 @@ function main(): void {
     'Free API — no authentication required. All endpoints below use base URL https://api.llama.fi',
     freeEndpoints,
   )
-  const proNote = `Pro API — requires a paid API key ($300/mo). Authentication: insert API key in URL path like https://pro-api.llama.fi/{YOUR_API_KEY}/endpoint. The pro-only endpoints below are NOT available on the free API.
+  const proNote = `Pro API — requires a paid API key ($300/mo). The pro-only endpoints below are NOT available on the free API.
+
+${PRO_AUTH}
 
 Pro users can also call free endpoints with higher rate limits using the path mappings below.
 
@@ -313,7 +336,7 @@ ${mappingTable}`
 
   const llmsPro = generateDetailedFile(
     'DefiLlama Pro API (Paid)',
-    'https://pro-api.llama.fi',
+    'https://pro-api.llama.fi/{YOUR_API_KEY}',
     proNote,
     proOnlyEndpoints,
   )
