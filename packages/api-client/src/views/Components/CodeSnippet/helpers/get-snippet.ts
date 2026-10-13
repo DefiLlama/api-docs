@@ -2,6 +2,7 @@ import type { ErrorResponse } from '@/libs/errors'
 import { type ClientId, type TargetId, snippetz } from '@scalar/snippetz'
 import type { Request as HarRequest } from 'har-format'
 import { getApiKeyValue } from '@/libs/api-key-manager'
+import { placeApiKeyInPath } from '@scalar/helpers/url/merge-urls'
 
 /** Key used to hack around the invalid urls */
 const INVALID_URLS_PREFIX = 'ws://replace.me'
@@ -21,7 +22,7 @@ const injectApiKeyPlaceholder = (url: string) => {
     const urlParts = new URL(url)
     const actualApiKey = getApiKeyValue('default')
     const keyToInject = actualApiKey || '<API-KEY>'
-    const finalUrl = `${urlParts.origin}/${keyToInject}${urlParts.pathname}${urlParts.search}`
+    const finalUrl = `${urlParts.origin}${placeApiKeyInPath(urlParts.pathname, keyToInject)}${urlParts.search}`
     return decodeWhitelistedCharacters(finalUrl)
   }
   return decodeWhitelistedCharacters(url)

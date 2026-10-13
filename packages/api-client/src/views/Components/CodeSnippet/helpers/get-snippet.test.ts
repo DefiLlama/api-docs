@@ -45,6 +45,39 @@ describe('getSnippet', () => {
     expect(result).toEqual('curl https://example.com/users')
   })
 
+  describe('pro API key placement', () => {
+    it('puts the key placeholder after the host for regular pro endpoints', () => {
+      const [error, result] = getSnippet(
+        'shell',
+        'curl',
+        getHarRequest({
+          operation: operationSchema.parse({ method: 'get', path: '/api/overview/derivatives' }),
+          example,
+          server: serverSchema.parse({ url: 'https://pro-api.llama.fi' }),
+        }),
+      )
+
+      expect(error).toBeNull()
+      expect(result).toContain('https://pro-api.llama.fi/<API-KEY>/api/overview/derivatives')
+    })
+
+    it('puts the key placeholder at the end for the usage endpoint', () => {
+      const [error, result] = getSnippet(
+        'shell',
+        'curl',
+        getHarRequest({
+          operation: operationSchema.parse({ method: 'get', path: '/usage/{YOUR_API_KEY}' }),
+          example,
+          server: serverSchema.parse({ url: 'https://pro-api.llama.fi' }),
+        }),
+      )
+
+      expect(error).toBeNull()
+      expect(result).toContain('https://pro-api.llama.fi/usage/<API-KEY>')
+      expect(result).not.toContain('<API-KEY>/usage')
+    })
+  })
+
   it('generates a basic node/undici example (@scalar/snippetz)', () => {
     const [error, result] = getSnippet(
       'node',

@@ -52,6 +52,16 @@ export const combineUrlAndPath = (url: string, path: string) => {
 }
 
 /**
+ * Places an API key in a pro API path.
+ * The key normally goes right after the host (/{key}/api/...), but DefiLlama's usage
+ * endpoint takes it as its last segment instead (/usage/{key}). Without this, the usage
+ * call became /{key}/usage/{placeholder} and failed.
+ * The key is used as given, so callers can pass an encoded key or a placeholder like <API-KEY>.
+ */
+export const placeApiKeyInPath = (path: string, apiKey: string): string =>
+  /^\/usage\/[^/]*$/.test(path) ? `/usage/${apiKey}` : `/${apiKey}${path}`
+
+/**
  * Injects an API key as a path segment into a URL
  * Only injects if the base URL actually requires API key injection
  *
@@ -76,8 +86,7 @@ export const injectApiKeyInPath = (
   // Ensure path starts with slash for consistency
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
 
-  // Inject API key: baseUrl/apiKey/path
-  return `${cleanBaseUrl}/${encodeURIComponent(apiKey)}${normalizedPath}`
+  return `${cleanBaseUrl}${placeApiKeyInPath(normalizedPath, encodeURIComponent(apiKey))}`
 }
 
 /**
