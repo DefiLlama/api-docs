@@ -24,7 +24,14 @@
   },
   "servers": [
     {
-      "url": "https://pro-api.llama.fi"
+      "url": "https://pro-api.llama.fi/{YOUR_API_KEY}",
+      "description": "Your API key goes in the path, between the base URL and the endpoint. Never as a query parameter or header.",
+      "variables": {
+        "YOUR_API_KEY": {
+          "default": "YOUR_API_KEY",
+          "description": "Your DefiLlama API plan key"
+        }
+      }
     }
   ],
   "tags": [
@@ -13123,11 +13130,6 @@
       "get": {
         "tags": ["bridges"],
         "summary": "List all bridges along with summaries of recent bridge volumes.",
-        "servers": [
-          {
-            "url": "https://pro-api.llama.fi"
-          }
-        ],
         "parameters": [
           {
             "name": "includeChains",
@@ -13271,11 +13273,6 @@
       "get": {
         "tags": ["bridges"],
         "summary": "Get summary of bridge volume and volume breakdown by chain",
-        "servers": [
-          {
-            "url": "https://pro-api.llama.fi"
-          }
-        ],
         "parameters": [
           {
             "name": "id",
@@ -13553,11 +13550,6 @@
       "get": {
         "tags": ["bridges"],
         "summary": "Get historical volumes for a bridge, chain, or bridge on a particular chain",
-        "servers": [
-          {
-            "url": "https://pro-api.llama.fi"
-          }
-        ],
         "parameters": [
           {
             "name": "chain",
@@ -13652,11 +13644,6 @@
       "get": {
         "tags": ["bridges"],
         "summary": "Get a 24hr token and address volume breakdown for a bridge",
-        "servers": [
-          {
-            "url": "https://pro-api.llama.fi"
-          }
-        ],
         "parameters": [
           {
             "name": "timestamp",
@@ -13861,11 +13848,6 @@
       "get": {
         "tags": ["bridges"],
         "summary": "Get all transactions for a bridge within a date range",
-        "servers": [
-          {
-            "url": "https://pro-api.llama.fi"
-          }
-        ],
         "parameters": [
           {
             "name": "id",
@@ -14351,13 +14333,24 @@
         ]
       }
     },
-    "/usage/APIKEY": {
+    "/usage/{YOUR_API_KEY}": {
       "get": {
         "tags": ["meta"],
         "summary": "Get amount of credits left in the api key, these reset on the 1st of each month",
         "servers": [
           {
             "url": "https://pro-api.llama.fi"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "YOUR_API_KEY",
+            "in": "path",
+            "required": true,
+            "description": "Your DefiLlama API plan key. For this endpoint only, the key goes at the end of the path.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

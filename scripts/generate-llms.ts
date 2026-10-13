@@ -240,9 +240,9 @@ function generateDetailedFile(title: string, baseUrl: string, auth: string, endp
   const sections = Array.from(groups.entries())
     .map(([tag, eps]) => {
       const header = `## ${formatTagName(tag)}`
-      // /usage/APIKEY already carries the key in its own path, so it keeps the bare host
+      // /usage/{YOUR_API_KEY} already carries the key in its own path, so it keeps the bare host
       const entries = eps
-        .map((e) => formatEndpoint(e, e.path.includes('APIKEY') ? 'https://pro-api.llama.fi' : baseUrl))
+        .map((e) => formatEndpoint(e, e.path.includes('{YOUR_API_KEY}') ? 'https://pro-api.llama.fi' : baseUrl))
         .join('\n\n')
       return `${header}\n\n${entries}`
     })

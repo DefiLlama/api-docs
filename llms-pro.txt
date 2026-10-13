@@ -303,9 +303,12 @@ Get all transactions for a bridge within a date range
 
 ## API Key Management
 
-### GET /usage/APIKEY
+### GET /usage/{YOUR_API_KEY}
 **Base URL:** `https://pro-api.llama.fi`
 Get amount of credits left in the api key, these reset on the 1st of each month
+
+**Parameters:**
+  - `YOUR_API_KEY` (path, string, required) — Your DefiLlama API plan key. For this endpoint only, the key goes at the end of the path.
 
 ---
 

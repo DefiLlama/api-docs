@@ -72,7 +72,7 @@ const baseMappings = new Map([
   ['/performance/{period}', mapEntry('etfs', 'getFdvPerformance', ["'30'"], true)],
   ['/institutions', mapEntry('dat', 'getInstitutions', [], true)],
   ['/institutions/{symbol}', mapEntry('dat', 'getInstitution', ["'MSTR'"], true)],
-  ['/usage/APIKEY', mapEntry('account', 'getUsage', [], true)],
+  ['/usage/{YOUR_API_KEY}', mapEntry('account', 'getUsage', [], true)],
 ])
 
 const prefixes = ['/api', '/coins', '/stablecoins', '/bridges', '/yields', '/etfs', '/fdv', '/dat']

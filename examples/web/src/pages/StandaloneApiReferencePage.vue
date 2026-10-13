@@ -9,13 +9,18 @@ import proSpecContent from '../../../../defillama-openapi-pro.json'
 import ApiKeyInput from '../components/ApiKeyInput.vue'
 import SlotPlaceholder from '../components/SlotPlaceholder.vue'
 
+/**
+ * The published spec keeps {YOUR_API_KEY} in the server URL so copied URLs are right.
+ * This page inserts the key itself (or an <API-KEY> placeholder in snippets),
+ * so it uses the bare host, otherwise the key shows up twice.
+ */
+const PRO_HOST = 'https://pro-api.llama.fi'
+
 // Create a deep copy of the spec to avoid mutating the original
 const getUpdatedSpec = (baseUrl: string) => {
   if (baseUrl === 'https://pro-api.llama.fi') {
     const spec = JSON.parse(JSON.stringify(proSpecContent))
-    if (!spec.servers) {
-      spec.servers = [{ url: baseUrl }]
-    }
+    spec.servers = [{ url: PRO_HOST }]
     return spec
   }
 
@@ -33,9 +38,9 @@ const getUpdatedSpec = (baseUrl: string) => {
 
         const proOperation = proSpec.paths[path][method]
 
-        // If the pro operation doesn't have its own server, use the pro spec's global server
-        if (!proOperation.servers && proSpec.servers) {
-          proOperation.servers = proSpec.servers
+        // If the pro operation doesn't have its own server, use the pro host
+        if (!proOperation.servers) {
+          proOperation.servers = [{ url: PRO_HOST }]
         }
         freeSpec.paths[path][method] = proOperation
       }

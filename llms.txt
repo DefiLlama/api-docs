@@ -107,7 +107,7 @@ Requires API key. Base URL: `https://pro-api.llama.fi/{YOUR_API_KEY}`
 - **Narratives**: `/fdv/performance/{period}`
 - **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
 - **Bridges**: `/bridges/bridges`, `/bridges/bridge/{id}`, `/bridges/bridgevolume/{chain}`, `/bridges/bridgedaystats/{timestamp}/{chain}`, `/bridges/transactions/{id}`
-- **API Key Management**: `/usage/APIKEY`
+- **API Key Management**: `/usage/{YOUR_API_KEY}`
 - **Digital Asset Treasury**: `/dat/institutions`, `/dat/institutions/{symbol}`
 - **Equities**: `/equities/v1/companies-list`, `/equities/v1/statements`, `/equities/v1/dimensions`, `/equities/v1/price-history`, `/equities/v1/ohlcv`, `/equities/v1/summary`, `/equities/v1/filings`, `/equities/v1/onchain`, `/equities/v1/sectors`, `/equities/v1/sectors-overview`, `/equities/v1/sector`, `/equities/v1/industries`, `/equities/v1/earnings-calendar`
 - **Pre-IPO**: `/pre-ipo/v1/companies-list`, `/pre-ipo/v1/valuations`, `/pre-ipo/v1/raises`, `/pre-ipo/v1/summary`, `/pre-ipo/v1/integrations`

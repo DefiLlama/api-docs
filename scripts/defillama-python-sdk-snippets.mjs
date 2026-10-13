@@ -126,8 +126,8 @@ if (historyMapping && !pathMappings.has('/flows')) {
   pathMappings.set('/flows', historyMapping)
 }
 
-pathMappings.set('/usage/APIKEY', {
-  path: '/usage/APIKEY',
+pathMappings.set('/usage/{YOUR_API_KEY}', {
+  path: '/usage/{YOUR_API_KEY}',
   module: 'account',
   method: 'getUsage',
   args: [],
