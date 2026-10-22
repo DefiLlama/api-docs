@@ -105,7 +105,7 @@
     },
     {
       "name": "Dimensions",
-      "description": "Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, options, aggregators, bridge aggregators, open interest, and normalized volume"
+      "description": "Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, options, aggregators, bridge aggregators, bridges, open interest, and normalized volume.\n\nUse `metric=bridges` for bridge transfer volumes and transaction counts. `metric=bridge-aggregators` covers activity routed through bridge aggregators and uses `dailyBridgeVolume`.\n\n| dataType | Unit | Meaning |\n| --- | --- | --- |\n| dailyAggregatedVolume | USD | Default. At protocol level, total outgoing volume across chains. For each chain, incoming plus outgoing volume. |\n| dailyOutgoingVolume | USD | Value leaving each chain through the bridge. |\n| dailyIncomingVolume | USD | Value arriving on each chain through the bridge. |\n| dailyTxCount | Transfers | At protocol level, total outgoing transfer count across chains. For each chain, incoming plus outgoing transfer counts. |\n| dailyOutgoingTxCount | Transfers | Number of transfers leaving each chain. |\n| dailyIncomingTxCount | Transfers | Number of transfers arriving on each chain. |\n\nThe selected dataType controls the units of chart values and overview totals such as total24h and total7d. Chart timestamps are Unix seconds at the start of each UTC day. Missing dates or null totals do not mean zero activity.\n\nDirection is relative to each chain: Ethereum -> OP Mainnet is outgoing on Ethereum and incoming on OP Mainnet. For a chain, calculate netflow as dailyIncomingVolume minus dailyOutgoingVolume; a positive result is a net inflow.\n\nProtocol totals count the source side of transfers. Per-chain dailyAggregatedVolume and dailyTxCount count both incoming and outgoing activity, so summing a chain breakdown can count a transfer twice. Version breakdowns sum chain values within each version and can also exceed the protocol total. Use the protocol total chart for the protocol's volume or transfer count.\n\nDiscover protocol slugs and chain names from `/api/v2/metrics/bridges`. Use those slugs in protocol routes, for example `optimism-bridge` or `cbridge`; the legacy `/bridges/bridge/{id}` numeric IDs are a different identifier set. Discover categories with `/api/v2/metrics/bridges/categories`, then use their slug forms in category routes, such as `bridge` or `canonical-bridge`.\n\nExamples (replace YOUR_API_KEY):\n\n```text\nhttps://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/metrics/bridges\nhttps://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge?dataType=dailyAggregatedVolume\nhttps://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge?dataType=dailyTxCount\nhttps://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge/chain-breakdown?dataType=dailyIncomingVolume\nhttps://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/chain/ethereum?dataType=dailyOutgoingVolume\nhttps://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/metrics/bridges/categories\n```\n\nLabel breakdowns are available only when the protocol supplies label data; they are not available for every bridge."
     },
     {
       "name": "Financial Statements",
@@ -6522,6 +6522,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume",
                 "active-users"
@@ -6533,7 +6534,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6634,6 +6635,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume",
                 "active-users"
@@ -6645,7 +6647,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6681,7 +6683,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get historical timeseries chart data breakdown by chain",
-        "description": "Returns an array of [timestamp, {chain: value}] pairs showing the metric broken down by chain over time.",
+        "description": "Returns an array of [timestamp, {chain: value}] pairs showing the metric broken down by chain over time. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -6698,6 +6700,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume",
                 "active-users"
@@ -6709,7 +6712,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6769,6 +6772,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -6779,7 +6783,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6822,7 +6826,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get chain dimension data overview",
-        "description": "Returns aggregate metrics for the specified dimension filtered by a specific chain.",
+        "description": "Returns aggregate metrics for the specified dimension filtered by a specific chain. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -6839,6 +6843,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -6859,7 +6864,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -6950,7 +6955,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get chain historical timeseries chart data",
-        "description": "Returns an array of [timestamp, value] pairs for the metric filtered by a specific chain.",
+        "description": "Returns an array of [timestamp, value] pairs for the metric filtered by a specific chain. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -6967,6 +6972,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -6987,7 +6993,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7026,7 +7032,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get chain timeseries chart data breakdown by protocol",
-        "description": "Returns an array of [timestamp, {protocol: value}] pairs showing the metric on a specific chain broken down by protocol.",
+        "description": "Returns an array of [timestamp, {protocol: value}] pairs showing the metric on a specific chain broken down by protocol. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -7043,6 +7049,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7063,7 +7070,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7126,6 +7133,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7146,7 +7154,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7301,6 +7309,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7321,7 +7330,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7333,6 +7342,38 @@
             "description": "Array of [timestamp, value] pairs",
             "content": {
               "application/json": {
+                "examples": {
+                  "dailyAggregatedVolume": {
+                    "summary": "Bridge dailyAggregatedVolume",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyAggregatedVolume. Historical example for 2022-10-17 UTC.",
+                    "value": [[1665964800, 834139]]
+                  },
+                  "dailyOutgoingVolume": {
+                    "summary": "Bridge dailyOutgoingVolume",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyOutgoingVolume. Historical example for 2022-10-17 UTC.",
+                    "value": [[1665964800, 834139]]
+                  },
+                  "dailyIncomingVolume": {
+                    "summary": "Bridge dailyIncomingVolume",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyIncomingVolume. Historical example for 2022-10-17 UTC.",
+                    "value": [[1665964800, 834139]]
+                  },
+                  "dailyTxCount": {
+                    "summary": "Bridge dailyTxCount",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyTxCount. Historical example for 2022-10-17 UTC.",
+                    "value": [[1665964800, 33]]
+                  },
+                  "dailyOutgoingTxCount": {
+                    "summary": "Bridge dailyOutgoingTxCount",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyOutgoingTxCount. Historical example for 2022-10-17 UTC.",
+                    "value": [[1665964800, 33]]
+                  },
+                  "dailyIncomingTxCount": {
+                    "summary": "Bridge dailyIncomingTxCount",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyIncomingTxCount. Historical example for 2022-10-17 UTC.",
+                    "value": [[1665964800, 33]]
+                  }
+                },
                 "schema": {
                   "type": "array",
                   "items": {
@@ -7360,7 +7401,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get protocol timeseries chart data breakdown by chain",
-        "description": "Returns an array of [timestamp, {chain: value}] pairs showing the metric for a specific protocol broken down by chain.",
+        "description": "Returns an array of [timestamp, {chain: value}] pairs showing the metric for a specific protocol broken down by chain. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -7377,6 +7418,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7397,7 +7439,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7409,6 +7451,86 @@
             "description": "Array of [timestamp, chainBreakdown] pairs",
             "content": {
               "application/json": {
+                "examples": {
+                  "dailyAggregatedVolume": {
+                    "summary": "Bridge dailyAggregatedVolume",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyAggregatedVolume. Historical example for 2022-10-17 UTC.",
+                    "value": [
+                      [
+                        1665964800,
+                        {
+                          "Ethereum": 834139,
+                          "OP Mainnet": 834139
+                        }
+                      ]
+                    ]
+                  },
+                  "dailyOutgoingVolume": {
+                    "summary": "Bridge dailyOutgoingVolume",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyOutgoingVolume. Historical example for 2022-10-17 UTC.",
+                    "value": [
+                      [
+                        1665964800,
+                        {
+                          "Ethereum": 811248,
+                          "OP Mainnet": 22891
+                        }
+                      ]
+                    ]
+                  },
+                  "dailyIncomingVolume": {
+                    "summary": "Bridge dailyIncomingVolume",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyIncomingVolume. Historical example for 2022-10-17 UTC.",
+                    "value": [
+                      [
+                        1665964800,
+                        {
+                          "Ethereum": 22891,
+                          "OP Mainnet": 811248
+                        }
+                      ]
+                    ]
+                  },
+                  "dailyTxCount": {
+                    "summary": "Bridge dailyTxCount",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyTxCount. Historical example for 2022-10-17 UTC.",
+                    "value": [
+                      [
+                        1665964800,
+                        {
+                          "Ethereum": 33,
+                          "OP Mainnet": 33
+                        }
+                      ]
+                    ]
+                  },
+                  "dailyOutgoingTxCount": {
+                    "summary": "Bridge dailyOutgoingTxCount",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyOutgoingTxCount. Historical example for 2022-10-17 UTC.",
+                    "value": [
+                      [
+                        1665964800,
+                        {
+                          "Ethereum": 28,
+                          "OP Mainnet": 5
+                        }
+                      ]
+                    ]
+                  },
+                  "dailyIncomingTxCount": {
+                    "summary": "Bridge dailyIncomingTxCount",
+                    "description": "metric=bridges, protocol=optimism-bridge, dataType=dailyIncomingTxCount. Historical example for 2022-10-17 UTC.",
+                    "value": [
+                      [
+                        1665964800,
+                        {
+                          "Ethereum": 5,
+                          "OP Mainnet": 28
+                        }
+                      ]
+                    ]
+                  }
+                },
                 "schema": {
                   "type": "array",
                   "example": [
@@ -7443,7 +7565,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get protocol timeseries chart data breakdown by version",
-        "description": "Returns an array of [timestamp, {version: value}] pairs showing the metric for a specific protocol broken down by version (e.g. Aave V2, Aave V3).",
+        "description": "Returns an array of [timestamp, {version: value}] pairs showing the metric for a specific protocol broken down by version (e.g. Aave V2, Aave V3). For bridges, version values sum chain activity and can exceed the protocol total for dailyAggregatedVolume and dailyTxCount. Use /api/v2/chart/bridges/protocol/{protocol} for the protocol total.",
         "parameters": [
           {
             "name": "metric",
@@ -7460,6 +7582,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7480,7 +7603,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7601,6 +7724,93 @@
         }
       }
     },
+    "/api/v2/metrics/{metric}/categories": {
+      "get": {
+        "tags": ["Dimensions"],
+        "x-api-plan-only": true,
+        "x-api-beta": true,
+        "summary": "Get categories available for a dimension",
+        "description": "Returns the categories that have data for the selected metric and dataType, with aggregate totals and active chain names. Use category names in slug form for category routes, for example canonical-bridge for Canonical Bridge. For bridges, totals are in USD for volume dataTypes and transfer counts for TxCount dataTypes.",
+        "parameters": [
+          {
+            "name": "metric",
+            "in": "path",
+            "required": true,
+            "description": "The dimension metric type",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "fees",
+                "liquidations",
+                "dexs",
+                "derivatives",
+                "options",
+                "aggregators",
+                "bridge-aggregators",
+                "bridges",
+                "open-interest",
+                "normalized-volume",
+                "active-users"
+              ],
+              "example": "fees"
+            }
+          },
+          {
+            "name": "dataType",
+            "in": "query",
+            "required": false,
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
+            "schema": {
+              "type": "string",
+              "example": "dailyFees"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Categories with data for the selected dimension and dataType",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "category": {
+                        "type": "string",
+                        "example": "Canonical Bridge"
+                      },
+                      "total24h": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "total7d": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "total30d": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "chains": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "example": ["Ethereum", "OP Mainnet"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Category data not available"
+          }
+        }
+      }
+    },
     "/api/v2/metrics/{metric}/category/{category}": {
       "get": {
         "tags": ["Dimensions"],
@@ -7624,6 +7834,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7644,7 +7855,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7759,6 +7970,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7779,7 +7991,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7818,7 +8030,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get category timeseries chart data breakdown by chain",
-        "description": "Returns an array of [timestamp, {chain: value}] pairs showing the metric for a specific category broken down by chain.",
+        "description": "Returns an array of [timestamp, {chain: value}] pairs showing the metric for a specific category broken down by chain. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -7835,6 +8047,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7855,7 +8068,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7918,6 +8131,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -7938,7 +8152,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -7984,7 +8198,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get category chain dimension data overview",
-        "description": "Returns aggregate metrics for the specified dimension filtered by both category and chain.",
+        "description": "Returns aggregate metrics for the specified dimension filtered by both category and chain. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -8001,6 +8215,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -8031,7 +8246,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -8133,7 +8348,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get category chain historical timeseries chart data",
-        "description": "Returns an array of [timestamp, value] pairs for the metric filtered by both category and chain.",
+        "description": "Returns an array of [timestamp, value] pairs for the metric filtered by both category and chain. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -8150,6 +8365,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -8180,7 +8396,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"
@@ -8219,7 +8435,7 @@
         "x-api-plan-only": true,
         "x-api-beta": true,
         "summary": "Get category chain timeseries chart data breakdown by protocol",
-        "description": "Returns an array of [timestamp, {protocol: value}] pairs showing the metric filtered by both category and chain, broken down by protocol.",
+        "description": "Returns an array of [timestamp, {protocol: value}] pairs showing the metric filtered by both category and chain, broken down by protocol. For bridges, dailyAggregatedVolume and dailyTxCount include incoming plus outgoing activity on each chain; summing chains can count a transfer twice.",
         "parameters": [
           {
             "name": "metric",
@@ -8236,6 +8452,7 @@
                 "options",
                 "aggregators",
                 "bridge-aggregators",
+                "bridges",
                 "open-interest",
                 "normalized-volume"
               ],
@@ -8266,7 +8483,7 @@
             "name": "dataType",
             "in": "query",
             "required": false,
-            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity",
+            "description": "Metric-specific data type to return. Supported values per metric:\n- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue\n- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated\n- **dexs**: dailyVolume (default), dailyNotionalVolume\n- **derivatives**: dailyVolume (default), dailyNotionalVolume\n- **options**: dailyNotionalVolume (default), dailyPremiumVolume\n- **aggregators**: dailyVolume (default)\n- **bridge-aggregators**: dailyBridgeVolume (default)\n- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount\n- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd\n- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity\n\nFor bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain.",
             "schema": {
               "type": "string",
               "example": "dailyFees"

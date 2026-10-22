@@ -583,9 +583,9 @@ Returns: array of [timestamp, value]
 
 ## Dimensions (Beta)
 
-Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, options, aggregators, bridge aggregators, open interest, and normalized volume.
+Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, options, aggregators, bridge aggregators, bridges, open interest, and normalized volume.
 
-**`{metric}` values:** fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, open-interest, normalized-volume
+**`{metric}` values:** fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume
 
 **`dataType` query parameter** (optional, metric-specific):
 - **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
@@ -595,11 +595,46 @@ Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, op
 - **options**: dailyNotionalVolume (default), dailyPremiumVolume
 - **aggregators**: dailyVolume (default)
 - **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
 - **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
 - **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
 
 **`{protocol}`** should be slug-formatted (e.g. `aave`, `hyperliquid-perps`, `openocean`, `li.fi-bridge-aggregator`)
 **`{category}`** should be slug-formatted (e.g. `dexs`, `prediction-market`, `options`, `dex-aggregator`, `bridge-aggregator`)
+
+### Bridge metrics
+
+Use `metric=bridges` for bridge transfer volumes and transaction counts. `metric=bridge-aggregators` covers activity routed through bridge aggregators and uses `dailyBridgeVolume`.
+
+| dataType | Unit | Meaning |
+| --- | --- | --- |
+| dailyAggregatedVolume | USD | Default. At protocol level, total outgoing volume across chains. For each chain, incoming plus outgoing volume. |
+| dailyOutgoingVolume | USD | Value leaving each chain through the bridge. |
+| dailyIncomingVolume | USD | Value arriving on each chain through the bridge. |
+| dailyTxCount | Transfers | At protocol level, total outgoing transfer count across chains. For each chain, incoming plus outgoing transfer counts. |
+| dailyOutgoingTxCount | Transfers | Number of transfers leaving each chain. |
+| dailyIncomingTxCount | Transfers | Number of transfers arriving on each chain. |
+
+The selected dataType controls the units of chart values and overview totals such as total24h and total7d. Chart timestamps are Unix seconds at the start of each UTC day. Missing dates or null totals do not mean zero activity.
+
+Direction is relative to each chain: Ethereum -> OP Mainnet is outgoing on Ethereum and incoming on OP Mainnet. For a chain, calculate netflow as dailyIncomingVolume minus dailyOutgoingVolume; a positive result is a net inflow.
+
+Protocol totals count the source side of transfers. Per-chain dailyAggregatedVolume and dailyTxCount count both incoming and outgoing activity, so summing a chain breakdown can count a transfer twice. Version breakdowns sum chain values within each version and can also exceed the protocol total. Use the protocol total chart for the protocol's volume or transfer count.
+
+Discover protocol slugs and chain names from `/api/v2/metrics/bridges`. Use those slugs in protocol routes, for example `optimism-bridge` or `cbridge`; the legacy `/bridges/bridge/{id}` numeric IDs are a different identifier set. Discover categories with `/api/v2/metrics/bridges/categories`, then use their slug forms in category routes, such as `bridge` or `canonical-bridge`.
+
+Examples (replace YOUR_API_KEY):
+
+```text
+https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/metrics/bridges
+https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge?dataType=dailyAggregatedVolume
+https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge?dataType=dailyTxCount
+https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge/chain-breakdown?dataType=dailyIncomingVolume
+https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/chain/ethereum?dataType=dailyOutgoingVolume
+https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/metrics/bridges/categories
+```
+
+Label breakdowns are available only when the protocol supplies label data; they are not available for every bridge.
 
 ### Overview
 
@@ -727,6 +762,17 @@ Get protocol timeseries chart data breakdown by label (e.g. Borrow Interest, Fla
 Returns: array of [timestamp, {Label1: value, Label2: value, ...}]
 
 ### For categories
+
+#### GET /api/v2/metrics/{metric}/categories
+**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+List categories with data for the selected dimension and dataType, their aggregate totals, and active chains. Convert category names to slug form for category routes, for example `Canonical Bridge` -> `canonical-bridge`.
+
+**Parameters:**
+
+  - `metric` (path, string, required) - dimension metric type. Example: `bridges`
+  - `dataType` (query, string, optional) - metric-specific data type. Defaults to `dailyAggregatedVolume` for bridges.
+
+Returns: array of {category, total24h, total7d, total30d, chains}. Totals can be null or absent when no data is available for the period.
 
 #### GET /api/v2/metrics/{metric}/category/{category}
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
