@@ -10493,13 +10493,18 @@
                               },
                               "fee_bps": {
                                 "type": ["number", "null"],
-                                "description": "Hidden exit fee: median discount against the reported rate over the last 30 discount observations. Null when never observed, never a claimed zero.",
+                                "description": "Exit fee in basis points. When the protocol discloses a structured fee, this is that fee, observed with `price_per_share` on `tvl.as_of`; otherwise the median discount against the reported rate over the last 30 discount observations. Null when unknown, never a claimed zero.",
                                 "example": 0
                               },
                               "as_of": {
                                 "type": ["string", "null"],
                                 "description": "Timestamp of the exit observation",
                                 "example": "2026-09-14T09:19:11.000Z"
+                              },
+                              "fee_flat": {
+                                "type": "string",
+                                "description": "Flat exit fee in raw base units of `denomination`, as a decimal string; parse with BigInt, not Number. Present only when the protocol discloses a structured fee, observed with `price_per_share` on `tvl.as_of`. Estimated proceeds: max(0, balance × price_per_share × (1 − fee_bps / 1e4) − fee_flat / 10^denomination.decimals), subject to rounding and later fee changes.",
+                                "example": "0"
                               }
                             }
                           },
@@ -10695,13 +10700,18 @@
                             },
                             "fee_bps": {
                               "type": ["number", "null"],
-                              "description": "Hidden exit fee: median discount against the reported rate over the last 30 discount observations. Null when never observed, never a claimed zero.",
+                              "description": "Exit fee in basis points. When the protocol discloses a structured fee, this is that fee, observed with `price_per_share` on `tvl.as_of`; otherwise the median discount against the reported rate over the last 30 discount observations. Null when unknown, never a claimed zero.",
                               "example": 0
                             },
                             "as_of": {
                               "type": ["string", "null"],
                               "description": "Timestamp of the exit observation",
                               "example": "2026-09-14T09:19:11.000Z"
+                            },
+                            "fee_flat": {
+                              "type": "string",
+                              "description": "Flat exit fee in raw base units of `denomination`, as a decimal string; parse with BigInt, not Number. Present only when the protocol discloses a structured fee, observed with `price_per_share` on `tvl.as_of`. Estimated proceeds: max(0, balance × price_per_share × (1 − fee_bps / 1e4) − fee_flat / 10^denomination.decimals), subject to rounding and later fee changes.",
+                              "example": "0"
                             }
                           }
                         },
