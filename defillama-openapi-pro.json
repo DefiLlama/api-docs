@@ -9007,7 +9007,7 @@
         "tags": ["yields"],
         "x-api-plan-only": true,
         "summary": "Get historical APY and TVL of a pool in the legacy v1 response format",
-        "description": "Daily history in the legacy v1 format. APY values are the day's intraday average; TVL and price-per-share are the day's last observation. Unknown pool ids return an empty `data` array.",
+        "description": "Daily history in the legacy v1 format. Every value is the day's last observation. Unknown pool ids return an empty `data` array.",
         "parameters": [
           {
             "name": "pool",
@@ -9048,7 +9048,7 @@
                           },
                           "apy": {
                             "type": ["number", "null"],
-                            "description": "The day's intraday average.",
+                            "description": "The day's last observation.",
                             "example": 3.6
                           },
                           "apyBase": {
@@ -9310,7 +9310,7 @@
         "tags": ["yields"],
         "x-api-plan-only": true,
         "summary": "Historical borrow cost APY from a pool on a lending market in the legacy v1 response format",
-        "description": "Daily borrow-market history in the legacy v1 format. APY values are the day's intraday average; balances are the day's last observation. Unknown pool ids return an empty `data` array.",
+        "description": "Daily borrow-market history in the legacy v1 format. Every value is the day's last observation. Unknown pool ids return an empty `data` array.",
         "parameters": [
           {
             "name": "pool",
@@ -9360,7 +9360,7 @@
                           },
                           "apyBase": {
                             "type": ["number", "null"],
-                            "description": "The day's intraday average.",
+                            "description": "The day's last observation.",
                             "example": 1.66533
                           },
                           "apyReward": {
@@ -9369,7 +9369,7 @@
                           },
                           "apyBaseBorrow": {
                             "type": ["number", "null"],
-                            "description": "The day's intraday average.",
+                            "description": "The day's last observation.",
                             "example": 3.59132
                           },
                           "apyRewardBorrow": {
