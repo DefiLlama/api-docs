@@ -269,7 +269,7 @@ function buildFreeToProMapping(
   const proPaths = new Set(allProEndpoints.map((e) => e.path))
   const mappings: { freePath: string; proPath: string; summary: string }[] = []
 
-  const prefixes = ['/api/', '/coins/', '/stablecoins/', '/yields/']
+  const prefixes = ['/api/', '/coins/', '/stablecoins/', '/yields/', '/yields/v1/']
 
   for (const free of freeEndpoints) {
     for (const prefix of prefixes) {
