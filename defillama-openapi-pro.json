@@ -20774,7 +20774,7 @@
         "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "List all current RWA assets",
-        "description": "Returns current Real World Asset rows with per-chain onchain market cap, active market cap, and DeFi active TVL maps.",
+        "description": "Returns current Real World Asset rows with per-chain Onchain AUM (`onChainMcap`), Active AUM (`activeAum`) and DeFi Active TVL (`defiActiveTvl`) maps. `activeAum` replaces `activeMcap`, which still ships beside it as a deprecated duplicate and will be removed; read `activeAum`. `onChainMcap` keeps its name for now.",
         "responses": {
           "200": {
             "description": "Array of current RWA assets",
@@ -20881,9 +20881,9 @@
                           "Ethereum": 125000000,
                           "Solana": 45000000
                         },
-                        "description": "Current onchain market cap by chain."
+                        "description": "Onchain AUM by chain: the USD value of all supply present onchain, whoever holds it."
                       },
-                      "activeMcap": {
+                      "activeAum": {
                         "type": "object",
                         "additionalProperties": {
                           "type": "number"
@@ -20892,7 +20892,7 @@
                           "Ethereum": 125000000,
                           "Solana": 45000000
                         },
-                        "description": "Current active market cap by chain."
+                        "description": "Active AUM by chain: the portion of Onchain AUM held in user or protocol-controlled positions, with issuer, treasury and custodial wallets excluded. This is the number a protocol page shows as RWA Active AUM."
                       },
                       "defiActiveTvl": {
                         "type": "object",
@@ -20908,14 +20908,14 @@
                             "morpho": 850000
                           }
                         },
-                        "description": "Current DeFi active TVL by chain and tracked protocol."
+                        "description": "DeFi Active TVL by chain and tracked protocol: the subset of Active AUM deployed in third-party DeFi protocols DefiLlama tracks."
                       },
                       "price": {
                         "type": "number",
                         "nullable": true,
                         "example": 1.04
                       },
-                      "activeMcapData": {
+                      "activeAumData": {
                         "type": "boolean",
                         "example": true
                       },
@@ -20943,7 +20943,7 @@
         "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "Get aggregate RWA stats by chain, category, platform, and asset group",
-        "description": "Returns RWA aggregates. For the default per-chain table, read byChain[chain].base: assetIssuers.length, assetCount, activeMcap, onChainMcap, and defiActiveTvl. Add stablecoinsOnly, governanceOnly, and stablecoinsAndGovernance when those buckets should be included.",
+        "description": "Returns RWA aggregates. For the default per-chain table, read byChain[chain].base: assetIssuers.length, assetCount, activeAum, onChainMcap, and defiActiveTvl. Add stablecoinsOnly, governanceOnly, and stablecoinsAndGovernance when those buckets should be included. activeAum is Active AUM, onChainMcap is Onchain AUM and defiActiveTvl is DeFi Active TVL.",
         "responses": {
           "200": {
             "description": "Aggregate RWA stats",
@@ -20984,7 +20984,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21013,7 +21013,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21041,7 +21041,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21069,7 +21069,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21105,7 +21105,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21134,7 +21134,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21162,7 +21162,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21190,7 +21190,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21226,7 +21226,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21255,7 +21255,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21283,7 +21283,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21311,7 +21311,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21347,7 +21347,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21376,7 +21376,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21404,7 +21404,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21432,7 +21432,7 @@
                                 "type": "number",
                                 "example": 125000000
                               },
-                              "activeMcap": {
+                              "activeAum": {
                                 "type": "number",
                                 "example": 118000000
                               },
@@ -21535,7 +21535,7 @@
         "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "List current RWA assets on a chain",
-        "description": "Returns current RWA assets that have onchain market cap, active market cap, or DeFi active TVL on the requested chain.",
+        "description": "Returns current RWA assets that have Onchain AUM, Active AUM or DeFi Active TVL on the requested chain.",
         "parameters": [
           {
             "name": "chain",
@@ -21657,9 +21657,9 @@
                               "Ethereum": 125000000,
                               "Solana": 45000000
                             },
-                            "description": "Current onchain market cap by chain."
+                            "description": "Onchain AUM by chain: the USD value of all supply present onchain, whoever holds it."
                           },
-                          "activeMcap": {
+                          "activeAum": {
                             "type": "object",
                             "additionalProperties": {
                               "type": "number"
@@ -21668,7 +21668,7 @@
                               "Ethereum": 125000000,
                               "Solana": 45000000
                             },
-                            "description": "Current active market cap by chain."
+                            "description": "Active AUM by chain: the portion of Onchain AUM held in user or protocol-controlled positions, with issuer, treasury and custodial wallets excluded. This is the number a protocol page shows as RWA Active AUM."
                           },
                           "defiActiveTvl": {
                             "type": "object",
@@ -21684,14 +21684,14 @@
                                 "morpho": 850000
                               }
                             },
-                            "description": "Current DeFi active TVL by chain and tracked protocol."
+                            "description": "DeFi Active TVL by chain and tracked protocol: the subset of Active AUM deployed in third-party DeFi protocols DefiLlama tracks."
                           },
                           "price": {
                             "type": "number",
                             "nullable": true,
                             "example": 1.04
                           },
-                          "activeMcapData": {
+                          "activeAumData": {
                             "type": "boolean",
                             "example": true
                           },
@@ -21721,7 +21721,7 @@
         "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "Get historical RWA chart data for a chain",
-        "description": "Returns historical onchain market cap, active market cap, and DeFi active TVL totals for a chain.",
+        "description": "Returns historical Onchain AUM, Active AUM and DeFi Active TVL totals for a chain.",
         "parameters": [
           {
             "name": "chain",
@@ -21753,7 +21753,7 @@
                         "nullable": true,
                         "example": 125000000
                       },
-                      "activeMcap": {
+                      "activeAum": {
                         "type": "number",
                         "nullable": true,
                         "example": 118000000
@@ -21783,11 +21783,11 @@
             "name": "key",
             "in": "query",
             "required": false,
-            "description": "Metric to break down by chain. Defaults to onChainMcap.",
+            "description": "Metric to break down by chain, defaults to `onChainMcap`. `onChainMcap` is Onchain AUM, `activeAum` is Active AUM and `defiActiveTvl` is DeFi Active TVL. The retired spelling `activeMcap` is still accepted here.",
             "schema": {
               "type": "string",
-              "enum": ["onChainMcap", "activeMcap", "defiActiveTvl"],
-              "example": "activeMcap"
+              "enum": ["onChainMcap", "activeAum", "defiActiveTvl"],
+              "example": "activeAum"
             }
           },
           {
