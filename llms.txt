@@ -8,7 +8,7 @@ The Free API and Pro API are entirely separate services.
 
 | Feature | Free API | Pro API |
 |---|---|---|
-| Base URL | https://api.llama.fi | https://pro-api.llama.fi/{KEY} |
+| Base URL | https://api.llama.fi, https://coins.llama.fi, https://stablecoins.llama.fi, https://yields.llama.fi | https://pro-api.llama.fi/{KEY} |
 | Auth Required | No | Yes ($300/mo) |
 | Rate Limit | Standard | Higher |
 | Endpoints | 31 | 38 exclusive + 31 free with prefix |
@@ -77,19 +77,19 @@ Pro users: to call free endpoints with higher rate limits, use `https://pro-api.
 **JavaScript** — `npm install @defillama/api` — [GitHub](https://github.com/DefiLlama/api-sdk)
 **Python** — `pip install defillama-sdk` — [GitHub](https://github.com/DefiLlama/python-sdk)
 
-## Free API Endpoints (api.llama.fi)
+## Free API Endpoints
 
 Full documentation: [llms-free.txt](/llms-free.txt)
 
-No authentication required. Base URL: `https://api.llama.fi`
+No authentication required. The free API is spread over several hosts, listed per group below.
 
-- **TVL**: `/protocols`, `/protocol/{protocol}`, `/v2/historicalChainTvl`, `/v2/historicalChainTvl/{chain}`, `/tvl/{protocol}`, `/v2/chains`
-- **Coins & Prices**: `/prices/current/{coins}`, `/prices/historical/{timestamp}/{coins}`, `/batchHistorical`, `/chart/{coins}`, `/percentage/{coins}`, `/prices/first/{coins}`, `/block/{chain}/{timestamp}`
-- **Stablecoins**: `/stablecoins`, `/stablecoincharts/all`, `/stablecoincharts/{chain}`, `/stablecoin/{asset}`, `/stablecoinchains`, `/stablecoinprices`
-- **Yields & APY**: `/pools`, `/chart/{pool}`
-- **DEX Volumes**: `/overview/dexs`, `/overview/dexs/{chain}`, `/summary/dexs/{protocol}`, `/overview/options`, `/overview/options/{chain}`, `/summary/options/{protocol}`
-- **Perpetuals & Open Interest**: `/overview/open-interest`
-- **Fees & Revenue**: `/overview/fees`, `/overview/fees/{chain}`, `/summary/fees/{protocol}`
+- **TVL** (https://api.llama.fi): `/protocols`, `/protocol/{protocol}`, `/v2/historicalChainTvl`, `/v2/historicalChainTvl/{chain}`, `/tvl/{protocol}`, `/v2/chains`
+- **Coins & Prices** (https://coins.llama.fi): `/prices/current/{coins}`, `/prices/historical/{timestamp}/{coins}`, `/batchHistorical`, `/chart/{coins}`, `/percentage/{coins}`, `/prices/first/{coins}`, `/block/{chain}/{timestamp}`
+- **Stablecoins** (https://stablecoins.llama.fi): `/stablecoins`, `/stablecoincharts/all`, `/stablecoincharts/{chain}`, `/stablecoin/{asset}`, `/stablecoinchains`, `/stablecoinprices`
+- **Yields & APY** (https://yields.llama.fi): `/pools`, `/chart/{pool}`
+- **DEX Volumes** (https://api.llama.fi): `/overview/dexs`, `/overview/dexs/{chain}`, `/summary/dexs/{protocol}`, `/overview/options`, `/overview/options/{chain}`, `/summary/options/{protocol}`
+- **Perpetuals & Open Interest** (https://api.llama.fi): `/overview/open-interest`
+- **Fees & Revenue** (https://api.llama.fi): `/overview/fees`, `/overview/fees/{chain}`, `/summary/fees/{protocol}`
 
 ## Pro-Only API Endpoints (pro-api.llama.fi)
 
