@@ -179,15 +179,21 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
     padding-left: 5px;
   }
 
+  /*
+   * Block (not flex) so inline text and code wrap as one paragraph.
+   * With flex, every text run and code span became its own squeezed column.
+   * The number is pinned in the left gutter instead: 3px + 24px marker + 5px gap.
+   */
   .markdown ol li {
-    display: flex;
-    gap: 5px;
-    padding-left: 3px;
+    padding-left: 32px;
   }
 
   .markdown ol li::before {
     content: counter(item) '\002E';
     counter-increment: item;
+    position: absolute;
+    left: 3px;
+    top: 0;
     display: flex;
     font: var(--scalar-font);
     font-variant-numeric: tabular-nums;
