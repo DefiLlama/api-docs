@@ -544,6 +544,12 @@
                             "unlockType": {
                               "type": "string",
                               "example": "cliff"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": ["scheduled", "continuous"],
+                              "description": "Scheduled for a vesting unlock; continuous for routine emission (cliffs in a category usually 8 days apart or less, or a stream that continues earlier releases)",
+                              "example": "scheduled"
                             }
                           }
                         }
@@ -753,6 +759,48 @@
                                 "Most vesting schedules will complete between 2027–2028; some will continue after 2028. Here we have used an end date of end of 2027.",
                                 "Although the full allocations for Hyper Foundation Budget and Community Grants were unlocked at TGE it is unclear what their spend rate is."
                               ]
+                            },
+                            "events": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "description": {
+                                    "type": "string",
+                                    "example": "A cliff of {tokens[0]} tokens was unlocked from Core Contributors on {timestamp}"
+                                  },
+                                  "timestamp": {
+                                    "type": "number",
+                                    "example": 1791331200
+                                  },
+                                  "noOfTokens": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "number"
+                                    },
+                                    "example": [3750000]
+                                  },
+                                  "category": {
+                                    "type": "string",
+                                    "example": "Uncategorized"
+                                  },
+                                  "unlockType": {
+                                    "type": "string",
+                                    "enum": ["cliff", "linear"],
+                                    "example": "cliff"
+                                  },
+                                  "rateDurationDays": {
+                                    "type": "number",
+                                    "description": "Length of the linear period in days; present on linear events"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["scheduled", "continuous"],
+                                    "description": "Scheduled for a vesting unlock; continuous for routine emission (cliffs in a category usually 8 days apart or less, or a stream that continues earlier releases)",
+                                    "example": "scheduled"
+                                  }
+                                }
+                              }
                             },
                             "token": {
                               "type": "string",
