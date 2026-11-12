@@ -1193,6 +1193,12 @@
                             },
                             "example": ["Ethereum", "Tron", "BSC"]
                           },
+                          "chainContracts": {
+                            "type": "object",
+                            "description": "Token contract addresses or identifiers per chain, from chain config, bridge config and the addresses the supply pipeline read supply from in the last 7 days.",
+                            "additionalProperties": { "type": "array", "items": { "type": "string" } },
+                            "example": { "Ethereum": ["0xdAC17F958D2ee523a2206206994597C13D831ec7"], "Tron": ["TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"] }
+                          },
                           "chainCirculating": {
                             "type": "object",
                             "additionalProperties": {
@@ -1433,6 +1439,12 @@
                           }
                         }
                       }
+                    },
+                    "chainContracts": {
+                      "type": "object",
+                      "description": "Token contract addresses or identifiers per chain, from chain config, bridge config and the addresses the supply pipeline read supply from in the last 7 days.",
+                      "additionalProperties": { "type": "array", "items": { "type": "string" } },
+                      "example": { "Ethereum": ["0xdAC17F958D2ee523a2206206994597C13D831ec7"], "Tron": ["TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"] }
                     },
                     "chainCirculating": {
                       "type": "object",
