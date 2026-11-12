@@ -11,7 +11,7 @@ The Free API and Pro API are entirely separate services.
 | Base URL | https://api.llama.fi | https://pro-api.llama.fi/{KEY} |
 | Auth Required | No | Yes ($300/mo) |
 | Rate Limit | Standard | Higher |
-| Endpoints | 31 | 38 exclusive + 31 free with prefix |
+| Endpoints | 31 | 106 exclusive + 31 free with prefix |
 
 ## Pro API authentication
 
@@ -59,8 +59,8 @@ Pro users: to call free endpoints with higher rate limits, use `https://pro-api.
 | `/stablecoin/{asset}` | `/stablecoins/stablecoin/{asset}` | Get historical mcap and historical chain distribution of a stablecoin |
 | `/stablecoinchains` | `/stablecoins/stablecoinchains` | Get current mcap sum of all stablecoins on each chain |
 | `/stablecoinprices` | `/stablecoins/stablecoinprices` | Get historical prices of all stablecoins |
-| `/pools` | `/yields/pools` | Retrieve the latest data for all pools, including enriched information such as predictions |
-| `/chart/{pool}` | `/yields/chart/{pool}` | Get historical APY and TVL of a pool |
+| `/pools` | `/yields/v1/pools` | Retrieve the latest data for all pools, including enriched information such as predictions |
+| `/chart/{pool}` | `/yields/v1/chart/{pool}` | Get historical APY and TVL of a pool |
 | `/overview/dexs` | `/api/overview/dexs` | List all dexs along with summaries of their volumes and dataType history data |
 | `/overview/dexs/{chain}` | `/api/overview/dexs/{chain}` | List all dexs along with summaries of their volumes and dataType history data filtering by chain |
 | `/summary/dexs/{protocol}` | `/api/summary/dexs/{protocol}` | Get summary of dex volume with historical data |
@@ -97,15 +97,20 @@ Full documentation: [llms-pro.txt](/llms-pro.txt)
 
 Requires API key. Base URL: `https://pro-api.llama.fi/{YOUR_API_KEY}`
 
-- **TVL**: `/api/tokenProtocols/{symbol}`, `/api/inflows/{protocol}/{timestamp}`, `/api/chainAssets`
-- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
+- **TVL**: `/api/tokenProtocols/{symbol}`, `/api/inflows/{protocol}/{timestamp}`, `/api/chainAssets`, `/api/v2/metrics/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/tvl/protocol/{protocol}/token-breakdown`
 - **Token Unlocks**: `/api/emissions`, `/api/emission/{protocol}`
 - **Protocol Analytics**: `/api/categories`, `/api/forks`, `/api/oracles`, `/api/hacks`, `/api/raises`, `/api/treasuries`, `/api/entities`
 - **Token Liquidity**: `/api/historicalLiquidity/{token}`
-- **Yields & APY**: `/yields/poolsOld`, `/yields/poolsBorrow`, `/yields/chartLendBorrow/{pool}`, `/yields/perps`, `/yields/lsdRates`
+- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
+- **Treasury**: `/api/v2/metrics/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/treasury/protocol/{protocol}/token-breakdown`
+- **Oracles**: `/api/v2/metrics/oracle`, `/api/v2/chart/oracle`, `/api/v2/chart/oracle/chain-breakdown`, `/api/v2/chart/oracle/protocol-breakdown`, `/api/v2/chart/oracle/protocol/{protocol}`, `/api/v2/chart/oracle/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/oracle/chain/{chain}`, `/api/v2/chart/oracle/chain/{chain}/protocol-breakdown`
+- **Forks**: `/api/v2/metrics/fork`, `/api/v2/chart/fork/protocol-breakdown`, `/api/v2/chart/fork/protocol/{protocol}`
+- **Dimensions**: `/api/v2/metrics/{metric}`, `/api/v2/chart/{metric}`, `/api/v2/chart/{metric}/chain-breakdown`, `/api/v2/chart/{metric}/protocol-breakdown`, `/api/v2/metrics/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}/protocol-breakdown`, `/api/v2/metrics/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/version-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/label-breakdown`, `/api/v2/metrics/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}/chain-breakdown`, `/api/v2/chart/{metric}/category/{category}/protocol-breakdown`, `/api/v2/metrics/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown`
+- **Financial Statements**: `/api/v2/metrics/financial-statement/protocol/{protocol}`
+- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
+- **Yields & APY**: `/yields/v1/pools`, `/yields/v1/chart/{pool}`, `/yields/v1/poolsBorrow`, `/yields/v1/chartLendBorrow/{pool}`, `/yields/v2/earn`, `/yields/v2/earn/query`, `/yields/v2/earn/{id}/history`, `/yields/v2/earn/verified`, `/yields/v2/earn/verified/{id}`, `/yields/v2/earn/verified/{id}/history`, `/yields/v2/borrow/markets`, `/yields/v2/borrow/markets/{id}/history`, `/yields/v2/borrow/routes`, `/yields/v2/loops`, `/api/perpFundingRates`, `/api/lstRates`
 - **ETFs**: `/etfs/snapshot`, `/etfs/flows`
 - **Narratives**: `/fdv/performance/{period}`
-- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
 - **Bridges**: `/bridges/bridges`, `/bridges/bridge/{id}`, `/bridges/bridgevolume/{chain}`, `/bridges/bridgedaystats/{timestamp}/{chain}`, `/bridges/transactions/{id}`
 - **API Key Management**: `/usage/{YOUR_API_KEY}`
 - **Digital Asset Treasury**: `/dat/institutions`, `/dat/institutions/{symbol}`
