@@ -150,7 +150,7 @@ Get historical mcap and historical chain distribution of a stablecoin
 
 **Parameters:**
   - `asset` (path, integer, required) — stablecoin ID, you can get these from /stablecoins Example: `1`
-Returns: {id, name, symbol, totalCirculating, chainCirculating}
+Returns: {id, name, symbol, totalCirculating, chainContracts, chainCirculating}
 
 ### GET /stablecoinchains
 **Base URL:** `https://api.llama.fi`
