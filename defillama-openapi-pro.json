@@ -9088,7 +9088,7 @@
                           },
                           "apyBase7d": {
                             "type": ["number", "null"],
-                            "description": "Always null; no longer computed.",
+                            "description": "7-day base APY, where the adapter reports one.",
                             "example": null
                           },
                           "volumeUsd1d": {
@@ -9172,8 +9172,8 @@
                           },
                           "outlier": {
                             "type": ["boolean", "null"],
-                            "description": "Always null; no longer computed.",
-                            "example": null
+                            "description": "True when the pool's APY is a statistical outlier within its cohort.",
+                            "example": false
                           },
                           "project_factorized": {
                             "type": ["number", "null"],
@@ -9283,7 +9283,7 @@
                           },
                           "apyBase7d": {
                             "type": ["number", "null"],
-                            "description": "Always null; no longer computed.",
+                            "description": "7-day base APY, where the adapter reports one.",
                             "example": null
                           },
                           "pricePerShare": {
@@ -9433,8 +9433,8 @@
                           },
                           "outlier": {
                             "type": ["boolean", "null"],
-                            "description": "Always null; no longer computed.",
-                            "example": null
+                            "description": "True when the pool's APY is a statistical outlier within its cohort.",
+                            "example": false
                           },
                           "underlyingTokens": {
                             "type": ["array", "null"],
