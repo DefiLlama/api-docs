@@ -4,53 +4,44 @@ import { resolve } from 'path'
 import { readFileSync, existsSync, mkdirSync, copyFileSync } from 'fs'
 import { crawlerResourceBudgetPlugin } from './src/crawler-resource-budget'
 
+/**
+ * Files at the repo root that are served as-is at the site root, since llms.txt links to them.
+ * Read on each dev request so edits show up without a restart.
+ */
+const ROOT_FILES: Record<string, string> = {
+  'llms.txt': 'text/plain; charset=utf-8',
+  'llms-free.txt': 'text/plain; charset=utf-8',
+  'llms-pro.txt': 'text/plain; charset=utf-8',
+  'defillama-openapi-free.json': 'application/json; charset=utf-8',
+  'defillama-openapi-pro.json': 'application/json; charset=utf-8',
+}
+
 function llmsTxtPlugin(): Plugin {
-  let llmsContent: string
-  let llmsFreeContent: string
-  let llmsProContent: string
-  const llmsPath = resolve(__dirname, '../../llms.txt')
-  const llmsFreePath = resolve(__dirname, '../../llms-free.txt')
-  const llmsProPath = resolve(__dirname, '../../llms-pro.txt')
+  const rootPath = (name: string): string => resolve(__dirname, '../..', name)
 
   return {
     name: 'llms-txt-plugin',
     configureServer(server) {
-      llmsContent = readFileSync(llmsPath, 'utf-8')
-      llmsFreeContent = readFileSync(llmsFreePath, 'utf-8')
-      llmsProContent = readFileSync(llmsProPath, 'utf-8')
-
       server.middlewares.use((req, res, next) => {
-        if (req.url === '/llms.txt') {
-          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-          res.end(llmsContent)
+        const name = req.url?.split('?')[0].slice(1) ?? ''
+        const contentType = ROOT_FILES[name]
+        if (!contentType) {
+          next()
           return
         }
-
-        if (req.url === '/llms-free.txt') {
-          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-          res.end(llmsFreeContent)
-          return
-        }
-
-        if (req.url === '/llms-pro.txt') {
-          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-          res.end(llmsProContent)
-          return
-        }
-
-        next()
+        res.setHeader('Content-Type', contentType)
+        res.end(readFileSync(rootPath(name), 'utf-8'))
       })
     },
     closeBundle() {
-      // Copy llms.txt to dist/ after build completes
       const outputDir = resolve(__dirname, 'dist')
       if (!existsSync(outputDir)) {
         mkdirSync(outputDir, { recursive: true })
       }
-      copyFileSync(llmsPath, resolve(outputDir, 'llms.txt'))
-      copyFileSync(llmsFreePath, resolve(outputDir, 'llms-free.txt'))
-      copyFileSync(llmsProPath, resolve(outputDir, 'llms-pro.txt'))
-      console.log('✓ Copied llms.txt, llms-free.txt, and llms-pro.txt to dist/')
+      for (const name of Object.keys(ROOT_FILES)) {
+        copyFileSync(rootPath(name), resolve(outputDir, name))
+      }
+      console.log(`✓ Copied ${Object.keys(ROOT_FILES).join(', ')} to dist/`)
     },
   }
 }
