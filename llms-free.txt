@@ -1,6 +1,6 @@
 # DefiLlama Free API
 
-> Free API — no authentication required. All endpoints below use base URL https://api.llama.fi
+> Free API, no authentication required. Each endpoint below lists its own base URL.
 
 **Base URL for endpoints below:** `https://api.llama.fi` (unless an endpoint lists its own)
 
@@ -50,7 +50,7 @@ Returns: array of {gecko_id, tvl, tokenSymbol, cmcId, name, chainId}
 ## Coins & Prices
 
 ### GET /prices/current/{coins}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://coins.llama.fi`
 Get current prices of tokens by contract address
 
 **Parameters:**
@@ -58,7 +58,7 @@ Get current prices of tokens by contract address
 Returns: {coins}
 
 ### GET /prices/historical/{timestamp}/{coins}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://coins.llama.fi`
 Get historical prices of tokens by contract address
 
 **Parameters:**
@@ -67,7 +67,7 @@ Get historical prices of tokens by contract address
 Returns: {coins}
 
 ### GET /batchHistorical
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://coins.llama.fi`
 Get historical prices for multiple tokens at multiple different timestamps
 
 **Parameters:**
@@ -76,7 +76,7 @@ Get historical prices for multiple tokens at multiple different timestamps
 Returns: {coins}
 
 ### GET /chart/{coins}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://coins.llama.fi`
 Get token prices at regular time intervals
 
 **Parameters:**
@@ -88,7 +88,7 @@ Get token prices at regular time intervals
 Returns: {coins}
 
 ### GET /percentage/{coins}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://coins.llama.fi`
 Get percentage change in price over time
 
 **Parameters:**
@@ -99,7 +99,7 @@ Get percentage change in price over time
 Returns: {coins}
 
 ### GET /prices/first/{coins}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://coins.llama.fi`
 Get earliest timestamp price record for coins
 
 **Parameters:**
@@ -107,7 +107,7 @@ Get earliest timestamp price record for coins
 Returns: {coins}
 
 ### GET /block/{chain}/{timestamp}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://coins.llama.fi`
 Get the closest block to a timestamp
 
 **Parameters:**
@@ -120,7 +120,7 @@ Returns: {height, timestamp}
 ## Stablecoins
 
 ### GET /stablecoins
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://stablecoins.llama.fi`
 List all stablecoins along with their circulating amounts
 
 **Parameters:**
@@ -128,7 +128,7 @@ List all stablecoins along with their circulating amounts
 Returns: {peggedAssets}
 
 ### GET /stablecoincharts/all
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://stablecoins.llama.fi`
 Get historical mcap sum of all stablecoins
 
 **Parameters:**
@@ -136,7 +136,7 @@ Get historical mcap sum of all stablecoins
 Returns: array of {date, totalCirculating}
 
 ### GET /stablecoincharts/{chain}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://stablecoins.llama.fi`
 Get historical mcap sum of all stablecoins in a chain
 
 **Parameters:**
@@ -145,7 +145,7 @@ Get historical mcap sum of all stablecoins in a chain
 Returns: array of {date, totalCirculating}
 
 ### GET /stablecoin/{asset}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://stablecoins.llama.fi`
 Get historical mcap and historical chain distribution of a stablecoin
 
 **Parameters:**
@@ -153,12 +153,12 @@ Get historical mcap and historical chain distribution of a stablecoin
 Returns: {id, name, symbol, totalCirculating, chainCirculating}
 
 ### GET /stablecoinchains
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://stablecoins.llama.fi`
 Get current mcap sum of all stablecoins on each chain
 Returns: array of {name, totalCirculating}
 
 ### GET /stablecoinprices
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://stablecoins.llama.fi`
 Get historical prices of all stablecoins
 Returns: array of {date, prices}
 
@@ -167,12 +167,12 @@ Returns: array of {date, prices}
 ## Yields & APY
 
 ### GET /pools
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://yields.llama.fi`
 Retrieve the latest data for all pools, including enriched information such as predictions
 Returns: {status, data}
 
 ### GET /chart/{pool}
-**Base URL:** `https://api.llama.fi`
+**Base URL:** `https://yields.llama.fi`
 Get historical APY and TVL of a pool
 
 **Parameters:**

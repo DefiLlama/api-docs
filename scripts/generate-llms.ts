@@ -25,6 +25,7 @@ type Endpoint = {
   summary: string
   tag: string
   proOnly: boolean
+  server: string
   parameters: Parameter[]
   responseHint: string
 }
@@ -60,6 +61,7 @@ function summarizeResponse(response: any): string {
 
 function loadEndpoints(filePath: string): Endpoint[] {
   const spec = JSON.parse(readFileSync(filePath, 'utf-8'))
+  const defaultServer: string = spec.servers?.[0]?.url ?? ''
   const endpoints: Endpoint[] = []
 
   for (const [path, methods] of Object.entries(spec.paths) as [string, Record<string, any>][]) {
@@ -71,6 +73,7 @@ function loadEndpoints(filePath: string): Endpoint[] {
       summary: get.summary ?? '',
       tag: get.tags?.[0] ?? 'other',
       proOnly: get['x-api-plan-only'] === true,
+      server: get.servers?.[0]?.url ?? methods.servers?.[0]?.url ?? defaultServer,
       parameters: (get.parameters ?? []).map((p: any) => ({
         name: p.name,
         in: p.in,
@@ -113,6 +116,14 @@ function formatEndpoint(e: Endpoint, baseUrl: string): string {
   }
 
   return lines.join('\n')
+}
+
+function hostsFor(endpoints: Endpoint[]): string[] {
+  const hosts: string[] = []
+  for (const e of endpoints) {
+    if (e.server && !hosts.includes(e.server)) hosts.push(e.server)
+  }
+  return hosts
 }
 
 function groupByTag(endpoints: Endpoint[]): Map<string, Endpoint[]> {
@@ -187,7 +198,7 @@ The Free API and Pro API are entirely separate services.
 
 | Feature | Free API | Pro API |
 |---|---|---|
-| Base URL | https://api.llama.fi | https://pro-api.llama.fi/{KEY} |
+| Base URL | ${hostsFor(freeEndpoints).join(', ')} | https://pro-api.llama.fi/{KEY} |
 | Auth Required | No | Yes ($300/mo) |
 | Rate Limit | Standard | Higher |
 | Endpoints | ${freeEndpoints.length} | ${proEndpoints.length} exclusive + ${freeEndpoints.length} free with prefix |
@@ -207,14 +218,17 @@ ${mappingTable}
 **JavaScript** — \`npm install @defillama/api\` — [GitHub](https://github.com/DefiLlama/api-sdk)
 **Python** — \`pip install defillama-sdk\` — [GitHub](https://github.com/DefiLlama/python-sdk)
 
-## Free API Endpoints (api.llama.fi)
+## Free API Endpoints
 
 Full documentation: [llms-free.txt](/llms-free.txt)
 
-No authentication required. Base URL: \`https://api.llama.fi\`
+No authentication required. The free API is spread over several hosts, listed per group below.
 
 ${Array.from(freeGroups.entries())
-  .map(([tag, eps]) => `- **${formatTagName(tag)}**: ${eps.map((e) => `\`${e.path}\``).join(', ')}`)
+  .map(
+    ([tag, eps]) =>
+      `- **${formatTagName(tag)}** (${hostsFor(eps).join(', ')}): ${eps.map((e) => `\`${e.path}\``).join(', ')}`,
+  )
   .join('\n')}
 
 ## Pro-Only API Endpoints (pro-api.llama.fi)
@@ -242,7 +256,9 @@ function generateDetailedFile(title: string, baseUrl: string, auth: string, endp
       const header = `## ${formatTagName(tag)}`
       // /usage/{YOUR_API_KEY} already carries the key in its own path, so it keeps the bare host
       const entries = eps
-        .map((e) => formatEndpoint(e, e.path.includes('{YOUR_API_KEY}') ? 'https://pro-api.llama.fi' : baseUrl))
+        .map((e) =>
+          formatEndpoint(e, e.path.includes('{YOUR_API_KEY}') ? 'https://pro-api.llama.fi' : e.server || baseUrl),
+        )
         .join('\n\n')
       return `${header}\n\n${entries}`
     })
@@ -319,7 +335,7 @@ function main(): void {
   const llmsFree = generateDetailedFile(
     'DefiLlama Free API',
     'https://api.llama.fi',
-    'Free API — no authentication required. All endpoints below use base URL https://api.llama.fi',
+    'Free API, no authentication required. Each endpoint below lists its own base URL.',
     freeEndpoints,
   )
   const proNote = `Pro API — requires a paid API key ($300/mo). The pro-only endpoints below are NOT available on the free API.
