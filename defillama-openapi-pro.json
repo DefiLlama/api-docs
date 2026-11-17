@@ -2564,6 +2564,7 @@
                       },
                       "tvl": {
                         "type": "number",
+                        "nullable": true,
                         "example": 5200000000
                       },
                       "chainTvls": {
@@ -2578,10 +2579,12 @@
                       },
                       "change_1d": {
                         "type": "number",
+                        "nullable": true,
                         "example": 2.1
                       },
                       "change_7d": {
                         "type": "number",
+                        "nullable": true,
                         "example": -5.3
                       }
                     }
@@ -2685,6 +2688,7 @@
                           },
                           "tokens": {
                             "type": "array",
+                            "nullable": true,
                             "items": {
                               "type": "object",
                               "properties": {
@@ -4723,6 +4727,7 @@
                           },
                           "total24h": {
                             "type": "number",
+                            "nullable": true,
                             "example": 1500000000
                           },
                           "total7d": {
@@ -4846,6 +4851,7 @@
                           },
                           "total24h": {
                             "type": "number",
+                            "nullable": true,
                             "example": 800000000
                           },
                           "change_1d": {
@@ -5041,6 +5047,7 @@
                           },
                           "total24h": {
                             "type": "number",
+                            "nullable": true,
                             "example": 500000000
                           },
                           "change_1d": {
@@ -5136,16 +5143,12 @@
                       "type": "array",
                       "items": {
                         "type": "array",
-                        "items": [
-                          {
-                            "type": "integer",
-                            "description": "Unix timestamp"
-                          },
-                          {
-                            "type": "number",
-                            "description": "Total volume value"
-                          }
-                        ]
+                        "description": "[timestamp, volume]",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
                       },
                       "description": "Historical chart data with timestamps and total volumes"
                     },
@@ -5153,19 +5156,24 @@
                       "type": "array",
                       "items": {
                         "type": "array",
-                        "items": [
-                          {
-                            "type": "integer",
-                            "description": "Unix timestamp"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": {
-                              "type": "number"
+                        "description": "[timestamp, breakdown]",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "description": "Unix timestamp"
                             },
-                            "description": "Protocol breakdown with volume values"
-                          }
-                        ]
+                            {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "number"
+                              },
+                              "description": "Protocol breakdown with volume values"
+                            }
+                          ]
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
                       },
                       "description": "Historical chart data broken down by protocol"
                     },
@@ -5257,10 +5265,12 @@
                         "properties": {
                           "total24h": {
                             "type": "number",
+                            "nullable": true,
                             "description": "24-hour volume"
                           },
                           "total48hto24h": {
                             "type": "number",
+                            "nullable": true,
                             "description": "48-hour to 24-hour volume"
                           },
                           "total7d": {
@@ -5364,10 +5374,6 @@
                               "type": "string"
                             },
                             "description": "Protocol methodology details"
-                          },
-                          "latestFetchIsOk": {
-                            "type": "boolean",
-                            "description": "Whether the latest data fetch was successful"
                           },
                           "parentProtocol": {
                             "type": "string",
@@ -5553,10 +5559,11 @@
                     },
                     "url": {
                       "type": "string",
-                      "description": "Protocol website URL"
+                      "description": "Protocol URL"
                     },
                     "description": {
                       "type": "string",
+                      "nullable": true,
                       "description": "Protocol description"
                     },
                     "logo": {
@@ -5565,10 +5572,12 @@
                     },
                     "gecko_id": {
                       "type": "string",
+                      "nullable": true,
                       "description": "CoinGecko ID"
                     },
                     "cmcId": {
                       "type": "string",
+                      "nullable": true,
                       "description": "CoinMarketCap ID"
                     },
                     "chains": {
@@ -5584,13 +5593,15 @@
                     },
                     "governanceID": {
                       "type": "array",
+                      "nullable": true,
                       "items": {
                         "type": "string"
                       },
-                      "description": "Governance identifiers"
+                      "description": "Governance IDs"
                     },
                     "github": {
                       "type": "array",
+                      "nullable": true,
                       "items": {
                         "type": "string"
                       },
@@ -5598,7 +5609,8 @@
                     },
                     "treasury": {
                       "type": "string",
-                      "description": "Treasury information"
+                      "nullable": true,
+                      "description": "Treasury address"
                     },
                     "symbol": {
                       "type": "string",
@@ -5606,7 +5618,8 @@
                     },
                     "address": {
                       "type": "string",
-                      "description": "Token contract address"
+                      "nullable": true,
+                      "description": "Protocol address"
                     },
                     "childProtocols": {
                       "type": "array",
@@ -5620,74 +5633,70 @@
                       "items": {
                         "type": "string"
                       },
-                      "description": "Linked protocol names"
+                      "description": "Linked protocols"
                     },
                     "defillamaId": {
                       "type": "string",
                       "description": "DefiLlama protocol ID"
                     },
                     "disabled": {
-                      "type": "object",
+                      "type": "boolean",
                       "nullable": true,
-                      "description": "Disabled status"
+                      "description": "Whether protocol is disabled"
                     },
                     "displayName": {
                       "type": "string",
-                      "description": "Protocol display name"
+                      "description": "Display name"
                     },
                     "module": {
-                      "type": "object",
+                      "type": "string",
                       "nullable": true,
-                      "description": "Protocol module"
+                      "description": "Module name"
                     },
                     "category": {
-                      "type": "object",
+                      "type": "string",
                       "nullable": true,
                       "description": "Protocol category"
                     },
                     "methodologyURL": {
-                      "type": "object",
+                      "type": "string",
                       "nullable": true,
-                      "description": "Methodology documentation URL"
+                      "description": "Methodology URL"
                     },
                     "methodology": {
                       "type": "object",
                       "nullable": true,
-                      "description": "Protocol methodology details"
+                      "description": "Methodology details"
                     },
                     "forkedFrom": {
-                      "type": "object",
+                      "type": "string",
                       "nullable": true,
                       "description": "Forked from protocol"
                     },
                     "audits": {
-                      "type": "object",
+                      "type": "string",
                       "nullable": true,
                       "description": "Audit information"
                     },
                     "audit_links": {
-                      "type": "object",
+                      "type": "array",
                       "nullable": true,
                       "description": "Audit links"
                     },
                     "versionKey": {
-                      "type": "object",
+                      "type": "string",
                       "nullable": true,
                       "description": "Version key"
                     },
                     "parentProtocol": {
-                      "type": "object",
+                      "type": "string",
                       "nullable": true,
                       "description": "Parent protocol"
                     },
                     "previousNames": {
-                      "type": "object",
+                      "type": "array",
                       "nullable": true,
-                      "description": "Previous protocol names"
-                    },
-                    "latestFetchIsOk": {
-                      "type": "boolean",
-                      "description": "Whether the latest data fetch was successful"
+                      "description": "Previous names"
                     },
                     "slug": {
                       "type": "string",
@@ -5699,10 +5708,12 @@
                     },
                     "total24h": {
                       "type": "number",
+                      "nullable": true,
                       "description": "24-hour volume"
                     },
                     "total48hto24h": {
                       "type": "number",
+                      "nullable": true,
                       "description": "48-hour to 24-hour volume"
                     },
                     "total7d": {
@@ -5717,16 +5728,12 @@
                       "type": "array",
                       "items": {
                         "type": "array",
-                        "items": [
-                          {
-                            "type": "integer",
-                            "description": "Unix timestamp"
-                          },
-                          {
-                            "type": "number",
-                            "description": "Volume value"
-                          }
-                        ]
+                        "description": "[timestamp, volume]",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
                       },
                       "description": "Historical chart data with timestamps and volumes"
                     },
@@ -5734,22 +5741,27 @@
                       "type": "array",
                       "items": {
                         "type": "array",
-                        "items": [
-                          {
-                            "type": "integer",
-                            "description": "Unix timestamp"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": {
+                        "description": "[timestamp, breakdown]",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "description": "Unix timestamp"
+                            },
+                            {
                               "type": "object",
                               "additionalProperties": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Chain and protocol breakdown with volume values"
-                          }
-                        ]
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "number"
+                                }
+                              },
+                              "description": "Chain and protocol breakdown with volume values"
+                            }
+                          ]
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
                       },
                       "description": "Historical chart data broken down by chain and protocol"
                     },
@@ -5884,6 +5896,7 @@
                           },
                           "total24h": {
                             "type": "number",
+                            "nullable": true,
                             "example": 14304709847
                           },
                           "total7d": {
@@ -5996,11 +6009,8 @@
                           },
                           "total24h": {
                             "type": "number",
+                            "nullable": true,
                             "example": 5000000
-                          },
-                          "revenue24h": {
-                            "type": "number",
-                            "example": 2000000
                           },
                           "change_1d": {
                             "type": "number",
@@ -6122,11 +6132,8 @@
                           },
                           "total24h": {
                             "type": "number",
+                            "nullable": true,
                             "example": 5000000
-                          },
-                          "revenue24h": {
-                            "type": "number",
-                            "example": 2000000
                           },
                           "change_1d": {
                             "type": "number",
@@ -6235,6 +6242,7 @@
                     },
                     "description": {
                       "type": "string",
+                      "nullable": true,
                       "description": "Protocol description"
                     },
                     "logo": {
@@ -6243,10 +6251,12 @@
                     },
                     "gecko_id": {
                       "type": "string",
+                      "nullable": true,
                       "description": "CoinGecko ID"
                     },
                     "cmcId": {
                       "type": "string",
+                      "nullable": true,
                       "description": "CoinMarketCap ID"
                     },
                     "chains": {
@@ -6262,6 +6272,7 @@
                     },
                     "github": {
                       "type": "array",
+                      "nullable": true,
                       "items": {
                         "type": "string"
                       },
@@ -6273,6 +6284,7 @@
                     },
                     "address": {
                       "type": "string",
+                      "nullable": true,
                       "description": "Protocol address"
                     },
                     "childProtocols": {
@@ -6328,7 +6340,7 @@
                       "description": "Forked from protocol"
                     },
                     "audits": {
-                      "type": "array",
+                      "type": "string",
                       "nullable": true,
                       "description": "Audit information"
                     },
@@ -6343,9 +6355,12 @@
                       "description": "Version key"
                     },
                     "governanceID": {
-                      "type": "string",
+                      "type": "array",
                       "nullable": true,
-                      "description": "Governance ID"
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Governance IDs"
                     },
                     "treasury": {
                       "type": "string",
@@ -6362,10 +6377,6 @@
                       "nullable": true,
                       "description": "Previous names"
                     },
-                    "latestFetchIsOk": {
-                      "type": "boolean",
-                      "description": "Latest fetch status"
-                    },
                     "slug": {
                       "type": "string",
                       "description": "Protocol slug"
@@ -6376,10 +6387,12 @@
                     },
                     "total24h": {
                       "type": "number",
+                      "nullable": true,
                       "description": "24 hour fees"
                     },
                     "total48hto24h": {
                       "type": "number",
+                      "nullable": true,
                       "description": "48h to 24h fees"
                     },
                     "total7d": {
@@ -6398,16 +6411,12 @@
                       "type": "array",
                       "items": {
                         "type": "array",
-                        "items": [
-                          {
-                            "type": "integer",
-                            "description": "Timestamp"
-                          },
-                          {
-                            "type": "number",
-                            "description": "Fee value"
-                          }
-                        ]
+                        "description": "[timestamp, fee value]",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
                       },
                       "description": "Total data chart with timestamps and fees"
                     },
@@ -6415,16 +6424,21 @@
                       "type": "array",
                       "items": {
                         "type": "array",
-                        "items": [
-                          {
-                            "type": "integer",
-                            "description": "Timestamp"
-                          },
-                          {
-                            "type": "object",
-                            "description": "Chain and protocol breakdown"
-                          }
-                        ]
+                        "description": "[timestamp, chain and protocol breakdown]",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "description": "Timestamp"
+                            },
+                            {
+                              "type": "object",
+                              "description": "Chain and protocol breakdown"
+                            }
+                          ]
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
                       },
                       "description": "Total data chart breakdown by chain and protocol"
                     }
@@ -6461,7 +6475,6 @@
                   "treasury": null,
                   "parentProtocol": null,
                   "previousNames": null,
-                  "latestFetchIsOk": true,
                   "slug": "hyperliquid",
                   "protocolType": "protocol",
                   "total24h": 4890250,
@@ -15290,6 +15303,7 @@
                           },
                           "price": {
                             "type": "number",
+                            "nullable": true,
                             "example": 1.001
                           }
                         }
@@ -15342,8 +15356,9 @@
                     "type": "object",
                     "properties": {
                       "date": {
-                        "type": "number",
-                        "example": 1609459200
+                        "type": "string",
+                        "description": "Unix timestamp in seconds, as a string",
+                        "example": "1609459200"
                       },
                       "totalCirculating": {
                         "type": "object",
@@ -15412,8 +15427,9 @@
                     "type": "object",
                     "properties": {
                       "date": {
-                        "type": "number",
-                        "example": 1609459200
+                        "type": "string",
+                        "description": "Unix timestamp in seconds, as a string",
+                        "example": "1609459200"
                       },
                       "totalCirculating": {
                         "type": "object",
@@ -15554,13 +15570,14 @@
                         "type": "string",
                         "example": "Ethereum"
                       },
-                      "totalCirculating": {
+                      "totalCirculatingUSD": {
                         "type": "object",
-                        "properties": {
-                          "peggedUSD": {
-                            "type": "number",
-                            "example": 75000000000
-                          }
+                        "description": "Circulating supply in USD, by peg type",
+                        "additionalProperties": {
+                          "type": "number"
+                        },
+                        "example": {
+                          "peggedUSD": 75000000000
                         }
                       }
                     }

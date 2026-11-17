@@ -1,0 +1,32 @@
+name: Check spec against live API
+
+on:
+  pull_request:
+    paths:
+      - 'defillama-openapi-free.json'
+      - 'scripts/check-spec-responses.ts'
+      - '.github/workflows/check-spec-responses.yml'
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  free:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .nvmrc
+            defillama-openapi-free.json
+            scripts/package.json
+            scripts/check-spec-responses.ts
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/check-spec-responses.ts defillama-openapi-free.json
