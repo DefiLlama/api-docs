@@ -10650,7 +10650,7 @@
         "tags": ["yields"],
         "x-api-plan-only": true,
         "summary": "Retrieve the latest verified data for all measured earn pools",
-        "description": "Measured yield for the `/yields/v2/earn` pools we simulate, sorted by verified TVL descending. Each figure is replayed from a real holder's withdrawal against archive state, so it shows what an exit would have paid rather than what the protocol reports; the two can disagree without either being wrong. APY is always the base leg, since a withdrawal cannot see reward emissions, and is unclamped, so it can be negative. A pool appears here only while it is listed on `/yields/v2/earn`, is not withheld for review, and has at least one measured day; join on `id`.",
+        "description": "Measured yield for the `/yields/v2/earn` pools we simulate, sorted by verified TVL descending. Each figure is replayed from a real holder's withdrawal against archive state, so it shows what an exit would have paid rather than what the protocol reports; the two can disagree without either being wrong. `apy` is the base leg, since a withdrawal cannot see reward emissions, and is unclamped, so it can be negative; verified reward APR is served separately in `apy_reward`. A pool appears here only while it is listed on `/yields/v2/earn`, is not withheld for review, and has at least one measured day; join on `id`.",
         "responses": {
           "200": {
             "description": "Array of all verified earn pools",
@@ -10671,7 +10671,7 @@
                           },
                           "apy": {
                             "type": "object",
-                            "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions, and unclamped, so it can be negative. All three windows end at `apy_as_of`.",
+                            "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions (verified rewards are `apy_reward`), and unclamped, so it can be negative. All three windows end at `apy_as_of`.",
                             "properties": {
                               "avg_1d": {
                                 "type": ["number", "null"],
@@ -10705,6 +10705,73 @@
                             "description": "How closely independent holders agreed on the redemption rate. Grades the measurement, not the pool.",
                             "enum": ["high", "medium", "low", "conflict", null],
                             "example": "high"
+                          },
+                          "apy_reward": {
+                            "type": "object",
+                            "description": "Verified reward APR in percent: simple, not compounded, from reward claims simulated for real holders (a Merkl leaf proven against the on-chain root, or the protocol's reward index). All three windows end at `apy_reward_as_of`. Null in every window means no verified reading (see `apy_reward_notes`); 0 is a verified reading. One window can be withheld while the others are served.",
+                            "properties": {
+                              "avg_1d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 1-day average",
+                                "example": 2.71
+                              },
+                              "avg_7d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 7-day average",
+                                "example": 2.73
+                              },
+                              "avg_30d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 30-day average",
+                                "example": null
+                              }
+                            }
+                          },
+                          "apy_reward_as_of": {
+                            "type": ["string", "null"],
+                            "description": "End of the newest finished reward day (00:00 UTC the next day). Null when the pool has no reward reading or note.",
+                            "example": "2026-10-24T00:00:00.000Z"
+                          },
+                          "apy_reward_tokens": {
+                            "type": ["array", "null"],
+                            "description": "Reward tokens bound to the pool, including any a note names. Null when none are bound.",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "address": {
+                                  "type": "string",
+                                  "description": "Reward token address",
+                                  "example": "0x8292bb45bf1ee4d140127049757c2e0ff06317ed"
+                                },
+                                "symbol": {
+                                  "type": ["string", "null"],
+                                  "description": "Token symbol; null until its metadata is known",
+                                  "example": "RLUSD"
+                                },
+                                "decimals": {
+                                  "type": ["integer", "null"],
+                                  "description": "Token decimals; null until its metadata is known",
+                                  "example": 18
+                                }
+                              }
+                            }
+                          },
+                          "apy_reward_sources": {
+                            "type": ["array", "null"],
+                            "description": "Where the reward reading was measured, a verified 0 included. Null when there is no reading.",
+                            "items": {
+                              "type": "string",
+                              "enum": ["merkl", "aave-v3", "umbrella", "compound", "curve-gauge", "tokemak"]
+                            },
+                            "example": ["aave-v3", "merkl"]
+                          },
+                          "apy_reward_notes": {
+                            "type": "array",
+                            "description": "Readable sentences; empty for most pools. Beside a reading, who earns it when not every holder does; with no reading, why it is withheld. Show them wherever the reward renders, or renders blank.",
+                            "items": {
+                              "type": "string",
+                              "example": "Only eligible wallets earn this."
+                            }
                           },
                           "exit": {
                             "type": "object",
@@ -10787,24 +10854,67 @@
                           },
                           "price_per_share": {
                             "type": ["number", "null"],
-                            "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute.",
+                            "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute. Null for LP pools (`denomination.kind` is `lp_unit`): their unit is √(x·y) of the reserves, so a price per share would read as a token price.",
                             "example": 1.0706808832358203
                           },
                           "denomination": {
-                            "type": ["object", "null"],
-                            "description": "Asset an exit pays out, and the decimals its raw amounts use. Null when it could not be pinned; the USD fields go null with it, and you must not assume 18.",
-                            "properties": {
-                              "address": {
-                                "type": "string",
-                                "description": "Payout token address",
-                                "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                            "description": "Asset an exit pays out, and the decimals its raw amounts use. A token for most pools; for LP pools (`kind` is `lp_unit`) a synthetic unit, √(x·y) of the pool's reserves, labelled with its LP token and coins. Null when it could not be pinned; the USD fields go null with it, and you must not assume 18.",
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "title": "Token",
+                                "required": ["address", "decimals"],
+                                "properties": {
+                                  "address": {
+                                    "type": "string",
+                                    "description": "Payout token address",
+                                    "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                                  },
+                                  "decimals": {
+                                    "type": ["integer", "null"],
+                                    "description": "Decimals of the payout token",
+                                    "example": 18
+                                  }
+                                }
                               },
-                              "decimals": {
-                                "type": ["integer", "null"],
-                                "description": "Decimals of the payout token",
-                                "example": 18
+                              {
+                                "type": "object",
+                                "title": "LP unit",
+                                "required": ["kind", "lp_token", "decimals", "coins"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["lp_unit"],
+                                    "description": "Marks an LP pool's synthetic unit",
+                                    "example": "lp_unit"
+                                  },
+                                  "lp_token": {
+                                    "type": "string",
+                                    "description": "Address of the LP token the unit belongs to",
+                                    "example": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc"
+                                  },
+                                  "decimals": {
+                                    "type": ["integer", "null"],
+                                    "description": "Decimals of the raw amounts",
+                                    "example": 18
+                                  },
+                                  "coins": {
+                                    "type": ["array", "null"],
+                                    "description": "The pool's coins, as its underlying tokens",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "example": [
+                                      "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                                      "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
                               }
-                            }
+                            ]
                           }
                         }
                       }
@@ -10878,7 +10988,7 @@
                         },
                         "apy": {
                           "type": "object",
-                          "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions, and unclamped, so it can be negative. All three windows end at `apy_as_of`.",
+                          "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions (verified rewards are `apy_reward`), and unclamped, so it can be negative. All three windows end at `apy_as_of`.",
                           "properties": {
                             "avg_1d": {
                               "type": ["number", "null"],
@@ -10912,6 +11022,73 @@
                           "description": "How closely independent holders agreed on the redemption rate. Grades the measurement, not the pool.",
                           "enum": ["high", "medium", "low", "conflict", null],
                           "example": "high"
+                        },
+                        "apy_reward": {
+                          "type": "object",
+                          "description": "Verified reward APR in percent: simple, not compounded, from reward claims simulated for real holders (a Merkl leaf proven against the on-chain root, or the protocol's reward index). All three windows end at `apy_reward_as_of`. Null in every window means no verified reading (see `apy_reward_notes`); 0 is a verified reading. One window can be withheld while the others are served.",
+                          "properties": {
+                            "avg_1d": {
+                              "type": ["number", "null"],
+                              "description": "Trailing 1-day average",
+                              "example": 2.71
+                            },
+                            "avg_7d": {
+                              "type": ["number", "null"],
+                              "description": "Trailing 7-day average",
+                              "example": 2.73
+                            },
+                            "avg_30d": {
+                              "type": ["number", "null"],
+                              "description": "Trailing 30-day average",
+                              "example": null
+                            }
+                          }
+                        },
+                        "apy_reward_as_of": {
+                          "type": ["string", "null"],
+                          "description": "End of the newest finished reward day (00:00 UTC the next day). Null when the pool has no reward reading or note.",
+                          "example": "2026-10-24T00:00:00.000Z"
+                        },
+                        "apy_reward_tokens": {
+                          "type": ["array", "null"],
+                          "description": "Reward tokens bound to the pool, including any a note names. Null when none are bound.",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "address": {
+                                "type": "string",
+                                "description": "Reward token address",
+                                "example": "0x8292bb45bf1ee4d140127049757c2e0ff06317ed"
+                              },
+                              "symbol": {
+                                "type": ["string", "null"],
+                                "description": "Token symbol; null until its metadata is known",
+                                "example": "RLUSD"
+                              },
+                              "decimals": {
+                                "type": ["integer", "null"],
+                                "description": "Token decimals; null until its metadata is known",
+                                "example": 18
+                              }
+                            }
+                          }
+                        },
+                        "apy_reward_sources": {
+                          "type": ["array", "null"],
+                          "description": "Where the reward reading was measured, a verified 0 included. Null when there is no reading.",
+                          "items": {
+                            "type": "string",
+                            "enum": ["merkl", "aave-v3", "umbrella", "compound", "curve-gauge", "tokemak"]
+                          },
+                          "example": ["aave-v3", "merkl"]
+                        },
+                        "apy_reward_notes": {
+                          "type": "array",
+                          "description": "Readable sentences; empty for most pools. Beside a reading, who earns it when not every holder does; with no reading, why it is withheld. Show them wherever the reward renders, or renders blank.",
+                          "items": {
+                            "type": "string",
+                            "example": "Only eligible wallets earn this."
+                          }
                         },
                         "exit": {
                           "type": "object",
@@ -10994,24 +11171,67 @@
                         },
                         "price_per_share": {
                           "type": ["number", "null"],
-                          "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute.",
+                          "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute. Null for LP pools (`denomination.kind` is `lp_unit`): their unit is √(x·y) of the reserves, so a price per share would read as a token price.",
                           "example": 1.0706808832358203
                         },
                         "denomination": {
-                          "type": ["object", "null"],
-                          "description": "Asset an exit pays out, and the decimals its raw amounts use. Null when it could not be pinned; the USD fields go null with it, and you must not assume 18.",
-                          "properties": {
-                            "address": {
-                              "type": "string",
-                              "description": "Payout token address",
-                              "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                          "description": "Asset an exit pays out, and the decimals its raw amounts use. A token for most pools; for LP pools (`kind` is `lp_unit`) a synthetic unit, √(x·y) of the pool's reserves, labelled with its LP token and coins. Null when it could not be pinned; the USD fields go null with it, and you must not assume 18.",
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "title": "Token",
+                              "required": ["address", "decimals"],
+                              "properties": {
+                                "address": {
+                                  "type": "string",
+                                  "description": "Payout token address",
+                                  "example": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                                },
+                                "decimals": {
+                                  "type": ["integer", "null"],
+                                  "description": "Decimals of the payout token",
+                                  "example": 18
+                                }
+                              }
                             },
-                            "decimals": {
-                              "type": ["integer", "null"],
-                              "description": "Decimals of the payout token",
-                              "example": 18
+                            {
+                              "type": "object",
+                              "title": "LP unit",
+                              "required": ["kind", "lp_token", "decimals", "coins"],
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["lp_unit"],
+                                  "description": "Marks an LP pool's synthetic unit",
+                                  "example": "lp_unit"
+                                },
+                                "lp_token": {
+                                  "type": "string",
+                                  "description": "Address of the LP token the unit belongs to",
+                                  "example": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc"
+                                },
+                                "decimals": {
+                                  "type": ["integer", "null"],
+                                  "description": "Decimals of the raw amounts",
+                                  "example": 18
+                                },
+                                "coins": {
+                                  "type": ["array", "null"],
+                                  "description": "The pool's coins, as its underlying tokens",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "example": [
+                                    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+                                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
                             }
-                          }
+                          ]
                         },
                         "methods": {
                           "type": ["array", "null"],
@@ -11086,7 +11306,7 @@
         "tags": ["yields"],
         "x-api-plan-only": true,
         "summary": "Retrieve daily verified history for an earn pool",
-        "description": "Daily measured APY, share price, verified TVL and exit health for one pool, oldest first. APY carries `avg_1d` (that day), `avg_7d` and `avg_30d` (trailing averages ending that day). Days the pool was not measured are omitted, so the dates are not contiguous. Every `range` is sliced from the same cached series.",
+        "description": "Daily measured APY, verified reward APR, share price, verified TVL and exit health for one pool, oldest first. `apy` and `apy_reward` carry `avg_1d` (that day), `avg_7d` and `avg_30d` (trailing averages ending that day). Days the pool was not measured are omitted, so the dates are not contiguous. Every `range` is sliced from the same cached series.",
         "parameters": [
           {
             "name": "id",
@@ -11157,7 +11377,7 @@
                           },
                           "apy": {
                             "type": "object",
-                            "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions, and unclamped, so it can be negative.",
+                            "description": "Measured base APY in percent. Base only, since a withdrawal cannot see reward emissions (verified rewards are `apy_reward`), and unclamped, so it can be negative.",
                             "properties": {
                               "avg_1d": {
                                 "type": ["number", "null"],
@@ -11176,14 +11396,43 @@
                               }
                             }
                           },
+                          "apy_reward": {
+                            "type": "object",
+                            "description": "Verified reward APR in percent, simple, not compounded. Null in every window means no verified reading that day; 0 is a verified reading.",
+                            "properties": {
+                              "avg_1d": {
+                                "type": ["number", "null"],
+                                "description": "That day's reward APR",
+                                "example": 2.71
+                              },
+                              "avg_7d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 7-day average ending that day",
+                                "example": 2.73
+                              },
+                              "avg_30d": {
+                                "type": ["number", "null"],
+                                "description": "Trailing 30-day average ending that day",
+                                "example": null
+                              }
+                            }
+                          },
+                          "apy_reward_notes": {
+                            "type": "array",
+                            "description": "That day's reward notes: who earns the reading, or why it is withheld. Empty for most days.",
+                            "items": {
+                              "type": "string",
+                              "example": "Only eligible wallets earn this."
+                            }
+                          },
                           "price_per_share": {
                             "type": ["number", "null"],
-                            "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute.",
+                            "description": "Underlying assets per position token, in human units. For rebasing tokens (aTokens, stETH) this is per internal share, so read it as a series normalized to its first point, not as an absolute. Null for LP pools (`denomination.kind` is `lp_unit`): their unit is √(x·y) of the reserves, so a price per share would read as a token price.",
                             "example": 1.0706808832358203
                           },
                           "price_per_share_quoted": {
                             "type": ["number", "null"],
-                            "description": "The pool's reported price, for days the executed exit could not price one. A quote, not a measurement, so mark it differently in a chart. Null unless corroborated.",
+                            "description": "The pool's reported price, for days the executed exit could not price one. A quote, not a measurement, so mark it differently in a chart. Null unless corroborated, and always for LP pools.",
                             "example": 1.0706808832358203
                           },
                           "reason": {
