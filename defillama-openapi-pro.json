@@ -10761,7 +10761,7 @@
                             "description": "Where the reward reading was measured, a verified 0 included. Null when there is no reading.",
                             "items": {
                               "type": "string",
-                              "enum": ["merkl", "aave-v3", "umbrella", "compound", "curve-gauge", "tokemak"]
+                              "enum": ["merkl", "aave-v3", "umbrella", "compound", "curve-gauge", "tokemak", "staking-rewards", "usual"]
                             },
                             "example": ["aave-v3", "merkl"]
                           },
@@ -11078,7 +11078,7 @@
                           "description": "Where the reward reading was measured, a verified 0 included. Null when there is no reading.",
                           "items": {
                             "type": "string",
-                            "enum": ["merkl", "aave-v3", "umbrella", "compound", "curve-gauge", "tokemak"]
+                            "enum": ["merkl", "aave-v3", "umbrella", "compound", "curve-gauge", "tokemak", "staking-rewards", "usual"]
                           },
                           "example": ["aave-v3", "merkl"]
                         },
