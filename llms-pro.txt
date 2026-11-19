@@ -27,7 +27,7 @@ Pro users can also call free endpoints with higher rate limits using the path ma
 
 Use base URL https://pro-api.llama.fi/{YOUR_API_KEY} with the pro path column.
 
-| Free path (api.llama.fi) | Pro path (pro-api.llama.fi) | Description |
+| Free path | Pro path (pro-api.llama.fi) | Description |
 |---|---|---|
 | `/protocols` | `/api/protocols` | List all protocols on defillama along with their tvl |
 | `/protocol/{protocol}` | `/api/protocol/{protocol}` | Get historical TVL of a protocol and breakdowns by token and chain |
