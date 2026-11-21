@@ -26,6 +26,8 @@ type Endpoint = {
   summary: string
   tag: string
   proOnly: boolean
+  deprecated: boolean
+  notice: string
   parameters: Parameter[]
   responseHint: string
 }
@@ -73,6 +75,8 @@ function loadEndpoints(filePath: string): Endpoint[] {
       summary: get.summary ?? '',
       tag: get.tags?.[0] ?? 'other',
       proOnly: get['x-api-plan-only'] === true,
+      deprecated: get.deprecated === true,
+      notice: get.description ?? '',
       parameters: (get.parameters ?? []).map((p: any) => ({
         name: p.name,
         in: p.in,
@@ -100,6 +104,7 @@ function formatEndpoint(e: Endpoint): string {
   const lines: string[] = []
   lines.push(`### GET ${e.path}`)
   lines.push(`**Base URL:** \`${e.baseUrl}\``)
+  if (e.deprecated) lines.push(e.notice || '**Deprecated.**')
   lines.push(`${e.summary}`)
 
   if (e.parameters.length > 0) {
@@ -175,6 +180,8 @@ A 200 from \`/protocols\` or \`/overview/fees\` on \`api.llama.fi\` does not val
 2. Call \`https://pro-api.llama.fi/usage/{YOUR_API_KEY}\` (key at the end, for this endpoint only). It returns your remaining credits, like \`{"creditsLeft": 1000000}\`.
 3. Retry the keyed URL: \`https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives\`.`
 
+const mark = (e: Endpoint): string => (e.deprecated ? ' (deprecated)' : '')
+
 function generateIndex(freeEndpoints: Endpoint[], proEndpoints: Endpoint[], mappingTable: string): string {
   const freeGroups = groupByTag(freeEndpoints)
   const proGroups = groupByTag(proEndpoints)
@@ -218,7 +225,7 @@ No authentication required. Each group has its own base URL.
 ${Array.from(freeGroups.entries())
   .map(
     ([tag, eps]) =>
-      `- **${formatTagName(tag)}** (\`${[...new Set(eps.map((e) => e.baseUrl))].join('`, `')}\`): ${eps.map((e) => `\`${e.path}\``).join(', ')}`,
+      `- **${formatTagName(tag)}** (\`${[...new Set(eps.map((e) => e.baseUrl))].join('`, `')}\`): ${eps.map((e) => `\`${e.path}\`${mark(e)}`).join(', ')}`,
   )
   .join('\n')}
 
@@ -229,7 +236,7 @@ Full documentation: [llms-pro.txt](/llms-pro.txt)
 Requires API key. Base URL: \`https://pro-api.llama.fi/{YOUR_API_KEY}\`
 
 ${Array.from(proGroups.entries())
-  .map(([tag, eps]) => `- **${formatTagName(tag)}**: ${eps.map((e) => `\`${e.path}\``).join(', ')}`)
+  .map(([tag, eps]) => `- **${formatTagName(tag)}**: ${eps.map((e) => `\`${e.path}\`${mark(e)}`).join(', ')}`)
   .join('\n')}
 
 ## Optional
