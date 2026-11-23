@@ -21058,7 +21058,7 @@
         "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "List all current RWA assets",
-        "description": "Returns current Real World Asset rows with per-chain Onchain AUM (`onChainMcap`), Active AUM (`activeAum`) and DeFi Active TVL (`defiActiveTvl`) maps. `activeAum` replaces `activeMcap`, which still ships beside it as a deprecated duplicate and will be removed; read `activeAum`. `onChainMcap` keeps its name for now.",
+        "description": "Returns current Real World Asset rows with per-chain Onchain AUM (`onChainMcap`), Active AUM (`activeAum`) and DeFi Active TVL (`defiActiveTvl`) maps. `activeAum` replaces `activeMcap`, which still ships beside it as a deprecated duplicate and will be removed; read `activeAum`. `onChainMcap` keeps its name for now. Every listed asset has a row, and a retired or delisted asset has one only when it has stored history. An asset row carries `status`, which says what the row is; a perps market row (category `RWA Perps`) carries none. Only a `live` or a `stale` row carries values. A `stale` row holds its last value for up to 30 days, which counts exactly where a live row's value would until a new value is read; after that the row is `lapsed` and its value fields are empty.",
         "responses": {
           "200": {
             "description": "Array of current RWA assets",
@@ -21121,11 +21121,6 @@
                         },
                         "example": ["Fixed Income"]
                       },
-                      "type": {
-                        "type": "string",
-                        "nullable": true,
-                        "example": "Asset"
-                      },
                       "rwaClassification": {
                         "type": "string",
                         "nullable": true,
@@ -21145,16 +21140,6 @@
                         "type": "string",
                         "nullable": true,
                         "example": "Ondo Finance"
-                      },
-                      "stablecoin": {
-                        "type": "boolean",
-                        "nullable": true,
-                        "example": false
-                      },
-                      "governance": {
-                        "type": "boolean",
-                        "nullable": true,
-                        "example": false
                       },
                       "onChainMcap": {
                         "type": "object",
@@ -21212,6 +21197,27 @@
                         "type": "string",
                         "nullable": true,
                         "example": "https://icons.llamao.fi/icons/protocols/ondo.jpg"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["live", "stale", "lapsed", "unpriced", "retired", "delisted"],
+                        "example": "live",
+                        "description": "What an asset row is. A perps market row carries no status. `live` has a value today, which can be 0 when the asset once had a value and every chain now reads a supply of 0. `stale` had a value and has had none for three days; for up to 30 days after its last value its value fields hold that value, which counts exactly where a live row's value would until a new value is read. `lapsed` had a value and has had none for more than 30 days; its value fields are empty and it counts in no total. Only a `live` or a `stale` row carries values. `unpriced` has no price yet and its value fields are empty. `retired` was ended by its issuer or venue, its value fields are empty and its past stays in the charts. `delisted` was taken off by DefiLlama, its value fields are empty and it is counted nowhere."
+                      },
+                      "statusSince": {
+                        "type": "integer",
+                        "example": 1730160000,
+                        "description": "Unix seconds. For `stale` and `lapsed`, the last day with a value. For `retired` and `delisted`, the day of the event. Absent when unknown."
+                      },
+                      "statusReason": {
+                        "type": "string",
+                        "example": "The issuer ended the product and redeemed all tokens.",
+                        "description": "One sentence on why the row was retired or delisted. Present only on a `retired` or `delisted` row that has one."
+                      },
+                      "successor": {
+                        "type": "string",
+                        "example": "4094",
+                        "description": "The `id` of the row that replaced this one, as it appears on another row of this list. Present only on a `retired` or `delisted` row that has a replacement."
                       }
                     }
                   }
@@ -21227,7 +21233,7 @@
         "tags": ["RWA"],
         "x-api-plan-only": true,
         "summary": "Get aggregate RWA stats by chain, category, platform, and asset group",
-        "description": "Returns RWA aggregates. For the default per-chain table, read byChain[chain].base: assetIssuers.length, assetCount, activeAum, onChainMcap, and defiActiveTvl. Add stablecoinsOnly, governanceOnly, and stablecoinsAndGovernance when those buckets should be included. activeAum is Active AUM, onChainMcap is Onchain AUM and defiActiveTvl is DeFi Active TVL.",
+        "description": "Returns RWA aggregates. For the default per-chain table, read byChain[chain].base: assetIssuers.length, assetCount, activeAum, onChainMcap, and defiActiveTvl. activeAum is Active AUM, onChainMcap is Onchain AUM and defiActiveTvl is DeFi Active TVL.",
         "responses": {
           "200": {
             "description": "Aggregate RWA stats",
@@ -21288,91 +21294,7 @@
                                 "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
-                            "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
-                          },
-                          "stablecoinsOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "governanceOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "stablecoinsAndGovernance": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
+                            "description": "Default RWA bucket. The chain table uses this bucket."
                           }
                         }
                       }
@@ -21409,91 +21331,7 @@
                                 "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
-                            "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
-                          },
-                          "stablecoinsOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "governanceOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "stablecoinsAndGovernance": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
+                            "description": "Default RWA bucket. The chain table uses this bucket."
                           }
                         }
                       }
@@ -21530,91 +21368,7 @@
                                 "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
-                            "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
-                          },
-                          "stablecoinsOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "governanceOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "stablecoinsAndGovernance": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
+                            "description": "Default RWA bucket. The chain table uses this bucket."
                           }
                         }
                       }
@@ -21651,91 +21405,7 @@
                                 "example": ["Ondo Finance", "BlackRock"]
                               }
                             },
-                            "description": "Default RWA bucket. The chain table uses this bucket unless stablecoins or governance assets are explicitly included."
-                          },
-                          "stablecoinsOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "governanceOnly": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
-                          },
-                          "stablecoinsAndGovernance": {
-                            "type": "object",
-                            "properties": {
-                              "onChainMcap": {
-                                "type": "number",
-                                "example": 125000000
-                              },
-                              "activeAum": {
-                                "type": "number",
-                                "example": 118000000
-                              },
-                              "defiActiveTvl": {
-                                "type": "number",
-                                "example": 2500000
-                              },
-                              "assetCount": {
-                                "type": "integer",
-                                "example": 42
-                              },
-                              "assetIssuers": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                },
-                                "example": ["Ondo Finance", "BlackRock"]
-                              }
-                            }
+                            "description": "Default RWA bucket. The chain table uses this bucket."
                           }
                         }
                       }
@@ -21897,11 +21567,6 @@
                             },
                             "example": ["Fixed Income"]
                           },
-                          "type": {
-                            "type": "string",
-                            "nullable": true,
-                            "example": "Asset"
-                          },
                           "rwaClassification": {
                             "type": "string",
                             "nullable": true,
@@ -21921,16 +21586,6 @@
                             "type": "string",
                             "nullable": true,
                             "example": "Ondo Finance"
-                          },
-                          "stablecoin": {
-                            "type": "boolean",
-                            "nullable": true,
-                            "example": false
-                          },
-                          "governance": {
-                            "type": "boolean",
-                            "nullable": true,
-                            "example": false
                           },
                           "onChainMcap": {
                             "type": "object",
@@ -21988,6 +21643,27 @@
                             "type": "string",
                             "nullable": true,
                             "example": "https://icons.llamao.fi/icons/protocols/ondo.jpg"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["live", "stale", "lapsed", "unpriced", "retired", "delisted"],
+                            "example": "live",
+                            "description": "What an asset row is. A perps market row carries no status. `live` has a value today, which can be 0 when the asset once had a value and every chain now reads a supply of 0. `stale` had a value and has had none for three days; for up to 30 days after its last value its value fields hold that value, which counts exactly where a live row's value would until a new value is read. `lapsed` had a value and has had none for more than 30 days; its value fields are empty and it counts in no total. Only a `live` or a `stale` row carries values. `unpriced` has no price yet and its value fields are empty. `retired` was ended by its issuer or venue, its value fields are empty and its past stays in the charts. `delisted` was taken off by DefiLlama, its value fields are empty and it is counted nowhere."
+                          },
+                          "statusSince": {
+                            "type": "integer",
+                            "example": 1730160000,
+                            "description": "Unix seconds. For `stale` and `lapsed`, the last day with a value. For `retired` and `delisted`, the day of the event. Absent when unknown."
+                          },
+                          "statusReason": {
+                            "type": "string",
+                            "example": "The issuer ended the product and redeemed all tokens.",
+                            "description": "One sentence on why the row was retired or delisted. Present only on a `retired` or `delisted` row that has one."
+                          },
+                          "successor": {
+                            "type": "string",
+                            "example": "4094",
+                            "description": "The `id` of the row that replaced this one, as it appears on another row of this list. Present only on a `retired` or `delisted` row that has a replacement."
                           }
                         }
                       }
@@ -22072,26 +21748,6 @@
               "type": "string",
               "enum": ["onChainMcap", "activeAum", "defiActiveTvl"],
               "example": "activeAum"
-            }
-          },
-          {
-            "name": "includeStablecoin",
-            "in": "query",
-            "required": false,
-            "description": "Include stablecoin-token assets in the chart totals.",
-            "schema": {
-              "type": "boolean",
-              "example": false
-            }
-          },
-          {
-            "name": "includeGovernance",
-            "in": "query",
-            "required": false,
-            "description": "Include governance-token assets in the chart totals.",
-            "schema": {
-              "type": "boolean",
-              "example": false
             }
           }
         ],
