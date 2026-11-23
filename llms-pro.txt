@@ -855,12 +855,12 @@ Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
 
 ### GET /rwa/current
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-List all current RWA assets with per-chain onchain market cap, active market cap, and DeFi active TVL maps.
+List all current RWA assets with per-chain onchain market cap, active market cap, and DeFi active TVL maps. Every listed asset has a row, and a retired or delisted asset has one only when it has stored history. An asset row carries `status` (`live`, `stale`, `lapsed`, `unpriced`, `retired` or `delisted`), and `statusSince`, `statusReason` and `successor` when they apply; a perps market row (category `RWA Perps`) carries none. A `live` row can read 0 when the asset once had a value and every chain now reads a supply of 0. Only a `live` or a `stale` row carries values. A `stale` row holds its last value for up to 30 days, which counts exactly where a live row's value would until a new value is read; after that the row is `lapsed`, its value fields are empty and it counts in no total.
 Returns: array of RWA asset objects
 
 ### GET /rwa/stats
 **Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get aggregate RWA stats by chain, category, platform, and asset group. For the default per-chain table, read `byChain[chain].base`: `assetIssuers.length`, `assetCount`, `activeMcap`, `onChainMcap`, and `defiActiveTvl`. Add `stablecoinsOnly`, `governanceOnly`, and `stablecoinsAndGovernance` when those buckets should be included.
+Get aggregate RWA stats by chain, category, platform, and asset group. For the default per-chain table, read `byChain[chain].base`: `assetIssuers.length`, `assetCount`, `activeMcap`, `onChainMcap`, and `defiActiveTvl`.
 Returns: {totalOnChainMcap, totalActiveMcap, totalDefiActiveTvl, assetCount, assetIssuers, byChain, byCategory, byPlatform, byAssetGroup}
 
 ### GET /rwa/list
@@ -890,8 +890,6 @@ Get historical RWA metric breakdown by chain.
 
 **Parameters:**
   - `key` (query, string, optional) — metric to break down by chain, defaults to `onChainMcap` (one of: onChainMcap, activeMcap, defiActiveTvl) Example: `activeMcap`
-  - `includeStablecoin` (query, boolean, optional) — include stablecoin-token assets in chart totals Example: `false`
-  - `includeGovernance` (query, boolean, optional) — include governance-token assets in chart totals Example: `false`
 Returns: array of {timestamp, [chain]: value}
 
 ---
