@@ -28,6 +28,11 @@ type Endpoint = {
   proOnly: boolean
   parameters: Parameter[]
   responseHint: string
+  /**
+   * A "**Response:**" paragraph from the operation description, for fields agents keep misreading
+   * (stablecoin supply lives at circulating.peggedUSD). The spec stays the single source.
+   */
+  responseNote: string
 }
 
 /** Build a short one-line response hint from the OpenAPI response schema */
@@ -81,6 +86,7 @@ function loadEndpoints(filePath: string): Endpoint[] {
         schema: p.schema,
       })),
       responseHint: summarizeResponse(get.responses?.['200']),
+      responseNote: (get.description ?? '').split('\n\n').find((p: string) => p.startsWith('**Response:**')) ?? '',
     })
   }
 
@@ -119,6 +125,9 @@ function formatEndpoint(e: Endpoint, proPath?: string): string {
 
   if (e.responseHint) {
     lines.push(`${e.responseHint}`)
+  }
+  if (e.responseNote) {
+    lines.push(e.responseNote)
   }
 
   return lines.join('\n')

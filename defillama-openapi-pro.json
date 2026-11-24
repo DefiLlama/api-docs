@@ -15490,6 +15490,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "List all stablecoins along with their circulating amounts",
+        "description": "**Response:** `peggedAssets[]`. Each asset's circulating supply in USD is `circulating.peggedUSD` (nested inside `circulating`, not a number on the asset), and its price is `price`.",
         "parameters": [
           {
             "name": "includePrices",
