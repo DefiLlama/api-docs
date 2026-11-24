@@ -123,7 +123,7 @@ const switchToFreeApi = () => {
         <b><code>https://pro-api.llama.fi</code></b> endpoints.
         <br />
         When your API key is set, free endpoints switch to their pro-api.llama.fi
-        version, so they are not rate limited.
+        versions and use the API plan’s higher rate limits.
       </p>
     </div>
   </div>
