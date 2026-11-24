@@ -162,7 +162,7 @@ function formatTagName(tag: string): string {
 /**
  * Goes at the top of all three files. Paying users churned because their agents read the free docs,
  * kept calling the free hosts (which never read a key) and hit the free rate limit.
- * "Pro" is ambiguous: the $49 DefiLlama Pro plan has no API key, the $300 API plan does.
+ * Users call the plan "Pro", "API plan" or "pro API", so the rule keys off having a key, not the plan name.
  */
 const HAVE_A_KEY = `## Have an API key? Use pro-api.llama.fi for every request
 
@@ -171,7 +171,7 @@ If you or your user has a DefiLlama API key, send every request to \`https://pro
 - The free hosts (\`api.llama.fi\`, \`coins.llama.fi\`, \`stablecoins.llama.fi\`, \`yields.llama.fi\`) never read a key. Requests there are free tier and rate limited, even for paying users. A 429 from a free host means the request belongs on pro-api.llama.fi.
 - The key goes in the URL path, right after the host. Headers and \`?apikey=\` are not read.
 - Paths on pro-api.llama.fi have a prefix: \`/protocols\` becomes \`/api/protocols\`, \`/prices/current/{coins}\` becomes \`/coins/prices/current/{coins}\`, \`/stablecoins\` becomes \`/stablecoins/stablecoins\`, \`/pools\` becomes \`/yields/pools\`.
-- The key comes with the DefiLlama API plan ($300/mo). If a user says they have "DefiLlama Pro" and gives you a key, it is this key: use pro-api.llama.fi. The $49 DefiLlama Pro plan on its own has no API key.
+- Whatever the user calls their plan ("API plan", "Pro", "pro API"), if they have a DefiLlama API key, use pro-api.llama.fi.
 - Use the free hosts only when there is no key.`
 
 /**

@@ -124,9 +124,6 @@ const switchToFreeApi = () => {
         <br />
         When your API key is set, free endpoints switch to their pro-api.llama.fi
         version, so they are not rate limited.
-        <br />
-        The key comes with the API plan. The DefiLlama Pro subscription does not
-        include one.
       </p>
     </div>
   </div>
