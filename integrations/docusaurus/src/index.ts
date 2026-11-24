@@ -1,10 +1,13 @@
 import path from 'node:path'
+
 import type { LoadContext, Plugin } from '@docusaurus/types'
-import type { AnyApiReferenceConfiguration } from '@scalar/types'
+import { normalizeUrl } from '@docusaurus/utils'
+import { getConfiguration, serializeConfigToJs } from '@scalar/client-side-rendering'
+import type { AnyApiReferenceConfiguration } from '@scalar/types/api-reference'
 
 export type ScalarOptions = {
-  label: string
-  route: string
+  label?: string
+  route?: string
   /**
    * If you wish to pin a specific CDN version instead of the latest (default)
    * @example https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.28.11
@@ -20,11 +23,11 @@ export type ScalarOptions = {
  */
 const createDefaultScalarOptions = (options: ScalarOptions): ScalarOptions => ({
   showNavLink: true,
+  ...options,
   configuration: {
     _integration: 'docusaurus',
     ...(options.configuration ?? {}),
   },
-  ...options,
 })
 
 /**
@@ -35,32 +38,16 @@ const ScalarDocusaurus = (
   options: ScalarOptions,
 ): Plugin<{ configuration?: AnyApiReferenceConfiguration }> => {
   const defaultOptions = createDefaultScalarOptions(options)
+  const { baseUrl } = context.siteConfig
 
   return {
     name: '@scalar/docusaurus',
 
-    /**
-     * Load the Standalone API Reference script
-     * This is loaded into the dom once for every plugin thats loaded BUT it only downloads the script once
-     */
-    injectHtmlTags() {
-      return {
-        preBodyTags: [
-          {
-            tagName: 'script',
-            attributes: {
-              src: options.cdn ?? 'https://cdn.jsdelivr.net/npm/@scalar/api-reference',
-            },
-          },
-        ],
-      }
-    },
-
-    async loadContent() {
+    loadContent() {
       return defaultOptions
     },
 
-    async contentLoaded({ content, actions }) {
+    contentLoaded({ content, actions }) {
       const { addRoute } = actions
 
       // If showNavLink is true, add a link to the navbar
@@ -70,18 +57,35 @@ const ScalarDocusaurus = (
             items: Record<string, string>[]
           }
         ).items.push({
-          to: defaultOptions.route ?? '/scalar',
+          to: normalizeUrl([baseUrl, defaultOptions.route ?? '/scalar']),
           label: defaultOptions.label ?? 'Scalar',
           position: 'left',
         })
       }
 
+      // Serialize the configuration to a JavaScript object literal here, in Node, while the config
+      // functions (onBeforeRequest, request hooks, sorters, …) are still live. Docusaurus JSON-serializes
+      // route props when it generates its routes module, which would otherwise silently drop every
+      // function-valued option. See https://github.com/scalar/scalar/issues/6933.
+      const givenConfiguration = content.configuration ?? {}
+      const configuration = Array.isArray(givenConfiguration) ? (givenConfiguration[0] ?? {}) : givenConfiguration
+
+      // Normalize the configuration in Node first, exactly like the CDN HTML path does: this evaluates a
+      // function-valued `content` at build time (it must not be shipped to the browser) and reconciles
+      // `content` vs `url`. Only then do we serialize the remaining live functions for the browser.
+      const normalizedConfiguration = getConfiguration({ ...configuration, hideDarkModeToggle: true } as Record<
+        string,
+        unknown
+      >)
+
       // Add the appropriate route based on the module system
       addRoute({
-        path: defaultOptions.route,
+        path: normalizeUrl([baseUrl, defaultOptions.route ?? '/scalar']),
+        // biome-ignore lint/correctness/noGlobalDirnameFilename: Docusaurus builds this plugin as CommonJS.
         component: path.resolve(__dirname, './ScalarDocusaurus'),
         exact: true,
-        ...content,
+        cdn: defaultOptions.cdn ?? 'https://cdn.jsdelivr.net/npm/@scalar/api-reference',
+        configuration: serializeConfigToJs(normalizedConfiguration),
       })
     },
   }

@@ -1,0 +1,213 @@
+import { type ModalState, useModal } from '@scalar/components/modal'
+import { type ClientPlugin, subscribePluginEvents } from '@scalar/oas-utils/helpers'
+import type { WorkspaceStore } from '@scalar/workspace-store/client'
+import { type WorkspaceEventBus, createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import { isOpenApiDocument } from '@scalar/workspace-store/schemas/type-guards'
+import { type App, type MaybeRefOrGetter, computed, createApp, isRef, reactive, ref, toValue, watch } from 'vue'
+
+import {
+  type DefaultEntities,
+  type RoutePayload,
+  resolveRouteParameters,
+} from '@/v2/features/modal/helpers/resolve-route-parameters'
+import { useModalSidebar } from '@/v2/features/modal/hooks/use-modal-sidebar'
+import Modal, { type ModalProps } from '@/v2/features/modal/Modal.vue'
+import type { ApiClientOptions, ApiClientOptionsRef } from '@/v2/types/options'
+
+type CreateApiClientOptions = {
+  /** Element to mount the client modal to. */
+  el: HTMLElement | null
+  /**
+   * Will attempt to mount the references immediately.
+   * For SSR this may need to be disabled and handled manually on the client side.
+   */
+  mountOnInitialize?: boolean
+  /** You can pass in an event bus if you have one already, or we will create one */
+  eventBus?: WorkspaceEventBus
+  /** The workspace store must be initialized and passed in. */
+  workspaceStore: WorkspaceStore
+  /** Api client plugins to include in the modal */
+  plugins?: ClientPlugin[]
+  /** Subset of the configuration options for the modal, if you want it to be reactive ensure its a ref */
+  options?: MaybeRefOrGetter<ApiClientOptions>
+}
+
+export type ApiClientModal = {
+  app: App
+  open: (payload?: RoutePayload) => void
+  mount: (mountingEl: HTMLElement | null) => void
+  route: (payload: RoutePayload) => void
+  updateOptions: (nextOptions: ApiClientOptions, overwrite?: boolean) => void
+  modalState: ModalState
+}
+
+/**
+ * Monotonic counter used to give every modal Vue app a unique `idPrefix`.
+ *
+ * Vue derives `useId()` values (and therefore our teleport target ids) from the app's
+ * `idPrefix`. When more than one client app mounts on the same page — for example, the
+ * API reference embeds this modal alongside another client instance — a shared prefix
+ * makes both apps emit identical ids. A teleported popover then resolves to the first
+ * matching target in the DOM, which can be a hidden app, so the popover never appears.
+ * A per-app suffix keeps the ids unique across instances.
+ */
+let modalAppCount = 0
+
+/**
+ * Creates the API Client Modal.
+ *
+ * The modal does not require a router. Instead, navigation is handled by setting
+ * active entities directly through the returned `route` function.
+ */
+export const createApiClientModal = ({
+  el,
+  eventBus = createWorkspaceEventBus({
+    debug: import.meta.env.DEV,
+  }),
+  mountOnInitialize = true,
+  plugins = [],
+  workspaceStore,
+  options = {},
+}: CreateApiClientOptions): ApiClientModal => {
+  const requestBodyCompositionSelection = ref<Record<string, number>>({})
+
+  /** This is to ensure that the options are a ref if they are not already, useful for react */
+  const optionsRef: ApiClientOptionsRef = isRef(options) ? options : ref(toValue(options))
+
+  const defaultEntities: DefaultEntities = {
+    path: 'default',
+    method: 'default',
+    example: 'default',
+    documentSlug: workspaceStore.workspace['x-scalar-active-document'] || 'default',
+    isWebhook: false,
+  }
+
+  const parameters = reactive<DefaultEntities>({ ...defaultEntities })
+
+  /** Navigate to the specified path, method, and example. */
+  const route = (payload: RoutePayload): void => {
+    Object.assign(parameters, defaultEntities, payload)
+  }
+
+  /** Resolved parameters from the workspace store. */
+  const resolvedParameters = computed(() => resolveRouteParameters(workspaceStore, parameters))
+  const documentSlug = computed(() => resolvedParameters.value.documentSlug)
+  const path = computed(() => resolvedParameters.value.path)
+  const method = computed(() => resolvedParameters.value.method)
+  const exampleName = computed(() => resolvedParameters.value.example)
+  const isWebhook = computed(() => resolvedParameters.value.isWebhook ?? false)
+  /** The document from the workspace store. Modal is OpenAPI-only; AsyncAPI docs surface as null. */
+  const document = computed(() => {
+    const doc = workspaceStore.workspace.documents[documentSlug.value ?? '']
+    return isOpenApiDocument(doc) ? doc : null
+  })
+
+  /** Sidebar state and selection handling. */
+  const sidebarState = useModalSidebar({
+    workspaceStore,
+    documentSlug: documentSlug,
+    path: path,
+    method: method,
+    exampleName: exampleName,
+    isWebhook,
+    route,
+  })
+
+  const modalState = useModal()
+
+  const app = createApp(Modal, {
+    document,
+    eventBus,
+    exampleName,
+    isWebhook,
+    method,
+    modalState,
+    path,
+    plugins,
+    requestBodyCompositionSelection,
+    sidebarState,
+    workspaceStore,
+    options: optionsRef,
+  } satisfies ModalProps)
+
+  /** Initialize plugins and subscribe to event bus events */
+  const pluginUnsubscribes: (() => void)[] = []
+  for (const plugin of plugins) {
+    plugin.lifecycle?.onInit?.()
+
+    pluginUnsubscribes.push(subscribePluginEvents(eventBus, plugin))
+  }
+
+  /** Clean up plugin lifecycle and event bus subscriptions when the app is unmounted */
+  app.onUnmount(() => {
+    for (const unsub of pluginUnsubscribes) {
+      unsub()
+    }
+    for (const plugin of plugins) {
+      plugin.lifecycle?.onDestroy?.()
+    }
+  })
+
+  // Update the active proxy when the proxyUrl changes
+  watch(
+    () => toValue(optionsRef).proxyUrl,
+    (newProxyUrl) => workspaceStore.update('x-scalar-active-proxy', newProxyUrl),
+    { immediate: true },
+  )
+
+  // Use a unique id prefix to prevent collisions with other Vue apps on the page.
+  // The suffix keeps the prefix unique even when several client apps mount together.
+  app.config.idPrefix = `scalar-client-${modalAppCount++}`
+
+  /** Mount the modal to a given element. */
+  const mount = (mountingEl: HTMLElement | null = el): void => {
+    if (!mountingEl) {
+      console.error(
+        '[@scalar/api-client] Could not create the API client Modal.',
+        'Invalid HTML element provided.',
+        'Read more: https://github.com/scalar/scalar/tree/main/packages/api-client',
+      )
+      return
+    }
+    app.mount(mountingEl)
+  }
+
+  if (mountOnInitialize) {
+    mount()
+  }
+
+  return {
+    /** The Vue app instance for the modal. Use with caution. */
+    app,
+    /** Open the modal and optionally navigate to a specific route. */
+    open: (payload?: RoutePayload): void => {
+      // This path does not carry a composition selection, so clear any selection left over from a
+      // previously opened operation. (The event-driven open path re-establishes it from its payload.)
+      requestBodyCompositionSelection.value = {}
+      modalState.open = true
+      if (payload) {
+        route(payload)
+      }
+    },
+    /** Mount the modal to a given element. */
+    mount,
+    /** Navigate to the specified path, method, and example. */
+    route,
+    /** Controls the visibility of the modal. */
+    modalState,
+    /**
+     * Merge new options into the current modal options.
+     *
+     * @param newOptions - The new options to merge into the current modal options.
+     * @param overwrite - Whether to overwrite the current modal options with the new options. If false, the new options will be merged with the current options.
+     */
+    updateOptions: (newOptions: ApiClientOptions, overwrite = false): void => {
+      optionsRef.value = overwrite
+        ? newOptions
+        : {
+            ...optionsRef.value,
+            ...newOptions,
+          }
+    },
+  }
+}

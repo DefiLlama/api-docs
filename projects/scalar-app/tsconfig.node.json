@@ -1,8 +1,27 @@
 {
-  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
-  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*"],
+  "extends": "../../tsconfig.json",
+  "include": [
+    "entrypoints/electron/shims.d.ts",
+    "electron.vite.config.*",
+    "assert-scalar-app-env.ts",
+    "assert-scalar-app-env-plugin.ts",
+    "monaco-vite-config.ts",
+    "vite.config.ts",
+    "entrypoints/electron/main/**/*",
+    "entrypoints/electron/preload/**/*",
+    "entrypoints/electron/helpers/**/*",
+    "src/environment.ts",
+    "src/helpers/auth/exchange-token.ts",
+    "src/helpers/auth/schema.ts"
+  ],
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
     "composite": true,
-    "types": ["electron-vite/node"]
+    "paths": {
+      "@/*": ["./src/*"],
+      "@electron/*": ["./entrypoints/electron/*"]
+    },
+    "types": ["electron-vite/node", "node"]
   }
 }

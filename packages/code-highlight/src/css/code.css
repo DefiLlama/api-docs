@@ -1,3 +1,8 @@
+/* Keep direct stylesheet consumers at the default spacing without competing with container overrides. */
+:where(pre:has(> code.hljs)) {
+  line-height: var(--scalar-code-line-height, 1.4);
+}
+
 .scalar-app {
   :where(code.hljs) * {
     font-size: inherit;
@@ -7,7 +12,6 @@
     word-spacing: normal;
     word-break: normal;
     word-wrap: normal;
-    line-height: 1.4;
     tab-size: 4;
   }
   code.hljs {
@@ -15,7 +19,6 @@
     font-size: inherit;
     color: var(--scalar-color-2);
     font-family: var(--scalar-font-code);
-    display: inline-block;
     counter-reset: linenumber;
   }
   .hljs {
@@ -187,9 +190,5 @@
 }
 
 .hljs.language-objectivec .hljs-built_in {
-  color: var(--scalar-color-orange);
-}
-
-.hljs-built_in {
   color: var(--scalar-color-orange);
 }

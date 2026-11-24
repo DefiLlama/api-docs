@@ -1,39 +1,63 @@
+<script lang="ts">
+/**
+ * Scalar Markdown component
+ *
+ * Renders a markdown string as styled HTML with support for
+ * headings, links, code blocks, tables, alerts, and more.
+ * Set --scalar-code-line-height on the component or an ancestor to override fenced code
+ * spacing, which defaults to 1.5.
+ *
+ * @example
+ * <ScalarMarkdown value="# Hello World" />
+ */
+export default {}
+</script>
+
 <script setup lang="ts">
-import { htmlFromMarkdown } from '@scalar/code-highlight'
-import { cx } from '@scalar/use-hooks/useBindCx'
-import { computed, onServerPrefetch } from 'vue'
+import {
+  htmlFromMarkdown,
+  isHeading,
+  textFromNode,
+  type Node,
+} from '@scalar/markdown'
+import { useBindCx } from '@scalar/use-hooks/useBindCx'
+import { computed, useTemplateRef } from 'vue'
 
-const props = withDefaults(
-  defineProps<{
-    value?: string
-    withImages?: boolean
-    transform?: (node: Record<string, any>) => Record<string, any>
-    transformType?: string
-    clamp?: string | boolean
-    class?: string
-    withAnchors?: boolean
-    anchorPrefix?: string
-  }>(),
-  {
-    withImages: false,
-    withAnchors: false,
-  },
-)
+import type { ScalarMarkdownProps } from './types'
+import { useMarkdownRenderHooks } from './useMarkdownRenderHooks'
 
-const transformHeading = (node: Record<string, any>) => {
-  if (!props.withAnchors) {
-    return props.transform?.(node) || node
+const {
+  value,
+  transform,
+  transformType,
+  withImages = false,
+  withAnchors = false,
+  anchorPrefix,
+} = defineProps<ScalarMarkdownProps>()
+
+const { cx } = useBindCx()
+defineOptions({ inheritAttrs: false })
+
+// Expose the element ref to the parent component
+const templateRef = useTemplateRef('div')
+defineExpose({ el: templateRef })
+
+const transformHeading = (node: Node) => {
+  if (!withAnchors) {
+    return transform?.(node) || node
   }
 
-  const headingText = node.children?.[0]?.value || ''
+  if (!isHeading(node)) {
+    return node
+  }
+
+  const headingText = textFromNode(node)
 
   /** Basic slugify for the heading text */
   const slug = headingText.toLowerCase().replace(/\s+/g, '-')
 
   /** Return adding anchor prefix if present or just the slug */
-  const id = props.anchorPrefix
-    ? `${props.anchorPrefix}/description/${slug}`
-    : slug
+  const id = anchorPrefix ? `${anchorPrefix}/description/${slug}` : slug
 
   // Add the id to the heading
   node.data = {
@@ -42,39 +66,36 @@ const transformHeading = (node: Record<string, any>) => {
     },
   }
 
-  if (props.transform) {
-    return props.transform(node)
+  if (transform) {
+    return transform(node)
   }
 
   return node
 }
 
 const html = computed(() => {
-  return htmlFromMarkdown(props.value ?? '', {
-    removeTags: props.withImages ? [] : ['img', 'picture'],
+  return htmlFromMarkdown(value ?? '', {
+    removeTags: withImages ? [] : ['img', 'picture'],
     transform:
-      props.withAnchors && props.transformType === 'heading'
-        ? transformHeading
-        : props.transform,
-    transformType: props.transformType,
+      withAnchors && transformType === 'heading' ? transformHeading : transform,
+    transformType,
   })
 })
-
-// SSR hack - waits for the watch to complete
-onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
+useMarkdownRenderHooks(
+  templateRef,
+  () => value ?? '',
+  () => html.value,
+)
 </script>
 <template>
   <div
-    :class="
-      cx('markdown text-ellipsis', { 'line-clamp-4': clamp }, props.class)
-    "
-    :style="{
-      '-webkit-line-clamp': typeof clamp === 'string' ? clamp : undefined,
-    }"
+    ref="div"
+    v-bind="cx('markdown', { 'line-clamp-(--markdown-clamp)': !!clamp })"
+    :style="{ '--markdown-clamp': clamp }"
     v-html="html" />
 </template>
 <style>
-@import '@scalar/code-highlight/css/code.css';
+@import '@scalar/highlight/compat/code.css';
 
 .scalar-app {
   /* Base container and variables */
@@ -85,9 +106,11 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
     --markdown-spacing-sm: 12px;
     --markdown-spacing-md: 16px;
     --markdown-line-height: 1.625;
+    --markdown-heading-line-height: 1.15;
 
     font-family: var(--scalar-font);
     word-break: break-word;
+    line-height: var(--markdown-line-height);
   }
 
   .markdown > * {
@@ -98,24 +121,7 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
   .markdown > *:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6):last-child {
     margin-bottom: 0;
   }
-  /* Headings (h1-h6) */
-  .markdown h1 {
-    --font-size: 1.5rem;
-    --markdown-line-height: 32px;
-  }
-
-  .markdown h2,
-  .markdown h3 {
-    --font-size: 1.25rem;
-    --markdown-line-height: 1.3;
-  }
-
-  .markdown h4,
-  .markdown h5,
-  .markdown h6 {
-    --font-size: 1rem;
-  }
-
+  /* Headings */
   .markdown h1,
   .markdown h2,
   .markdown h3,
@@ -123,11 +129,23 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
   .markdown h5,
   .markdown h6 {
     display: block;
-    font-size: var(--font-size);
     font-weight: var(--scalar-bold);
     margin-top: var(--scalar-refs-heading-spacing);
     margin-bottom: var(--markdown-spacing-sm);
+    line-height: var(--markdown-heading-line-height, 1.15);
     scroll-margin-top: 1rem;
+  }
+  .markdown h1 {
+    font-size: 1.5rem;
+  }
+  .markdown h2,
+  .markdown h3 {
+    font-size: 1.25rem;
+  }
+  .markdown h4,
+  .markdown h5,
+  .markdown h6 {
+    font-size: 1rem;
   }
 
   /* Text formatting and paragraphs */
@@ -138,92 +156,78 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
 
   .markdown p {
     color: inherit;
-    line-height: 22px;
     display: block;
+    line-height: var(--markdown-line-height);
   }
 
   /* Images */
   .markdown img {
+    /**
+    * With `display: block` <a><img></a> will take the whole width.
+    *
+    * @see https://github.com/scalar/scalar/issues/3961
+    */
+    display: inline-block;
     overflow: hidden;
-    border-radius: var(--scalar-radius);
+    border-radius: var(--scalar-radius-md);
     max-width: 100%;
   }
 
   /* Lists */
-  .markdown ul:not(.contains-task-list),
+  .markdown ul,
   .markdown ol {
     display: flex;
     flex-direction: column;
+    padding-left: 1.6em;
     gap: 2px;
-  }
-
-  .markdown ul:not(.contains-task-list) {
-    list-style-position: inside;
-  }
-
-  .markdown ul {
-    list-style-type: disc;
+    line-height: var(--markdown-line-height);
   }
 
   .markdown li {
-    line-height: var(--markdown-line-height);
-    position: relative;
+    margin-top: 2px;
+    padding-left: 7px;
   }
 
-  .markdown ul li {
-    padding-left: var(--markdown-spacing-md);
-  }
-
-  .markdown ol {
-    counter-reset: item;
-    padding-left: 5px;
-  }
-
-  /*
-   * Block (not flex) so inline text and code wrap as one paragraph.
-   * With flex, every text run and code span became its own squeezed column.
-   * The number is pinned in the left gutter instead: 3px + 24px marker + 5px gap.
-   */
-  .markdown ol li {
-    padding-left: 32px;
-  }
-
-  .markdown ol li::before {
-    content: counter(item) '\002E';
-    counter-increment: item;
-    position: absolute;
-    left: 3px;
-    top: 0;
-    display: flex;
+  ol > li::marker,
+  ol > * > li::marker {
     font: var(--scalar-font);
     font-variant-numeric: tabular-nums;
     font-weight: var(--scalar-semibold);
-    justify-content: center;
-    line-height: var(--markdown-line-height);
-    width: 24px;
     white-space: nowrap;
   }
 
-  .markdown ol li::before,
-  .markdown ol ol ol li::before,
-  .markdown ol ol ol ol ol ol li::before {
-    content: counter(item, decimal) '\002E';
+  /* Level 1, 4, 7 → decimal */
+  .markdown ol {
+    list-style-type: decimal;
+  }
+  /* Level 2, 5, 8 → lower-alpha */
+  .markdown ol ol {
+    list-style-type: lower-alpha;
   }
 
-  .markdown ol ol li::before,
-  .markdown ol ol ol ol li::before,
-  .markdown ol ol ol ol ol ol ol li::before {
-    content: counter(item, lower-alpha) '\002E';
+  .markdown ol ol ol ol,
+  .markdown ol ol ol ol ol ol ol {
+    list-style-type: decimal;
   }
 
-  .markdown ol ol li::before,
-  .markdown ol ol ol ol ol li::before,
-  .markdown ol ol ol ol ol ol ol ol li::before {
-    content: counter(item, lower-roman) '\002E';
+  .markdown ol ol ol ol ol,
+  .markdown ol ol ol ol ol ol ol ol {
+    list-style-type: lower-alpha;
   }
 
-  .markdown ul:first-of-type li:first-of-type {
-    margin-top: 0;
+  /* Level 3, 6, 9 → lower-roman */
+  .markdown ol ol ol {
+    list-style-type: lower-roman;
+  }
+
+  .markdown ol ol ol ol ol ol,
+  .markdown ol ol ol ol ol ol ol ol ol {
+    list-style-type: lower-roman;
+  }
+
+  .markdown ul > li,
+  .markdown ul > * > li {
+    list-style-type: disc;
   }
 
   /* Tables */
@@ -232,11 +236,12 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
     table-layout: fixed;
     overflow-x: auto;
     position: relative;
-    border-collapse: collapse;
-    width: 100%;
+    width: max-content;
+    max-width: 100%;
     margin: 1em 0;
-    box-shadow: 0 0 0 var(--scalar-border-width) var(--scalar-border-color);
-    border-radius: var(--scalar-radius);
+    border: var(--scalar-border-width) solid var(--scalar-border-color);
+    border-radius: var(--scalar-radius-md);
+    border-spacing: 0;
   }
 
   .markdown tbody,
@@ -266,7 +271,8 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
     padding: 8.5px 16px;
     line-height: var(--markdown-line-height);
     position: relative;
-    word-break: initial;
+    /** Break long words in tables */
+    word-break: break-word;
     font-size: var(--scalar-small);
     color: var(--scalar-color-1);
     border-right: var(--markdown-border);
@@ -304,11 +310,11 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
   }
 
   .markdown th:first-of-type {
-    border-top-left-radius: var(--scalar-radius);
+    border-top-left-radius: var(--scalar-radius-md);
   }
 
   .markdown th:last-of-type {
-    border-top-right-radius: var(--scalar-radius);
+    border-top-right-radius: var(--scalar-radius-md);
   }
 
   .markdown tr > [align='left'] {
@@ -326,7 +332,7 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
   /* Details */
   .markdown details {
     border: var(--markdown-border);
-    border-radius: var(--scalar-radius);
+    border-radius: var(--scalar-radius-xl);
     color: var(--scalar-color-1);
   }
 
@@ -348,10 +354,10 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
   }
 
   .markdown summary {
-    border-radius: 2.5px;
+    border-radius: var(--scalar-radius);
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: 8px;
     min-height: 40px;
     padding: 7px 14px;
     position: relative;
@@ -392,6 +398,7 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
 
   .markdown details[open] > summary::before {
     transform: rotate(90deg);
+    transition: transform 0.1s ease-in-out;
   }
 
   .markdown details:has(+ details) {
@@ -425,7 +432,7 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
   }
 
   .markdown a:hover {
-    text-decoration-color: var(currentColor, var(--scalar-color-1));
+    text-decoration-color: var(--scalar-color-1, currentColor);
     color: var(--scalar-link-color-hover, var(--scalar-color-accent));
     -webkit-text-decoration: var(--scalar-text-decoration-hover);
     text-decoration: var(--scalar-text-decoration-hover);
@@ -464,7 +471,7 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
     background-color: var(--scalar-background-2);
     box-shadow: 0 0 0 var(--scalar-border-width) var(--scalar-border-color);
     font-size: var(--scalar-micro);
-    border-radius: 2px;
+    border-radius: var(--scalar-radius-md);
     padding: 0 3px;
   }
 
@@ -472,11 +479,16 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
     font-size: var(--scalar-small);
   }
 
+  /* Keep fenced-code spacing independent of token boundaries and surrounding prose. */
+  .markdown pre {
+    line-height: var(--scalar-code-line-height, 1.5);
+  }
+
   .markdown pre code {
     display: block;
     white-space: pre;
     padding: var(--markdown-spacing-sm);
-    line-height: 1.5;
+    line-height: inherit;
     margin: var(--markdown-spacing-sm) 0;
     -webkit-overflow-scrolling: touch;
     overflow-x: auto;
@@ -492,48 +504,38 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
 
   /* Blockquotes */
   .markdown blockquote {
-    border-left: 1px solid var(--scalar-color-1);
-    padding-left: var(--markdown-spacing-md);
-    margin: 0;
-    display: block;
-    font-weight: var(--scalar-bold);
-    font-size: var(--scalar-heading-2);
+    border-left: 2px solid var(--scalar-border-color);
+    padding-left: var(--markdown-spacing-sm);
+  }
+
+  .markdown blockquote > * {
+    margin-bottom: var(--markdown-spacing-sm);
   }
 
   /* Markdown Checklist */
-  .markdown .contains-task-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .markdown li.task-list-item {
+    position: relative;
     list-style: none;
   }
 
-  .markdown .contains-task-list li {
-    align-items: center;
-    display: flex;
-    gap: 10.5px;
-    padding-left: 10.5px;
-  }
-
-  .markdown .contains-task-list input {
-    position: relative;
+  .markdown li.task-list-item > input {
+    display: inline;
+    position: absolute;
+    top: 0.225em;
+    left: -1.4em;
     appearance: none;
-    -webkit-appearance: none;
-    display: flex;
     width: var(--markdown-spacing-md);
     height: var(--markdown-spacing-md);
-    align-content: center;
-    justify-content: center;
     border: 1px solid var(--scalar-color-3);
     border-radius: var(--scalar-radius);
   }
 
-  .markdown .contains-task-list input:checked {
+  .markdown li.task-list-item > input[type='checkbox']:checked {
     background-color: var(--scalar-color-1);
     border-color: var(--scalar-color-1);
   }
 
-  .markdown .contains-task-list input[type='checkbox']::before {
+  .markdown li.task-list-item > input[type='checkbox']::before {
     content: '';
     position: absolute;
     left: 5px;
@@ -546,14 +548,14 @@ onServerPrefetch(async () => await new Promise((r) => setTimeout(r, 1)))
     opacity: 0;
   }
 
-  .markdown .contains-task-list input[type='checkbox']:checked::before {
+  .markdown li.task-list-item > input[type='checkbox']:checked::before {
     opacity: 1;
   }
 
   /* Markdown Alert */
   .markdown .markdown-alert {
     align-items: stretch;
-    border-radius: var(--scalar-radius);
+    border-radius: var(--scalar-radius-md);
     background-color: color-mix(
       in srgb,
       var(--scalar-background-2),

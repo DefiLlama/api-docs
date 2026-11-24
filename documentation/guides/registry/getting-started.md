@@ -1,31 +1,30 @@
 # Getting Started
-Reading this guide helps you to get started with Scalar Registry for managing & versioning OpenAPI Documents, JSON Schema, Spectral Rules as your source of truth with a deep Git integration.
 
-## Create your Scalar Account
-To first access the Scalar Registry you need to [create an account](https://dashboard.scalar.com/register) or [sign in](https://dashboard.scalar.com/login).
+Get your first API document into the Registry and start powering docs, SDKs, and automation from a single source of truth.
 
-![Scalar Dashboard](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/t8MUp4KrYwCT9WKYuVnUu.png "Scalar Dashboard")
+## Create your Scalar account
 
-Once authenticated you will see your dashboard, you have two options to interface with the Scalar Registry:
-- The Scalar [dashboard](/scalar/scalar-registry/dashboard)
-- The Scalar [CLI](/scalar/scalar-registry/cli)
-- Our [GitHub Workflows](/scalar/scalar-registry/github-workflows)
+To access Registry, [create an account](https://dashboard.scalar.com/register) or [sign in](https://dashboard.scalar.com/login).
 
-## So... Why a Registry?
-Managing OpenAPI can be difficult; is the source-of-truth: design, implementation, Git, cloud? How do you manage versions and access, also how do downstream consumers of your API interact with it? Does it need to be private?
+Once authenticated, you can work with Registry from:
 
-Who is going to update the docs when our API has new endpoints or examples?
+- [Dashboard](https://dashboard.scalar.com)
+- [CLI](cli.md)
+- [GitHub Actions](github-actions.md)
 
-Scalar handles all this and makes it incredibly easy to get to the exciting stuff! Once a document is in the Scalar Registry we can:
+<scalar-image
+  src="/scalar-dashboard.svg"
+  src-dark="/scalar-dashboard-dark.svg"
+  alt="Scalar dashboard"
+  size="full">
+</scalar-image>
 
-### Create Docs
-World Class API Docs with just a few clicks, all managed by Scalars registry automagically from your OpenAPI document changes.
-![Scalar Docs](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/5m7ze7mOrL8sfCsiscwBv.png "Scalar Docs")
+## Upload your first API document
 
-### Create SDKs
-World Class SDKs with just a few clicks, all managed by Scalars registry automagically from your OpenAPI document changes.
-![Scalar SDKs](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/IFjPvoh6_GLT0oVZfLQvl.png "Scalar SDKs")
+From the [dashboard](https://dashboard.scalar.com), create a new API and upload an OpenAPI or [AsyncAPI](../../asyncapi.md) document, or publish one from your terminal with the [CLI](cli.md). Once the document is in Registry, docs, SDKs, and automation can all consume the same source.
 
-and so much more!
+## Next steps
 
-All of this with just a couple clicks or a few API requests! You handle making your API great, and we will handle the rest of the tooling. OpenAPI first.
+- Publish and version documents with the [CLI](cli.md)
+- Automate updates with [GitHub Actions](github-actions.md)
+- Create [API docs](../docs/getting-started.md) and [SDKs](../sdks/getting-started.md) from your registry documents

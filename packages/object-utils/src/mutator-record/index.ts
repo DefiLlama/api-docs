@@ -1,5 +1,3 @@
-export * from './mutations'
-export * from './local-storage'
-export { debounce } from './debounce'
-
-export { mutationFactory, type Mutators } from './handlers'
+export { type Mutators, mutationFactory } from './handlers'
+export { LS_CONFIG } from './local-storage'
+export { Mutation, includes } from './mutations'

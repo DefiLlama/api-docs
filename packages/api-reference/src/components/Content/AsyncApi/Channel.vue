@@ -1,0 +1,384 @@
+<script setup lang="ts">
+import type { SchemaRenderingProps } from '@scalar/blocks/schema'
+import { ScalarMarkdown } from '@scalar/components/markdown'
+import type { ApiReferenceConfigurationRaw } from '@scalar/types/api-reference'
+import type { AsyncApiDocument } from '@scalar/types/asyncapi/3.1'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import type {
+  TraversedAsyncApiChannel,
+  TraversedAsyncApiOperation,
+} from '@scalar/workspace-store/schemas/navigation'
+import { computed, useId } from 'vue'
+
+import { Anchor } from '@/components/Anchor'
+import {
+  Section,
+  SectionColumn,
+  SectionColumns,
+  SectionContainer,
+  SectionContainerAccordion,
+  SectionContent,
+  SectionHeader,
+  SectionHeaderTag,
+} from '@/components/Section'
+import { useDocumentOutline } from '@/features/document-outline'
+import ParameterList from '@/features/Operation/components/ParameterList.vue'
+import { SpecificationExtension } from '@/features/specification-extension'
+
+import AsyncApiDocumentation from './AsyncApiDocumentation.vue'
+import AsyncApiLabels from './AsyncApiLabels.vue'
+import Bindings from './Bindings.vue'
+import ChannelMessages from './ChannelMessages.vue'
+import ChannelMetadata from './ChannelMetadata.vue'
+import CopyAsyncApiMarkdownButton from './CopyAsyncApiMarkdownButton.vue'
+import { adaptAsyncApiParameters } from './helpers/adapt-async-api-parameters'
+import {
+  resolveSchemaRenderOptions,
+  type AsyncApiSchemaRenderOptions,
+} from './helpers/async-api-render-options'
+import { filterChildrenByType } from './helpers/filter-children-by-type'
+import { getChannelServerLabels } from './helpers/get-async-api-labels'
+import { pickHeading } from './helpers/pick-heading'
+import { resolveAsyncApiChannel } from './helpers/resolve-async-api-nodes'
+import Operation from './Operation.vue'
+import OperationsList from './OperationsList.vue'
+
+/** Subset of the configuration the shared `ParameterList` renderer needs. */
+type ParameterListOptions = AsyncApiSchemaRenderOptions &
+  Pick<ApiReferenceConfigurationRaw, 'hideModels'>
+
+const {
+  specificationExtension = SpecificationExtension,
+  channel,
+  document,
+  layout,
+  isCollapsed,
+  eventBus,
+  options,
+  expandedItems = {},
+  level = 0,
+} = defineProps<
+  {
+    channel: TraversedAsyncApiChannel
+    document: AsyncApiDocument
+    layout: 'classic' | 'modern'
+    isCollapsed: boolean
+    eventBus: WorkspaceEventBus | null
+    options?: Partial<ParameterListOptions>
+    /** Map of navigation item id to expanded state, shared with the sidebar. */
+    expandedItems?: Record<string, boolean>
+    /**
+     * Nesting depth in the navigation tree. A channel nested inside a tag
+     * (`level !== 0`) inherits the tag's horizontal padding, so it skips its own
+     * `SectionContainer` padding to avoid doubling the indentation.
+     */
+    level?: number
+  } & SchemaRenderingProps
+>()
+
+defineSlots<{
+  /** Replaces the default Markdown action; an empty slot hides it. */
+  actions?: () => unknown
+}>()
+
+const headerId = useId()
+
+/**
+ * Resolve channel metadata from the document, including the actual nullable address.
+ * The navigation entry only carries the address and identifying keys.
+ */
+const resolvedChannel = computed(() =>
+  resolveAsyncApiChannel(document, channel.channelName),
+)
+
+const description = computed(() => resolvedChannel.value?.description ?? '')
+
+/** Keep one body introduction, using the summary only when a description is absent. */
+const summary = computed((): string => {
+  const value = resolvedChannel.value?.summary?.trim() ?? ''
+  return description.value.trim() || value === headingText.value ? '' : value
+})
+
+/**
+ * Heading shown above each channel section.
+ *
+ * Prefers the human-friendly `channel.title` when it is set, then the summary, then falls back
+ * to `channel.address`. `channel.channelAddress` already encodes the
+ * address-or-key fallback during navigation traversal, so we only need to
+ * overlay `title` on top of it.
+ */
+const headingText = computed(() =>
+  pickHeading(
+    resolvedChannel.value?.title,
+    resolvedChannel.value?.summary,
+    channel.channelAddress,
+  ),
+)
+
+/**
+ * Channel address parameters mapped into the OpenAPI parameter shape so we can reuse the shared
+ * `ParameterList` component instead of building a dedicated AsyncAPI renderer.
+ */
+const parameters = computed(() =>
+  adaptAsyncApiParameters(resolvedChannel.value?.parameters),
+)
+
+/** Fill in defaults so the shared renderer always receives a complete options object. */
+const parameterListOptions = computed<ParameterListOptions>(() => ({
+  hideModels: options?.hideModels ?? false,
+  ...resolveSchemaRenderOptions(options),
+}))
+
+/**
+ * Server-name and protocol labels for the channel, resolved from `document.servers`
+ * (restricted to `channel.servers` when declared) and rendered as pills in the header.
+ */
+const labels = computed(() =>
+  getChannelServerLabels(document, resolvedChannel.value),
+)
+
+/** Operations that target this channel, rendered nested beneath the channel content. */
+const operations = computed(() =>
+  filterChildrenByType<TraversedAsyncApiOperation>(
+    channel.children,
+    'asyncapi-operation',
+  ),
+)
+
+const { level: headingLevel } = useDocumentOutline('channel')
+</script>
+
+<template>
+  <SectionContainerAccordion
+    v-if="layout === 'classic'"
+    :aria-label="headingText"
+    class="channel-section"
+    :class="{ 'channel-section-nested': level !== 0 }"
+    :modelValue="!isCollapsed"
+    @update:modelValue="
+      (value) =>
+        eventBus?.emit('toggle:nav-item', { id: channel.id, open: value })
+    ">
+    <template #title>
+      <SectionHeader class="channel-name">
+        <div class="flex flex-wrap items-baseline gap-[9px]">
+          <Anchor
+            @copyAnchorUrl="
+              () => eventBus?.emit('copy-url:nav-item', { id: channel.id })
+            ">
+            <SectionHeaderTag :level="headingLevel">
+              {{ headingText }}
+            </SectionHeaderTag>
+          </Anchor>
+          <AsyncApiLabels
+            class="gap-[9px] leading-[1.15] font-normal"
+            :protocols="labels.protocols"
+            :servers="labels.servers" />
+        </div>
+      </SectionHeader>
+      <p
+        v-if="summary"
+        class="text-c-1 mt-4 mb-2 text-left">
+        {{ summary }}
+      </p>
+      <ScalarMarkdown
+        class="channel-description"
+        :value="description"
+        withImages />
+    </template>
+    <template #actions>
+      <slot
+        v-if="$slots.actions"
+        name="actions" />
+      <CopyAsyncApiMarkdownButton
+        v-else
+        :document
+        :selection="{ channel: channel.channelName }" />
+    </template>
+    <ChannelMetadata
+      :address="resolvedChannel?.address"
+      class="mt-12" />
+    <Bindings
+      :bindings="resolvedChannel?.bindings"
+      class="mt-4"
+      :options="options"
+      scope="channel" />
+    <AsyncApiDocumentation
+      :owner="{ externalDocs: resolvedChannel?.externalDocs }" />
+    <SpecificationExtension
+      :showExtensions="options?.showExtensions"
+      :value="resolvedChannel" />
+    <ParameterList
+      v-if="parameters.length"
+      class="[&_.parameter-list-title--tree]:text-base!"
+      :eventBus="eventBus"
+      :expansion="expansion"
+      :options="parameterListOptions"
+      :parameters="parameters"
+      :scrollTargetId="scrollTargetId"
+      :specificationExtension="specificationExtension">
+      <template #title>Parameters</template>
+      <template #parameter-details="{ parameter }">
+        <div
+          v-if="parameter.location"
+          class="text-c-2 mb-2 font-sans text-(length:--scalar-small) leading-[1.625]">
+          Location:
+          <code
+            class="bg-b-2 shadow-border font-code rounded box-decoration-clone px-0.75 text-(length:--scalar-micro) break-all"
+            >{{ parameter.location }}</code
+          >
+        </div>
+      </template>
+    </ParameterList>
+    <Operation
+      v-for="operation in operations"
+      :key="operation.id"
+      :document="document"
+      :eventBus="eventBus"
+      :expandedItems="expandedItems"
+      :expansion="expansion"
+      :operation="operation"
+      :options="options"
+      :scrollTargetId="scrollTargetId"
+      :specificationExtension="specificationExtension" />
+    <ChannelMessages
+      :channel="channel"
+      :document="document"
+      :eventBus="eventBus"
+      :expandedItems="expandedItems"
+      :expansion="expansion"
+      :options="options"
+      :scrollTargetId="scrollTargetId"
+      :specificationExtension="specificationExtension" />
+  </SectionContainerAccordion>
+
+  <SectionContainer
+    v-else
+    :aria-labelledby="headerId"
+    :omit="level !== 0"
+    role="region">
+    <Section
+      :id="channel.id"
+      role="none"
+      @intersecting="
+        () => eventBus?.emit('intersecting:nav-item', { id: channel.id })
+      ">
+      <AsyncApiLabels
+        class="gap-1"
+        :protocols="labels.protocols"
+        :servers="labels.servers" />
+      <SectionHeader>
+        <Anchor
+          @copyAnchorUrl="
+            () => eventBus?.emit('copy-url:nav-item', { id: channel.id })
+          ">
+          <SectionHeaderTag
+            :id="headerId"
+            :level="headingLevel">
+            {{ headingText }}
+          </SectionHeaderTag>
+        </Anchor>
+        <template #links>
+          <div class="flex flex-wrap items-start justify-end gap-3">
+            <slot
+              v-if="$slots.actions"
+              name="actions" />
+            <CopyAsyncApiMarkdownButton
+              v-else
+              :document
+              :selection="{ channel: channel.channelName }" />
+          </div>
+        </template>
+      </SectionHeader>
+      <SectionContent>
+        <SectionColumns>
+          <SectionColumn>
+            <p
+              v-if="summary"
+              class="text-c-1 mt-4 mb-2 text-left">
+              {{ summary }}
+            </p>
+            <ScalarMarkdown
+              :value="description"
+              withImages />
+            <ChannelMetadata
+              :address="resolvedChannel?.address"
+              class="mt-12" />
+            <Bindings
+              :bindings="resolvedChannel?.bindings"
+              class="mt-4"
+              :options="options"
+              scope="channel" />
+            <AsyncApiDocumentation
+              :owner="{ externalDocs: resolvedChannel?.externalDocs }" />
+            <SpecificationExtension
+              :showExtensions="options?.showExtensions"
+              :value="resolvedChannel" />
+            <ParameterList
+              v-if="parameters.length"
+              class="[&_.parameter-list-title--tree]:text-base!"
+              :eventBus="eventBus"
+              :expansion="expansion"
+              :options="parameterListOptions"
+              :parameters="parameters"
+              :scrollTargetId="scrollTargetId"
+              :specificationExtension="specificationExtension">
+              <template #title>Parameters</template>
+              <template #parameter-details="{ parameter }">
+                <div
+                  v-if="parameter.location"
+                  class="text-c-2 mb-2 font-sans text-(length:--scalar-small) leading-[1.625]">
+                  Location:
+                  <code
+                    class="bg-b-2 shadow-border font-code rounded box-decoration-clone px-0.75 text-(length:--scalar-micro) break-all"
+                    >{{ parameter.location }}</code
+                  >
+                </div>
+              </template>
+            </ParameterList>
+          </SectionColumn>
+          <SectionColumn v-if="operations.length">
+            <OperationsList
+              :channelTitle="headingText"
+              :document="document"
+              :eventBus="eventBus"
+              :operations="operations" />
+          </SectionColumn>
+        </SectionColumns>
+        <Operation
+          v-for="operation in operations"
+          :key="operation.id"
+          :document="document"
+          :eventBus="eventBus"
+          :expandedItems="expandedItems"
+          :expansion="expansion"
+          :operation="operation"
+          :options="options"
+          :scrollTargetId="scrollTargetId"
+          :specificationExtension="specificationExtension" />
+        <ChannelMessages
+          :channel="channel"
+          :document="document"
+          :eventBus="eventBus"
+          :expandedItems="expandedItems"
+          :expansion="expansion"
+          :options="options"
+          :scrollTargetId="scrollTargetId"
+          :specificationExtension="specificationExtension" />
+      </SectionContent>
+    </Section>
+  </SectionContainer>
+</template>
+
+<style scoped>
+.channel-section {
+  margin-bottom: 48px;
+}
+.channel-section.channel-section-nested {
+  padding-inline: 0;
+}
+.channel-description {
+  padding-bottom: 4px;
+  text-align: left;
+}
+</style>

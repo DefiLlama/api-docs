@@ -1,6 +1,8 @@
 # Scalar for SvelteKit
 
-A SvelteKit integration for the Scalar API Reference
+A SvelteKit integration for the API Reference
+
+![Screenshot of the SvelteKit integration](../assets/screenshots/sveltekit.png)
 
 ## Installation
 
@@ -10,13 +12,13 @@ npm install @scalar/sveltekit
 
 ## Usage
 
-```ts
+```typescript
 // routes/+server.ts
 import { ScalarApiReference } from '@scalar/sveltekit'
 import type { RequestHandler } from './$types'
 
 const render = ScalarApiReference({
-  url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+  url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
 })
 
 export const GET: RequestHandler = () => {

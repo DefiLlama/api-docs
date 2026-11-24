@@ -1,0 +1,80 @@
+# @scalar/asyncapi-upgrader
+
+## 0.1.23
+
+No changes in this release.
+
+## 0.1.22
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.1.21
+
+No changes in this release.
+
+## 0.1.20
+
+## 0.1.19
+
+## 0.1.18
+
+## 0.1.17
+
+## 0.1.16
+
+### Patch Changes
+
+- [#10481](https://github.com/scalar/scalar/pull/10481): Show AsyncAPI external documentation links in introductions, including references, and preserve root external documentation when upgrading AsyncAPI 2.x.
+
+## 0.1.15
+
+## 0.1.14
+
+## 0.1.13
+
+## 0.1.12
+
+## 0.1.11
+
+## 0.1.10
+
+## 0.1.9
+
+## 0.1.8
+
+## 0.1.7
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.1.6
+
+## 0.1.5
+
+## 0.1.4
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.1.3
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.1.2
+
+## 0.1.1
+
+## 0.1.0
+
+### Minor Changes
+
+- [#9303](https://github.com/scalar/scalar/pull/9303): feat: add `@scalar/asyncapi-upgrader` to bump AsyncAPI documents to the latest version
+- [#9356](https://github.com/scalar/scalar/pull/9356): feat: actually upgrade AsyncAPI 1.x documents to 2.x (servers, channels, parameters, stream, events) instead of only bumping the version string
+- [#9357](https://github.com/scalar/scalar/pull/9357): feat: actually upgrade AsyncAPI 2.x documents to 3.0 (servers, channels, operations, security/OAuth) instead of only bumping the version string
+- [#9358](https://github.com/scalar/scalar/pull/9358): feat: rewrite operation `messages` $refs from `#/components/messages/X` to `#/channels/{id}/messages/X` on 3.0 → 3.1 upgrade (the channel-scoped form 3.1 clarified as required)

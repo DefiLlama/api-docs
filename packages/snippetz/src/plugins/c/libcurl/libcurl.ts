@@ -1,6 +1,74 @@
-import { libcurl } from '@/httpsnippet-lite/esm/targets/c/libcurl/client'
-import { convertWithHttpSnippetLite } from '@/utils/convertWithHttpSnippetLite'
-import type { Plugin } from '@scalar/types/snippetz'
+import type { Plugin, PluginConfiguration } from '@scalar/types/snippetz'
+
+import { mergeCookieHeaders } from '@/libs/cookies'
+import { joinUrlAndQuery, normalizeMethod } from '@/libs/http'
+
+const escapeCString = (value: string): string =>
+  value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\r')
+    .replaceAll('\t', '\\t')
+
+const normalizeUrl = (url: string): string => {
+  if (!url) {
+    return ''
+  }
+
+  try {
+    const parsedUrl = new URL(url)
+    const shouldOmitTrailingSlash =
+      parsedUrl.pathname === '/' && !url.endsWith('/') && !url.includes('?') && !url.includes('#')
+    const pathname = shouldOmitTrailingSlash ? '' : parsedUrl.pathname
+    return `${parsedUrl.protocol}//${parsedUrl.host}${pathname}${parsedUrl.search}${parsedUrl.hash}`
+  } catch {
+    return url
+  }
+}
+
+const buildFormUrlEncodedBody = (params?: Array<{ name: string; value?: string }>): string | null => {
+  if (!params?.length) {
+    return null
+  }
+
+  return params.map((param) => new URLSearchParams([[param.name, param.value ?? '']]).toString()).join('&')
+}
+
+const formatJsonBody = (text?: string): string => {
+  if (text === undefined) {
+    return ''
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
+
+/**
+ * Builds the CURLOPT_POSTFIELDS statement.
+ *
+ * Multi-line bodies (like pretty-printed JSON) are emitted as adjacent C string
+ * literals — one per line — so the generated code stays readable instead of
+ * collapsing the whole payload onto a single line of escaped text.
+ */
+const buildPostFields = (value: string): string[] => {
+  const sourceLines = value.split('\n')
+
+  if (sourceLines.length <= 1) {
+    return [`  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "${escapeCString(value)}");`]
+  }
+
+  return [
+    '  curl_easy_setopt(curl, CURLOPT_POSTFIELDS,',
+    ...sourceLines.map((line, index) => {
+      const isLastLine = index === sourceLines.length - 1
+      return `    "${escapeCString(line)}${isLastLine ? '' : '\\n'}"${isLastLine ? ');' : ''}`
+    }),
+  ]
+}
 
 /**
  * c/libcurl
@@ -9,8 +77,115 @@ export const cLibcurl: Plugin = {
   target: 'c',
   client: 'libcurl',
   title: 'Libcurl',
-  generate(request) {
-    // TODO: Write an own converter
-    return convertWithHttpSnippetLite(libcurl, request)
+  generate(request, configuration?: PluginConfiguration) {
+    if (!request) {
+      return ''
+    }
+
+    const method = normalizeMethod(request.method)
+    const normalizedUrl = normalizeUrl(request.url ?? '')
+    const fullUrl = joinUrlAndQuery(normalizedUrl, request.queryString)
+    const body = request.postData
+    const isMultipartBody = body?.mimeType === 'multipart/form-data' && Boolean(body.params?.length)
+    const mergedHeaders = mergeCookieHeaders(request)
+    const headers = mergedHeaders.filter(({ name }) => name.toLowerCase() !== 'cookie')
+    const hasHeaders = headers.length > 0
+    const shouldEnableCompression = headers.some(
+      (header) => header.name.toLowerCase() === 'accept-encoding' && /gzip|deflate/.test(header.value),
+    )
+
+    const lines: string[] = [
+      '#include <curl/curl.h>',
+      '',
+      'int main(void) {',
+      '  curl_global_init(CURL_GLOBAL_DEFAULT);',
+      '  CURL *curl = curl_easy_init();',
+      '  if (!curl) {',
+      '    curl_global_cleanup();',
+      '    return 1;',
+      '  }',
+      '',
+      `  curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "${escapeCString(method)}");`,
+      `  curl_easy_setopt(curl, CURLOPT_URL, "${escapeCString(fullUrl)}");`,
+    ]
+
+    if (configuration?.auth?.username && configuration.auth.password) {
+      lines.push(
+        `  curl_easy_setopt(curl, CURLOPT_USERPWD, "${escapeCString(`${configuration.auth.username}:${configuration.auth.password}`)}");`,
+      )
+    }
+
+    if (hasHeaders) {
+      lines.push('', '  struct curl_slist *headers = NULL;')
+
+      headers.forEach((header) => {
+        lines.push(`  headers = curl_slist_append(headers, "${escapeCString(`${header.name}: ${header.value}`)}");`)
+      })
+
+      lines.push('  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);')
+    }
+
+    const cookieHeader = mergedHeaders.find(({ name }) => name.toLowerCase() === 'cookie')
+    if (cookieHeader) {
+      lines.push('', `  curl_easy_setopt(curl, CURLOPT_COOKIE, "${escapeCString(cookieHeader.value)}");`)
+    }
+
+    if (shouldEnableCompression) {
+      lines.push('', '  curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");')
+    }
+
+    if (body) {
+      if (isMultipartBody && body.params) {
+        lines.push('', '  curl_mime *mime = curl_mime_init(curl);')
+
+        body.params.forEach((param) => {
+          lines.push('', '  {', '    curl_mimepart *part = curl_mime_addpart(mime);')
+
+          if (param.name) {
+            lines.push(`    curl_mime_name(part, "${escapeCString(param.name)}");`)
+          }
+
+          if (param.fileName !== undefined) {
+            lines.push(`    curl_mime_filedata(part, "${escapeCString(param.fileName)}");`)
+          } else {
+            lines.push(`    curl_mime_data(part, "${escapeCString(param.value ?? '')}", CURL_ZERO_TERMINATED);`)
+          }
+
+          if (param.contentType) {
+            lines.push(`    curl_mime_type(part, "${escapeCString(param.contentType)}");`)
+          }
+
+          lines.push('  }')
+        })
+
+        lines.push('', '  curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);')
+      } else if (body.mimeType === 'application/x-www-form-urlencoded' && body.params?.length) {
+        const formBody = buildFormUrlEncodedBody(body.params)
+        if (formBody !== null) {
+          lines.push('', `  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "${escapeCString(formBody)}");`)
+        }
+      } else if (body.mimeType === 'application/json' && body.text !== undefined) {
+        lines.push('', ...buildPostFields(formatJsonBody(body.text)))
+      } else if (body.text !== undefined) {
+        const fallbackBody = body.mimeType === 'application/octet-stream' ? body.text : formatJsonBody(body.text)
+        lines.push('', ...buildPostFields(fallbackBody))
+      }
+    }
+
+    lines.push('', '  CURLcode res = curl_easy_perform(curl);')
+
+    lines.push('  curl_easy_cleanup(curl);')
+
+    if (isMultipartBody) {
+      lines.push('  curl_mime_free(mime);')
+    }
+
+    if (hasHeaders) {
+      lines.push('  curl_slist_free_all(headers);')
+    }
+
+    lines.push('  curl_global_cleanup();', '', '  return (int)res;', '}')
+
+    return lines.join('\n')
   },
 }

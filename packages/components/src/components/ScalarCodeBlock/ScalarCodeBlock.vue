@@ -1,132 +1,229 @@
-<script lang="ts" setup>
-import { standardLanguages, syntaxHighlight } from '@scalar/code-highlight'
-import { ScalarIconCopy } from '@scalar/icons'
-import { prettyPrintJson } from '@scalar/oas-utils/helpers'
-import { useClipboard } from '@scalar/use-hooks/useClipboard'
-import { computed } from 'vue'
+<script lang="ts">
+import { languages, registerLanguage } from '@scalar/highlight/all'
 
 /**
- * Uses highlight.js for syntax highlighting
+ * Registers every bundled grammar, once per module rather than once per block.
+ *
+ * `@scalar/highlight/all` already registers them when it is evaluated, so a
+ * bare `import '@scalar/highlight/all'` reads like enough. It is not: that is a
+ * side-effect-only import of an external package, and the library build drops
+ * it from the emitted module. Storybook hid this because it compiles from
+ * source, while the API reference consumes `dist` and lost highlighting
+ * entirely — every block fell back to escaped, unscoped text.
+ *
+ * Registering from a named import keeps a binding the bundler can see used, so
+ * the module survives. It lives in this block rather than in `<script setup>`
+ * because setup runs for every instance, and a page of API reference renders
+ * hundreds of code blocks.
  */
-const props = withDefaults(
-  defineProps<{
-    content: string | object
-    lang?: string
-    lineNumbers?: boolean
-    hideCredentials?: string | string[]
-    copy?: boolean
-  }>(),
-  {
-    lang: 'plaintext',
-    lineNumbers: false,
-    copy: true,
-  },
+registerLanguage(...languages)
+
+/**
+ * Scalar Code Block component
+ *
+ * Renders syntax-highlighted code using @scalar/highlight.
+ * Supports line numbers, credential masking, and an optional copy button.
+ * Set --scalar-code-line-height on the component or an ancestor to override its 1.4 line height.
+ *
+ * @example
+ * <ScalarCodeBlock content="const x = 1" lang="javascript" />
+ */
+export default {}
+</script>
+<script lang="ts" setup>
+import { prettyPrintJson } from '@scalar/helpers/json/pretty-print-json'
+import { syntaxHighlight } from '@scalar/highlight/compat'
+import { useBindCx } from '@scalar/use-hooks/useBindCx'
+import { computed, useId } from 'vue'
+
+import ScalarCopyBackdrop from '@/components/ScalarCopy/ScalarCopyBackdrop.vue'
+
+import { ScalarCodeBlockCopy } from '../ScalarCodeBlock'
+import type { StandardLanguageKey } from './types'
+
+type BaseProps = {
+  content?: string | object
+  prettyPrintedContent?: string
+  lang?: StandardLanguageKey | string
+  lineNumbers?: boolean
+  hideCredentials?: string | string[]
+  copy?: 'always' | 'hover' | false
+  /** Original content to copy when the displayed content has been masked. */
+  copyContent?: string
+  /**
+   * Accessible name for the code scroller. Long code scrolls inside a focusable region so
+   * keyboard users can reach it, and a focusable region needs a name or screen readers announce
+   * nothing when focus lands on it.
+   */
+  label?: string
+  /**
+   * Accessible name for the copy button. The visible label only reads "Copy" (and the language)
+   * while the block is hovered, so the name has to say what is copied on its own.
+   */
+  copyLabel?: string
+}
+
+/**
+ * Uses @scalar/highlight for syntax highlighting
+ *
+ * Requires at least one of content or prettyPrintedContent
+ */
+const {
+  lang = 'plaintext',
+  lineNumbers = false,
+  copy = 'hover',
+  label = 'Code sample',
+  copyLabel,
+  copyContent,
+  content,
+  prettyPrintedContent,
+  hideCredentials,
+} = defineProps<
+  BaseProps &
+    (
+      | {
+          /** Raw unformatted object or string content */
+          content: string | object
+        }
+      | {
+          /**
+           * Pre-pretty printed content string for better performance
+           *
+           * Avoids unnecessary costly re-serialization of large content
+           */
+          prettyPrintedContent: string
+        }
+    )
+>()
+
+/** Base id for the code block */
+const id = useId()
+
+/** Formatted the content into an indented json string */
+const prettyContent = computed(
+  () => prettyPrintedContent || prettyPrintJson(content ?? ''),
 )
 
 const highlightedCode = computed(() => {
-  const html = syntaxHighlight(prettyPrintJson(props.content), {
-    lang: props.lang.trim(),
-    languages: standardLanguages,
-    lineNumbers: props.lineNumbers,
-    maskCredentials: props.hideCredentials,
+  const html = syntaxHighlight(prettyContent.value, {
+    lang: lang.trim(),
+    lineNumbers: lineNumbers,
+    maskCredentials: hideCredentials,
   })
 
   // Need to remove the wrapping <pre> element so we can use v-html without another wrapper
   return html.slice(5, -6)
 })
 
-const { copyToClipboard } = useClipboard()
+/** Determine if the content is a single line */
+const isOneLine = computed(() => !prettyContent.value.includes('\n'))
 
 const isContentValid = computed(() => {
   return (
-    props.content !== null &&
-    props.content !== 'null' &&
-    props.content !== '404 Not Found'
+    prettyContent.value !== null &&
+    prettyContent.value !== 'null' &&
+    prettyContent.value !== '404 Not Found'
   )
 })
+
+/** Whether the copy button is rendered on top of the code */
+const showCopy = computed(() => copy && isContentValid.value)
+
+/**
+ * A one-liner has the copy button floating over the end of the line, so the line needs room to
+ * scroll clear of the button. The padding goes on the `w-fit` <pre> because browsers disagree about
+ * whether trailing padding on an `overflow-x` container is scrollable.
+ */
+const reserveCopySpace = computed(() => isOneLine.value && showCopy.value)
+
+defineOptions({ inheritAttrs: false })
+const { cx } = useBindCx()
 </script>
 <template>
   <div
-    class="scalar-code-block custom-scroll min-h-12 focus-visible:outline"
-    tabindex="0">
+    v-bind="
+      cx(
+        'scalar-code-block group/code-block flex flex-col',
+        'relative bg-b-1 min-h-0 min-w-0 focus-visible:outline',
+      )
+    ">
+    <!--
+      Inherits the corners so the inset focus ring follows a rounded code block.
+      Always a tab stop so code that scrolls stays reachable by keyboard (WCAG 2.1.1). A named
+      group rather than a region, so every code sample does not add a landmark.
+    -->
     <div
-      v-if="copy"
-      class="scalar-code-copy">
-      <button
-        v-if="isContentValid"
-        class="copy-button"
-        type="button"
-        @click="copyToClipboard(prettyPrintJson(props.content))">
-        <span class="sr-only">Copy content</span>
-        <ScalarIconCopy class="size-4" />
-      </button>
+      :aria-label="label"
+      class="custom-scroll min-h-0 min-w-0 flex-1 overflow-x-auto rounded-[inherit] p-2 -outline-offset-2"
+      role="group"
+      tabindex="0">
+      <pre
+        :id="id"
+        class="scalar-code-block-pre m-0 w-fit border-0 bg-transparent p-0 text-nowrap whitespace-pre"
+        :class="{ 'pr-6': reserveCopySpace }"
+        v-html="highlightedCode" />
     </div>
-    <pre
-      class="scalar-codeblock-pre"
-      v-html="highlightedCode" />
+    <ScalarCodeBlockCopy
+      v-if="showCopy"
+      :aria-controls="id"
+      class="scalar-code-copy absolute"
+      :class="[
+        isOneLine
+          ? 'top-1/2 right-1 m-0 -translate-y-1/2'
+          : 'top-2.5 right-2.5',
+        { 'opacity-100': copy === 'always' },
+      ]"
+      :content="copyContent ?? prettyContent"
+      :copyLabel="copyLabel"
+      :lang="lang"
+      :showLang="!isOneLine">
+      <template #backdrop>
+        <ScalarCopyBackdrop
+          class="scalar-code-copy-backdrop"
+          :class="[
+            isOneLine
+              ? 'group-hocus-within/code-block:-left-0.5 -inset-y-0.75 -right-1 left-3'
+              : '-top-1 -right-1.5',
+          ]" />
+      </template>
+    </ScalarCodeBlockCopy>
   </div>
 </template>
 <style>
-@import '@scalar/code-highlight/css/code.css';
-.scalar-code-block {
-  background: inherit;
-  position: relative;
-  overflow: auto;
-  padding: 0.75rem;
-}
-.scalar-code-block:hover .copy-button,
-.copy-button:focus-visible {
-  opacity: 100;
-}
-/* Code blocks */
-.scalar-codeblock-pre {
-  all: unset;
-  margin: 0;
-  background: transparent;
-  text-wrap: nowrap;
-  white-space-collapse: preserve;
-  border-radius: 0;
-  width: fit-content;
-}
-/* Copy Button */
-.scalar-code-copy {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
+@reference '../../style.css';
+@import '@scalar/highlight/compat/code.css';
 
-  position: sticky;
-  inset: 0;
+/** Match the pre line-box metrics to the code font so blank and highlighted lines have the same pitch. */
+.scalar-code-block-pre {
+  font-family: var(--scalar-font-code);
+  /* Disable ligatures so code characters remain distinct. */
+  font-variant-ligatures: none;
 }
-.copy-button {
-  position: relative;
-  top: 0px;
-  right: 0px;
 
-  display: flex;
-  align-items: center;
-
-  background-color: var(--scalar-background-2);
-  border: 1px solid var(--scalar-border-color);
-  border-radius: 3px;
-  color: var(--scalar-color-3);
-  cursor: pointer;
-  height: 30px;
-  margin-bottom: -30px;
-  opacity: 0;
-  padding: 5px;
-  transition:
-    opacity 0.15s ease-in-out,
-    color 0.15s ease-in-out;
+/** Make the copy button label backdrop match the background */
+.scalar-code-block.bg-b-1 .scalar-code-copy-backdrop {
+  @apply bg-b-1;
 }
-.scalar-code-copy,
-.copy-button {
-  /* Pass down the background color */
-  background: inherit;
+.scalar-code-block.bg-b-2 .scalar-code-copy-backdrop {
+  @apply bg-b-2;
 }
-.copy-button:hover {
-  color: var(--scalar-color-1);
+/**
+ * A transparent block shows the surface of the card it sits in, so the label takes that color.
+ * Outside a card there is nothing to match, and the label goes without a backdrop.
+ */
+.scalar-code-block.bg-transparent .scalar-code-copy-backdrop {
+  background: var(--scalar-card-surface, transparent);
 }
-.copy-button svg {
-  stroke-width: 1.5;
+/** Make the copy button one shade darker than the background */
+.scalar-code-block.bg-b-2 .scalar-code-copy {
+  @apply bg-b-3;
+}
+/**
+ * On a card's surface the button's own fill is the color of the card behind the surface, which
+ * reads as a hole in a dark card. It takes the card's raised color instead, one step above the
+ * surface. Outside a card the button keeps its own fill.
+ */
+.scalar-code-block.bg-transparent .scalar-code-copy {
+  background: var(--scalar-card-surface-raised, var(--scalar-background-2));
 }
 </style>

@@ -1,5 +1,478 @@
 # @scalar/core
 
+## 0.5.55
+
+No changes in this release.
+
+## 0.5.54
+
+No changes in this release.
+
+## 0.5.53
+
+No changes in this release.
+
+## 0.5.52
+
+No changes in this release.
+
+## 0.5.51
+
+No changes in this release.
+
+## 0.5.50
+
+## 0.5.49
+
+## 0.5.48
+
+## 0.5.47
+
+## 0.5.46
+
+## 0.5.45
+
+## 0.5.44
+
+## 0.5.43
+
+### Patch Changes
+
+- [#10505](https://github.com/scalar/scalar/pull/10505): Apply formatting and lint compatibility changes for Biome 2.5.15.
+
+## 0.5.42
+
+## 0.5.41
+
+## 0.5.40
+
+## 0.5.39
+
+## 0.5.38
+
+## 0.5.37
+
+## 0.5.36
+
+## 0.5.35
+
+## 0.5.34
+
+## 0.5.33
+
+## 0.5.32
+
+## 0.5.31
+
+## 0.5.30
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.5.29
+
+## 0.5.28
+
+## 0.5.27
+
+## 0.5.26
+
+## 0.5.25
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.5.24
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.5.23
+
+## 0.5.22
+
+## 0.5.21
+
+## 0.5.20
+
+## 0.5.19
+
+## 0.5.18
+
+## 0.5.17
+
+## 0.5.16
+
+## 0.5.15
+
+## 0.5.14
+
+## 0.5.13
+
+## 0.5.12
+
+## 0.5.11
+
+## 0.5.10
+
+## 0.5.9
+
+## 0.5.8
+
+## 0.5.7
+
+## 0.5.6
+
+## 0.5.5
+
+## 0.5.4
+
+## 0.5.3
+
+## 0.5.2
+
+## 0.5.1
+
+## 0.5.0
+
+### Minor Changes
+
+- [#8431](https://github.com/scalar/scalar/pull/8431): refactor: use new @scalar/client-side-rendering, deprecate everything
+
+## 0.4.6
+
+## 0.4.5
+
+## 0.4.4
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.4.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.3**
+
+## 0.4.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.2**
+
+## 0.4.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.1**
+  - [#8381](https://github.com/scalar/scalar/pull/8381): feat: add mcp config support
+
+## 0.4.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.3.45
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.10**
+
+## 0.3.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.9**
+
+## 0.3.43
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.8**
+  - [#8274](https://github.com/scalar/scalar/pull/8274): feat(agent): add config to hide search api
+
+## 0.3.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.7**
+
+## 0.3.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.6**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+## 0.3.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.5**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+## 0.3.39
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.4**
+  - [#8174](https://github.com/scalar/scalar/pull/8174): feat: add `createAnySecurityScheme` config option to control generic auth scheme creation
+
+## 0.3.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.3**
+
+## 0.3.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.2**
+
+## 0.3.36
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.1**
+  - [#8000](https://github.com/scalar/scalar/pull/8000): fix(agent): change enabled flag to disabled
+  - [#7995](https://github.com/scalar/scalar/pull/7995): feat: enable/disable agent scalar
+
+## 0.3.35
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+## 0.3.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.10**
+
+## 0.3.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.9**
+  - [#7866](https://github.com/scalar/scalar/pull/7866): chore: expose har types
+
+## 0.3.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.8**
+
+## 0.3.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.7**
+
+## 0.3.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+## 0.3.29
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+## 0.3.28
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.4**
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+## 0.3.27
+
+### Patch Changes
+
+- Updated dependencies [[`bb52d9a`](https://github.com/scalar/scalar/commit/bb52d9a21e53628270bab93c0f03b5731c9c97c6)]:
+  - @scalar/types@0.5.3
+
+## 0.3.26
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/types@0.5.2
+
+## 0.3.25
+
+### Patch Changes
+
+- [#7494](https://github.com/scalar/scalar/pull/7494) [`daa5df4`](https://github.com/scalar/scalar/commit/daa5df45386fa2305275fbf0a7bbcede6bcf9edc) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: remove empty index file
+
+## 0.3.24
+
+### Patch Changes
+
+- Updated dependencies [[`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03)]:
+  - @scalar/types@0.5.1
+
+## 0.3.23
+
+### Patch Changes
+
+- Updated dependencies [[`44aeef0`](https://github.com/scalar/scalar/commit/44aeef01073801165e339163462378b7b62ff68d), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47)]:
+  - @scalar/types@0.5.0
+
+## 0.3.22
+
+### Patch Changes
+
+- [#7241](https://github.com/scalar/scalar/pull/7241) [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d) Thanks [@hanspagel](https://github.com/hanspagel)! - chore: use "current" not "latest" scalar registry url
+
+## 0.3.21
+
+### Patch Changes
+
+- Updated dependencies [[`eb022f2`](https://github.com/scalar/scalar/commit/eb022f2c8f93c84a04c0093fefe8a1e05d6ec80d), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461)]:
+  - @scalar/types@0.4.0
+
+## 0.3.20
+
+### Patch Changes
+
+- Updated dependencies [f3e17d8]
+  - @scalar/types@0.3.2
+
+## 0.3.19
+
+### Patch Changes
+
+- 1e01464: Adds a new ApiReferenceConfigWithSource type and make the base ApiReferenceConfig type agnostic of any document sources.
+- Updated dependencies [1e01464]
+  - @scalar/types@0.3.1
+
+## 0.3.18
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/types@0.3.0
+
+## 0.3.17
+
+### Patch Changes
+
+- fd2c4ba: fix: html rendering does not output functions in arrays
+- Updated dependencies [005fba9]
+  - @scalar/types@0.2.16
+
+## 0.3.16
+
+### Patch Changes
+
+- Updated dependencies [abe3842]
+  - @scalar/types@0.2.15
+
+## 0.3.15
+
+### Patch Changes
+
+- Updated dependencies [792c937]
+  - @scalar/types@0.2.14
+
+## 0.3.14
+
+### Patch Changes
+
+- Updated dependencies [50032be]
+  - @scalar/types@0.2.13
+
+## 0.3.13
+
+### Patch Changes
+
+- 5f022b5: feat: use registry.scalar.com URLs as example
+- Updated dependencies [6a88108]
+  - @scalar/types@0.2.12
+
+## 0.3.12
+
+### Patch Changes
+
+- 7dfbe9e: fix: dynamically handle function properties
+  - @scalar/types@0.2.11
+
+## 0.3.11
+
+### Patch Changes
+
+- Updated dependencies [ccf875a]
+- Updated dependencies [94d6d0c]
+  - @scalar/types@0.2.11
+
+## 0.3.10
+
+### Patch Changes
+
+- Updated dependencies [fb62e1b]
+  - @scalar/types@0.2.10
+
 ## 0.3.9
 
 ### Patch Changes

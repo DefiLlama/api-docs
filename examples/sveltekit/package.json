@@ -1,0 +1,38 @@
+{
+  "name": "@scalar-examples/sveltekit",
+  "license": "MIT",
+  "author": "Scalar (https://github.com/scalar)",
+  "homepage": "https://github.com/scalar/scalar",
+  "bugs": "https://github.com/scalar/scalar/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/scalar.git",
+    "directory": "examples/sveltekit"
+  },
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.17"
+  },
+  "scripts": {
+    "build:disable": "pnpm prepare && vite build",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "dev": "vite dev",
+    "prepare": "svelte-kit sync || echo ''",
+    "preview": "vite preview"
+  },
+  "type": "module",
+  "dependencies": {
+    "@scalar/sveltekit": "workspace:*"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "^9.0.0",
+    "@sveltejs/kit": "^3.4.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "svelte": "catalog:*",
+    "svelte-check": "^4.7.8",
+    "typescript": "^6.0.3",
+    "vite": "catalog:*"
+  }
+}

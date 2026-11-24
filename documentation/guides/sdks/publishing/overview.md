@@ -1,0 +1,194 @@
+# Publishing
+
+Scalar publishes your generated SDKs to their package registries for you. Instead of running `npm publish` by hand, Scalar writes GitHub Actions workflows into your SDK repository and drives them from your SDK configuration. When you merge a release, the package goes out.
+
+Publishing is **opt-in** and **off by default**. Nothing is published until you turn it on for a target.
+
+<scalar-image
+  src="/sdks/sdk-overview.png"
+  alt="The SDK overview page in the Scalar dashboard showing a target with a linked GitHub repository"
+  size="full">
+</scalar-image>
+
+## How it works
+
+Publishing rides on top of the generation and GitHub sync you already use. There is no separate pipeline to maintain.
+
+<scalar-steps>
+  <scalar-step id="step-configure" title="Enable publishing for a target">
+
+Turn on publishing for a target, either from the dashboard or in your [SDK configuration](#enable-publishing). This is the single switch that wires everything up.
+
+  </scalar-step>
+
+  <scalar-step id="step-build" title="Build the SDK">
+
+Each build generates the SDK, pushes it to the `scalar-generated` branch of your [linked repository](github.md), and merges it with your custom code on `scalar-next`. The generated `.github/workflows` land in the repository too, so the publishing logic lives in your repo, not in a black box.
+
+  </scalar-step>
+
+  <scalar-step id="step-release-pr" title="Review the release pull request">
+
+Scalar keeps a **release pull request** open from `scalar-next` against your default branch, titled `release: X.Y.Z`. Its diff is the full pending release: generated changes, your custom code, the changelog, and the version bump.
+
+  </scalar-step>
+
+  <scalar-step id="step-merge" title="Merge the release pull request">
+
+Merging runs `release-please.yml` on the default branch, which cuts the `vX.Y.Z` tag and creates the GitHub Release. The changelog already arrived with the release pull request.
+
+  </scalar-step>
+
+  <scalar-step id="step-publish" title="The publish job publishes">
+
+In the same workflow run, the release is synced back to `scalar-next`, and the inline `publish` job then checks out the tag that was just cut and publishes the package to its registry. The publish step is idempotent: if that version is already on the registry, it is skipped, so re-runs never fail or double-publish.
+
+  </scalar-step>
+</scalar-steps>
+
+## What gets generated
+
+Every target with a linked repository gets its release machinery committed alongside the SDK. They are normal, readable files you can inspect (and edit) in your repo.
+
+| File | Trigger | What it does |
+| ---- | ------- | ------------ |
+| `.github/workflows/sdk-ci.yml` | `push`, `pull_request` | Installs dependencies and builds the SDK so every change is checked. |
+| `.github/workflows/release-please.yml` | `push` to the default branch | Cuts the tag and GitHub Release when a release pull request merges, publishes from its `publish` job, and syncs the release back to `scalar-next`. For a Dart target authenticating with OIDC, that job dispatches `sdk-release.yml` at the release tag instead of publishing itself. |
+| `.github/workflows/release-title-edit.yml` | `pull_request` | Runs the `Release PR version` check, which holds a retitled release pull request pending until Scalar has re-rendered it at the new version. |
+| `.github/workflows/sdk-release.yml` | `workflow_dispatch` | Manually re-publishes an existing tag. For a Dart target authenticating with OIDC, it is also where every release publishes. Only generated when the target publishes at release time. |
+| `release-please-config.json`, `.release-please-manifest.json` | — | release-please's configuration and version state. The manifest is seeded once and then owned by your repository. |
+| `VERSIONING.md` | — | Documents the branch model, how to pick an exact version, and the repository prerequisites. |
+
+> [!NOTE]
+> Swift Package Manager is tag-served: it has nothing to upload, so it gets no `publish` job and no `sdk-release.yml`, and the `vX.Y.Z` tag and GitHub Release *are* the publish. Go and Packagist versions are tags as well, but both still get a release workflow, which uploads nothing: Go's warms the public module proxy after the tag, and PHP's validates `composer.json` and notifies Packagist. See [Package Registries](registries.md).
+
+## Enable publishing
+
+You can enable publishing two ways. Both set the same thing.
+
+**From the dashboard**, open a target and toggle **Publish to \<registry\> on merge** under Git settings.
+
+**In your configuration**, add a `publish` block to the target:
+
+```json
+{
+  "targets": {
+    "typescript": {
+      "packageName": "demo-api",
+      "publish": {
+        "npm": true
+      }
+    }
+  }
+}
+```
+
+<scalar-image
+  src="/sdks/publish-config.png"
+  alt="The SDK configuration editor with a publish block enabling npm"
+  size="full">
+</scalar-image>
+
+The registry key depends on the target (`npm`, `pypi`, `cargo`, `maven`, and so on). The Swift, Rust, and C++ targets are experimental. For the full list and each registry's setup, see [Package Registries](registries.md); each target's [configuration page](../configuration.md#targets) documents its `publish` options. The CLI's three channels (npm, standalone binaries, and Homebrew) are covered in the [CLI guide](cli.md).
+
+Publishing requires a [linked repository](github.md): a target with no `destinations.production` gets no workflows at all.
+
+## Package metadata
+
+Every generated package manifest links the same pages, so each registry's package page shows them:
+
+| Link | Where it comes from |
+| --- | --- |
+| Homepage | `organization.homepage`; when unset, `organization.docs`, then the source repository. `pyproject.toml` leaves the fallback out, since its Documentation and Source rows already link both. The pubspec does too when it has a `repository`; without one, the docs site is its `homepage`, because `dart pub publish` warns about a pubspec with neither. |
+| Documentation | `organization.docs`. |
+| Source repository | The target's `destinations.production.repo` (Rust's `options.package_repository` overrides it). An `owner/name` is read as a GitHub repository. |
+| Issue tracker | `<repository>/issues`, only when the source repository is a GitHub repository root (`owner/name`). |
+| Changelog | The `CHANGELOG.md` release-please writes on the production repository's default branch, only when `destinations.production.repo` is a GitHub repository root. It follows the production destination even when Rust's `options.package_repository` points the source link elsewhere. |
+
+Only absolute `http` or `https` URLs are linked. Each target writes the links its manifest has fields for: `package.json` `homepage`, `repository` and `bugs`; the `pyproject.toml` `[project.urls]` table; the gemspec `homepage` and `*_uri` metadata; Composer `homepage` and `support`; Cargo `homepage`, `repository` and `documentation`; NuGet `PackageProjectUrl` and `RepositoryUrl`; the Maven POM `url`, `scm` and `issueManagement`; and the pubspec `homepage`, `repository`, `issue_tracker` and `documentation`. The CLI's Homebrew formula uses `organization.homepage` when `publish.homebrew.homepage` is unset. Go modules and Swift packages have no manifest fields for these links, and the C++ target ships a CMake project rather than a registry manifest, so it gets none either.
+
+`settings.keywords` lists up to five search keywords for every registry that takes them (`package.json`, `pyproject.toml`, Composer, Cargo, pubspec `topics`, NuGet `PackageTags`). One list serves every registry, so each keyword must meet the strictest of their rules: 2 to 20 lowercase ASCII letters, digits and `-`, starting with a letter, ending with a letter or digit, with no `--`. A config that breaks these rules fails validation.
+
+`settings.description` sets the one-line package description: `pyproject.toml` `description`, the `package.json` `description` of the TypeScript SDK and the CLI, Composer `description`, the Maven POM `description` the Java and Kotlin targets publish, and the CLI man page. When it is unset, those take the OpenAPI `info.summary`, then the first prose paragraph of `info.description`, then a generic sentence naming the SDK. Line breaks, repeated spaces and control characters collapse to single spaces, and it can be at most 512 characters, PyPI's limit. Cargo, RubyGems, pub.dev and NuGet keep their fixed sentence naming the API.
+
+```json
+{
+  "organization": { "name": "acme", "homepage": "https://acme.example", "docs": "https://docs.acme.example" },
+  "settings": {
+    "description": "The official client for the Acme payments API.",
+    "keywords": ["payments", "rest-api"]
+  }
+}
+```
+
+## Package name availability
+
+When you enable publishing, the dialog checks the target's package name against its registry and tells you whether it looks available or already taken — so you catch a name conflict up front, not after a release merges and the publish step fails.
+
+A taken name is a **warning, never a block**: the registry cannot tell whether a name is already yours, and republishing under your own name is normal. The check runs for **npm** and **PyPI** today; other registries show nothing.
+
+## Authentication
+
+By default Scalar uses **OIDC trusted publishing** wherever the registry supports it. The publish job exchanges a short-lived GitHub identity token for a registry credential at publish time, so there is **no token to create, store, or rotate**. You register your repository and workflow as a trusted publisher on the registry once. Two exceptions: npm and crates.io only register a trusted publisher on a package that already exists, so their first release uses a token (pub.dev likewise, whose first version is published by hand with `dart pub publish`), and NuGet's OIDC login still reads your profile name from a `NUGET_USER` secret.
+
+> [!IMPORTANT]
+> Register **`release-please.yml`** as the trusted publisher's workflow, not `sdk-release.yml`. The automated publish runs as a job inside `release-please.yml`, so that is the file the OIDC claims name. `sdk-release.yml` exists for manual re-publishes; register it as an *additional* trusted publisher only if you use it. pub.dev is the exception: it registers a tag pattern rather than a workflow, and a Dart release publishes from `sdk-release.yml` dispatched at the release tag (see [Dart](dart.md)).
+
+Registries that do not support OIDC (Maven Central, which also requires GPG signing, and a Homebrew tap) use repository secrets instead. Setup for each registry is covered in [Package Registries](registries.md) and the per-language guides it links.
+
+## Versioning and releases
+
+Versions are computed by release-please **from your commit history**, following [Conventional Commits](https://www.conventionalcommits.org). Scalar writes conventional commit messages describing what actually changed in the SDK surface, and your own commits on `scalar-next` count too. Pre-1.0, breaking changes bump the minor version instead of jumping to `1.0.0`.
+
+To ship an exact version instead, **edit the release pull request title**:
+
+```text
+release: 1.0.0
+```
+
+The `Release PR version` check stays pending while the title and the committed version disagree, Scalar re-renders the pull request at your version, and the check goes green. Wait for green before merging. The release pull request title is the one place to set the version: there is no version override in the dashboard or in the SDK configuration.
+
+Every release gets a `vX.Y.Z` tag, a GitHub Release, and an entry in the repository's `CHANGELOG.md`, so your release history lives in your repo next to the code. The generated `VERSIONING.md` documents all of this for your maintainers.
+
+## Permissions
+
+The generated workflows request only the permissions they need. `release-please.yml` needs to write the tag and the Release:
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+```
+
+`pull-requests: write` is only used to update the labels on the release pull request that was just merged. None of the workflows opens a pull request: the Scalar GitHub app opens the release pull request and keeps it current.
+
+Its `publish` job then narrows that down to the publishing floor:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+```
+
+`id-token: write` is what enables OIDC trusted publishing. The CLI target keeps `contents: write` on the publish job when it attaches binaries or updates a Homebrew tap, because it uploads assets to the GitHub Release. Go's publish job, which only warms the module proxy, runs with `contents: read` alone. Scalar never asks for organization-wide access to publish.
+
+## Next steps
+
+<scalar-steps>
+  <scalar-step id="next-github" title="Link a GitHub repository" interactivity="none">
+
+Connect each target to a repository so builds sync to it. See [GitHub Repositories](github.md).
+
+  </scalar-step>
+  <scalar-step id="next-registries" title="Set up the registry" interactivity="none">
+
+Register a trusted publisher or add the required secrets for your registry. See [Package Registries](registries.md) for the guide for each one.
+
+  </scalar-step>
+  <scalar-step id="next-private" title="Publish to an internal registry" interactivity="none">
+
+Artifactory, AWS CodeArtifact, Nexus, and the like are published from a workflow your repository owns, which Scalar carries forward on every build. See [Private Registries](private-registries.md).
+
+  </scalar-step>
+</scalar-steps>

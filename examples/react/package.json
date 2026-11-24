@@ -12,14 +12,14 @@
   "version": "0.0.0",
   "private": true,
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "pnpm types:check && pnpm build-only",
     "build-only": "vite build",
     "dev": "vite",
-    "docker:build": "build --platform=linux/amd64 -t ${image_name} --build-arg=\"BASE_IMAGE=scalar-base\" -f ./examples/react/Dockerfile .",
-    "lint:check": "eslint .",
+    "docker:build": "docker build --platform=linux/amd64 -t ${image_name} --build-arg=\"BASE_IMAGE=scalar-base\" -f ./Dockerfile .",
+    "lint:check": "eslint",
     "lint:fix": "eslint .  --fix",
     "types:check": "tsc --noEmit --skipLibCheck"
   },
@@ -35,13 +35,9 @@
     "@types/react": "catalog:*",
     "@types/react-dom": "catalog:*",
     "@typescript-eslint/parser": "catalog:*",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vitejs/plugin-vue": "catalog:*",
-    "@vitejs/plugin-vue-jsx": "^3.1.0",
-    "autoprefixer": "^10.4.19",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.3",
-    "postcss": "catalog:*",
+    "@vitejs/plugin-react": "catalog:*",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.8",
     "tailwindcss": "catalog:*",
     "vite": "catalog:*"
   }

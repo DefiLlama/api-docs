@@ -1,0 +1,112 @@
+<script setup lang="ts">
+import {
+  SchemaHeading,
+  SchemaProperty,
+  type SchemaRenderingProps,
+} from '@scalar/blocks/schema'
+import type { ApiReferenceConfigurationRaw } from '@scalar/types/api-reference'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { resolve } from '@scalar/workspace-store/resolve'
+import type {
+  OpenApiDocument,
+  SchemaObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+
+import { Anchor } from '@/components/Anchor'
+import { SectionAccordion, SectionHeaderTag } from '@/components/Section'
+import { useDocumentOutline } from '@/features/document-outline'
+
+const { eventBus, id, options, document } = defineProps<
+  {
+    id: string
+    name: string
+    schema: SchemaObject
+    isCollapsed: boolean
+    eventBus: WorkspaceEventBus
+    /** The document the model belongs to, used to resolve schema references for display */
+    document?: OpenApiDocument
+    options: Pick<
+      ApiReferenceConfigurationRaw,
+      | 'orderRequiredPropertiesFirst'
+      | 'orderSchemaPropertiesBy'
+      | 'expandAllSchemaProperties'
+      | 'schemaKeyboardNav'
+      | 'hideModelNames'
+      | 'showExtensions'
+      | 'hideModels'
+    >
+  } & SchemaRenderingProps
+>()
+
+const { level: headingLevel } = useDocumentOutline('model')
+</script>
+<template>
+  <SectionAccordion
+    :aria-label="schema.title ?? name"
+    :modelValue="!isCollapsed"
+    @update:modelValue="
+      (value) => eventBus?.emit('toggle:nav-item', { id, open: value })
+    ">
+    <template #title>
+      <Anchor
+        class="reference-models-anchor"
+        :eventBus="eventBus"
+        @copyAnchorUrl="() => eventBus?.emit('copy-url:nav-item', { id })">
+        <SectionHeaderTag :level="headingLevel">
+          <SchemaHeading
+            class="reference-models-label"
+            :name="schema.title ?? name"
+            :value="schema" />
+        </SectionHeaderTag>
+      </Anchor>
+    </template>
+    <!-- Schema -->
+    <div
+      v-if="'properties' in schema"
+      class="properties">
+      <SchemaProperty
+        v-for="[property, value] in Object.entries(schema.properties ?? {})"
+        :key="property"
+        :breadcrumb="[id]"
+        :discriminator="schema.discriminator"
+        :eventBus="eventBus"
+        :expansion="expansion"
+        :hideModelNames="options.hideModels"
+        :name="property"
+        :options="{ ...options, document }"
+        :required="schema.required?.includes(property)"
+        :schema="resolve.schema(value)"
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
+    </div>
+    <div v-else>
+      <SchemaProperty
+        :breadcrumb="[id]"
+        :eventBus="eventBus"
+        :expansion="expansion"
+        :hideModelNames="options.hideModels"
+        :options="{ ...options, document }"
+        :schema="schema"
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
+    </div>
+  </SectionAccordion>
+</template>
+<style scoped>
+.reference-models-anchor {
+  display: flex;
+  align-items: center;
+  font-size: 20px;
+  padding-left: 6px;
+  color: var(--scalar-color-1);
+}
+.reference-models-label {
+  display: block;
+  font-size: var(--scalar-mini);
+}
+
+/* Style the "icon" */
+.reference-models-label :deep(em) {
+  font-weight: var(--scalar-bold);
+}
+</style>

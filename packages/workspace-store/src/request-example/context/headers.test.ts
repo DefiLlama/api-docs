@@ -1,0 +1,570 @@
+import type { OperationObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { describe, expect, it } from 'vitest'
+
+import { upsertOperationParameter } from '@/mutators/operation/parameters'
+import type { ParameterWithContentObject } from '@/schemas/v3.2/strict/parameter'
+
+import {
+  filterDisabledDefaultHeaders,
+  getDefaultHeaders,
+  restoreConventionalDefaultHeaderNames,
+  restoreConventionalHeaderName,
+} from './headers'
+
+describe('filterDisabledDefaultHeaders', () => {
+  it('removes headers marked disabled for the example', () => {
+    const operation: OperationObject = {
+      'x-scalar-disable-parameters': {
+        'default-headers': {
+          'example-1': {
+            accept: true,
+          },
+        },
+      },
+    }
+
+    const filtered = filterDisabledDefaultHeaders(operation, 'example-1', {
+      Accept: '*/*',
+      'Content-Type': 'application/json',
+    })
+
+    expect(filtered.Accept).toBeUndefined()
+    expect(filtered['Content-Type']).toBe('application/json')
+  })
+
+  it('matches disable keys case-insensitively', () => {
+    const operation: OperationObject = {
+      'x-scalar-disable-parameters': {
+        'default-headers': {
+          default: {
+            accept: true,
+          },
+        },
+      },
+    }
+
+    const filtered = filterDisabledDefaultHeaders(operation, 'default', {
+      accept: 'text/plain',
+    })
+
+    expect(filtered.accept).toBeUndefined()
+  })
+})
+
+describe('getDefaultHeaders', () => {
+  it.each([true, false])('respects a content-based header edit with disabled state %s', (isDisabled) => {
+    const param: ParameterWithContentObject = {
+      name: 'Accept',
+      in: 'header',
+      content: { 'text/plain': { example: 'application/json' } },
+    }
+    upsertOperationParameter(null, {
+      type: 'header',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'Accept', value: 'application/json', isDisabled },
+    })
+
+    expect(
+      getDefaultHeaders({
+        method: 'get',
+        operation: { parameters: [param] },
+        exampleName: 'default',
+        hideOverriddenHeaders: true,
+      }),
+    ).toStrictEqual(isDisabled ? { accept: '*/*' } : {})
+  })
+
+  it('does not add Content-Type header when contentType is "none"', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        'x-scalar-selected-content-type': {
+          'example-1': 'none',
+        },
+        content: {},
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'post',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+    expect(contentTypeHeader).toBeUndefined()
+  })
+
+  it('does not add Content-Type header when contentType is "other"', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        'x-scalar-selected-content-type': {
+          'example-1': 'other',
+        },
+        content: {
+          'application/json': {},
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'post',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    expect(headers['content-type']).toBeUndefined()
+  })
+
+  it('adds Content-Type header for POST requests when the request body defines one', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {},
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'post',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+    expect(contentTypeHeader).toBeDefined()
+    expect(contentTypeHeader).toBe('application/json')
+  })
+
+  it('uses selected content type from x-scalar-selected-content-type', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        'x-scalar-selected-content-type': {
+          'example-1': 'application/xml',
+        },
+        content: {
+          'application/json': {},
+          'application/xml': {},
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'post',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+    expect(contentTypeHeader).toBeDefined()
+    expect(contentTypeHeader).toBe('application/xml')
+  })
+
+  it('does not add Content-Type for GET requests', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {},
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+    expect(contentTypeHeader).toBeUndefined()
+  })
+
+  it('adds Content-Type for PUT requests', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {},
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'put',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+
+    expect(contentTypeHeader).toBeDefined()
+    expect(contentTypeHeader).toBe('application/json')
+  })
+
+  it('adds Content-Type for PATCH requests', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {},
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'patch',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+    expect(contentTypeHeader).toBeDefined()
+    expect(contentTypeHeader).toBe('application/json')
+  })
+
+  it('always adds Accept header, falling back to wildcard when no responses are defined', () => {
+    const operation: OperationObject = {}
+
+    const headers = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const acceptHeader = headers['accept']
+    expect(acceptHeader).toBeDefined()
+    expect(acceptHeader).toBe('*/*')
+  })
+
+  it('derives Accept header from the 2xx response content type', () => {
+    const operation: OperationObject = {
+      responses: {
+        '200': {
+          description: 'OK',
+          content: {
+            'application/json': {},
+          },
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const acceptHeader = headers['accept']
+    expect(acceptHeader).toBe('application/json')
+  })
+
+  it('joins all content types of the 2xx response when multiple are defined', () => {
+    const operation: OperationObject = {
+      responses: {
+        '200': {
+          description: 'OK',
+          content: {
+            'application/json': {},
+            'application/xml': {},
+          },
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const acceptHeader = headers['accept']
+    expect(acceptHeader).toBe('application/json, application/xml')
+  })
+
+  it('falls back to wildcard when the 2xx response has no content', () => {
+    const operation: OperationObject = {
+      responses: {
+        '204': {
+          description: 'No Content',
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'delete',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const acceptHeader = headers['accept']
+    expect(acceptHeader).toBe('*/*')
+  })
+
+  it('falls back to wildcard when only non-2xx responses are defined', () => {
+    const operation: OperationObject = {
+      responses: {
+        '400': {
+          description: 'Bad Request',
+          content: { 'application/json': {} },
+        },
+        '500': {
+          description: 'Internal Server Error',
+          content: { 'application/json': {} },
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const acceptHeader = headers['accept']
+    expect(acceptHeader).toBe('*/*')
+  })
+
+  it('omits default headers that match enabled OpenAPI header parameters when hideOverriddenHeaders is true', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          name: 'Accept',
+          in: 'header',
+          required: true,
+          schema: { type: 'string' },
+        },
+      ],
+    }
+
+    const withDefaults = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+    })
+    expect(withDefaults['accept']).toBeDefined()
+
+    const filtered = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+      hideOverriddenHeaders: true,
+    })
+    expect(filtered['accept']).toBeUndefined()
+  })
+
+  it('omits default Accept when an optional header has a schema default', () => {
+    const operation: OperationObject = {
+      parameters: [{ name: 'Accept', in: 'header', schema: { type: 'string', default: 'application/json' } }],
+    }
+    const headers = getDefaultHeaders({ method: 'get', operation, exampleName: 'default', hideOverriddenHeaders: true })
+    expect(headers['accept']).toBeUndefined()
+  })
+
+  it('keeps default Accept when a matching header parameter exists but is disabled for the example', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          name: 'Accept',
+          in: 'header',
+          required: false,
+          schema: { type: 'string' },
+        },
+      ],
+    }
+
+    const filtered = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+      hideOverriddenHeaders: true,
+    })
+    expect(filtered['accept']).toBeDefined()
+  })
+
+  it('omits default Accept when an optional header parameter is explicitly enabled for the example', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          name: 'Accept',
+          in: 'header',
+          required: false,
+          schema: { type: 'string' },
+          examples: {
+            'example-1': {
+              'x-disabled': false,
+              value: 'application/json',
+            },
+          },
+        },
+      ],
+    }
+
+    const filtered = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+      hideOverriddenHeaders: true,
+    })
+    expect(filtered['accept']).toBeUndefined()
+  })
+
+  it('filters out disabled headers when hideDisabledHeaders is true', () => {
+    const operation: OperationObject = {
+      'x-scalar-disable-parameters': {
+        'default-headers': {
+          'example-1': {
+            accept: true,
+          },
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+      hideDisabledHeaders: true,
+    })
+
+    const acceptHeader = headers['accept']
+
+    expect(acceptHeader).toBeUndefined()
+  })
+
+  it('includes disabled headers when hideDisabledHeaders is false', () => {
+    const operation: OperationObject = {
+      'x-scalar-disable-parameters': {
+        'default-headers': {
+          'example-1': {
+            accept: true,
+          },
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'get',
+      operation,
+      exampleName: 'example-1',
+      hideDisabledHeaders: false,
+    })
+
+    const acceptHeader = headers['accept']
+    expect(acceptHeader).toBeDefined()
+  })
+
+  it('handles operation with no requestBody', () => {
+    const operation: OperationObject = {}
+
+    const headers = getDefaultHeaders({
+      method: 'post',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    // Should still have Accept header, but no Content-Type since there's no requestBody
+    expect(Object.keys(headers).length).toBeGreaterThan(0)
+    const acceptHeader = headers['accept']
+    const contentTypeHeader = headers['content-type']
+    expect(acceptHeader).toBeDefined()
+    expect(contentTypeHeader).toBeUndefined()
+  })
+
+  it('uses first content type when no selection is made', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/xml': {},
+          'application/json': {},
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'post',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+
+    expect(contentTypeHeader).toBeDefined()
+    // Should use the first key in the content object
+    expect(contentTypeHeader).toBe('application/xml')
+  })
+
+  it('does not add Content-Type when the requestBody has no content types', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {},
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'post',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+
+    expect(contentTypeHeader).toBeUndefined()
+  })
+
+  it('does not add Content-Type for DELETE requests without a request body', () => {
+    const operation: OperationObject = {
+      responses: {
+        '200': {
+          description: 'Delete Success',
+          content: {
+            'application/json': {},
+          },
+        },
+      },
+    }
+
+    const headers = getDefaultHeaders({
+      method: 'delete',
+      operation,
+      exampleName: 'example-1',
+    })
+
+    const contentTypeHeader = headers['content-type']
+
+    expect(contentTypeHeader).toBeUndefined()
+  })
+})
+
+describe('restoreConventionalDefaultHeaderNames', () => {
+  it('restores conventional casing for known default headers', () => {
+    const restored = restoreConventionalDefaultHeaderNames({
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'user-agent': 'Scalar/1.2.3',
+    })
+
+    expect(restored).toStrictEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'Scalar/1.2.3',
+    })
+  })
+
+  it('leaves unknown header names unchanged', () => {
+    const restored = restoreConventionalDefaultHeaderNames({
+      'x-custom-header': 'custom',
+    })
+
+    expect(restored).toStrictEqual({
+      'x-custom-header': 'custom',
+    })
+  })
+})
+
+describe('restoreConventionalHeaderName', () => {
+  it('restores conventional casing for a known default header', () => {
+    expect(restoreConventionalHeaderName('content-type')).toBe('Content-Type')
+  })
+
+  it('returns unknown header names unchanged', () => {
+    expect(restoreConventionalHeaderName('x-trace-id')).toBe('x-trace-id')
+  })
+})

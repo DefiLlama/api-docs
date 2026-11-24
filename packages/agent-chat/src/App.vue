@@ -1,0 +1,74 @@
+<script setup lang="ts">
+import { provide, type Ref } from 'vue'
+
+import Chat from '@/Chat.vue'
+import { createState, STATE_SYMBOL, type RegistryDocument } from '@/state/state'
+import { type ChatMode, type SelectedDocument } from '@/types'
+
+const {
+  dashboardUrl,
+  platformProxyUrl,
+  registryDocuments,
+  registryUrl,
+  baseUrl,
+  mode = 'full',
+  getAccessToken,
+  getAgentKey,
+  getActiveDocumentJson,
+  getActiveDocumentSelection,
+  isLoggedIn,
+  prefilledMessage,
+  hideAddApi,
+} = defineProps<{
+  registryDocuments: RegistryDocument[]
+  registryUrl: string
+  dashboardUrl: string
+  platformProxyUrl: string
+  baseUrl: string
+  mode?: ChatMode
+  getAccessToken?: () => string
+  getAgentKey?: () => string
+  getActiveDocumentJson?: () => string
+  /** Scopes outgoing requests without adding context to conversation messages. */
+  getActiveDocumentSelection?: () => SelectedDocument | undefined
+  isLoggedIn?: Ref<boolean>
+  prefilledMessage?: Ref<string>
+  hideAddApi?: boolean
+}>()
+
+defineEmits<{
+  (e: 'uploadApi'): void
+}>()
+
+const state = createState({
+  getActiveDocumentJson,
+  getActiveDocumentSelection,
+  initialRegistryDocuments: registryDocuments,
+  prefilledMessageRef: prefilledMessage,
+  platformProxyUrl,
+  registryUrl,
+  baseUrl,
+  mode,
+  getAccessToken,
+  getAgentKey,
+  isLoggedIn,
+  dashboardUrl,
+  hideAddApi,
+})
+
+provide(STATE_SYMBOL, state)
+
+export type ChatExposed = {
+  addDocumentAsync: typeof state.addDocumentAsync
+}
+
+defineExpose<ChatExposed>({
+  addDocumentAsync: state.addDocumentAsync,
+})
+</script>
+
+<template>
+  <Chat @uploadApi="$emit('uploadApi')" />
+</template>
+
+<style scoped></style>

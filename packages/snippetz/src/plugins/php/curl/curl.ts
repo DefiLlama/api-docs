@@ -1,5 +1,10 @@
 import type { Plugin } from '@scalar/types/snippetz'
 
+import { mergeCookieHeaders } from '@/libs/cookies'
+import { joinUrlAndQuery, normalizeMethod } from '@/libs/http'
+import { objectToString } from '@/libs/php'
+import { multipartFileBoundary, prepareRequest } from '@/libs/prepare-request'
+
 /**
  * php/curl
  */
@@ -15,59 +20,82 @@ export const phpCurl: Plugin = {
     }
 
     // Normalization
-    normalizedRequest.method = normalizedRequest.method.toUpperCase()
+    normalizedRequest.method = normalizeMethod(normalizedRequest.method)
 
     // Build PHP cURL code parts
     const parts: string[] = []
+    const multipart =
+      normalizedRequest.postData?.mimeType === 'multipart/form-data' && normalizedRequest.postData.params
+        ? prepareRequest(normalizedRequest)
+        : undefined
+
+    const boundary = multipartFileBoundary(multipart)
+    const literal = (value: string): string =>
+      boundary ? `str_replace(${objectToString(boundary)}, $boundary, ${objectToString(value)})` : objectToString(value)
+    if (boundary) {
+      parts.push('$boundary = bin2hex(random_bytes(16));')
+    }
 
     // Initialize cURL
     // URL (with query parameters)
-    const queryString = normalizedRequest.queryString?.length
-      ? '?' +
-        normalizedRequest.queryString
-          .map((param) => {
-            const encodedName = encodeURIComponent(param.name)
-            const encodedValue = encodeURIComponent(param.value)
-            return `${encodedName}=${encodedValue}`
-          })
-          .join('&')
-      : ''
-    const url = `${normalizedRequest.url}${queryString}`
-    parts.push(`$ch = curl_init("${url}");`)
+    const url = joinUrlAndQuery(normalizedRequest.url ?? '', normalizedRequest.queryString)
+    parts.push(`$ch = curl_init(${objectToString(url)});`)
     parts.push('')
 
     // Method
     if (normalizedRequest.method === 'POST') {
       parts.push('curl_setopt($ch, CURLOPT_POST, true);')
+    } else if (normalizedRequest.method !== 'GET') {
+      parts.push(`curl_setopt($ch, CURLOPT_CUSTOMREQUEST, ${objectToString(normalizedRequest.method)});`)
     }
 
     // Basic Auth
     if (configuration?.auth?.username && configuration?.auth?.password) {
-      parts.push(`curl_setopt($ch, CURLOPT_USERPWD, '${configuration.auth.username}:${configuration.auth.password}');`)
+      parts.push(
+        `curl_setopt($ch, CURLOPT_USERPWD, ${objectToString(`${configuration.auth.username}:${configuration.auth.password}`)});`,
+      )
     }
 
-    // Headers
-    if (normalizedRequest.headers?.length) {
-      const headerStrings = normalizedRequest.headers.map((header) => `'${header.name}: ${header.value}'`)
+    // Collect all headers to emit once, avoiding duplicate CURLOPT_HTTPHEADER calls.
+    // Body processing may add a Content-Type header, so we determine it first.
+    const mergedHeaders = multipart?.headers ?? mergeCookieHeaders(normalizedRequest)
+    const allHeaders = mergedHeaders.filter(({ name }) => name.toLowerCase() !== 'cookie')
+
+    // Helper to add Content-Type header if not already present
+    const hasContentType = () => allHeaders.some((h) => h.name.toLowerCase() === 'content-type')
+
+    // Determine Content-Type from body before emitting headers
+    if (normalizedRequest.postData) {
+      if (
+        normalizedRequest.postData.mimeType === 'application/x-www-form-urlencoded' &&
+        normalizedRequest.postData.params &&
+        !hasContentType()
+      ) {
+        allHeaders.push({ name: 'Content-Type', value: 'application/x-www-form-urlencoded' })
+      } else if (normalizedRequest.postData.mimeType === 'application/octet-stream' && !hasContentType()) {
+        allHeaders.push({ name: 'Content-Type', value: 'application/octet-stream' })
+      }
+    }
+
+    // Emit all headers once
+    if (allHeaders.length) {
+      const headerStrings = allHeaders.map((header) =>
+        header.name.toLowerCase() === 'content-type'
+          ? literal(`${header.name}: ${header.value}`)
+          : objectToString(`${header.name}: ${header.value}`),
+      )
       parts.push(`curl_setopt($ch, CURLOPT_HTTPHEADER, [${headerStrings.join(', ')}]);`)
 
       // Add encoding option if Accept-Encoding header includes compression
-      const acceptEncoding = normalizedRequest.headers.find((header) => header.name.toLowerCase() === 'accept-encoding')
+      const acceptEncoding = allHeaders.find((header) => header.name.toLowerCase() === 'accept-encoding')
       if (acceptEncoding && /gzip|deflate/.test(acceptEncoding.value)) {
         parts.push("curl_setopt($ch, CURLOPT_ENCODING, '');")
       }
     }
 
-    // Cookies
-    if (normalizedRequest.cookies?.length) {
-      const cookieString = normalizedRequest.cookies
-        .map((cookie) => {
-          const encodedName = encodeURIComponent(cookie.name)
-          const encodedValue = encodeURIComponent(cookie.value)
-          return `${encodedName}=${encodedValue}`
-        })
-        .join('; ')
-      parts.push(`curl_setopt($ch, CURLOPT_COOKIE, '${cookieString}');`)
+    const cookieHeader = mergedHeaders.find(({ name }) => name.toLowerCase() === 'cookie')
+    if (cookieHeader) {
+      parts.push(`curl_setopt($ch, CURLOPT_COOKIE, ${objectToString(cookieHeader.value)});`)
     }
 
     // Body
@@ -77,25 +105,23 @@ export const phpCurl: Plugin = {
         if (normalizedRequest.postData.text) {
           try {
             const jsonData = JSON.parse(normalizedRequest.postData.text)
-            const phpArray = convertToPhpArray(jsonData)
+            const phpArray = objectToString(jsonData)
             parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(${phpArray}));`)
           } catch {
-            parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, '${normalizedRequest.postData.text}');`)
+            parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, ${objectToString(normalizedRequest.postData.text)});`)
           }
         }
       } else if (normalizedRequest.postData.mimeType === 'multipart/form-data' && normalizedRequest.postData.params) {
-        // Handle multipart form data
-        const formData = normalizedRequest.postData.params.reduce((acc, param) => {
-          if (param.fileName !== undefined) {
-            acc.push(`'${param.name}' => '@${param.fileName}'`)
-          } else if (param.value !== undefined) {
-            acc.push(`'${param.name}' => '${param.value}'`)
-          }
-          return acc
-        }, [] as string[])
-
-        parts.push(`curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: multipart/form-data']);`)
-        parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, [${formData.join(', ')}]);`)
+        // PHP does not expose curl_mime_*; an explicit body also preserves repeated field names.
+        parts.push("$body = '';")
+        for (const segment of multipart?.body ?? []) {
+          parts.push(
+            'file' in segment
+              ? `$body .= file_get_contents(${objectToString(segment.file)});`
+              : `$body .= ${literal(segment.text)};`,
+          )
+        }
+        parts.push('curl_setopt($ch, CURLOPT_POSTFIELDS, $body);')
       } else if (
         normalizedRequest.postData.mimeType === 'application/x-www-form-urlencoded' &&
         normalizedRequest.postData.params
@@ -108,19 +134,17 @@ export const phpCurl: Plugin = {
             return `${encodedName}=${encodedValue}`
           })
           .join('&')
-        parts.push(`curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);`)
-        parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, '${formData}');`)
+        parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, ${objectToString(formData)});`)
       } else if (normalizedRequest.postData.mimeType === 'application/octet-stream') {
-        parts.push(`curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/octet-stream']);`)
-        parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, '${normalizedRequest.postData.text || ''}');`)
+        parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, ${objectToString(normalizedRequest.postData.text || '')});`)
       } else if (normalizedRequest.postData.text) {
         // Try to parse as JSON and convert to PHP array, otherwise use raw text
         try {
           const jsonData = JSON.parse(normalizedRequest.postData.text)
-          const phpArray = convertToPhpArray(jsonData)
+          const phpArray = objectToString(jsonData)
           parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(${phpArray}));`)
         } catch {
-          parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, '${normalizedRequest.postData.text}');`)
+          parts.push(`curl_setopt($ch, CURLOPT_POSTFIELDS, ${objectToString(normalizedRequest.postData.text)});`)
         }
       }
     }
@@ -128,56 +152,7 @@ export const phpCurl: Plugin = {
     // Execute and close
     parts.push('')
     parts.push('curl_exec($ch);')
-    parts.push('')
-    parts.push('curl_close($ch);')
 
     return parts.join('\n').replace(/\n\n\n/g, '\n\n')
   },
-}
-
-/**
- * Helper function to create consistent indentation
- */
-function indent(level: number): string {
-  return ' '.repeat(level * 2)
-}
-
-/**
- * Converts a JavaScript object to a PHP array string representation
- */
-function convertToPhpArray(data: unknown, indentLevel = 0): string {
-  if (data === null || data === undefined) {
-    return 'null'
-  }
-
-  if (typeof data === 'string') {
-    return `'${data.replace(/'/g, "\\'")}'`
-  }
-
-  if (typeof data === 'number' || typeof data === 'boolean') {
-    return String(data)
-  }
-
-  if (Array.isArray(data)) {
-    if (data.length === 0) {
-      return '[]'
-    }
-
-    const items = data.map((item) => convertToPhpArray(item, indentLevel + 1)).join(',\n' + indent(indentLevel + 1))
-    return `[\n${indent(indentLevel + 1)}${items}\n${indent(indentLevel)}]`
-  }
-
-  if (typeof data === 'object') {
-    const entries = Object.entries(data)
-    if (entries.length === 0) {
-      return '[]'
-    }
-
-    const items = entries
-      .map(([key, value]) => `'${key}' => ${convertToPhpArray(value, indentLevel + 1)}`)
-      .join(',\n' + indent(indentLevel + 1))
-    return `[\n${indent(indentLevel + 1)}${items}\n${indent(indentLevel)}]`
-  }
-
-  return 'null'
 }

@@ -1,38 +1,31 @@
 <script setup lang="ts">
-import LoadingSkeleton from '../LoadingSkeleton.vue'
-
-defineProps<{
-  loading?: boolean
+const { tight, removeMargin = false } = defineProps<{
   tight?: boolean
+  removeMargin?: boolean
 }>()
 </script>
 
+<!--
+  The reference is an embeddable widget, so the header collapses based on the
+  rendered width of the reference (the narrow: variant), not the viewport.
+  The section-header-wrapper class stays as a styling hook for
+  SectionContainerAccordion.
+-->
 <template>
-  <div class="section-header-wrapper">
-    <LoadingSkeleton v-if="loading" />
+  <div
+    class="section-header-wrapper narrow:grid-cols-1 narrow:gap-0 grid grid-cols-2 gap-12">
     <div
-      v-else
       class="section-header"
-      :class="{ tight }">
+      :class="{ tight, 'mb-3': !removeMargin }">
       <slot />
     </div>
+    <slot
+      v-if="$slots.links"
+      name="links" />
   </div>
 </template>
 
 <style scoped>
-@reference "@/style.css";
-
-.section-header-wrapper {
-  display: grid;
-  grid-template-columns: 1fr;
-}
-
-@variant xl {
-  .section-header-wrapper {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 .section-header {
   font-size: var(--font-size, var(--scalar-heading-1));
   font-weight: var(--font-weight, var(--scalar-bold));
@@ -41,14 +34,9 @@ defineProps<{
   word-wrap: break-word;
   line-height: 1.45;
   margin-top: 0;
-  margin-bottom: 12px;
 }
 
 .section-header.tight {
   margin-bottom: 6px;
-}
-
-.section-header.loading {
-  width: 80%;
 }
 </style>

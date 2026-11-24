@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/vue3'
+import type { Meta, StoryObj } from '@storybook/vue3-vite'
 import { ref } from 'vue'
 
 import ScalarColorModeToggle from './ScalarColorModeToggle.vue'
@@ -22,7 +22,7 @@ type Story = StoryObj<typeof meta>
 
 export const Base: Story = {}
 
-export const ButtonOnly: Story = {
+export const Button: Story = {
   argTypes: {
     class: {
       control: 'text',
@@ -33,11 +33,15 @@ export const ButtonOnly: Story = {
     setup() {
       return { args }
     },
-    template: `<ScalarColorModeToggleButton v-bind="args" />`,
+    template: `
+      <div class="w-fit p-2">
+        <ScalarColorModeToggleButton v-bind="args" />
+      </div>
+    `,
   }),
 }
 
-export const IconOnly: Story = {
+export const Icon: Story = {
   argTypes: {
     class: {
       control: 'text',
@@ -49,6 +53,10 @@ export const IconOnly: Story = {
       const mode = ref<'light' | 'dark'>('light')
       return { args, mode }
     },
-    template: `<ScalarColorModeToggleIcon :mode="mode" v-bind="args" @click="mode = mode === 'light' ? 'dark' : 'light'"  />`,
+    template: `
+      <div class="w-fit p-2">
+        <ScalarColorModeToggleIcon :mode="mode" v-bind="args" @click="mode = mode === 'light' ? 'dark' : 'light'" />
+      </div>
+    `,
   }),
 }

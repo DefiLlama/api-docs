@@ -1,5 +1,205 @@
 # @scalar/use-hooks
 
+## 0.4.29
+
+No changes in this release.
+
+## 0.4.28
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.4.27
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.4.26
+
+No changes in this release.
+
+## 0.4.25
+
+No changes in this release.
+
+## 0.4.24
+
+## 0.4.23
+
+## 0.4.22
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.4.21
+
+## 0.4.20
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+- [#10529](https://github.com/scalar/scalar/pull/10529): Align import and export ordering with the Biome checks.
+- [#10520](https://github.com/scalar/scalar/pull/10520): Sort imports and exports to satisfy the Biome checks.
+- [#10526](https://github.com/scalar/scalar/pull/10526): Align import and export ordering with the repository CI checks.
+
+## 0.4.19
+
+### Patch Changes
+
+- [#10493](https://github.com/scalar/scalar/pull/10493): Floating surfaces now paint their own background, border, and shadow instead of using an absolutely positioned backdrop layer. The `#backdrop` slot on `ScalarDropdown`, `ScalarPopover`, `ScalarListbox`, and `ScalarCombobox` is removed; style the floating element with `class` instead. `ScalarFloatingBackdrop`, `--scalar-lifted-brightness`, and the `brightness-lifted` utility are deprecated in favor of `bg-b-1 dark:bg-b-1.5`. `ScalarFloatingBackdrop` itself now uses the same surface styles, so it no longer clips its slot or draws a real border. A new `inset-shadow-border` utility draws the hairline border so it can stack with `shadow-*` without taking up layout space; Tailwind's default `inset-shadow-*` sizes are reset, matching the other theme namespaces.
+
+## 0.4.18
+
+## 0.4.17
+
+## 0.4.16
+
+## 0.4.15
+
+## 0.4.14
+
+## 0.4.13
+
+## 0.4.12
+
+## 0.4.11
+
+### Patch Changes
+
+- [#10058](https://github.com/scalar/scalar/pull/10058): feat(helpers): add applyColorMode and the DarkLightMode type, and use them from useColorMode
+
+## 0.4.10
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.4.9
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.4.8
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.4.7
+
+### Patch Changes
+
+- [#9540](https://github.com/scalar/scalar/pull/9540): Fix an SSR hydration mismatch in the color-mode toggle: the system preference is now resolved after mount so the first client render matches the server.
+
+## 0.4.6
+
+## 0.4.5
+
+### Patch Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): chore: remove zod
+
+## 0.4.4
+
+### Patch Changes
+
+- [#8844](https://github.com/scalar/scalar/pull/8844): chore: remove zod
+
+## 0.4.3
+
+## 0.4.2
+
+### Patch Changes
+
+- [#8694](https://github.com/scalar/scalar/pull/8694): feat: add padding utilities to scalar themes
+
+## 0.4.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.4.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/use-toasts@0.10.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.3.7
+
+### Patch Changes
+
+- [#7977](https://github.com/scalar/scalar/pull/7977): chore(use-hooks): update tailwind merge to v3.4.0
+
+## 0.3.6
+
+### Patch Changes
+
+- [#7678](https://github.com/scalar/scalar/pull/7678): feat: added object stringification to useClipboard
+
+## 0.3.5
+
+### Patch Changes
+
+- [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+## 0.3.4
+
+### Patch Changes
+
+- [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+## 0.3.3
+
+### Patch Changes
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `zod`
+
+## 0.3.2
+
+### Patch Changes
+
+- [#7478](https://github.com/scalar/scalar/pull/7478) [`cc4de25`](https://github.com/scalar/scalar/commit/cc4de2587b36f0d169b01c1bf312ba91b67e3e0c) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: remove emtpy index file from exports
+
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [[`ea13cd2`](https://github.com/scalar/scalar/commit/ea13cd2a44ff1ba7f19abcfcad1e51c9e7a0b75d), [`ea13cd2`](https://github.com/scalar/scalar/commit/ea13cd2a44ff1ba7f19abcfcad1e51c9e7a0b75d)]:
+  - @scalar/use-toasts@0.9.1
+
+## 0.3.0
+
+### Minor Changes
+
+- [#7199](https://github.com/scalar/scalar/pull/7199) [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat: update vue to 3.5.21
+
+### Patch Changes
+
+- [#7144](https://github.com/scalar/scalar/pull/7144) [`6a090a2`](https://github.com/scalar/scalar/commit/6a090a2e07ef961c56041c85ee9786180437593a) Thanks [@hwkr](https://github.com/hwkr)! - feat(useBindCx): add support for style attr
+
+- [#7094](https://github.com/scalar/scalar/pull/7094) [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461) Thanks [@geoffgscott](https://github.com/geoffgscott)! - Migrate to workspace store as primary source of truth.
+
+- Updated dependencies [[`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0)]:
+  - @scalar/use-toasts@0.9.0
+
+## 0.2.5
+
+### Patch Changes
+
+- 8f2a2f2: Bump some dependencies to latest
+
 ## 0.2.4
 
 ### Patch Changes

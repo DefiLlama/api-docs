@@ -1,0 +1,312 @@
+import { isObject } from '@scalar/helpers/object/is-object'
+import { objectEntries } from '@scalar/helpers/object/object-entries'
+import { resolveFormSchema } from '@scalar/workspace-store/helpers/resolve-form-schema'
+import { resolveSchemaWithAnnotations } from '@scalar/workspace-store/helpers/resolve-schema-with-annotations'
+import { coerceLeafValueToSchemaType, getAspNetFormFields } from '@scalar/workspace-store/request-example'
+import type {
+  ExampleObject,
+  MediaTypeObject,
+  SchemaObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { isObjectSchema } from '@scalar/workspace-store/schemas/v3.2/strict/type-guards'
+
+import type { TableRow } from '@/v2/blocks/request-block/components/RequestTableRow.vue'
+
+export const stringifyValue = (value: unknown) => {
+  if (value instanceof File) {
+    return value.name
+  }
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value)
+  }
+  return String(value)
+}
+
+export type LeafRow = {
+  path: string[]
+  schema: SchemaObject | undefined
+  isRequired: boolean
+  description?: string
+}
+
+/**
+ * Walk a (possibly nested) object schema and collect one entry per leaf property.
+ *
+ * A "leaf" is any property whose resolved schema is not an `{ type: 'object' }` schema
+ * with named `properties` — i.e. primitives, arrays, files, and `additionalProperties`
+ * placeholders all stop the recursion. Object properties recurse, so the widget example
+ * (`file` + `props.{name,description,created_at}`) yields four leaves.
+ */
+export const collectLeafProperties = (
+  schema: SchemaObject,
+  parentPath: string[] = [],
+  parentRequired = true,
+  parentDescription?: string,
+): LeafRow[] => {
+  // Nothing to walk if this is not an object schema or has no declared properties.
+  if (!isObjectSchema(schema) || !schema.properties) {
+    return []
+  }
+
+  // `required` is a list of property names on *this* schema, so build it once per level.
+  const requiredSet = new Set(schema.required ?? [])
+  const leaves: LeafRow[] = []
+
+  for (const [key, rawChildSchema] of objectEntries(schema.properties)) {
+    const childSchema = resolveSchemaWithAnnotations(rawChildSchema)
+    const path = [...parentPath, String(key)]
+
+    // A leaf is only required when *every* ancestor was also required — a non-required
+    // parent makes the whole subtree optional regardless of inner `required` lists.
+    const isRequired = parentRequired && requiredSet.has(String(key))
+
+    // Nested objects with named properties recurse so each leaf gets its own row;
+    // everything else (primitives, arrays, files, additionalProperties placeholders)
+    // is treated as a leaf and stops the descent.
+    if (childSchema && isObjectSchema(childSchema) && childSchema.properties) {
+      leaves.push(...collectLeafProperties(childSchema, path, isRequired, childSchema.description ?? parentDescription))
+    } else {
+      leaves.push({ path, schema: childSchema, isRequired, description: childSchema?.description ?? parentDescription })
+    }
+  }
+
+  return leaves
+}
+
+/**
+ * Walk a schema + example together and collect one row per leaf, including example-only
+ * keys that the schema does not declare. Schema-declared properties come first in schema
+ * order; extras present in the example follow in example order at each level.
+ *
+ * Unlike `collectLeafProperties` (which is schema-only and feeds the dotted-name index),
+ * this walker drives what the user actually sees in the form: a row for every leaf the
+ * example contains, even when the schema is partial or out of date.
+ */
+export const collectExampleRows = (
+  example: unknown,
+  schema: SchemaObject | undefined,
+  parentPath: string[] = [],
+): { path: string[]; value: unknown }[] => {
+  const rows: { path: string[]; value: unknown }[] = []
+  const exampleEntries = isObject(example) ? objectEntries(example) : []
+  const exampleByKey = new Map<string, unknown>(exampleEntries.map(([key, value]) => [String(key), value]))
+  const declaredKeys = new Set<string>()
+  const schemaProperties = schema && isObjectSchema(schema) ? (schema.properties ?? {}) : {}
+
+  // Schema-declared properties first, in schema order. Nested object schemas recurse so
+  // each leaf gets its own row; otherwise the schema-declared key is a leaf and uses the
+  // matching example value (or `undefined` when the example does not provide one).
+  for (const [key, rawChildSchema] of objectEntries(schemaProperties)) {
+    const keyStr = String(key)
+    declaredKeys.add(keyStr)
+    const childSchema = resolveSchemaWithAnnotations(rawChildSchema)
+    const path = [...parentPath, keyStr]
+    const exampleSubvalue = exampleByKey.get(keyStr)
+
+    if (childSchema && isObjectSchema(childSchema) && childSchema.properties) {
+      rows.push(...collectExampleRows(exampleSubvalue, childSchema, path))
+    } else {
+      rows.push({ path, value: exampleSubvalue })
+    }
+  }
+
+  // Example-only properties at this level (preserve example order). Their inner shape is
+  // not descended into — without a schema saying "this is a nested object" we have no
+  // signal to flatten, so an object value becomes a single JSON-stringified row, matching
+  // the schema-less fallback below.
+  for (const [key, value] of exampleEntries) {
+    const keyStr = String(key)
+    if (declaredKeys.has(keyStr)) {
+      continue
+    }
+    rows.push({ path: [...parentPath, keyStr], value })
+  }
+
+  return rows
+}
+
+/** Restore array values after text editing without parsing ordinary string fields. */
+export const getFormBodyValue = (row: TableRow): string | File | unknown[] | undefined => {
+  const value = coerceLeafValueToSchemaType(row.value, row.isArray ? { type: 'array' } : row.schema)
+  return Array.isArray(value) ? value : (row.value ?? undefined)
+}
+
+/** Build the table rows for the form data, optionally enriched with schema (e.g. enum) per property */
+export const getFormBodyRows = (
+  example: ExampleObject | undefined | null,
+  contentType: string,
+  formBodySchema?: SchemaObject,
+  compositionSelection?: Record<string, number>,
+  encoding?: MediaTypeObject['encoding'],
+  aspNetFormNaming = false,
+): TableRow[] => {
+  // Forms use structured data even when the raw example also supplies wire text.
+  const value = example?.dataValue !== undefined ? example.dataValue : example?.value
+  // We only need the rows for formData
+  if (!value || (contentType !== 'multipart/form-data' && contentType !== 'application/x-www-form-urlencoded')) {
+    return []
+  }
+
+  // Get all the schema properties if the schema is an object schema
+  const resolvedBodySchema = resolveFormSchema(formBodySchema, compositionSelection)
+  const schemaWithProperties =
+    resolvedBodySchema &&
+    (isObjectSchema(resolvedBodySchema) ||
+      'properties' in resolvedBodySchema ||
+      'additionalProperties' in resolvedBodySchema)
+      ? { ...resolvedBodySchema, type: 'object' as const }
+      : undefined
+  // The request builder preserves composed fields because members can make them required.
+  // Keep those fields checked so the initial form matches the body that will be sent.
+  const isComposed = Boolean(schemaWithProperties?.allOf || schemaWithProperties?.oneOf || schemaWithProperties?.anyOf)
+  const requiredSet = schemaWithProperties ? new Set(schemaWithProperties.required ?? []) : undefined
+
+  // Pre-compute the leaf-by-dotted-name index up front so both the array and the
+  // schema-driven branches can pull each row's leaf schema and required flag without
+  // re-walking the schema. Without this, edited rows lose the per-leaf `Required`
+  // badge because a top-level `properties[name]` lookup misses dotted names.
+  const leafByDottedName = new Map<string, LeafRow>()
+  if (schemaWithProperties) {
+    for (const leaf of collectLeafProperties(schemaWithProperties)) {
+      leafByDottedName.set(leaf.path.join('.'), leaf)
+    }
+  }
+
+  const mapRow = ({
+    name,
+    value,
+    isDisabled,
+  }: {
+    name: string
+    value: string | File
+    isDisabled?: boolean
+  }): TableRow => {
+    const row: TableRow = {
+      name,
+      value,
+      isDisabled: isDisabled ?? false,
+      ...(encoding?.[name]?.contentType ? { contentType: encoding[name].contentType } : {}),
+    }
+    if (!schemaWithProperties || !name) {
+      return row
+    }
+    // Prefer the pre-resolved leaf (handles dotted names like `props.name`); fall back
+    // to a top-level property lookup so user-added rows keep working.
+    const leaf = leafByDottedName.get(name)
+    const propSchema =
+      leaf?.schema ??
+      resolveSchemaWithAnnotations(
+        schemaWithProperties.properties?.[name] ??
+          (typeof schemaWithProperties.additionalProperties === 'object'
+            ? schemaWithProperties.additionalProperties
+            : schemaWithProperties.additionalProperties === false
+              ? undefined
+              : { __scalar_: '' }),
+      )
+    row.schema = propSchema
+    row.description = leaf?.description ?? propSchema?.description
+    row.isRequired = leaf?.isRequired ?? requiredSet?.has(name) ?? false
+
+    // Top-level optional properties default to disabled (unchecked), matching how optional
+    // parameters behave. Scoped to top-level declared properties on purpose: the send side
+    // (`build-request-body`) only drops top-level optional keys, so auto-disabling a nested
+    // leaf (e.g. `props.name`) would leave it unchecked yet still transmitted. `Object.hasOwn`
+    // (not `in`) keeps example-only keys named like `Object.prototype` members enabled. An
+    // explicit `isDisabled` (from a stored form-row array) always wins.
+    if (
+      isDisabled === undefined &&
+      !isComposed &&
+      schemaWithProperties.properties &&
+      Object.hasOwn(schemaWithProperties.properties, name)
+    ) {
+      row.isDisabled = !row.isRequired
+      // Mark the row as disabled by default (no explicit `isDisabled` was stored) so typing a
+      // value auto-enables it in `RequestTableRow`, matching how optional parameters behave. An
+      // explicit `isDisabled` from a stored form-row array skips this branch and keeps winning.
+      row.isDisabledByDefault = row.isDisabled
+    }
+    return row
+  }
+
+  const mapValue = (name: string, value: unknown, isDisabled?: boolean, isArray?: boolean): TableRow[] => {
+    // Uploaded files must never pass through JSON.stringify, which discards their bytes.
+    if (
+      contentType === 'multipart/form-data' &&
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((item) => item instanceof File)
+    ) {
+      return value.map((file) => mapRow({ name, value: file, isDisabled }))
+    }
+    const row = mapRow({
+      name,
+      value: value instanceof File || value == null ? (value ?? '') : stringifyValue(value),
+      isDisabled,
+    })
+    if ((contentType === 'multipart/form-data' || aspNetFormNaming) && (Array.isArray(value) || isArray)) {
+      // Example-only arrays also need their type to survive a form-table round trip.
+      row.isArray = true
+    }
+    return [row]
+  }
+
+  if (aspNetFormNaming) {
+    return getAspNetFormFields(value, schemaWithProperties, compositionSelection, true).flatMap((field) =>
+      mapValue(field.name, field.value, field.isDisabled, field.isArray).map((row) => ({
+        ...row,
+        schema: field.schema ?? row.schema,
+        description: field.schema?.description ?? row.description,
+        isRequired: field.isRequired || row.isRequired,
+        ...(field.isDisabledByDefault ? { isDisabledByDefault: true } : {}),
+      })),
+    )
+  }
+
+  // We have form data stored as an array
+  if (Array.isArray(value)) {
+    return value.flatMap((exampleValue) => {
+      if (isObject(exampleValue)) {
+        const name = String(exampleValue.name)
+        const rows =
+          contentType === 'multipart/form-data'
+            ? mapValue(name, exampleValue.value, Boolean(exampleValue.isDisabled), exampleValue.isArray === true)
+            : [
+                mapRow({
+                  name,
+                  value: exampleValue.value instanceof File ? exampleValue.value : String(exampleValue.value),
+                  isDisabled: Boolean(exampleValue.isDisabled),
+                }),
+              ]
+        // An untouched optional row stays eligible for auto-enabling after another row is edited.
+        return rows.map((row) =>
+          row.isDisabled && exampleValue.isDisabledByDefault === true ? { ...row, isDisabledByDefault: true } : row,
+        )
+      }
+      return { name: '', value: exampleValue, isDisabled: false }
+    })
+  }
+
+  // Schema-driven path: when the form body schema describes nested objects, emit one row
+  // per leaf so users can edit individual fields. The dotted name (`props.name`) is folded
+  // back into a single JSON multipart part by `build-request-body.ts` before the request is
+  // sent. Gated to `multipart/form-data` because urlencoded has no regrouping step on send,
+  // so dotted leaves would otherwise reach the wire as separate `props.name`-style fields.
+  //
+  // We walk the example alongside the schema so example-only properties (top-level extras
+  // or undeclared keys inside a nested object) are still visible and editable instead of
+  // being silently dropped to whatever the schema happens to declare.
+  if (contentType === 'multipart/form-data' && schemaWithProperties && typeof value === 'object') {
+    return collectExampleRows(value, schemaWithProperties).flatMap(({ path, value }) => mapValue(path.join('.'), value))
+  }
+
+  // We got an object try to convert it to an array of rows
+  if (typeof value === 'object' && value) {
+    return objectEntries(value).flatMap(([key, value]) =>
+      contentType === 'multipart/form-data'
+        ? mapValue(String(key), value)
+        : mapRow({ name: String(key), value: stringifyValue(value) }),
+    )
+  }
+
+  return []
+}

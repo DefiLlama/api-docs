@@ -1,23 +1,31 @@
-import type { OpenAPI } from '@scalar/openapi-types'
-import type { FastifyBaseLogger, FastifyTypeProviderDefault, RawServerDefault } from 'fastify'
+/// <reference types="@fastify/swagger" />
+import { renderApiReference } from '@scalar/client-side-rendering'
+import { getValueByPath } from '@scalar/json-magic/helpers/get-value-by-path'
+import { normalize } from '@scalar/json-magic/helpers/normalize'
+import type { FastifyBaseLogger, FastifySchema, FastifyTypeProviderDefault, RawServerDefault } from 'fastify'
 import fp from 'fastify-plugin'
 import { slug } from 'github-slugger'
+import { stringify } from 'yaml'
 
-import type { FastifyApiReferenceHooksOptions, FastifyApiReferenceOptions } from './types'
+import type { ApiReferenceConfiguration, FastifyApiReferenceHooksOptions, FastifyApiReferenceOptions } from './types'
 import { getJavaScriptFile } from './utils/getJavaScriptFile'
-
-import { getHtmlDocument } from '@scalar/core/libs/html-rendering'
-import { normalize, toJson, toYaml } from '@scalar/openapi-parser'
-import type { ApiReferenceConfiguration } from './types'
 
 /**
  * Path to the bundled Scalar JavaScript file
  */
 const RELATIVE_JAVASCRIPT_PATH = 'js/scalar.js'
 
-// This Schema is used to hide the route from the documentation.
-// https://github.com/fastify/fastify-swagger#hide-a-route
-const schemaToHideRoute = {
+/**
+ * This Schema is used to hide the route from the documentation.
+ *
+ * We don't know whether `@fastify/swagger` is registered, but it doesn't hurt to add a schema anyway.
+ *
+ * @see https://github.com/fastify/fastify-swagger#hide-a-route
+ */
+// Typed as FastifySchema so route inference uses FastifySchema (not the narrow
+// literal { hide: boolean }), keeping hook handler types compatible across
+// Fastify v4 and v5 even when @fastify/swagger augments FastifySchema with `hide`.
+const schemaToHideRoute: FastifySchema = {
   hide: true,
 }
 
@@ -45,83 +53,6 @@ const getJavaScriptUrl = (routePrefix?: string) =>
   `${getRoutePrefix(routePrefix)}/${RELATIVE_JAVASCRIPT_PATH}`.replace(/\/\//g, '/')
 
 /**
- * The custom theme for Fastify
- */
-export const customTheme = `
-.light-mode {
-  color-scheme: light;
-  --scalar-color-1: #1c1e21;
-  --scalar-color-2: #757575;
-  --scalar-color-3: #8e8e8e;
-  --scalar-color-disabled: #b4b1b1;
-  --scalar-color-ghost: #a7a7a7;
-  --scalar-color-accent: #2f8555;
-  --scalar-background-1: #fff;
-  --scalar-background-2: #f5f5f5;
-  --scalar-background-3: #ededed;
-  --scalar-background-4: rgba(0, 0, 0, 0.06);
-  --scalar-background-accent: #2f85551f;
-
-  --scalar-border-color: rgba(0, 0, 0, 0.1);
-  --scalar-scrollbar-color: rgba(0, 0, 0, 0.18);
-  --scalar-scrollbar-color-active: rgba(0, 0, 0, 0.36);
-  --scalar-lifted-brightness: 1;
-  --scalar-backdrop-brightness: 1;
-
-  --scalar-shadow-1: 0 1px 3px 0 rgba(0, 0, 0, 0.11);
-  --scalar-shadow-2: rgba(0, 0, 0, 0.08) 0px 13px 20px 0px,
-    rgba(0, 0, 0, 0.08) 0px 3px 8px 0px, #eeeeed 0px 0 0 1px;
-
-  --scalar-button-1: rgb(49 53 56);
-  --scalar-button-1-color: #fff;
-  --scalar-button-1-hover: rgb(28 31 33);
-
-  --scalar-color-green: #007300;
-  --scalar-color-red: #af272b;
-  --scalar-color-yellow: #b38200;
-  --scalar-color-blue: #3b8ba5;
-  --scalar-color-orange: #fb892c;
-  --scalar-color-purple: #5203d1;
-}
-
-.dark-mode {
-  color-scheme: dark;
-  --scalar-color-1: rgba(255, 255, 255, 0.9);
-  --scalar-color-2: rgba(255, 255, 255, 0.62);
-  --scalar-color-3: rgba(255, 255, 255, 0.44);
-  --scalar-color-disabled: rgba(255, 255, 255, 0.34);
-  --scalar-color-ghost: rgba(255, 255, 255, 0.26);
-  --scalar-color-accent: #27c2a0;
-  --scalar-background-1: #1b1b1d;
-  --scalar-background-2: #242526;
-  --scalar-background-3: #3b3b3b;
-  --scalar-background-4: rgba(255, 255, 255, 0.06);
-  --scalar-background-accent: #27c2a01f;
-
-  --scalar-border-color: rgba(255, 255, 255, 0.1);
-  --scalar-scrollbar-color: rgba(255, 255, 255, 0.24);
-  --scalar-scrollbar-color-active: rgba(255, 255, 255, 0.48);
-  --scalar-lifted-brightness: 1.45;
-  --scalar-backdrop-brightness: 0.5;
-
-  --scalar-shadow-1: 0 1px 3px 0 rgb(0, 0, 0, 0.1);
-  --scalar-shadow-2: rgba(15, 15, 15, 0.2) 0px 3px 6px,
-    rgba(15, 15, 15, 0.4) 0px 9px 24px, 0 0 0 1px rgba(255, 255, 255, 0.1);
-
-  --scalar-button-1: #f6f6f6;
-  --scalar-button-1-color: #000;
-  --scalar-button-1-hover: #e7e7e7;
-
-  --scalar-color-green: #26b226;
-  --scalar-color-red: #fb565b;
-  --scalar-color-yellow: #ffc426;
-  --scalar-color-blue: #6ecfef;
-  --scalar-color-orange: #ff8d4d;
-  --scalar-color-purple: #b191f9;
-}
-`
-
-/**
  * The default configuration for Fastify
  */
 const DEFAULT_CONFIGURATION: Partial<ApiReferenceConfiguration> = {
@@ -134,7 +65,7 @@ const fastifyApiReference = fp<
   FastifyTypeProviderDefault,
   FastifyBaseLogger
 >(
-  async (fastify, options) => {
+  (fastify, options, next) => {
     const { configuration: givenConfiguration } = options
 
     // Merge the defaults
@@ -163,23 +94,24 @@ const fastifyApiReference = fp<
         }
       }
 
-      if (fastify.hasPlugin('@fastify/swagger')) {
+      // Even if @fastify/swagger is loaded, when the `decorator` option is set, the `swagger` function is not available.
+      if (fastify.hasPlugin('@fastify/swagger') && typeof fastify.swagger === 'function') {
         return {
           type: 'swagger' as const,
-          // @ts-ignore We know that @fastify/swagger is loaded.
-          get: () => fastify.swagger() as OpenAPI.Document,
+          get: () => fastify.swagger(),
         }
       }
+
       return void 0
     })()
 
     // If no OpenAPI specification is passed and @fastify/swagger isn't loaded, show a warning.
-    if (!specSource) {
+    if (!specSource && !configuration.sources) {
       fastify.log.warn(
-        "[@scalar/fastify-api-reference] You didn't provide a `content` or `url`, and @fastify/swagger could not be found. Please provide one of these options.",
+        "[@scalar/fastify-api-reference] You didn't provide a `content`, `url`, `sources` or @fastify/swagger could not be found. Please provide one of these options.",
       )
 
-      return
+      return next()
     }
 
     // Read the JavaScript file once.
@@ -196,70 +128,86 @@ const fastifyApiReference = fp<
       }
     }
 
-    const getSpecFilenameSlug = async (spec: OpenAPI.Document) => {
+    const getContentDisposition = (spec: unknown, extension: 'json' | 'yaml'): string => {
       // Same GitHub Slugger and default file name as in `@scalar/api-reference`, when generating the download
-      return slug(spec?.specification?.info?.title ?? 'spec')
+      const title: unknown = getValueByPath(spec, ['info', 'title']).value
+      const filename = `${slug(typeof title === 'string' ? title : 'spec') || 'spec'}.${extension}`
+
+      // Slugs retain Unicode, which must be encoded rather than written directly into HTTP headers.
+      if (!/^[\x20-\x7E]+$/.test(filename)) {
+        // Replace lone UTF-16 surrogates so URI encoding cannot prevent serving the document.
+        const utf8Filename = Buffer.from(filename, 'utf8').toString('utf8')
+        return `inline; filename="spec.${extension}"; filename*=UTF-8''${encodeURIComponent(utf8Filename)}`
+      }
+
+      return `inline; filename="${filename}"`
     }
 
-    const openApiSpecUrlJson = `${getRoutePrefix(options.routePrefix)}${getOpenApiDocumentEndpoints(options.openApiDocumentEndpoints).json}`
-    fastify.route({
-      method: 'GET',
-      url: openApiSpecUrlJson,
-      // @ts-ignore We don't know whether @fastify/swagger is loaded.
-      schema: schemaToHideRoute,
-      ...hooks,
-      ...(options.logLevel && { logLevel: options.logLevel }),
-      async handler(_, reply) {
-        const spec = normalize(specSource.get())
-        const filename: string = await getSpecFilenameSlug(spec)
-        const json = JSON.parse(toJson(spec)) // parsing minifies the JSON
-
-        return reply
-          .header('Content-Type', 'application/json')
-          .header('Content-Disposition', `filename=${filename}.json`)
-          .header('Access-Control-Allow-Origin', '*')
-          .header('Access-Control-Allow-Methods', '*')
-          .send(json)
-      },
-    })
-
-    const openApiSpecUrlYaml = `${getRoutePrefix(options.routePrefix)}${getOpenApiDocumentEndpoints(options.openApiDocumentEndpoints).yaml}`
-    fastify.route({
-      method: 'GET',
-      url: openApiSpecUrlYaml,
-      // @ts-ignore We don't know whether @fastify/swagger is loaded.
-      schema: schemaToHideRoute,
-      ...hooks,
-      ...(options.logLevel && { logLevel: options.logLevel }),
-      async handler(_, reply) {
-        const spec = normalize(specSource.get())
-        const filename: string = await getSpecFilenameSlug(spec)
-        const yaml = toYaml(spec)
-        return reply
-          .header('Content-Type', 'application/yaml')
-          .header('Content-Disposition', `filename=${filename}.yaml`)
-          .header('Access-Control-Allow-Origin', '*')
-          .header('Access-Control-Allow-Methods', '*')
-          .send(yaml)
-      },
-    })
-
-    // Redirect route without a trailing slash to force a trailing slash:
-    // We need this so the request to the JS file is relative.
-
-    // With ignoreTrailingSlash, fastify registeres both routes anyway.
-    const doesNotIgnoreTrailingSlash = fastify.initialConfig.ignoreTrailingSlash !== true
-
-    if (doesNotIgnoreTrailingSlash && getRoutePrefix(options.routePrefix)) {
+    // Only expose the document endpoints when we can serve the document ourselves.
+    // For a `url` source the reference loads the user's URL directly in the browser, so a
+    // local re-exposure is meaningless — and normalizing the URL string here produced a
+    // broken response (a 500 for JSON, an empty body for YAML).
+    if (specSource && specSource.type !== 'url') {
+      const openApiSpecUrlJson = `${getRoutePrefix(options.routePrefix)}${getOpenApiDocumentEndpoints(options.openApiDocumentEndpoints).json}`
       fastify.route({
         method: 'GET',
-        url: getRoutePrefix(options.routePrefix),
-        // @ts-ignore We don't know whether @fastify/swagger is loaded.
+        url: openApiSpecUrlJson,
         schema: schemaToHideRoute,
         ...hooks,
         ...(options.logLevel && { logLevel: options.logLevel }),
         handler(_, reply) {
-          return reply.redirect(getRoutePrefix(options.routePrefix) + '/', 302)
+          const spec = normalize(specSource.get())
+          const json = JSON.parse(JSON.stringify(spec)) // parsing minifies the JSON
+
+          return reply
+            .header('Content-Type', 'application/json')
+            .header('Content-Disposition', getContentDisposition(spec, 'json'))
+            .header('Access-Control-Allow-Origin', '*')
+            .header('Access-Control-Allow-Methods', '*')
+            .send(json)
+        },
+      })
+
+      const openApiSpecUrlYaml = `${getRoutePrefix(options.routePrefix)}${getOpenApiDocumentEndpoints(options.openApiDocumentEndpoints).yaml}`
+      fastify.route({
+        method: 'GET',
+        url: openApiSpecUrlYaml,
+        schema: schemaToHideRoute,
+        ...hooks,
+        ...(options.logLevel && { logLevel: options.logLevel }),
+        handler(_, reply) {
+          const spec = normalize(specSource.get())
+          const yaml = stringify(spec)
+          return reply
+            .header('Content-Type', 'application/yaml')
+            .header('Content-Disposition', getContentDisposition(spec, 'yaml'))
+            .header('Access-Control-Allow-Origin', '*')
+            .header('Access-Control-Allow-Methods', '*')
+            .send(yaml)
+        },
+      })
+    }
+
+    // Redirect route without a trailing slash to force a trailing slash:
+    // We need this so the request to the JS file is relative.
+
+    // With ignoreTrailingSlash: true, fastify responds to both routes anyway.
+    // Fastify v6 exposes this under `routerOptions`; v4 and v5 keep it at the top level.
+    const ignoreTrailingSlash =
+      fastify.initialConfig?.routerOptions?.ignoreTrailingSlash === true ||
+      fastify.initialConfig?.ignoreTrailingSlash === true
+
+    if (!ignoreTrailingSlash && getRoutePrefix(options.routePrefix)) {
+      fastify.route({
+        method: 'GET',
+        url: getRoutePrefix(options.routePrefix),
+        schema: schemaToHideRoute,
+        ...hooks,
+        ...(options.logLevel && { logLevel: options.logLevel }),
+        handler(request, reply) {
+          // we are in a route without a trailing slash so redirect directly to the one with a trailing slash
+          const currentUrl = new URL(request.url, `${request.protocol}://${request.hostname}`)
+          return reply.redirect(`${currentUrl.pathname}/`, 301)
         },
       })
     }
@@ -269,14 +217,12 @@ const fastifyApiReference = fp<
       method: 'GET',
       url: `${getRoutePrefix(options.routePrefix)}/`,
       // We don't know whether @fastify/swagger is registered, but it doesn't hurt to add a schema anyway.
-      // @ts-ignore We don't know whether @fastify/swagger is loaded.
       schema: schemaToHideRoute,
       ...hooks,
       ...(options.logLevel && { logLevel: options.logLevel }),
-      handler(_, reply) {
+      handler(request, reply) {
         // Redirect if it's the route without a slash
-        const currentUrl = new URL(_.url, `${_.protocol}://${_.hostname}`)
-
+        const currentUrl = new URL(request.url, `${request.protocol}://${request.hostname}`)
         if (!currentUrl.pathname.endsWith('/')) {
           return reply.redirect(`${currentUrl.pathname}/`, 301)
         }
@@ -286,7 +232,7 @@ const fastifyApiReference = fp<
          * download button point to the exposed endpoint.
          * If the URL is explicitly passed, defer to that URL instead.
          */
-        if (specSource.type !== 'url') {
+        if (specSource && specSource.type !== 'url') {
           configuration = {
             ...configuration,
             // Use a relative URL in case we're proxied
@@ -295,15 +241,15 @@ const fastifyApiReference = fp<
         }
 
         // Respond with the HTML document
+        const { cdn, pageTitle, nonce, ...config } = configuration
         return reply.header('Content-Type', 'text/html; charset=utf-8').send(
-          getHtmlDocument(
-            {
-              // We're using the bundled JS here by default, but the user can pass a CDN URL.
-              cdn: RELATIVE_JAVASCRIPT_PATH,
-              ...configuration,
-            },
-            customTheme,
-          ),
+          renderApiReference({
+            config,
+            // We're using the bundled JS here by default, but the user can pass a CDN URL.
+            cdn: cdn ?? RELATIVE_JAVASCRIPT_PATH,
+            pageTitle,
+            nonce,
+          }),
         )
       },
     })
@@ -312,7 +258,6 @@ const fastifyApiReference = fp<
       method: 'GET',
       url: getJavaScriptUrl(options.routePrefix),
       // We don't know whether @fastify/swagger is registered, but it doesn't hurt to add a schema anyway.
-      // @ts-ignore We don't know whether @fastify/swagger is loaded.
       schema: schemaToHideRoute,
       ...hooks,
       ...(options.logLevel && { logLevel: options.logLevel }),
@@ -320,9 +265,14 @@ const fastifyApiReference = fp<
         return reply.header('Content-Type', 'application/javascript; charset=utf-8').send(fileContent)
       },
     })
+
+    next()
   },
   {
     name: '@scalar/fastify-api-reference',
+    // Declare the supported Fastify range so Fastify validates it at registration
+    // and fails fast on an incompatible host instead of breaking at runtime.
+    fastify: '4.x || 5.x || 6.x',
   },
 )
 

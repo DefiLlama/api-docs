@@ -1,0 +1,2548 @@
+import { Schema } from '@scalar/blocks/schema'
+import { ScalarCodeBlockCopy } from '@scalar/components/code-block'
+import { ScalarListbox } from '@scalar/components/listbox'
+import type { ApiReferenceEvents } from '@scalar/workspace-store/events'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import type { RequestBodyObject, SchemaObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { RequestBodyObjectSchema } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { flushPromises, mount } from '@vue/test-utils'
+import { assert, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h, nextTick, readonly, ref } from 'vue'
+
+import { provideLocalization } from '@/v2/features/localization'
+
+import RequestBody from './RequestBody.vue'
+import RequestBodyMultipart from './RequestBodyMultipart.vue'
+import RequestBodyStructured from './RequestBodyStructured.vue'
+import RequestTable from './RequestTable.vue'
+
+// Mock the useFileDialog hook
+const mockFiles = ref<FileList | null>(null)
+const mockOpen = vi.fn()
+
+vi.mock('@/hooks/use-file-dialog', () => ({
+  useFileDialog: vi.fn((options) => {
+    return {
+      files: readonly(mockFiles),
+      open: () => {
+        mockOpen()
+        // Simulate file selection if onChange is provided
+        if (options?.onChange) {
+          const mockFile = new File(['test content'], 'test.txt', { type: 'text/plain' })
+          // Create a mock FileList
+          const fileList = {
+            0: mockFile,
+            length: 1,
+            item: (index: number) => (index === 0 ? mockFile : null),
+            [Symbol.iterator]: function* () {
+              yield mockFile
+            },
+          } as unknown as FileList
+          // Call onChange synchronously
+          options.onChange(fileList)
+        }
+      },
+    }
+  }),
+}))
+
+const defaultEnvironment: XScalarEnvironment = {
+  color: 'blue',
+  variables: [],
+  description: 'Test Environment',
+}
+
+const defaultProps = {
+  exampleKey: 'example-1',
+  title: 'Request Body',
+  environment: defaultEnvironment,
+}
+
+describe('RequestBody', () => {
+  it('edits indexed-dot URL-encoded fields without losing repeated values', async () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        multipartNaming: 'indexed-dot',
+        requestBody: {
+          content: {
+            'application/x-www-form-urlencoded': {
+              schema: {
+                type: 'object',
+                required: ['contacts', 'tags'],
+                properties: {
+                  contacts: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } } } },
+                  tags: { type: 'array', items: { type: 'string' } },
+                },
+              },
+              examples: { 'example-1': { value: { contacts: [{ name: 'Ada' }], tags: ['one', 'two'] } } },
+            },
+          },
+        },
+      },
+    })
+    const table = wrapper.getComponent(RequestTable)
+    expect(table.props('data').map(({ name }) => name)).toStrictEqual(['contacts[0].name', 'tags'])
+    await table.vm.$emit('upsertRow', 0, { value: 'Grace' })
+    expect(wrapper.emitted('update:formValue')).toStrictEqual([
+      [
+        {
+          contentType: 'application/x-www-form-urlencoded',
+          payload: [
+            { name: 'contacts[0].name', value: 'Grace', isDisabled: false },
+            { name: 'tags', value: ['one', 'two'], isDisabled: false, isArray: true },
+          ],
+        },
+      ],
+    ])
+    wrapper.unmount()
+  })
+
+  it('uploads a file using the indexed form name declared by the multipart mode', async () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        multipartNaming: 'indexed-dot',
+        requestBody: {
+          content: {
+            'multipart/form-data': {
+              examples: { 'example-1': { value: { certificates: [{ name: 'Ada' }], profile: { name: 'Grace' } } } },
+              schema: {
+                type: 'object',
+                required: ['certificates', 'profile'],
+                properties: {
+                  certificates: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['file'],
+                      properties: { name: { type: 'string' }, file: { type: 'string', format: 'binary' } },
+                    },
+                  },
+                  profile: { type: 'object', properties: { name: { type: 'string' } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    await wrapper.get('button[aria-label="Select File for certificates[0].file"]').trigger('click')
+
+    type FormValue = ApiReferenceEvents['operation:update:requestBody:formValue']['payload']
+    const event = wrapper.emitted<[{ contentType: string; payload: FormValue }]>('update:formValue')?.[0]?.[0]
+    assert(event)
+    expect(event.contentType).toBe('multipart/form-data')
+    expect(
+      event.payload.map(({ name, value, isDisabled }) => [
+        name,
+        value instanceof File ? value.name : value,
+        isDisabled,
+      ]),
+    ).toStrictEqual([
+      ['certificates[0].name', 'Ada', false],
+      ['certificates[0].file', 'test.txt', false],
+      ['profile.name', 'Grace', false],
+    ])
+    wrapper.unmount()
+  })
+
+  it.each(['multipart/mixed', 'multipart/related; type="application/json"'])(
+    'edits schema-aware parts for %s and forwards files intact',
+    async (contentType) => {
+      const wrapper = mount(RequestBody, {
+        props: {
+          ...defaultProps,
+          requestBody: {
+            content: {
+              [contentType]: {
+                schema: { type: 'array', prefixItems: [{ type: 'object' }, { type: 'string', format: 'binary' }] },
+                examples: { 'example-1': { value: [{ id: 1 }, ''] } },
+              },
+            },
+          },
+        },
+      })
+      expect(wrapper.findComponent(RequestBodyMultipart).exists()).toBe(true)
+      await wrapper.get('button[aria-label="Select File Part 2"]').trigger('click')
+      const event = wrapper.emitted('update:value')?.[0]?.[0] as { payload: unknown[]; contentType: string }
+      expect(event.contentType).toBe(contentType)
+      expect(event.payload[0]).toEqual({ id: 1 })
+      expect(event.payload[1]).toBeInstanceOf(File)
+      wrapper.unmount()
+    },
+  )
+
+  it('keeps explicitly serialized multipart examples in the raw editor', () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'multipart/mixed': {
+              schema: { type: 'array', items: { type: 'string', format: 'binary' } },
+              examples: { 'example-1': { serializedValue: '--boundary\r\nwire', dataValue: [''] } },
+            },
+          },
+        },
+      },
+    })
+    expect(wrapper.findComponent(RequestBodyMultipart).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('requests a reset for the selected content type', async () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: { 'application/json': { example: { name: 'original' } } },
+        },
+      },
+    })
+    await wrapper.get('button[aria-label="Restore original body"]').trigger('click')
+    expect(wrapper.emitted('reset')).toStrictEqual([[{ contentType: 'application/json' }]])
+    expect(wrapper.emitted('generate:example')).toBeUndefined()
+  })
+
+  it('translates body actions while preserving the reset event', async () => {
+    const wrapper = mount(
+      defineComponent({
+        setup() {
+          provideLocalization({ locale: 'de' })
+          return () =>
+            h(RequestBody, {
+              ...defaultProps,
+              requestBody: {
+                content: { 'application/json': { schema: { type: 'object' }, example: { name: 'original' } } },
+              },
+            })
+        },
+      }),
+    )
+    const body = wrapper.findComponent(RequestBody)
+    await body.get('button[aria-label="Ursprünglichen Body wiederherstellen"]').trigger('click')
+    expect(body.emitted('reset')).toStrictEqual([[{ contentType: 'application/json' }]])
+    expect(body.get('button[aria-label="Beispiel aus Schema erstellen"]').attributes('aria-label')).toBe(
+      'Beispiel aus Schema erstellen',
+    )
+    wrapper.unmount()
+  })
+
+  it('does not offer a reset when no body is selected', () => {
+    const wrapper = mount(RequestBody, { props: defaultProps })
+    expect(wrapper.find('button[aria-label="Restore original body"]').exists()).toBe(false)
+  })
+
+  it('renders writable schema fields independently of a custom example and preserves the edited payload', async () => {
+    const editedValue = '{"name":"Edited account"}'
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', description: 'Account name' },
+                  optionalField: { type: 'string', description: 'Not included in the example' },
+                  serverId: { type: 'string', readOnly: true },
+                  password: { type: 'string', writeOnly: true },
+                },
+              },
+              examples: { 'example-1': { value: editedValue } },
+            },
+          },
+        },
+      },
+    })
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Schema')!
+      .trigger('click')
+    const schema = wrapper.getComponent(Schema)
+    expect(schema.text()).toContain('optionalField')
+    expect(schema.text()).toContain('Not included in the example')
+    expect(schema.text()).toContain('required')
+    expect(schema.text()).toContain('password')
+    expect(schema.text()).not.toContain('serverId')
+    expect(wrapper.findComponent({ name: 'CodeInput' }).exists()).toBe(false)
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Raw')!
+      .trigger('click')
+    expect(wrapper.getComponent({ name: 'CodeInput' }).props('modelValue')).toBe(editedValue)
+    expect(wrapper.emitted('update:value')).toBeUndefined()
+    expect(wrapper.emitted('update:formValue')).toBeUndefined()
+    expect(wrapper.emitted('generate:example')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('can inspect the schema when the edited JSON is invalid', async () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object', properties: { name: { type: 'string' } } },
+              examples: { 'example-1': { value: '{invalid' } },
+            },
+          },
+        },
+      },
+    })
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === 'Form')!
+        .attributes('disabled'),
+    ).toBe('')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Schema')!
+      .trigger('click')
+    expect(wrapper.getComponent(Schema).text()).toContain('name')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Raw')!
+      .trigger('click')
+    expect(wrapper.getComponent({ name: 'CodeInput' }).props('modelValue')).toBe('{invalid')
+    wrapper.unmount()
+  })
+
+  it.each(['application/xml', 'multipart/form-data', 'application/x-www-form-urlencoded', 'application/octet-stream'])(
+    'offers schema inspection for %s bodies',
+    async (contentType) => {
+      const wrapper = mount(RequestBody, {
+        props: {
+          ...defaultProps,
+          requestBody: {
+            content: {
+              [contentType]: { schema: { type: 'string', description: 'Upload content' } },
+            },
+          },
+        },
+      })
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === 'Schema')!
+        .trigger('click')
+      expect(wrapper.getComponent(Schema).text()).toContain('Upload content')
+      expect(wrapper.findAll('button').some((button) => button.text() === 'Form')).toBe(false)
+      expect(wrapper.findAll('button').some((button) => button.text() === 'Body')).toBe(true)
+      wrapper.unmount()
+    },
+  )
+
+  it('keeps the body editor selected when the default form view is unavailable', () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        defaultView: 'form',
+        requestBody: { content: { 'application/xml': { schema: { type: 'string' } } } },
+      },
+    })
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === 'Body')!
+        .attributes('aria-pressed'),
+    ).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('does not offer schema inspection when there is no schema', () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: { content: { 'application/json': { examples: { 'example-1': { value: {} } } } } },
+      },
+    })
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Schema')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('resolves schema references and expands nested fields', async () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                '$ref': '#/components/schemas/Account',
+                '$ref-value': {
+                  type: 'object',
+                  properties: {
+                    settings: {
+                      type: 'object',
+                      properties: { timezone: { type: 'string', description: 'Account timezone' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Schema')!
+      .trigger('click')
+    await wrapper.getComponent(Schema).get('button[aria-expanded="false"]').trigger('click')
+    expect(wrapper.getComponent(Schema).text()).toContain('Account timezone')
+    wrapper.unmount()
+  })
+
+  it('changes schema variants without updating the request body', async () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                oneOf: [
+                  { title: 'Email', type: 'object', properties: { address: { type: 'string' } } },
+                  { title: 'Webhook', type: 'object', properties: { url: { type: 'string' } } },
+                ],
+              },
+              examples: { 'example-1': { value: { address: 'test@example.com' } } },
+            },
+          },
+        },
+      },
+    })
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Schema')!
+      .trigger('click')
+    const schema = wrapper.getComponent(Schema)
+    expect(schema.text()).toContain('address')
+    schema.getComponent(ScalarListbox).vm.$emit('update:modelValue', { id: '1', label: 'Webhook' })
+    await nextTick()
+    expect(schema.text()).toContain('url')
+    expect(schema.text()).not.toContain('address')
+    expect(wrapper.emitted('update:value')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('leaves schema inspection when switching to an operation without a schema', async () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: { content: { 'application/json': { schema: { type: 'string' } } } },
+      },
+    })
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Schema')!
+      .trigger('click')
+    await wrapper.setProps({
+      requestBody: { content: { 'text/plain': { examples: { 'example-1': { value: 'Next request' } } } } },
+    })
+    expect(wrapper.findComponent(Schema).exists()).toBe(false)
+    expect(wrapper.getComponent({ name: 'CodeInput' }).props('modelValue')).toBe('Next request')
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Schema')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each(['oneOf', 'anyOf'] as const)(
+    'regenerates multipart rows when the selected %s branch changes',
+    async (keyword) => {
+      const requestBody = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object' as const,
+              required: ['file'],
+              properties: {
+                file: {
+                  [keyword]: [
+                    { type: 'object' as const, properties: { name: { type: 'string' as const } } },
+                    {
+                      type: 'object' as const,
+                      required: ['count'],
+                      properties: { count: { type: 'integer' as const } },
+                    },
+                  ],
+                },
+              },
+            },
+            examples: { 'example-1': { value: [{ name: 'file.name', value: 'Edited name' }] } },
+          },
+        },
+      })
+      const wrapper = mount(RequestBody, {
+        props: {
+          ...defaultProps,
+          requestBody,
+          requestBodyCompositionSelection: { [`requestBody.file.${keyword}`]: 0 },
+        },
+      })
+      await wrapper.setProps({ requestBodyCompositionSelection: { [`requestBody.file.${keyword}`]: 1 } })
+      expect(wrapper.emitted('update:formValue')).toStrictEqual([
+        [
+          {
+            contentType: 'multipart/form-data',
+            payload: [{ name: 'file.count', value: '1', isDisabled: false }],
+          },
+        ],
+      ])
+      wrapper.unmount()
+    },
+  )
+
+  it.each(['oneOf', 'anyOf'] as const)(
+    'preserves urlencoded array text when switching %s variants',
+    async (keyword) => {
+      const requestBody = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          'application/x-www-form-urlencoded': {
+            schema: {
+              type: 'object',
+              required: ['value'],
+              properties: {
+                value: {
+                  [keyword]: [
+                    { type: 'string', example: 'old' },
+                    { type: 'array', items: { type: 'integer' }, example: [1, 2] },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      })
+      const wrapper = mount(RequestBody, {
+        props: {
+          ...defaultProps,
+          requestBody,
+          requestBodyCompositionSelection: { [`requestBody.value.${keyword}`]: 0 },
+        },
+      })
+      await wrapper.setProps({ requestBodyCompositionSelection: { [`requestBody.value.${keyword}`]: 1 } })
+      expect(wrapper.emitted('update:formValue')).toStrictEqual([
+        [
+          {
+            contentType: 'application/x-www-form-urlencoded',
+            payload: [{ name: 'value', value: '[1,2]', isDisabled: false }],
+          },
+        ],
+      ])
+      wrapper.unmount()
+    },
+  )
+
+  it('fills the XML raw editor with serialized structured data', () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'application/xml': {
+              schema: {
+                type: 'object',
+                xml: { name: 'pet' },
+                properties: { id: { type: 'integer', xml: { attribute: true } } },
+              },
+              examples: { 'example-1': { dataValue: { id: 7 } } },
+            },
+          },
+        },
+      },
+    })
+    expect(wrapper.findComponent({ name: 'CodeInput' }).props('modelValue')).toBe(
+      '<?xml version="1.0" encoding="UTF-8"?>\n<pet id="7"/>',
+    )
+    wrapper.unmount()
+  })
+
+  it('fills the raw editor with a framed stream item example', () => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'application/jsonl': {
+              itemSchema: { type: 'object', properties: { id: { type: 'integer', const: 7 } } },
+            },
+          },
+        },
+      },
+    })
+    expect(wrapper.findComponent({ name: 'CodeInput' }).props('modelValue')).toBe('{"id":7}\n')
+  })
+
+  it.each(['application/json', 'application/yaml'])(
+    'uses dataValue in the %s form even with wire text',
+    async (contentType) => {
+      const dataValue = { id: 'structured' }
+      const wrapper = mount(RequestBody, {
+        props: {
+          ...defaultProps,
+          defaultView: 'form',
+          requestBody: {
+            content: { [contentType]: { examples: { 'example-1': { dataValue, serializedValue: 'wire text' } } } },
+          },
+        },
+      })
+      await nextTick()
+      expect(wrapper.findComponent(RequestBodyStructured).props('parsedValue')).toStrictEqual(dataValue)
+      expect(wrapper.emitted('update:value')).toBeUndefined()
+      wrapper.unmount()
+    },
+  )
+
+  it.each([
+    ['application/json', ' { "id": "wire" } '],
+    ['application/xml', '<id>wire</id>'],
+  ])('preserves %s wire text in the raw editor when dataValue also exists', async (contentType, serializedValue) => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            [contentType]: { examples: { 'example-1': { dataValue: { id: 'structured' }, serializedValue } } },
+          },
+        },
+      },
+    })
+    await nextTick()
+    expect(wrapper.findComponent({ name: 'CodeInput' }).props('modelValue')).toBe(serializedValue)
+    expect(wrapper.emitted('update:value')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it.each(['{"id":1}', '', null, false, 0])('keeps structured primitive %j in the raw editor', async (dataValue) => {
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        defaultView: 'form',
+        requestBody: {
+          content: {
+            'application/json': {
+              examples: { 'example-1': { dataValue } },
+            },
+          },
+        },
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.findComponent(RequestBodyStructured).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'CodeInput' }).props('modelValue')).toBe(JSON.stringify(dataValue, null, 2))
+    expect(wrapper.emitted('update:value')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFiles.value = null
+  })
+
+  it('resets an edited body when a different oneOf branch is selected', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            oneOf: [
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  mass: { type: 'number' },
+                },
+              },
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  mass: { type: 'number' },
+                  hasRings: { type: 'boolean' },
+                },
+              },
+            ],
+          },
+          example: JSON.stringify({
+            name: 'Edited Earth',
+            mass: 1,
+          }),
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+        requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.oneOf': 1 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toStrictEqual([
+      [
+        {
+          contentType: 'application/json',
+          payload: JSON.stringify(
+            {
+              name: '',
+              mass: 1,
+              hasRings: true,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    ])
+  })
+
+  it.each(['application/xml', 'text/xml', 'application/vnd.person+xml; charset=utf-8'])(
+    'regenerates an edited %s body when a different oneOf branch is selected',
+    async (contentType) => {
+      const wrapper = mount(RequestBody, {
+        props: {
+          ...defaultProps,
+          openapiVersion: '3.2.0',
+          requestBody: {
+            content: {
+              [contentType]: {
+                example: '<person>Edited</person>',
+                schema: {
+                  type: 'object',
+                  oneOf: [
+                    {
+                      type: 'object',
+                      xml: { name: 'person' },
+                      properties: { name: { type: 'string', example: 'Ada' } },
+                    },
+                    {
+                      type: 'object',
+                      xml: { name: 'organization' },
+                      properties: { name: { type: 'string', example: 'Scalar' } },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+        },
+      })
+      await wrapper.setProps({ requestBodyCompositionSelection: { 'requestBody.oneOf': 1 } })
+      expect(wrapper.emitted('update:value')).toStrictEqual([
+        [
+          {
+            contentType,
+            payload: '<?xml version="1.0" encoding="UTF-8"?>\n<organization>\n  <name>Scalar</name>\n</organization>',
+          },
+        ],
+      ])
+      wrapper.unmount()
+    },
+  )
+
+  it('keeps the named example when the selection is first established on open', async () => {
+    // On the first open of a composition body the modal applies the reference's selection, moving it
+    // from empty to populated. That is not a user branch switch, so the body must keep its named
+    // example instead of regenerating schema defaults (issue #10075).
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            anyOf: [
+              { type: 'object', properties: { source: { type: 'string', default: 'file' } } },
+              { type: 'object', properties: { source: { type: 'string', default: 'service' } } },
+            ],
+          },
+          examples: {
+            named: { value: { source: 'named-example-value' } },
+          },
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        exampleKey: 'named',
+        requestBody,
+        requestBodyCompositionSelection: {},
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.anyOf': 0 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toBeUndefined()
+  })
+
+  it('preserves edits when the selected discriminator branch is unchanged', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            discriminator: { propertyName: 'planetType' },
+            oneOf: [
+              {
+                type: 'object',
+                properties: {
+                  planetType: { type: 'string', const: 'terrestrial' },
+                  name: { type: 'string' },
+                },
+              },
+            ],
+          },
+          example: JSON.stringify({
+            planetType: 'terrestrial',
+            name: 'Edited Earth',
+          }),
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+        requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toBeUndefined()
+  })
+
+  it('resets to the resolved branch when oneOf members are $refs', async () => {
+    // Composition members commonly arrive as resolved `$ref` nodes from the workspace store, so
+    // guard that a branch change still emits the referenced branch's example and not an empty body.
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            oneOf: [
+              {
+                $ref: '#/components/schemas/Star',
+                '$ref-value': {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    mass: { type: 'number' },
+                  },
+                },
+              },
+              {
+                $ref: '#/components/schemas/Planet',
+                '$ref-value': {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    mass: { type: 'number' },
+                    hasRings: { type: 'boolean' },
+                  },
+                },
+              },
+            ],
+          },
+          example: JSON.stringify({
+            name: 'Edited Star',
+            mass: 1,
+          }),
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+        requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.oneOf': 1 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toStrictEqual([
+      [
+        {
+          contentType: 'application/json',
+          payload: JSON.stringify(
+            {
+              name: '',
+              mass: 1,
+              hasRings: true,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    ])
+  })
+
+  it('does not reset the body when switching operations changes the selection', async () => {
+    // Routing to another operation changes the body, example key, and selection at once. That is not
+    // a branch change within one operation, so the newly routed operation's edited body must survive.
+    const operationA: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            oneOf: [
+              { type: 'object', properties: { name: { type: 'string' } } },
+              { type: 'object', properties: { label: { type: 'string' } } },
+            ],
+          },
+          example: JSON.stringify({ name: 'Operation A' }),
+        },
+      },
+    }
+
+    const operationB: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            oneOf: [
+              { type: 'object', properties: { title: { type: 'string' } } },
+              { type: 'object', properties: { heading: { type: 'string' } } },
+            ],
+          },
+          example: JSON.stringify({ heading: 'Edited Operation B' }),
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        exampleKey: 'operation-a',
+        requestBody: operationA,
+        requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      exampleKey: 'operation-b',
+      requestBody: operationB,
+      requestBodyCompositionSelection: { 'requestBody.oneOf': 1 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toBeUndefined()
+  })
+
+  it('resets an edited body when a different anyOf branch is selected', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            anyOf: [
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  mass: { type: 'number' },
+                },
+              },
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  mass: { type: 'number' },
+                  hasRings: { type: 'boolean' },
+                },
+              },
+            ],
+          },
+          example: JSON.stringify({
+            name: 'Edited Earth',
+            mass: 1,
+          }),
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+        requestBodyCompositionSelection: { 'requestBody.anyOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.anyOf': 1 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toStrictEqual([
+      [
+        {
+          contentType: 'application/json',
+          payload: JSON.stringify(
+            {
+              name: '',
+              mass: 1,
+              hasRings: true,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    ])
+  })
+
+  it('resets a structured YAML body using the YAML codec', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/yaml': {
+          schema: {
+            type: 'object',
+            oneOf: [
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  mass: { type: 'number' },
+                },
+              },
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  mass: { type: 'number' },
+                  hasRings: { type: 'boolean' },
+                },
+              },
+            ],
+          },
+          example: 'name: Edited Earth\nmass: 1\n',
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+        requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.oneOf': 1 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toStrictEqual([
+      [
+        {
+          contentType: 'application/yaml',
+          // Assert the literal YAML so a serialization/formatting regression is actually caught,
+          // rather than comparing the codec's output against itself.
+          payload: 'name: ""\nmass: 1\nhasRings: true\n',
+        },
+      ],
+    ])
+  })
+
+  it('clears the body when the selected branch generates null', async () => {
+    // A `type: null` (or otherwise value-less) branch makes schema generation return `null`, not
+    // `undefined`. The reset must still clear the editor rather than write the literal text `null`.
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            oneOf: [
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                },
+              },
+              { type: 'null' },
+            ],
+          } as SchemaObject,
+          example: JSON.stringify({ name: 'Edited Earth' }),
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+        requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.oneOf': 1 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toStrictEqual([
+      [
+        {
+          contentType: 'application/json',
+          payload: '',
+        },
+      ],
+    ])
+  })
+
+  it('clears the body when the selected branch has no writable content', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          // No root `type` so the body is exactly the selected branch. The read-only primitive
+          // branch produces no value in write mode, so the reset must clear the editor.
+          schema: {
+            oneOf: [
+              {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                },
+              },
+              { type: 'string', readOnly: true },
+            ],
+          } as SchemaObject,
+          example: JSON.stringify({ name: 'Edited Earth' }),
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+        requestBodyCompositionSelection: { 'requestBody.oneOf': 0 },
+      },
+      global: {
+        stubs: {
+          ScalarButton: true,
+          ScalarIcon: true,
+          ScalarListbox: true,
+          CollapsibleSection: { template: '<div><slot /></div>' },
+          DataTable: { template: '<div><slot /></div>' },
+          DataTableHeader: { template: '<div><slot /></div>' },
+          DataTableRow: { template: '<div><slot /></div>' },
+          CodeInput: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      requestBodyCompositionSelection: { 'requestBody.oneOf': 1 },
+    })
+    await nextTick()
+
+    expect(wrapper.emitted('update:value')).toStrictEqual([
+      [
+        {
+          contentType: 'application/json',
+          payload: '',
+        },
+      ],
+    ])
+  })
+
+  it('renders different content types and handles content type selection', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+            },
+          },
+          example: { name: 'test' },
+        },
+        'application/xml': {
+          schema: {
+            type: 'string',
+          },
+          example: '<root>test</root>',
+        },
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              field1: { type: 'string' },
+            },
+          },
+        },
+        'application/x-www-form-urlencoded': {
+          schema: {
+            type: 'object',
+            properties: {
+              field1: { type: 'string' },
+            },
+          },
+        },
+        'application/octet-stream': {
+          schema: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Should default to first content type (application/json)
+    // Check that CodeInput is rendered for JSON
+    const codeInput = wrapper.find('[data-testid="code-input"]')
+    expect(codeInput.exists()).toBe(true)
+
+    // Change to XML by updating the requestBody prop
+    await wrapper.setProps({
+      requestBody: {
+        ...requestBody,
+        'x-scalar-selected-content-type': {
+          'example-1': 'application/xml',
+        },
+      },
+    })
+    await nextTick()
+
+    // Should still render CodeInput for XML
+    const xmlCodeInput = wrapper.find('[data-testid="code-input"]')
+    expect(xmlCodeInput.exists()).toBe(true)
+
+    // Change to form data
+    await wrapper.setProps({
+      requestBody: {
+        ...requestBody,
+        'x-scalar-selected-content-type': {
+          'example-1': 'multipart/form-data',
+        },
+      },
+    })
+    await nextTick()
+
+    // Should render RequestTable for form data
+    const requestTable = wrapper.findComponent(RequestTable)
+    expect(requestTable.exists()).toBe(true)
+    expect(requestTable.props('showUploadButton')).toBe(true)
+
+    // Change to form URL encoded
+    await wrapper.setProps({
+      requestBody: {
+        ...requestBody,
+        'x-scalar-selected-content-type': {
+          'example-1': 'application/x-www-form-urlencoded',
+        },
+      },
+    })
+    await nextTick()
+
+    // Should render RequestTable for URL encoded
+    const urlEncodedTable = wrapper.findComponent(RequestTable)
+    expect(urlEncodedTable.exists()).toBe(true)
+    expect(urlEncodedTable.props('showUploadButton')).toBe(false)
+
+    // Change to binary
+    await wrapper.setProps({
+      requestBody: {
+        ...requestBody,
+        'x-scalar-selected-content-type': {
+          'example-1': 'application/octet-stream',
+        },
+      },
+    })
+    await nextTick()
+
+    // Binary should show file upload button when no file is selected
+    expect(wrapper.html()).toContain('Select File')
+
+    // Change to none
+    await wrapper.setProps({
+      requestBody: {
+        ...requestBody,
+        'x-scalar-selected-content-type': {
+          'example-1': 'none',
+        },
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.html()).toContain('No Body')
+  })
+
+  it('handles form data operations: add, update, and delete rows with proper event emissions', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              field1: { type: 'string' },
+              field2: { type: 'string' },
+            },
+          },
+          example: {
+            field1: 'value1',
+            field2: 'value2',
+          },
+        },
+      },
+      'x-scalar-selected-content-type': {
+        'example-1': 'multipart/form-data',
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          RequestTable: {
+            template: '<div data-testid="request-table"></div>',
+            props: ['data', 'environment', 'showUploadButton'],
+            emits: ['addRow', 'updateRow', 'deleteRow', 'removeFile', 'uploadFile'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Get the RequestTable component
+    const requestTable = wrapper.findComponent(RequestTable)
+
+    // Test add row
+    const addRowPayload = { name: 'field3', value: 'value3' }
+    await requestTable.vm.$emit('upsertRow', 0, addRowPayload)
+    await nextTick()
+
+    // Check that update:formValue event was emitted
+    const addRowEvents = wrapper.emitted('update:formValue')
+    expect(addRowEvents).toBeTruthy()
+    if (addRowEvents && addRowEvents.length > 0) {
+      const lastEventArray = addRowEvents[addRowEvents.length - 1]
+      const lastAddEvent = lastEventArray?.[0] as
+        | {
+            contentType: string
+            payload: Array<{ name: string; value: string; isDisabled: boolean }>
+          }
+        | undefined
+      if (lastAddEvent) {
+        expect(lastAddEvent.contentType).toBe('multipart/form-data')
+        expect(lastAddEvent.payload).toBeTruthy()
+        expect(lastAddEvent.payload.some((row) => row.name === 'field3')).toBe(true)
+      }
+    }
+
+    // Test update row
+    await requestTable.vm.$emit('updateRow', 0, {
+      name: 'updatedField1',
+      value: 'updatedValue1',
+    })
+    await nextTick()
+
+    // Check that update:formValue event was emitted
+    const updateRowEvents = wrapper.emitted('update:formValue')
+    expect(updateRowEvents).toBeTruthy()
+    if (updateRowEvents && updateRowEvents.length > 0) {
+      const lastEventArray = updateRowEvents[updateRowEvents.length - 1]
+      const lastUpdateEvent = lastEventArray?.[0] as
+        | {
+            contentType: string
+            payload: Array<{ name: string; value: string; isDisabled: boolean }>
+          }
+        | undefined
+      if (lastUpdateEvent) {
+        expect(lastUpdateEvent.contentType).toBe('multipart/form-data')
+        expect(lastUpdateEvent.payload).toBeTruthy()
+      }
+    }
+
+    // Test update row with isDisabled
+    await requestTable.vm.$emit('updateRow', 1, { isDisabled: true })
+    await nextTick()
+
+    const disabledUpdateEvents = wrapper.emitted('update:formValue')
+    expect(disabledUpdateEvents).toBeTruthy()
+
+    // Test delete row
+    await requestTable.vm.$emit('deleteRow', 0)
+    await nextTick()
+
+    const deleteEvents = wrapper.emitted('update:formValue')
+    expect(deleteEvents).toBeTruthy()
+  })
+
+  it('handles example value conversion and content type watcher logic', async () => {
+    // Test with string example
+    const stringRequestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'string',
+          },
+          example: 'simple string value',
+        },
+      },
+    }
+
+    const stringWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: stringRequestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // String value should be used directly - check CodeInput is rendered
+    const stringCodeInput = stringWrapper.find('[data-testid="code-input"]')
+    expect(stringCodeInput.exists()).toBe(true)
+
+    // Test with object example
+    const objectRequestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              id: { type: 'number' },
+              name: { type: 'string' },
+              tags: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          example: {
+            id: 123,
+            name: 'Test Object',
+            tags: ['tag1', 'tag2'],
+          },
+        },
+      },
+    }
+
+    const objectWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: objectRequestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Object value should be stringified - check CodeInput is rendered
+    const objectCodeInput = objectWrapper.find('[data-testid="code-input"]')
+    expect(objectCodeInput.exists()).toBe(true)
+
+    // Test with no example (should return empty string)
+    const noExampleRequestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+          },
+        },
+      },
+    }
+
+    const noExampleWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: noExampleRequestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // CodeInput should still be rendered even with no example
+    const noExampleCodeInput = noExampleWrapper.find('[data-testid="code-input"]')
+    expect(noExampleCodeInput.exists()).toBe(true)
+  })
+
+  it('handles edge cases: no request body, multiple content types, form data with array examples, and binary file deletion', async () => {
+    // Test with no request body
+    const noBodyWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: undefined,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Should show "No Body" when no request body
+    expect(noBodyWrapper.html()).toContain('No Body')
+
+    // Test with multiple content types - should default to first
+    const multiContentTypeBody: RequestBodyObject = {
+      content: {
+        'application/yaml': {
+          schema: { type: 'string' },
+          example: 'yaml: value',
+        },
+        'application/json': {
+          schema: { type: 'object' },
+          example: { json: 'value' },
+        },
+        'application/xml': {
+          schema: { type: 'string' },
+          example: '<xml>value</xml>',
+        },
+      },
+    }
+
+    const multiWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: multiContentTypeBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Should default to first content type (yaml) - CodeInput should be rendered
+    const yamlCodeInput = multiWrapper.find('[data-testid="code-input"]')
+    expect(yamlCodeInput.exists()).toBe(true)
+
+    // Test form data with array example (already in form row format)
+    const arrayFormBody: RequestBodyObject = {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+          },
+          example: [
+            { name: 'field1', value: 'value1', isDisabled: false },
+            { name: 'field2', value: 'value2', isDisabled: true },
+          ],
+        },
+      },
+      'x-scalar-selected-content-type': {
+        'example-1': 'multipart/form-data',
+      },
+    }
+
+    const arrayFormWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: arrayFormBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          RequestTable: {
+            template: '<div data-testid="request-table"></div>',
+            props: ['data', 'environment', 'showUploadButton'],
+            emits: ['addRow', 'updateRow', 'deleteRow', 'removeFile', 'uploadFile'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Should render RequestTable for array form data
+    const arrayRequestTable = arrayFormWrapper.findComponent(RequestTable)
+    expect(arrayRequestTable.exists()).toBe(true)
+
+    // Test binary file deletion
+    const binaryWithFileBody: RequestBodyObject = {
+      content: {
+        'application/octet-stream': {
+          schema: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+      'x-scalar-selected-content-type': {
+        'example-1': 'application/octet-stream',
+      },
+    }
+
+    const binaryDeleteWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: binaryWithFileBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button @click="$emit(\'click\')"><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Simulate having a file selected by setting example with a file
+    const mockFile = new File(['content'], 'test.pdf', { type: 'application/pdf' })
+    await binaryDeleteWrapper.setProps({
+      requestBody: {
+        ...binaryWithFileBody,
+        content: {
+          'application/octet-stream': {
+            schema: {
+              type: 'string',
+              format: 'binary',
+            },
+            example: mockFile,
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // Find delete button and trigger it
+    const deleteButtons = binaryDeleteWrapper.findAll('button')
+    const deleteButton = deleteButtons.find((btn) => btn.text().includes('Delete'))
+
+    if (deleteButton) {
+      await deleteButton.trigger('click')
+      await nextTick()
+
+      // Should emit update:value with undefined payload
+      const deleteEvents = binaryDeleteWrapper.emitted('update:value')
+      expect(deleteEvents).toBeTruthy()
+      if (deleteEvents && deleteEvents.length > 0) {
+        const lastEventArray = deleteEvents[deleteEvents.length - 1]
+        const lastDeleteEvent = lastEventArray?.[0] as
+          | {
+              payload: undefined
+              contentType: string
+            }
+          | undefined
+        if (lastDeleteEvent) {
+          expect(lastDeleteEvent.payload).toBeUndefined()
+          expect(lastDeleteEvent.contentType).toBe('application/octet-stream')
+        }
+      }
+    }
+
+    // Test CodeInput value updates emit update:value event
+    const codeUpdateWrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object' },
+              example: { test: 'value' },
+            },
+          },
+        },
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    const codeInput = codeUpdateWrapper.find('[data-testid="code-input"]')
+    expect(codeInput.exists()).toBe(true)
+
+    // Simulate CodeInput emitting update:modelValue
+    const codeInputComponent = codeUpdateWrapper.findComponent({ name: 'CodeInput' })
+    if (codeInputComponent.exists()) {
+      await codeInputComponent.vm.$emit('update:modelValue', '{"updated": "value"}')
+      await nextTick()
+
+      const codeUpdateEvents = codeUpdateWrapper.emitted('update:value')
+      expect(codeUpdateEvents).toBeTruthy()
+      if (codeUpdateEvents && codeUpdateEvents.length > 0) {
+        const lastEventArray = codeUpdateEvents[codeUpdateEvents.length - 1]
+        const lastCodeEvent = lastEventArray?.[0] as
+          | {
+              payload: string
+              contentType: string
+            }
+          | undefined
+        if (lastCodeEvent) {
+          expect(lastCodeEvent.payload).toBe('{"updated": "value"}')
+          expect(lastCodeEvent.contentType).toBe('application/json')
+        }
+      }
+    }
+  })
+
+  it('appends OpenAPI-defined content types to the dropdown and includes the built-in Other option', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': { schema: { type: 'object' } },
+        'text/csv': { schema: { type: 'string' } },
+        'application/vnd.api+json': { schema: { type: 'object' } },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            name: 'ScalarListbox',
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    const listbox = wrapper.findComponent({ name: 'ScalarListbox' })
+    expect(listbox.exists()).toBe(true)
+
+    const options = listbox.props('options') as Array<{ id: string; label: string }>
+
+    // Built-in options must come first.
+    expect(options[0]).toEqual({ id: 'multipart/form-data', label: 'Multipart Form' })
+
+    const otherOption = options.find((o) => o.id === 'other')
+    expect(otherOption).toEqual({ id: 'other', label: 'Other' })
+
+    // OpenAPI-defined types that are not built-in must be appended at the bottom, in spec order,
+    // using the MIME essence (no charset or other parameters) as the label.
+    const ids = options.map((o) => o.id)
+    const csvIndex = ids.indexOf('text/csv')
+    const vendorIndex = ids.indexOf('application/vnd.api+json')
+    const noneIndex = ids.indexOf('none')
+    expect(csvIndex).toBeGreaterThan(noneIndex)
+    expect(vendorIndex).toBeGreaterThan(csvIndex)
+    expect(options[csvIndex]).toEqual({ id: 'text/csv', label: 'text/csv' })
+    expect(options[vendorIndex]).toEqual({
+      id: 'application/vnd.api+json',
+      label: 'application/vnd.api+json',
+    })
+
+    // Built-in content types from the spec must not be duplicated.
+    expect(ids.filter((id) => id === 'application/json')).toHaveLength(1)
+  })
+
+  it('uses MIME essence for extra option labels and skips extras whose essence matches a built-in', async () => {
+    const jsonWithCharset = 'application/json; charset=utf-8'
+    const csvWithCharset = 'text/csv; charset=utf-8'
+
+    const requestBody: RequestBodyObject = {
+      content: {
+        [jsonWithCharset]: { schema: { type: 'object' } },
+        [csvWithCharset]: { schema: { type: 'string' } },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            name: 'ScalarListbox',
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    const listbox = wrapper.findComponent({ name: 'ScalarListbox' })
+    const options = listbox.props('options') as Array<{ id: string; label: string }>
+
+    expect(options.some((o) => o.id === jsonWithCharset)).toBe(false)
+
+    const csvOption = options.find((o) => o.id === csvWithCharset)
+    expect(csvOption).toEqual({ id: csvWithCharset, label: 'text/csv' })
+  })
+
+  it('shows the friendly built-in label when the stored selection uses a MIME type with parameters', async () => {
+    const jsonWithCharset = 'application/json; charset=utf-8'
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody: {
+          content: {
+            [jsonWithCharset]: { schema: { type: 'object' } },
+          },
+          'x-scalar-selected-content-type': {
+            'example-1': jsonWithCharset,
+          },
+        },
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button data-testid="trigger"><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            name: 'ScalarListbox',
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="trigger"]').text()).toContain('JSON')
+  })
+
+  it('emits the selected OpenAPI content type verbatim when the user picks a custom one', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': { schema: { type: 'object' } },
+        'text/csv': { schema: { type: 'string' } },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            name: 'ScalarListbox',
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    const listbox = wrapper.findComponent({ name: 'ScalarListbox' })
+    await listbox.vm.$emit('update:modelValue', { id: 'text/csv', label: 'text/csv' })
+    await nextTick()
+
+    const events = wrapper.emitted('update:contentType')
+    expect(events).toBeTruthy()
+    expect(events?.[events.length - 1]?.[0]).toEqual({ value: 'text/csv' })
+  })
+
+  it('renders the actual content type string when the selected one is not in the built-in list', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'text/csv': { schema: { type: 'string' } },
+      },
+      'x-scalar-selected-content-type': {
+        'example-1': 'text/csv',
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: {
+        ...defaultProps,
+        requestBody,
+      },
+      global: {
+        stubs: {
+          ScalarButton: {
+            template: '<button data-testid="trigger"><slot /></button>',
+            props: ['variant', 'size', 'fullWidth'],
+          },
+          ScalarIcon: true,
+          ScalarListbox: {
+            template: '<div><slot /></div>',
+            props: ['modelValue', 'options', 'teleport'],
+            emits: ['update:modelValue'],
+          },
+          CollapsibleSection: {
+            template: '<div><slot name="title" /><slot /></div>',
+          },
+          DataTable: {
+            template: '<div><slot /></div>',
+          },
+          DataTableHeader: {
+            template: '<div><slot /></div>',
+          },
+          DataTableRow: {
+            template: '<div><slot /></div>',
+          },
+          CodeInput: {
+            template: '<div data-testid="code-input"></div>',
+            props: ['modelValue', 'language', 'environment'],
+            emits: ['update:modelValue'],
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    // The trigger label should show the actual content type, not "None".
+    expect(wrapper.find('[data-testid="trigger"]').text()).toContain('text/csv')
+  })
+
+  it('opens the form view when defaultView is form for a JSON object body', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+          },
+          example: { name: 'test' },
+        },
+      },
+    }
+
+    const stubs = {
+      RequestBodyStructured: {
+        template: '<div data-testid="structured-form"></div>',
+      },
+      CodeInput: {
+        template: '<div data-testid="code-input"></div>',
+        props: ['modelValue', 'language', 'environment'],
+        emits: ['update:modelValue'],
+      },
+    }
+
+    // With defaultView 'form' the schema-driven form view is shown up front.
+    const formWrapper = mount(RequestBody, {
+      props: { ...defaultProps, requestBody, defaultView: 'form' },
+      global: { stubs },
+    })
+    await nextTick()
+    expect(formWrapper.find('[data-testid="structured-form"]').exists()).toBe(true)
+    expect(formWrapper.find('[data-testid="code-input"]').exists()).toBe(false)
+
+    // Without the prop it keeps the existing raw editor default.
+    const rawWrapper = mount(RequestBody, {
+      props: { ...defaultProps, requestBody },
+      global: { stubs },
+    })
+    await nextTick()
+    expect(rawWrapper.find('[data-testid="code-input"]').exists()).toBe(true)
+    expect(rawWrapper.find('[data-testid="structured-form"]').exists()).toBe(false)
+  })
+  const findGenerateButton = (wrapper: ReturnType<typeof mount>) =>
+    wrapper.find('[aria-label="Create example from schema"]')
+
+  it('emits the selected content type when clicked', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: { type: 'object', properties: { name: { type: 'string' } } },
+          examples: { custom: { value: { name: 'custom' } } },
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: { ...defaultProps, exampleKey: 'custom', requestBody },
+    })
+
+    const button = findGenerateButton(wrapper)
+    expect(button.exists()).toBe(true)
+
+    await button.trigger('click')
+
+    expect(wrapper.emitted('generate:example')).toEqual([[{ contentType: 'application/json' }]])
+  })
+
+  it('hides the button when the content type has no schema', () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          examples: { custom: { value: { name: 'custom' } } },
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: { ...defaultProps, exampleKey: 'custom', requestBody },
+    })
+
+    expect(findGenerateButton(wrapper).exists()).toBe(false)
+  })
+
+  it('hides the button for non-structured bodies', () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/octet-stream': {
+          schema: { type: 'string', format: 'binary' },
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: { ...defaultProps, requestBody },
+    })
+
+    expect(findGenerateButton(wrapper).exists()).toBe(false)
+  })
+
+  it('copies the serialized body shown in the editor', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: { type: 'object' },
+          example: { hello: 'world' },
+        },
+      },
+    }
+
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const execCommandDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand')
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: (command: string): boolean => {
+        if (command === 'copy') {
+          void writeText(document.querySelector('textarea')?.value)
+        }
+        return true
+      },
+    })
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const wrapper = mount(RequestBody, {
+      props: { ...defaultProps, requestBody },
+    })
+    await nextTick()
+
+    try {
+      await wrapper.getComponent(ScalarCodeBlockCopy).get('button').trigger('click')
+      await flushPromises()
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ hello: 'world' }, null, 2))
+    } finally {
+      wrapper.unmount()
+      if (execCommandDescriptor) {
+        Object.defineProperty(document, 'execCommand', execCommandDescriptor)
+      } else {
+        Reflect.deleteProperty(document, 'execCommand')
+      }
+      if (clipboardDescriptor) {
+        Object.defineProperty(navigator, 'clipboard', clipboardDescriptor)
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard')
+      }
+    }
+  })
+
+  it('hides the copy button when the body is empty', async () => {
+    const requestBody: RequestBodyObject = {
+      content: {
+        'application/json': {
+          schema: { type: 'string' },
+          example: '',
+        },
+      },
+    }
+
+    const wrapper = mount(RequestBody, {
+      props: { ...defaultProps, requestBody },
+    })
+    await nextTick()
+
+    expect(wrapper.findComponent({ name: 'CodeInput' }).exists()).toBe(true)
+    expect(wrapper.findComponent(ScalarCodeBlockCopy).exists()).toBe(false)
+  })
+})

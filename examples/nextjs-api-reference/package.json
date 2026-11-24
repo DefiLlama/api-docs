@@ -12,14 +12,14 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "next build",
     "dev": "next dev -p 5058",
-    "docker:build": "build --platform=linux/amd64 -t ${image_name} --build-arg=\"BASE_IMAGE=scalar-base\" -f ./examples/nextjs-api-reference/Dockerfile .",
-    "lint:check": "next lint",
-    "lint:fix": "next lint --fix",
+    "docker:build": "docker build --platform=linux/amd64 -t ${image_name} --build-arg=\"BASE_IMAGE=scalar-base\" -f ./Dockerfile .",
+    "lint:check": "eslint .",
+    "lint:fix": "eslint . --fix",
     "start": "next start",
     "types:check": "tsc --noEmit"
   },
@@ -33,7 +33,7 @@
     "react-dom": "catalog:*"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "^15.1.1",
+    "@next/eslint-plugin-next": "^16.4.6",
     "@types/node": "catalog:*",
     "@types/react": "catalog:*",
     "@types/react-dom": "catalog:*"

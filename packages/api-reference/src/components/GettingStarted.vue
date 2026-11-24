@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { ScalarButton } from '@scalar/components'
+import { ScalarButton } from '@scalar/components/button'
 import { themeLabels, type ThemeId } from '@scalar/themes'
+
+import { useDocumentOutline } from '@/features/document-outline'
+import { useLocalization } from '@/features/localization'
 
 defineProps<{
   theme: ThemeId
 }>()
-
 const emits = defineEmits<{
   (e: 'changeTheme', { id, label }: { id: ThemeId; label: string }): void
   (e: 'loadSwaggerFile'): void
   (e: 'linkSwaggerFile'): void
   (e: 'updateContent', value: string): void
 }>()
+
+const { translate } = useLocalization()
 
 const themeIds: ThemeId[] = [
   'default',
@@ -28,14 +32,16 @@ const themeIds: ThemeId[] = [
 
 async function fetchExampleSpecification() {
   const response = await fetch(
-    'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml',
+    'https://registry.scalar.com/@scalar/apis/galaxy?format=yaml',
   )
 
   emits('updateContent', await response.text())
 }
+
+const { level: headingLevel } = useDocumentOutline('document')
 </script>
 <template>
-  <div class="start custom-scroll">
+  <div class="custom-scroll start">
     <div class="start-copy">
       <div class="start-logo">
         <svg
@@ -49,32 +55,37 @@ async function fetchExampleSpecification() {
             fill-rule="evenodd" />
         </svg>
       </div>
-      <h1 class="start-h1">Swagger Editor</h1>
+      <component
+        :is="`h${headingLevel}`"
+        class="start-h1">
+        {{ translate('gettingStarted.swaggerEditor') }}
+      </component>
       <p class="start-p">
-        Welcome to the Scalar API References + Swagger Editor, a Free &
-        Open-Source tool that takes your Swagger/OAS file and generates
-        Beautiful API references.
+        {{ translate('gettingStarted.description') }}
       </p>
       <div class="start-cta">
         <ScalarButton
-          fullWidth
+          class="w-full"
           @click="fetchExampleSpecification">
-          Show Example
+          {{ translate('gettingStarted.showExample') }}
         </ScalarButton>
         <ScalarButton
-          fullWidth
+          class="w-full"
           variant="outlined"
           @click="$emit('loadSwaggerFile')">
-          Upload File
+          {{ translate('gettingStarted.uploadFile') }}
         </ScalarButton>
       </div>
     </div>
     <div class="start-row">
       <div class="start-section start-section-integrations">
-        <div class="start-h2">INTEGRATIONS</div>
+        <div class="start-h2">
+          {{ translate('gettingStarted.integrations') }}
+        </div>
         <a
           class="start-item"
           href="https://github.com/scalar/scalar/tree/main/integrations/fastify#readme"
+          rel="noopener noreferrer"
           target="_blank">
           <svg
             fill="currentColor"
@@ -92,6 +103,7 @@ async function fetchExampleSpecification() {
         <a
           class="start-item"
           href="https://github.com/scalar/scalar/blob/main/documentation/integrations/html-js.md#html"
+          rel="noopener noreferrer"
           target="_blank">
           <svg
             fill="currentColor"
@@ -114,6 +126,7 @@ async function fetchExampleSpecification() {
         <a
           class="start-item"
           href="https://github.com/scalar/scalar/blob/main/packages/api-reference/README.md#vuejs"
+          rel="noopener noreferrer"
           target="_blank">
           <svg
             height="170"
@@ -134,6 +147,7 @@ async function fetchExampleSpecification() {
         <a
           class="start-item"
           href="https://github.com/scalar/scalar/blob/main/packages/api-reference-react/README.md#usage"
+          rel="noopener noreferrer"
           target="_blank">
           <svg
             height="23.3"
@@ -174,7 +188,9 @@ async function fetchExampleSpecification() {
         </a>
       </div>
       <div class="start-section start-section-colors">
-        <p class="start-h2">THEMING</p>
+        <p class="start-h2">
+          {{ translate('gettingStarted.theming') }}
+        </p>
         <div
           v-for="themeId in themeIds"
           :key="themeId"
@@ -187,31 +203,33 @@ async function fetchExampleSpecification() {
         </div>
       </div>
     </div>
-    <p class="start-h1">Features</p>
+    <p class="start-h1">{{ translate('gettingStarted.features') }}</p>
     <ul class="start-ul">
       <li>
-        <p class="start-h3">Customize</p>
-        Bring your typography & color palettes, or use our themes!
+        <p class="start-h3">{{ translate('gettingStarted.customize') }}</p>
+        {{ translate('gettingStarted.customizeDescription') }}
       </li>
       <li>
-        <p class="start-h3">Testing</p>
-        A deeply integrated Rest API Client (Also Free & Open-Source)
+        <p class="start-h3">{{ translate('gettingStarted.testing') }}</p>
+        {{ translate('gettingStarted.testingDescription') }}
       </li>
       <li>
-        <p class="start-h3">Search</p>
-        Fully integrated Search (Using fuse.js)
+        <p class="start-h3">{{ translate('gettingStarted.search') }}</p>
+        {{ translate('gettingStarted.searchDescription') }}
       </li>
       <li>
-        <p class="start-h3">Hosting</p>
-        Free subdomain hosting on https://apidocumentation.com
+        <p class="start-h3">{{ translate('gettingStarted.hosting') }}</p>
+        {{ translate('gettingStarted.hostingDescription') }}
       </li>
       <li>
-        <p class="start-h3">OpenAPI & Swagger</p>
-        Support for OpenAPI 3.1, OpenAPI 3.0, and Swagger 2.0
+        <p class="start-h3">
+          {{ translate('gettingStarted.openApiSwagger') }}
+        </p>
+        {{ translate('gettingStarted.openApiSwaggerDescription') }}
       </li>
       <li>
-        <p class="start-h3">Code Samples</p>
-        Code samples to show off your API in most popular languages
+        <p class="start-h3">{{ translate('gettingStarted.codeSamples') }}</p>
+        {{ translate('gettingStarted.codeSamplesDescription') }}
       </li>
     </ul>
   </div>
@@ -400,7 +418,7 @@ async function fetchExampleSpecification() {
   aspect-ratio: 1;
   position: relative;
   box-shadow: var(--scalar-shadow-2);
-  border-radius: 50%;
+  border-radius: var(--scalar-radius-full);
 }
 .start-logo:before {
   content: '';
@@ -410,7 +428,7 @@ async function fetchExampleSpecification() {
   top: -100%;
   position: absolute;
   z-index: -1;
-  border-radius: 50%;
+  border-radius: var(--scalar-radius-full);
   background-size: 24px 24px;
   box-shadow:
     inset 0 0 50px var(--scalar-background-1),
@@ -424,7 +442,7 @@ async function fetchExampleSpecification() {
   height: auto;
   background: var(--scalar-background-1);
   padding: 3px;
-  border-radius: 50%;
+  border-radius: var(--scalar-radius-full);
   position: relative;
 }
 @media screen and (max-width: 600px) {

@@ -1,148 +1,178 @@
+<!--
+Generated from scalar-sdk.config.schema.json. Do not edit by hand.
+
+Published at https://scalar.com/products/sdk-generator/configuration/java, which is where the links to
+pages outside this reference resolve.
+-->
 # Java
 
-This section details the available configuration options for the Java SDK. All configuration is managed in the `gen.yaml` file under the `java` section.
+**Minimum version:** Java 8 or newer.
 
-## Version and general configuration
+Add `java` under `targets` to generate a Java SDK package.
 
-```yml
-java:
-  version: 1.2.3
-  projectName: "openapi"
+```json
+{
+  "targets": {
+    "java": {
+      "reverseDomain": "com.acme",
+      "destinations": {
+        "production": {
+          "repo": "acme/acme-java"
+        }
+      },
+      "publish": {
+        "maven": {
+          "releaseEnvironment": "production"
+        }
+      }
+    }
+  }
+}
 ```
 
-| Name | Required | Default Value | Description |
-|------|----------|---------------|-------------|
-| version | true | 0.0.1 | The current version of the SDK. |
-| projectName | true | openapi | Assigns Gradle `rootProject.name`, which names the Gradle build. See [Gradle Naming](https://docs.gradle.org/current/userguide/multi_project_builds.html#naming_recommendations). |
+Setting up publishing: [Java and Kotlin publishing guide](../publishing/java.md). How releases are cut: [Publishing](../publishing/overview.md).
 
-## Publishing
+## reverseDomain
 
-```yml
-java:
-  groupID: "com.mycompany"
-  artifactID: "my-sdk"
-  githubURL: "https://github.com/mycompany/my-sdk"
-  companyName: "My Company"
-  companyURL: "https://www.mycompany.com"
-  companyEmail: "support@mycompany.com"
-```
+**Type:** `string`
 
-| Name | Required | Default Value | Description |
-|------|----------|---------------|-------------|
-| groupID | true | org.openapis | The group ID used for namespacing the package. Typically the reversed domain of an organization. |
-| artifactID | true | openapi | The artifact ID used for namespacing the package, usually the name of the project. |
-| githubURL | for publishing | github.com/owner/repo | The GitHub URL where the artifact is hosted. Sets metadata required by Maven. |
-| companyName | for publishing | My Company | The name of your company. Sets metadata required by Maven. |
-| companyURL | for publishing | www.mycompany.com | Your company's homepage URL. Sets metadata required by Maven. |
-| companyEmail | for publishing | info@mycompany.com | A support email address for your company. Sets metadata required by Maven. |
+Java/Kotlin base package, e.g. `org.example`.
 
-## Base package name
+## destinations
 
-This package will be where the primary SDK class is located
-(and sub-packages will hold various types of associated generated classes):
+**Type:** `object`
 
-```yaml
-java:
-  packageName: com.mycompany.sdk
-```
+Per-target GitHub destinations for pushing generated output.
 
-## Additional Dependencies
+### production
 
-```yml
-java:
-  additionalDependencies:
-    - "implementation:com.fasterxml.jackson.core:jackson-databind:2.12.3"
-    - "testImplementation:junit:junit:4.13.2"
-```
+**Type:** `object`
 
-| Name | Required | Default Value | Description |
-|------|----------|---------------|-------------|
-| additionalDependencies | false | [] | Adds additional dependencies to include in `build.gradle`. Format: `scope:groupId:artifactId:version`. |
-| additionalPlugins | false | [] | Adds additional plugins to include in `build.gradle`. Format: `id("plugin.id") version "x.x.x"`. |
+Primary repository this target's generated output is published to. Setting it turns on the generated GitHub Actions: the CI workflow, the release-please configuration, and the versioning policy. A release workflow is added too when `publish` enables a registry that needs one; a registry served from git tags publishes from the release tag alone. Without a production destination the target is still generated, but with no workflows.
 
-## License
+| Property | Description |
+| --- | --- |
+| `repo`* | GitHub repository in `owner/name` form that generated output for this target is pushed to. An `owner/name#branch` suffix is tolerated and supplies the default branch when `branch` does not, but prefer setting `branch` on its own: not every target strips the suffix back off when it writes the repository URL into published package metadata. |
+| `branch` | Default branch of the destination repository, which release pull requests target. Generated output is pushed to the generated branch (`generatedBranch`, `scalar-generated` by default) and merged with your custom code on the integration branch (`integrationBranch`, `scalar-next` by default); the release pull request is opened from there against this branch. Defaults to a `#branch` suffix on `repo`, then `main`. A value that is not a safe git branch name is skipped in favor of the next one. |
+| `integrationBranch` | Branch where generated output is combined with your custom code; defaults to `scalar-next`. Commit customizations here: each regeneration is merged into it, release pull requests are opened from it, and each released version is synced back to it. An empty string means the default. The name must be a safe git branch name, and it cannot be the default branch or collide with the branches Scalar and release-please manage, such as `scalar-generated`. |
+| `generatedBranch` | Branch Scalar pushes pristine generator output to before merging it into the integration branch; defaults to `scalar-generated`. Never commit here: every build replaces its contents. An empty string means the default. The name must be a safe git branch name, and it cannot be the default branch or the integration branch, or collide with the other branches Scalar and release-please manage, such as `scalar-next` and `scalar-merge-conflict`. |
 
-```yml
-java:
-  license:
-    name: "The MIT License (MIT)"
-    url: "https://mit-license.org/"
-    shortName: "MIT"
-```
+## publish
 
-| Name | Required | Default Value | Description |
-|------|----------|---------------|-------------|
-| license | false | MIT License | License information. Defaults to the MIT license if not provided. |
+**Type:** `object`
 
-## Method and parameter management
+Maven publishing configuration.
 
-```yml
-java:
-  maxMethodParams: 4
-```
+### maven
 
-| Name | Required | Default Value | Description |
-|------|----------|---------------|-------------|
-| maxMethodParams | false | 4 | Maximum number of parameters before an input object is created. `0` means input objects are always used. |
+**Type:** `boolean | object`
 
-## Security configuration
+Publishes the JVM package to Maven Central. `true` publishes with the defaults; an object tunes them. The object also carries `artifactId`, since a Maven coordinate means nothing to the other registries.
 
-```yml
-java:
-  flattenGlobalSecurity: true
-```
+There is no OIDC path, so `authMethod` is ignored and every release reads four repository secrets: `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD`, a Central Portal user token, and `MAVEN_GPG_PRIVATE_KEY` with `MAVEN_GPG_PASSPHRASE`, which sign the artifacts. Each is also read under a fallback name when it is unset: `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `GPG_SIGNING_KEY` and `GPG_SIGNING_PASSWORD`. The publishing namespace is the target's `reverseDomain`, which has to be [verified on the Central Portal](https://central.sonatype.org/register/central-portal/), so set `reverseDomain` on any target that publishes.
 
-| Property | Description | Type | Default |
-|----------|-------------|------|---------|
-| flattenGlobalSecurity | Enables inline security credentials during SDK instantiation. **Recommended: `true`** | boolean | true |
+#### artifactId
 
-## Module management
+**Type:** `string`
 
-```yml
-java:
-  moduleFormat: "dual"
-  useIndexModules: true
-```
+Maven artifact ID the JVM SDK publishes under, e.g. `acme-java`. Defaults to `<sdk slug>-java` or `<sdk slug>-kotlin`, so set it only when the published coordinate is spelled differently: regenerating such an SDK without it renames the artifact its users depend on. It also names the generated Gradle modules (`<artifactId>-core`, `<artifactId>-client-okhttp`) and their directories, so it must be alphanumeric runs joined by single `.`, `_`, or `-` separators. It cannot be a name the generated project already uses at its root: `LICENSE`, `README.md`, `SECURITY.md`, `SKILL.md`, `VERSIONING.md`, `api.md`, `build`, `build.gradle.kts`, `buildSrc`, `gradle`, `gradle.properties`, `gradlew`, `gradlew.bat`, `local.properties`, `release-please-config.json`, `scalar-sdk.manifest.json`, `settings.gradle.kts`, or `tests`.
 
-| Name | Required | Default Value | Description |
-|------|----------|---------------|-------------|
-| useIndexModules | false | true | Determines if index modules are generated. |
-| moduleFormat | false | commonjs | Sets the module format to use when compiling the SDK (`commonjs`, `esm`, or `dual`). |
+**Constraints:** `pattern: ^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$`
 
-## Import management
+#### releaseEnvironment
 
-```yml
-java:
-  imports:
-    paths:
-      callbacks: models/callbacks
-      errors: models/errors
-      operations: models/operations
-      shared: models/components
-      webhooks: models/webhooks
-```
+**Type:** `string`
 
-| Field | Required | Default Value | Description |
-|-------|----------|---------------|-------------|
-| paths | false | {} | Customizes where different parts of the SDK (e.g., callbacks, errors, and operations) will be imported from. |
+Release environment name used by generated publishing workflows. It renders as the publish job's `environment:`, so the destination repository's environment protection rules apply to the release, and this registry's secrets can come from that environment — one there overrides a repository secret of the same name.
 
-### Import paths
+## installOrder
 
-| Component | Default Value | Description |
-|-----------|---------------|-------------|
-| callbacks | models/callbacks | The directory where callback models will be imported from. |
-| errors | models/errors | The directory where error models will be imported from. |
-| operations | models/operations | The directory where operation models (i.e., API endpoints) will be imported from. |
-| shared | models/components | The directory for shared components, such as reusable schemas and data models, imported from the OpenAPI spec. |
-| webhooks | models/webhooks | The directory for webhook models, if your SDK includes support for webhooks. |
+**Type:** `("gradle" | "maven" | "source")[]`
 
-## Error and response handling
+Order of the install methods in the generated README's Installation section, the agent skill's Install section and the augmented OpenAPI document's `x-scalar-sdk-installation`, which all follow it. `gradle` is the Gradle `implementation` dependency and `maven` the `pom.xml` dependency, both offered once `publish.maven` is on; `source` is building the SDK with its own Gradle build, which the README and skill offer (the augmented document does not, since a reader there has no checkout to build). Listed methods come first, in the order given; any left out follow in the default order, so a one-item list only moves that method to the top. A method listed twice keeps its first position. A method the config does not publish is skipped wherever it is listed.
 
-```yml
-java:
-  clientServerStatusCodesAsErrors: false
-```
+**Default:** `["gradle", "maven", "source"]`
 
-| Name | Required | Default Value | Description |
-|------|----------|---------------|-------------|
-| clientServerStatusCodesAsErrors | false | true | Whether to treat 4xx and 5xx status codes as errors. Options: `true` or `false`. |
+## prereleaseType
+
+**Type:** `string`
+
+Prerelease channel this target's releases publish on, as a bare semver prerelease identifier (`next`, `beta`, `rc`). It becomes the released version's prerelease suffix — a channel of `next` releases `1.2.0-next.1` — so the value is held to the shape a semver identifier may take: a letter, then letters, digits and hyphens.
+
+Omit it to release on the stable line. A release train promoting to a conventionally named prerelease branch (`alpha`, `beta`, `canary`, `next`, `preview`, `rc`) adopts that branch's name as its channel, so this only has to be set to name a channel the branch does not, or to put a target on a prerelease line while promoting to a branch named something else.
+
+**Constraints:** `pattern: ^[A-Za-z][0-9A-Za-z-]*$`
+
+## options
+
+**Type:** `object`
+
+Java generation options. Each one changes generated class names, class shapes, or file layout, so changing one on an SDK that already has users is a breaking change.
+
+### backCompat
+
+**Type:** `object`
+
+Legacy package casing, model layout and naming behaviors, all off by default. Turn one on only to keep reproducing an already-published Java SDK's layout, whose consumers compile against the packages and class names it shipped with; each option moves files or renames public classes, so flipping one on an SDK that already has consumers is a source-breaking change.
+
+#### camelCasePackageSegments
+
+**Type:** `boolean`
+
+Preserve camelCase resource package segments in Java SDKs instead of the lowercase default. Enable this for an already-published Java SDK whose consumers import camelCase packages. Accessor method names are unchanged. Kotlin always preserves its package casing and ignores this switch.
+
+**Default:** `false`
+
+#### flatModelPackages
+
+**Type:** `boolean`
+
+Generate every model into one flat `models` package instead of a package per resource, and name each operation's params, page, async page, page response, and implied response class after its full chain of resources: `models/ProjectTaskCommentCreateParams` instead of `models/projects/tasks/comments/CommentCreateParams`. `unnamespacedImplicitResponses` exempts implied responses from the prefix. Models named after a component schema keep their names, operations on a resource with `useNamespaceInTypeNames` disabled drop the ancestor prefix, and services stay nested. Off by default.
+
+**Default:** `false`
+
+#### refNameNestedModels
+
+**Type:** `boolean`
+
+Name a nested class after the component schema backing it rather than after the property or union variant that uses it: a `latestRejection` property whose schema is a `DecisionRejected` component renders `DecisionRejected` instead of `LatestRejection`, and a request body backed by a component renders that component's name instead of `Body`. This renames nested classes only — it promotes nothing to a top-level model, and union member accessors keep their tag-derived names. Off by default.
+
+**Default:** `false`
+
+#### unnamespacedImplicitResponses
+
+**Type:** `boolean`
+
+Name the response model an operation implies — one with no component schema of its own to be named after — from the leaf resource alone, never from the chain of resource ancestors that `flatModelPackages` prefixes onto that operation's params: `store.order.create` yields `OrderCreateResponse` alongside `StoreOrderCreateParams`. A top-level client method's implied response drops the prefix altogether, so `client.retrieveRateLimits` yields `RetrieveRateLimitsResponse` rather than `ClientRetrieveRateLimitsResponse`. A page response is named from the params side and keeps its prefix either way. Off by default.
+
+**Default:** `false`
+
+### elideConst
+
+**Type:** `boolean`
+
+Leave required constant-valued properties out of the typed API and pin their values instead. True by default: such a property has no typed getter, enum, or builder setter, only a raw accessor and a raw setter for sending a value the API description does not describe, and `build()` does not check it. A closed union variant whose only property is its discriminator becomes raw JSON instead of a class. Set it to false to generate the property as an ordinary typed field (typed getter, required builder slot, checked on `build()`) and to give such a variant its own class. A string constant is then typed as a single-member enum; numeric and boolean constants keep their scalar types. A `readOnly` or nullable constant is never elided.
+
+**Default:** `true`
+
+## skip
+
+**Type:** `boolean`
+
+When true, the target is not generated.
+
+## readmeTitle
+
+**Type:** `string`
+
+Heading of this target's generated README, overriding the SDK-wide `readme.title`. Plain text: markdown in it is shown as written, not rendered.
+
+## promotion
+
+**Type:** `"automatic" | "manual"`
+
+When a successful build's generated output reaches this target's production destination. `automatic`, the default, pushes every build, which opens a release pull request. `manual` holds each build at the staging playground until you promote it.
+
+This changes when the push happens, never what is generated: a `manual` target still gets the GitHub Actions, release-please configuration, and versioning policy that `destinations.production` turns on. A target with no production destination is never pushed, whatever this is set to.
+
+**Default:** `"automatic"`

@@ -1,0 +1,416 @@
+<script setup lang="ts">
+import {
+  ScalarButton,
+  type ScalarButton as ScalarButtonType,
+} from '@scalar/components/button'
+import { ScalarComboboxMultiselect } from '@scalar/components/combobox'
+import type { Icon } from '@scalar/components/icon'
+import { ScalarIconButton } from '@scalar/components/icon-button'
+import { ScalarListboxCheckbox } from '@scalar/components/listbox'
+import { useModal } from '@scalar/components/modal'
+import { ScalarIconCaretDown, ScalarIconTrash } from '@scalar/icons'
+import type { SelectedSecurity } from '@scalar/workspace-store/entities/auth'
+import type {
+  AuthMeta,
+  WorkspaceEventBus,
+} from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import { unpackProxyObject } from '@scalar/workspace-store/helpers/unpack-proxy'
+import {
+  isAuthOptional,
+  type MergedSecuritySchemes,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type {
+  OpenApiDocument,
+  SecurityRequirementObject,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed, ref, useId } from 'vue'
+
+import DeleteRequestAuthModal from '@/v2/blocks/scalar-auth-selector-block/components/DeleteRequestAuthModal.vue'
+import type { OAuth2Options } from '@/v2/blocks/scalar-auth-selector-block/components/OAuth2.vue'
+import {
+  formatComplexScheme,
+  formatScheme,
+  getSecuritySchemeOptions,
+  type SecuritySchemeOption,
+} from '@/v2/blocks/scalar-auth-selector-block/helpers/security-scheme'
+import { CollapsibleSection } from '@/v2/components/layout'
+import { useLocalization } from '@/v2/features/localization'
+
+import RequestAuthDataTable from './RequestAuthDataTable.vue'
+
+const {
+  environment,
+  eventBus,
+  createAnySecurityScheme = false,
+  allowedSecuritySchemes,
+  canDeleteSchemes = true,
+  defaultOpen = true,
+  heading = true,
+  hideSingleRequiredScheme = false,
+  isStatic = false,
+  meta,
+  proxyUrl,
+  securityRequirements,
+  securitySchemes,
+  selectedSecurity,
+  server,
+  title,
+  options,
+  documentType,
+} = defineProps<{
+  environment: XScalarEnvironment
+  eventBus: WorkspaceEventBus
+  /** Allows adding authentication which is not in the document */
+  createAnySecurityScheme?: boolean
+  /** Limits visible schemes without changing request authentication. */
+  allowedSecuritySchemes?: string[]
+  /**
+   * Whether schemes can be deleted from the selector. Enabled for the editable client, disabled in
+   * the read-only reference where the schemes come from the document and cannot be removed.
+   */
+  canDeleteSchemes?: boolean
+  /** Whether the authentication disclosure should start expanded */
+  defaultOpen?: boolean
+  /**
+   * Whether the title belongs in the document outline. The client renders the
+   * selector as one section of a request, so it is a heading there. A surface
+   * that only offers the schemes as a card of controls, such as the reference,
+   * turns it off and the card is named as a group instead.
+   */
+  heading?: boolean
+  /** Hides a sole active required choice in the reference while preserving client controls. */
+  hideSingleRequiredScheme?: boolean
+  /** Creates a static disclosure that cannot be collapsed */
+  isStatic?: boolean
+  meta: AuthMeta
+  proxyUrl: string
+  securityRequirements: OpenApiDocument['security']
+  securitySchemes: MergedSecuritySchemes
+  selectedSecurity: SelectedSecurity | undefined
+  server: ServerObject | null
+  title: string
+  /**  Any config options required for the OAuth2 flow */
+  options?: OAuth2Options
+  /** Type of the document the schemes belong to, used to label the missing-type warning */
+  documentType?: 'openapi' | 'asyncapi'
+}>()
+
+const { translate, translations } = useLocalization()
+
+const titleId = useId()
+const comboboxButtonRef = ref<typeof ScalarButtonType | null>(null)
+const isDisclosureOpen = ref(false)
+
+const deleteModal = useModal()
+const schemeToDelete = ref<{
+  label: string
+  payload: SecurityRequirementObject
+} | null>(null)
+
+/**
+ * Determines if authentication is required or optional
+ *
+ * Auth is optional when there is an empty security requirement and no complex requirements.
+ * Complex requirements have multiple auth schemes combined (e.g., API key + OAuth).
+ */
+const authIndicator = computed<{ icon: Icon; text: string } | null>(() => {
+  if (!securityRequirements?.length) {
+    return null
+  }
+
+  const isOptional = isAuthOptional(securityRequirements)
+
+  return {
+    icon: isOptional ? 'Unlock' : 'Lock',
+    text: isOptional
+      ? translate('apiClient.authSelector.optional')
+      : translate('apiClient.authSelector.required'),
+  }
+})
+
+/** Excluded schemes must also stay out of secondary forms such as OAuth acquisition. */
+const visibleSecuritySchemes = computed<MergedSecuritySchemes>(() =>
+  allowedSecuritySchemes
+    ? Object.fromEntries(
+        Object.entries(securitySchemes).filter(([name]) =>
+          allowedSecuritySchemes.includes(name),
+        ),
+      )
+    : securitySchemes,
+)
+
+/** All available auth scheme options for the dropdown */
+const availableSchemeOptions = computed(() =>
+  getSecuritySchemeOptions(
+    securityRequirements ?? [],
+    securitySchemes ?? {},
+    selectedSecurity?.selectedSchemes ?? [],
+    createAnySecurityScheme,
+    translations.value.apiClient,
+    allowedSecuritySchemes,
+  ),
+)
+
+/** Currently active auth schemes selected for this operation or collection */
+const activeSchemeOptions = computed<SecuritySchemeOption[]>(() => {
+  const schemes = selectedSecurity?.selectedSchemes
+  if (!schemes?.length) {
+    return []
+  }
+
+  return schemes.flatMap((requirement) => {
+    const schemeNames = Object.keys(requirement)
+
+    if (
+      schemeNames.length === 0 ||
+      (allowedSecuritySchemes &&
+        schemeNames.some((name) => !allowedSecuritySchemes.includes(name)))
+    ) {
+      return []
+    }
+
+    // Complex auth requirement with multiple schemes
+    if (schemeNames.length > 1) {
+      return formatComplexScheme(requirement)
+    }
+
+    // Simple auth requirement with single scheme
+    const schemeName = schemeNames[0]
+    if (!schemeName) {
+      return []
+    }
+
+    const scheme = getResolvedRef(securitySchemes?.[schemeName])
+    if (!scheme) {
+      return []
+    }
+
+    return formatScheme({
+      name: schemeName,
+      value: requirement,
+    })
+  })
+})
+
+/** Preserve store indexes when the allowlist hides earlier saved selections. */
+const visibleSchemeIndexes = computed<number[]>(() =>
+  activeSchemeOptions.value.map(
+    (option) =>
+      selectedSecurity?.selectedSchemes.findIndex(
+        (requirement) => formatComplexScheme(requirement).id === option.id,
+      ) ?? -1,
+  ),
+)
+const visibleActiveIndex = computed<number>(() =>
+  visibleSchemeIndexes.value.indexOf(selectedSecurity?.selectedIndex ?? 0),
+)
+
+/** Keep selection available whenever it can change auth or recover an empty saved selection. */
+const showSchemeSelector = computed<boolean>(() => {
+  if (
+    !hideSingleRequiredScheme ||
+    createAnySecurityScheme ||
+    securityRequirements?.length !== 1 ||
+    Object.keys(securityRequirements[0] ?? {}).length === 0
+  ) {
+    return true
+  }
+
+  const schemeOptions = availableSchemeOptions.value.flatMap((option) =>
+    'options' in option ? option.options : [option],
+  )
+
+  return (
+    schemeOptions.length !== 1 ||
+    activeSchemeOptions.value.length !== 1 ||
+    activeSchemeOptions.value[0]?.id !== schemeOptions[0]?.id
+  )
+})
+
+/**
+ * Opens the combobox dropdown when clicking the auth indicator badge.
+ * Prevents the disclosure from toggling if it is already open.
+ */
+const handleAuthIndicatorClick = (event: Event): void => {
+  if (!showSchemeSelector.value) {
+    return
+  }
+
+  if (isDisclosureOpen.value) {
+    event.stopPropagation()
+  }
+  comboboxButtonRef.value?.$el.click()
+}
+
+/**
+ * Updates the selected auth schemes.
+ * Separates existing schemes from newly created ones for the event payload.
+ */
+const handleSchemeSelection = (selected: SecuritySchemeOption[]): void => {
+  const existingSchemes = selected
+    .filter((option) => option.payload === undefined)
+    .map((option) => unpackProxyObject(option.value, { depth: 2 }))
+
+  const newSchemes = selected
+    .filter((option) => option.payload !== undefined)
+    .map((option) => ({
+      name: option.label,
+      scheme: option.payload!,
+    }))
+
+  eventBus.emit('auth:update:selected-security-schemes', {
+    selectedRequirements: existingSchemes,
+    newSchemes,
+    meta,
+  })
+}
+
+/** Shows the delete confirmation modal for the selected scheme */
+const handleDeleteRequest = (option: {
+  label: string
+  value: SecurityRequirementObject
+}): void => {
+  schemeToDelete.value = { label: option.label, payload: option.value }
+  deleteModal.show()
+}
+
+/** Deletes the selected auth scheme after confirmation */
+const handleDeleteConfirm = (): void => {
+  if (!schemeToDelete.value) {
+    return
+  }
+
+  eventBus.emit('auth:delete:security-scheme', {
+    names: Object.keys(schemeToDelete.value.payload),
+  })
+
+  schemeToDelete.value = null
+  deleteModal.hide()
+}
+
+defineExpose({
+  authIndicator,
+  selectedSchemeOptions: activeSchemeOptions,
+  schemeOptions: availableSchemeOptions,
+})
+</script>
+<template>
+  <CollapsibleSection
+    class="group/params relative"
+    :defaultOpen
+    :heading
+    :isStatic="isStatic"
+    :itemCount="activeSchemeOptions.length"
+    @update:modelValue="(open) => (isDisclosureOpen = open)">
+    <template #title>
+      <div
+        :id="titleId"
+        class="inline-flex items-center gap-0.5 leading-[20px]">
+        <span>{{ title }}</span>
+
+        <span
+          v-if="authIndicator"
+          class="text-c-3 -my-0.5 -mr-1 rounded px-1 py-0.5 leading-[normal] font-normal"
+          :class="{
+            'text-c-1': authIndicator.icon === 'Lock',
+            'hover:bg-b-3 hover:text-c-1 cursor-pointer': showSchemeSelector,
+          }"
+          data-testid="auth-indicator"
+          @click="handleAuthIndicatorClick">
+          {{ authIndicator.text }}
+        </span>
+      </div>
+    </template>
+
+    <!-- The client keeps its selection and deletion controls. -->
+    <template
+      v-if="showSchemeSelector"
+      #actions>
+      <ScalarComboboxMultiselect
+        class="w-72 text-xs"
+        :modelValue="activeSchemeOptions"
+        multiple
+        :options="availableSchemeOptions"
+        placement="bottom-end"
+        teleport
+        @delete="handleDeleteRequest"
+        @update:modelValue="handleSchemeSelection">
+        <ScalarButton
+          ref="comboboxButtonRef"
+          :aria-describedby="titleId"
+          class="group/combobox-button hover:text-c-1 text-c-2 flex h-fit w-full items-center gap-1 px-0.75 py-0.25 text-base font-normal"
+          variant="ghost">
+          <!-- Single auth scheme selected -->
+          <template v-if="activeSchemeOptions.length === 1">
+            {{
+              translate('apiClient.authSelector.selectedType', {
+                type: activeSchemeOptions[0]?.label ?? '',
+              })
+            }}
+          </template>
+
+          <!-- Multiple auth schemes selected -->
+          <template v-else-if="activeSchemeOptions.length > 1">
+            {{ translate('apiClient.authSelector.multipleTypes') }}
+          </template>
+
+          <!-- No auth schemes selected -->
+          <template v-else>
+            {{ translate('apiClient.authSelector.selectType') }}
+          </template>
+
+          <ScalarIconCaretDown
+            class="size-3 shrink-0 transition-transform duration-100 group-aria-expanded/combobox-button:rotate-180"
+            weight="bold" />
+        </ScalarButton>
+
+        <template #option="{ option, selected }">
+          <ScalarListboxCheckbox
+            multiselect
+            :selected="selected" />
+          <div class="min-w-0 flex-1 truncate">
+            {{ option.label }}
+          </div>
+          <ScalarIconButton
+            v-if="option.isDeletable && canDeleteSchemes"
+            class="-m-0.5 shrink-0 p-0.5 opacity-0 group-hover/item:opacity-100"
+            :icon="ScalarIconTrash"
+            :label="
+              translate('apiClient.authSelector.deleteScheme', {
+                name: option.label,
+              })
+            "
+            size="xs"
+            @click.stop="handleDeleteRequest(option)" />
+        </template>
+      </ScalarComboboxMultiselect>
+    </template>
+
+    <!-- Auth Table -->
+    <RequestAuthDataTable
+      :activeAuthIndex="visibleActiveIndex"
+      :documentType
+      :environment
+      :eventBus
+      :isStatic
+      :meta
+      :options
+      :proxyUrl
+      :securitySchemes="visibleSecuritySchemes"
+      :selectedSchemeIndexes="visibleSchemeIndexes"
+      :selectedSchemeOptions="activeSchemeOptions"
+      :server />
+
+    <!-- Delete Auth Modal -->
+    <DeleteRequestAuthModal
+      v-if="schemeToDelete"
+      :label="schemeToDelete.label"
+      :scheme="schemeToDelete"
+      :state="deleteModal"
+      @close="deleteModal.hide()"
+      @delete="handleDeleteConfirm" />
+  </CollapsibleSection>
+</template>

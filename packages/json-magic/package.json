@@ -1,0 +1,144 @@
+{
+  "name": "@scalar/json-magic",
+  "description": "A collection of utilities for working with JSON objects, including diffing, conflict resolution, bundling and more.",
+  "license": "MIT",
+  "author": "Scalar (https://github.com/scalar)",
+  "homepage": "https://github.com/scalar/scalar",
+  "bugs": "https://github.com/scalar/scalar/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/scalar.git",
+    "directory": "packages/json-magic"
+  },
+  "version": "0.22.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
+  },
+  "type": "module",
+  "exports": {
+    "./bundle": {
+      "import": "./dist/bundle/index.js",
+      "types": "./dist/bundle/index.d.ts",
+      "default": "./dist/bundle/index.js"
+    },
+    "./bundle/value-generator": {
+      "import": "./dist/bundle/value-generator.js",
+      "types": "./dist/bundle/value-generator.d.ts",
+      "default": "./dist/bundle/value-generator.js"
+    },
+    "./bundle/plugins/browser": {
+      "import": "./dist/bundle/plugins/browser.js",
+      "types": "./dist/bundle/plugins/browser.d.ts",
+      "default": "./dist/bundle/plugins/browser.js"
+    },
+    "./bundle/plugins/node": {
+      "import": "./dist/bundle/plugins/node.js",
+      "types": "./dist/bundle/plugins/node.d.ts",
+      "default": "./dist/bundle/plugins/node.js"
+    },
+    "./dereference": {
+      "import": "./dist/dereference/index.js",
+      "types": "./dist/dereference/index.d.ts",
+      "default": "./dist/dereference/index.js"
+    },
+    "./diff": {
+      "import": "./dist/diff/index.js",
+      "types": "./dist/diff/index.d.ts",
+      "default": "./dist/diff/index.js"
+    },
+    "./helpers/escape-json-pointer": {
+      "import": "./dist/helpers/escape-json-pointer.js",
+      "types": "./dist/helpers/escape-json-pointer.d.ts",
+      "default": "./dist/helpers/escape-json-pointer.js"
+    },
+    "./helpers/convert-to-local-ref": {
+      "import": "./dist/helpers/convert-to-local-ref.js",
+      "types": "./dist/helpers/convert-to-local-ref.d.ts",
+      "default": "./dist/helpers/convert-to-local-ref.js"
+    },
+    "./helpers/get-schemas": {
+      "import": "./dist/helpers/get-schemas.js",
+      "types": "./dist/helpers/get-schemas.d.ts",
+      "default": "./dist/helpers/get-schemas.js"
+    },
+    "./helpers/get-segments-from-path": {
+      "import": "./dist/helpers/get-segments-from-path.js",
+      "types": "./dist/helpers/get-segments-from-path.d.ts",
+      "default": "./dist/helpers/get-segments-from-path.js"
+    },
+    "./helpers/get-value-by-path": {
+      "import": "./dist/helpers/get-value-by-path.js",
+      "types": "./dist/helpers/get-value-by-path.d.ts",
+      "default": "./dist/helpers/get-value-by-path.js"
+    },
+    "./helpers/is-file-path": {
+      "import": "./dist/helpers/is-file-path.js",
+      "types": "./dist/helpers/is-file-path.d.ts",
+      "default": "./dist/helpers/is-file-path.js"
+    },
+    "./helpers/is-http-url": {
+      "import": "./dist/helpers/is-http-url.js",
+      "types": "./dist/helpers/is-http-url.d.ts",
+      "default": "./dist/helpers/is-http-url.js"
+    },
+    "./helpers/is-json-object": {
+      "import": "./dist/helpers/is-json-object.js",
+      "types": "./dist/helpers/is-json-object.d.ts",
+      "default": "./dist/helpers/is-json-object.js"
+    },
+    "./helpers/is-yaml": {
+      "import": "./dist/helpers/is-yaml.js",
+      "types": "./dist/helpers/is-yaml.d.ts",
+      "default": "./dist/helpers/is-yaml.js"
+    },
+    "./helpers/normalize": {
+      "import": "./dist/helpers/normalize.js",
+      "types": "./dist/helpers/normalize.d.ts",
+      "default": "./dist/helpers/normalize.js"
+    },
+    "./helpers/set-value-at-path": {
+      "import": "./dist/helpers/set-value-at-path.js",
+      "types": "./dist/helpers/set-value-at-path.d.ts",
+      "default": "./dist/helpers/set-value-at-path.js"
+    },
+    "./helpers/unescape-json-pointer": {
+      "import": "./dist/helpers/unescape-json-pointer.js",
+      "types": "./dist/helpers/unescape-json-pointer.d.ts",
+      "default": "./dist/helpers/unescape-json-pointer.js"
+    },
+    "./join": {
+      "import": "./dist/join/index.js",
+      "types": "./dist/join/index.d.ts",
+      "default": "./dist/join/index.js"
+    },
+    "./magic-proxy": {
+      "import": "./dist/magic-proxy/index.js",
+      "types": "./dist/magic-proxy/index.d.ts",
+      "default": "./dist/magic-proxy/index.js"
+    },
+    "./document": {
+      "import": "./dist/document/index.js",
+      "types": "./dist/document/index.d.ts",
+      "default": "./dist/document/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "dependencies": {
+    "@scalar/helpers": "workspace:*",
+    "pathe": "^2.0.3",
+    "undici": "catalog:*",
+    "yaml": "catalog:*"
+  },
+  "devDependencies": {
+    "fastify": "catalog:*",
+    "vite": "catalog:*"
+  }
+}

@@ -4,29 +4,23 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { type Toaster, toast } from 'vue-sonner'
+import { toast } from 'vue-sonner'
 
 import { useToasts } from '../hooks/useToasts'
 import ScalarToasts from './ScalarToasts.vue'
 
-vi.mock('../hooks/useToasts', () => ({
+vi.mock(import('../hooks/useToasts'), () => ({
+  initializeToasts: vi.fn(),
   useToasts: vi.fn(() => ({
     initializeToasts: vi.fn(),
+    toast: vi.fn(),
   })),
 }))
 
-vi.mock('vue-sonner', async (importOriginal) => {
-  const actual = (await importOriginal()) as {
-    Toaster: typeof Toaster
-    toast: typeof toast
-  }
-
-  return {
-    ...actual,
-    toast: vi.fn(),
-    Toaster: actual.Toaster,
-  }
-})
+vi.mock(import('vue-sonner'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  toast: vi.fn() as unknown as typeof toast,
+}))
 
 describe('ScalarToasts', () => {
   it('should not render Toaster before mount', () => {
@@ -40,7 +34,7 @@ describe('ScalarToasts', () => {
     expect(wrapper.find('.scalar-toaster').exists()).toBe(true)
   })
 
-  it('should initialize toasts with correct parameters', async () => {
+  it('should initialize toasts with correct parameters', () => {
     const mockInitializeToasts = vi.fn()
     vi.mocked(useToasts).mockImplementation(() => ({
       initializeToasts: mockInitializeToasts,
@@ -52,7 +46,7 @@ describe('ScalarToasts', () => {
     expect(mockInitializeToasts).toHaveBeenCalledTimes(1)
 
     // Get the callback function passed to initializeToasts
-    const toastCallback = mockInitializeToasts.mock.calls[0][0]
+    const toastCallback = mockInitializeToasts?.mock.calls?.[0]?.[0]
 
     // Test default parameters
     toastCallback('Test message')

@@ -7,6 +7,19 @@
 
 Convert Postman collections to [the open standard OpenAPI](https://github.com/OAI/OpenAPI-Specification). Free the postman!
 
+---
+
+Scalar is an open-source API platform for teams who want beautiful developer interfaces without vendor lock-in.
+
+- **[API References](https://scalar.com/products/api-references/getting-started)** — Interactive API documentation from OpenAPI and AsyncAPI specs.
+- **[Developer Docs](https://scalar.com/products/docs/getting-started)** — Write in Markdown/MDX, generate API references, sync with two-way Git.
+- **[SDK Generator](https://scalar.com/products/sdk-generator/getting-started)** — Type-safe SDKs and CLIs in TypeScript, Python, Go, PHP, Java, and Ruby.
+- **[API Client](https://scalar.com/products/api-client/getting-started)** — Open-source, offline-first Postman alternative built on OpenAPI.
+
+20M+ monthly npm installs · 15,500+ GitHub stars · MIT licensed · [scalar.com](https://scalar.com)
+
+---
+
 ## Installation
 
 ```bash
@@ -23,6 +36,23 @@ const result = await convert(myPostmanCollection)
 
 console.log(result)
 ```
+
+Authentication follows the request's own settings, then the nearest folder override, then the collection settings. This also applies when converting selected requests or folders with `requestIndexPaths`. A request or folder set to No Auth overrides inherited authentication.
+
+### Detect Postman collections
+
+Use `isPostmanCollection` to decide whether an input string should be parsed as a Postman collection before converting.
+
+```ts
+import { convert, isPostmanCollection } from '@scalar/postman-to-openapi'
+
+if (isPostmanCollection(input)) {
+  const openApiDocument = convert(input)
+  console.log(openApiDocument)
+}
+```
+
+`isPostmanCollection` accepts exported collections that do not include `info._postman_id` as long as they contain a valid Postman schema URL and an `item` tree.
 
 ## Community
 

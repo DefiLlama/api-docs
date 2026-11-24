@@ -1,0 +1,1404 @@
+import * as apiClientModalModule from '@scalar/api-client/modal'
+import type { ClientOptionGroup } from '@scalar/blocks/code-example'
+import type { TraversedEntry, TraversedTag } from '@scalar/workspace-store/schemas/navigation'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toValue } from 'vue'
+
+import { ServerSelector } from '@/blocks/scalar-server-selector-block'
+
+import ApiReference from './ApiReference.vue'
+
+enableAutoUnmount(afterEach)
+
+/** Track all mounted wrappers so we can unmount them after each test */
+const locationMock = {
+  href: 'http://localhost:3000/',
+  origin: 'http://localhost:3000',
+  protocol: 'http:',
+  host: 'localhost:3000',
+  hostname: 'localhost',
+  port: '3000',
+  pathname: '/',
+  search: '',
+  hash: '',
+  ancestorOrigins: {} as DOMStringList,
+  assign: vi.fn(),
+  reload: vi.fn(),
+  replace: vi.fn(),
+  toString: () => 'http://localhost:3000/',
+}
+
+/**
+ * Bypass lazy loading for testing purposes.
+ * This simplifies testing by removing asynchronous rendering behavior.
+ */
+vi.mock('./Lazy/Lazy.vue', () => ({
+  default: {
+    name: 'Lazy',
+    props: {
+      id: 'test-id',
+    },
+    setup(_props: unknown, { slots }: { slots: Record<string, () => unknown> }) {
+      return () => slots.default?.()
+    },
+  },
+}))
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  vi.unstubAllGlobals()
+
+  /** Mock window.location for all tests */
+  vi.stubGlobal('location', locationMock)
+
+  /**
+   * Mock ResizeObserver which is used by @headlessui/vue Dialog component
+   * but is not available in the test environment.
+   *
+   * @see https://github.com/jsdom/jsdom/issues/3368
+   */
+  globalThis.ResizeObserver = class {
+    disconnect = vi.fn()
+    observe = vi.fn()
+    unobserve = vi.fn()
+  }
+
+  /**
+   * Mock IntersectionObserver which is not available in the test environment.
+   *
+   * @see https://github.com/jsdom/jsdom/issues/2032
+   */
+  globalThis.IntersectionObserver = class {
+    constructor(public callback: IntersectionObserverCallback) {}
+    disconnect = vi.fn()
+    observe = vi.fn()
+    unobserve = vi.fn()
+    takeRecords = vi.fn(() => [])
+    root = null
+    rootMargin = ''
+    scrollMargin = ''
+    thresholds = [] as number[]
+  }
+
+  /**
+   * Mock scrollIntoView which is not available in the test environment.
+   *
+   * @see https://github.com/jsdom/jsdom/issues/1695
+   */
+  Element.prototype.scrollIntoView = vi.fn()
+})
+
+/** Helper function to mount and track component */
+const mountComponent = (props: Parameters<typeof mount>[1]) => {
+  const wrapper = mount(ApiReference, {
+    ...props,
+    attachTo: document.body,
+  })
+  return wrapper
+}
+
+/** Helper function to create a basic OpenAPI document */
+const createBasicDocument = (title = 'Test API') => ({
+  openapi: '3.1.0',
+  info: {
+    title,
+    version: '1.0.0',
+    description: '# Heading 1\nContent 1\n# Heading 2\nContent 2',
+  },
+  paths: {
+    '/users': {
+      get: {
+        summary: 'Get users',
+        operationId: 'getUsers',
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/SuperImportantUser',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      SuperImportantUser: {
+        type: 'object',
+        required: ['isAdmin', 'phone'],
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'number' },
+          isAdmin: { type: 'boolean' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          address: {
+            type: 'object',
+            properties: {
+              street: { type: 'string' },
+              city: { type: 'string' },
+              state: { type: 'string' },
+              zip: { type: 'string' },
+            },
+          },
+          phone: { type: 'string' },
+          email: { type: 'string', format: 'email' },
+        },
+      },
+    },
+  },
+})
+
+describe('ApiReference Configuration Tests', { timeout: 15_000 }, () => {
+  it.each([undefined, false, true])(
+    'shows built-in clients with SDK installation only when enabled (%s)',
+    async (enabled) => {
+      const wrapper = mount(ApiReference, {
+        props: {
+          configuration: {
+            showDefaultClientsWithSdkInstallation: enabled,
+            featuredClients: ['shell/curl', 'node/undici'],
+            hiddenClients: ['node'],
+            defaultHttpClient: { targetKey: 'custom', clientKey: 'php' },
+            content: {
+              openapi: '3.1.0',
+              info: {
+                title: 'SDK example',
+                version: '1.0.0',
+                'x-scalar-sdk-installation': [{ lang: 'php', label: 'PHP SDK', description: 'Install PHP SDK' }],
+              },
+              paths: {},
+            },
+          },
+        },
+      })
+      await flushPromises()
+      const card = wrapper.getComponent({ name: 'SdkInstallationInstructions' })
+      expect(card.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(
+        enabled ? ['PHP SDK', 'Shell'] : ['PHP SDK'],
+      )
+      expect(card.get('[role="tabpanel"]').text()).toBe('Install PHP SDK')
+      if (enabled) {
+        await card.findAll('[role="tab"]')[1]?.trigger('click')
+        await flushPromises()
+        expect(card.props('selectedClient')).toBe('shell/curl')
+        expect(card.get('[role="tabpanel"]').text()).toBe('Shell Curl')
+        await card.findAll('[role="tab"]')[0]?.trigger('click')
+        await flushPromises()
+        expect(card.props('selectedClient')).toBe('custom/php')
+      }
+    },
+  )
+
+  it('keeps the built-in selector when combined mode has no renderable SDK', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          showDefaultClientsWithSdkInstallation: true,
+          content: {
+            openapi: '3.1.0',
+            info: { title: 'Empty SDK', version: '1.0.0', 'x-scalar-sdk-installation': [{ lang: 'php' }] },
+            paths: {},
+          },
+        },
+      },
+    })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'SdkInstallationInstructions' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'ClientSelector' }).exists()).toBe(true)
+  })
+
+  it.each([
+    ['http://localhost:3000/?api=second#second/tag/users', undefined, true],
+    ['http://localhost:3000/#second/model/User', undefined, false],
+    ['http://localhost:3000/docs/second/tag/users#host', { basePath: '/docs' }, true],
+    ['http://localhost:3000/#%invalid-host-hash', undefined, true],
+  ])('keeps navigation internal with urlRouting disabled at %s', async (href, pathRouting, showSidebar) => {
+    const initialLocation = { ...locationMock }
+    const url = new URL(href)
+    Object.assign(locationMock, { href, hash: url.hash, pathname: url.pathname, search: url.search })
+    const pushState = vi.spyOn(window.history, 'pushState')
+    const replaceState = vi.spyOn(window.history, 'replaceState')
+    const previousRestoration = window.history.scrollRestoration
+    window.history.scrollRestoration = 'auto'
+    const redirect = vi.fn(() => '#redirected')
+    const modal = vi.spyOn(apiClientModalModule, 'createApiClientModal')
+    const configuration = {
+      urlRouting: false,
+      showSidebar,
+      pathRouting,
+      redirect,
+      content: createBasicDocument(),
+    }
+    const wrapper = mountComponent({
+      props: {
+        configuration: [
+          { ...configuration, slug: 'first', default: true },
+          { ...configuration, slug: 'second' },
+        ],
+      },
+    })
+    try {
+      await flushPromises()
+      expect(wrapper.vm.workspaceStore.workspace['x-scalar-active-document']).toBe('first')
+      expect(redirect).not.toHaveBeenCalled()
+      expect(window.history.scrollRestoration).toBe('auto')
+      const eventBus = wrapper.findComponent({ name: 'Content' }).props('eventBus')
+      eventBus.emit('select:nav-item', { id: 'first/GET/users' })
+      await flushPromises()
+      expect(wrapper.findComponent({ name: 'MobileHeader' }).props('breadcrumb')).toBe('Get users')
+
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      await flushPromises()
+      expect(wrapper.findComponent({ name: 'MobileHeader' }).props('breadcrumb')).toBe('Get users')
+
+      await wrapper.findComponent({ name: 'TestRequestButton' }).get('button').trigger('click')
+      await flushPromises()
+      expect(modal.mock.results.at(-1)?.value.modalState.open).toBe(true)
+      modal.mock.results.at(-1)?.value.modalState.hide()
+
+      if (!showSidebar) {
+        await wrapper.setProps({
+          configuration: [
+            { ...configuration, slug: 'first', showSidebar: true },
+            { ...configuration, slug: 'second', showSidebar: true },
+          ],
+        })
+        await flushPromises()
+      }
+      wrapper.findComponent({ name: 'DocumentSelector' }).vm.$emit('update:modelValue', 'second')
+      await flushPromises()
+      expect(wrapper.vm.workspaceStore.workspace['x-scalar-active-document']).toBe('second')
+      expect(pushState).not.toHaveBeenCalled()
+      expect(replaceState).not.toHaveBeenCalled()
+      expect(locationMock.href).toBe(href)
+    } finally {
+      wrapper.unmount()
+      Object.assign(locationMock, initialLocation)
+      window.history.scrollRestoration = previousRestoration
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('updates internal selection on scroll without writing history when urlRouting is false', async () => {
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          urlRouting: false,
+          slug: 'doc',
+          content: {
+            ...createBasicDocument(),
+            info: { title: 'Scroll API', version: '1.0.0', description: 'Overview' },
+          },
+        },
+      },
+    })
+    await flushPromises()
+    const pushState = vi.spyOn(window.history, 'pushState')
+    const replaceState = vi.spyOn(window.history, 'replaceState')
+    const eventBus = wrapper.findComponent({ name: 'Content' }).props('eventBus')
+    // The document-start sentinel resolves visible sections to the introduction while at the top.
+    await vi.waitFor(
+      () => {
+        eventBus.emit('intersecting:nav-item', { id: 'doc/GET/users' })
+        expect(
+          wrapper.findComponent({ name: 'ScalarSidebar' }).props('isSelected')(
+            wrapper.findComponent({ name: 'Content' }).props('infoSectionId'),
+          ),
+        ).toBe(true)
+      },
+      { timeout: 5000 },
+    )
+    expect(pushState).not.toHaveBeenCalled()
+    expect(replaceState).not.toHaveBeenCalled()
+    wrapper.unmount()
+    vi.restoreAllMocks()
+  })
+
+  it.each([undefined, [{ url: 'https://{env}.other.example.com', variables: { env: { default: 'original' } } }]])(
+    'shares edited configuration variables between the reference and modal with document servers %j',
+    async (documentServers) => {
+      const spy = vi.spyOn(apiClientModalModule, 'createApiClientModal')
+      const servers = [{ url: 'https://{env}.example.com', variables: { env: { default: 'prod' } } }]
+      const content = { ...createBasicDocument(), servers: documentServers }
+      const wrapper = mountComponent({ props: { configuration: { content: JSON.stringify(content), servers } } })
+      await flushPromises()
+
+      const selector = wrapper.findComponent(ServerSelector)
+      await selector.get('input').setValue('staging')
+      await flushPromises()
+
+      expect(spy).not.toHaveBeenCalled()
+      await wrapper.findComponent({ name: 'TestRequestButton' }).get('button').trigger('click')
+      await flushPromises()
+
+      expect(selector.props('selectedServer')?.variables?.env?.default).toBe('staging')
+      const modalOptions = toValue(spy.mock.calls.at(-1)?.[0].options)
+      expect(modalOptions?.servers?.[0]?.variables?.env?.default).toBe('staging')
+      expect(servers[0]?.variables.env.default).toBe('prod')
+      expect(content.servers).toStrictEqual(documentServers)
+
+      await wrapper.setProps({ configuration: { content: JSON.stringify(content), servers, hideModels: true } })
+      await flushPromises()
+      expect(selector.props('selectedServer')?.variables?.env?.default).toBe('staging')
+
+      await wrapper.setProps({
+        configuration: {
+          content: JSON.stringify(content),
+          servers: [{ ...servers[0], variables: { env: { default: 'dev' } } }],
+        },
+      })
+      await flushPromises()
+      expect(selector.props('selectedServer')?.variables?.env?.default).toBe('dev')
+      expect(toValue(spy.mock.calls.at(-1)?.[0].options)?.servers?.[0]?.variables?.env?.default).toBe('dev')
+      wrapper.unmount()
+      spy.mockRestore()
+    },
+  )
+
+  it.each([
+    { url: 'https://example.com' },
+    { url: 'https://{base_url}', variables: { base_url: { default: 'example.com' } } },
+  ])('selects the replacement server after updating document content to $url', async (server) => {
+    const content = {
+      openapi: '3.1.2',
+      info: { title: 'Hello World', version: '1.0.0' },
+      servers: [{ url: 'https://void.scalar.com' }],
+      paths: { '/': { get: {} } },
+    }
+    const wrapper = mountComponent({ props: { configuration: { content: JSON.stringify(content) } } })
+    await flushPromises()
+    expect(wrapper.findComponent(ServerSelector).props('selectedServer')?.url).toBe('https://void.scalar.com')
+
+    await wrapper.setProps({ configuration: { content: JSON.stringify({ ...content, servers: [server] }) } })
+    await flushPromises()
+
+    const selector = wrapper.findComponent(ServerSelector)
+    expect(selector.props('selectedServer')?.url).toBe(server.url)
+    if ('variables' in server) {
+      expect(selector.get('input').element.value).toBe('example.com')
+    }
+    await vi.waitFor(() => expect(wrapper.text()).toContain('curl https://example.com/'))
+  })
+
+  it.each([
+    {
+      selected: 'https://second.example.com',
+      urls: ['https://second.example.com', 'https://first.example.com'],
+      expected: 'https://second.example.com',
+    },
+    {
+      selected: 'https://second.example.com',
+      urls: ['https://first.example.com'],
+      expected: 'https://first.example.com',
+    },
+    { selected: '', urls: ['https://replacement.example.com'], expected: null },
+  ])('reconciles the selected server $selected after a document update', async ({ selected, urls, expected }) => {
+    const content = {
+      ...createBasicDocument(),
+      servers: [{ url: 'https://first.example.com' }, { url: 'https://second.example.com' }],
+    }
+    const wrapper = mountComponent({ props: { configuration: { content } } })
+    await flushPromises()
+    wrapper.vm.eventBus.emit('server:update:selected', { url: selected, meta: { type: 'document' } })
+    await flushPromises()
+    expect(wrapper.findComponent(ServerSelector).props('selectedServer')?.url ?? null).toBe(selected || null)
+
+    await wrapper.setProps({ configuration: { content: { ...content, servers: urls.map((url) => ({ url })) } } })
+    await flushPromises()
+
+    expect(wrapper.findComponent(ServerSelector).props('selectedServer')?.url ?? null).toBe(expected)
+  })
+
+  it('selects a server added after a document update removes all servers', async () => {
+    const content = { ...createBasicDocument(), servers: [{ url: 'https://first.example.com' }] }
+    const wrapper = mountComponent({ props: { configuration: { content } } })
+    await flushPromises()
+
+    await wrapper.setProps({ configuration: { content: { ...content, servers: [] } } })
+    await flushPromises()
+    expect(wrapper.findComponent(ServerSelector).exists()).toBe(false)
+
+    await wrapper.setProps({
+      configuration: { content: { ...content, servers: [{ url: 'https://new.example.com' }] } },
+    })
+    await flushPromises()
+    expect(wrapper.findComponent(ServerSelector).props('selectedServer')?.url).toBe('https://new.example.com')
+  })
+
+  it('preserves a configured server selection when document servers change', async () => {
+    const servers = [{ url: 'https://configured.example.com' }, { url: 'https://selected.example.com' }]
+    const wrapper = mountComponent({ props: { configuration: { content: createBasicDocument(), servers } } })
+    await flushPromises()
+    wrapper.vm.eventBus.emit('server:update:selected', { url: servers[1]!.url, meta: { type: 'document' } })
+    await flushPromises()
+
+    await wrapper.setProps({
+      configuration: {
+        content: { ...createBasicDocument(), servers: [{ url: 'https://document.example.com' }] },
+        servers,
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.findComponent(ServerSelector).props('selectedServer')?.url).toBe(servers[1]!.url)
+  })
+
+  it.each(['/v1', '/v2'])('resolves relative servers before reconciling a document update to %s', async (url) => {
+    const content = { ...createBasicDocument(), servers: [{ url: '/v1' }] }
+    const baseServerURL = 'https://api.example.com'
+    const wrapper = mountComponent({ props: { configuration: { content, baseServerURL } } })
+    await flushPromises()
+
+    await wrapper.setProps({
+      configuration: {
+        content: { ...content, info: { title: 'Updated API', version: '2' }, servers: [{ url }] },
+        baseServerURL,
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.findComponent(ServerSelector).props('selectedServer')?.url).toBe(`${baseServerURL}${url}`)
+  })
+
+  it('default configuration values', async () => {
+    const wrapper = mountComponent({ props: { configuration: { content: createBasicDocument() } } })
+    await flushPromises()
+
+    const apiRef = wrapper.find('.scalar-api-reference')
+    const searchButton = wrapper.findComponent({ name: 'SearchButton' })
+    const clientButton = wrapper.findComponent({ name: 'OpenApiClientButton' })
+    const testRequestButton = wrapper.findComponent({ name: 'TestRequestButton' })
+    const modelTag = wrapper.findComponent({ name: 'ModelTag' })
+    const operation = wrapper.findComponent({ name: 'Operation' })
+
+    // layout: undefined -> modern
+    expect(apiRef.classes()).not.toContain('references-classic')
+
+    // showSidebar: undefined -> true
+    expect(apiRef.classes()).toContain('references-sidebar')
+
+    // hideSearch: undefined -> false
+    expect(searchButton.exists()).toBe(true)
+
+    // hideClientButton: undefined -> false, but the localhost shell keeps the sidebar footer empty
+    expect(clientButton.exists()).toBe(false)
+
+    // defaultOpenAllTags: undefined -> false
+    expect(wrapper.findComponent({ name: 'Content' }).text().includes('Get others')).toBe(false)
+
+    // operationTitleSource: undefined -> summary
+    expect(operation.find('h3').text()).toBe('Get users')
+
+    // showOperationId: undefined -> false
+    expect(wrapper.findComponent({ name: 'Content' }).exists()).toBe(true)
+
+    // orderSchemaPropertiesBy: undefined -> alpha
+    // orderRequiredPropertiesFirst: undefined -> true
+    const propertyNames = wrapper
+      .findComponent({ name: 'RequestBody' })
+      .findAll('.property-name')
+      .map((item) => item.text().split(' ')[0])
+    expect(propertyNames).toStrictEqual([
+      'isAdmin',
+      'phone',
+      'address',
+      'age',
+      'createdAt',
+      'email',
+      'name',
+      'updatedAt',
+    ])
+
+    // hideTestRequestButton: undefined -> false
+    expect(testRequestButton.exists()).toBe(true)
+
+    // expandAllModelSections: undefined -> false
+    expect(modelTag.text().includes('Show More')).toBe(true)
+    expect(modelTag.text().includes('SuperImportantUser')).toBe(false)
+  })
+
+  it('all boolean and simple configurations', async () => {
+    const customCss = '.custom-class { color: red; }'
+    const content = {
+      ...createBasicDocument(),
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            operationId: '1234getUserById5678',
+            tags: ['Users'],
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/SuperImportantUser',
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/others': {
+          get: {
+            summary: 'Get others',
+            tags: ['Others'],
+          },
+        },
+      },
+    }
+
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          content,
+          layout: 'classic',
+          showSidebar: false,
+          hideSearch: true,
+          hideModels: true,
+          hideDarkModeToggle: true,
+          hideClientButton: true,
+          hideTestRequestButton: true,
+          darkMode: true,
+          customCss,
+          theme: 'solarized',
+          defaultOpenAllTags: true,
+          showOperationId: true,
+          documentDownloadType: 'json',
+        },
+      },
+    })
+    await flushPromises()
+
+    const apiRef = wrapper.find('.scalar-api-reference')
+    const searchButton = wrapper.findComponent({ name: 'SearchButton' })
+    const modelTag = wrapper.findComponent({ name: 'ModelTag' })
+    const toggleButton = wrapper.findComponent({ name: 'ScalarColorModeToggleButton' })
+    const clientButton = wrapper.findComponent({ name: 'OpenApiClientButton' })
+    const testRequestButton = wrapper.findComponent({ name: 'TestRequestButton' })
+
+    // layout: classic
+    expect(apiRef.classes()).toContain('references-classic')
+
+    // showSidebar: false
+    expect(apiRef.classes()).not.toContain('references-sidebar')
+
+    // hideSearch: true
+    expect(searchButton.exists()).toBe(false)
+
+    // hideModels: true
+    expect(modelTag.exists()).toBe(false)
+
+    // hideDarkModeToggle: true
+    expect(toggleButton.exists()).toBe(false)
+
+    // hideClientButton: true
+    expect(clientButton.exists()).toBe(false)
+
+    // hideTestRequestButton: true
+    expect(testRequestButton.exists()).toBe(false)
+
+    // darkMode: true
+    expect(document.body.classList.contains('dark-mode')).toBe(true)
+
+    // customCss
+    expect(wrapper.html()).toContain('.custom-class')
+
+    // theme: solarized
+    const html = wrapper.html()
+    expect(html).toContain('--scalar-background-1: #00212b')
+
+    // defaultOpenAllTags: true
+    expect(wrapper.findComponent({ name: 'Content' }).text().includes('Get others')).toBe(true)
+
+    // showOperationId: true
+    expect(wrapper.findComponent({ name: 'Content' }).text().includes('1234getUserById5678')).toBe(true)
+
+    // documentDownloadType: json
+    const downloadButtons = wrapper.findAll('.download-button')
+    expect(downloadButtons).toHaveLength(1)
+    expect(downloadButtons[0]?.find('.extension').text()).toBe('json')
+  })
+
+  it('hides authentication when test requests are hidden', async () => {
+    const authentication = {
+      preferredSecurityScheme: 'apiKey',
+      securitySchemes: {
+        apiKey: {
+          type: 'apiKey',
+          name: 'x-api-key',
+          value: 'test-token',
+        },
+      },
+    }
+
+    const visibleWrapper = mountComponent({
+      props: {
+        configuration: {
+          content: createBasicDocument(),
+          authentication,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(visibleWrapper.findComponent({ name: 'Auth' }).exists()).toBe(true)
+
+    const hiddenWrapper = mountComponent({
+      props: {
+        configuration: {
+          content: createBasicDocument(),
+          authentication,
+          hideClientButton: true,
+          hideTestRequestButton: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(hiddenWrapper.findComponent({ name: 'Auth' }).exists()).toBe(false)
+  })
+
+  it('all callbacks and complex configurations', async () => {
+    const onLoaded = vi.fn()
+    const onServerChange = vi.fn()
+    const onSidebarClick = vi.fn()
+    const onShowMore = vi.fn()
+    const onDocumentSelect = vi.fn()
+    vi.stubGlobal('location', { ...locationMock, hash: '#old' })
+    const replaceStateSpy = vi.spyOn(window.history, 'replaceState')
+
+    const authentication = {
+      preferredSecurityScheme: 'apiKey',
+      securitySchemes: {
+        apiKey: {
+          type: 'apiKey',
+          name: 'x-api-key',
+          value: 'test-token',
+        },
+      },
+    }
+
+    const servers = [
+      { url: 'https://api.example.com', description: 'Production' },
+      { url: 'https://api-staging.example.com', description: 'Staging' },
+    ]
+
+    const content = {
+      ...createBasicDocument(),
+      tags: [
+        { name: 'Zebras', description: 'Zebra operations' },
+        { name: 'Apples', description: 'Apple operations' },
+        { name: 'Monkeys', description: 'Monkey operations' },
+        { name: 'Bananas', description: 'Banana operations' },
+      ],
+      servers,
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            operationId: 'getUsers',
+            tags: ['Zebras'],
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/SuperImportantUser',
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'Successful response',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        superSecretId: { type: 'string' },
+                        name: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          post: {
+            summary: 'Create user',
+            operationId: 'createUser',
+            tags: ['Zebras'],
+          },
+          delete: {
+            summary: 'Delete users',
+            operationId: 'deleteUsers',
+            tags: ['Zebras'],
+          },
+        },
+        '/posts': {
+          get: {
+            summary: 'Get posts',
+            operationId: 'getPosts',
+            tags: ['Apples'],
+          },
+        },
+        '/monkeys': {
+          get: {
+            summary: 'Get monkeys',
+            operationId: 'getMonkeys',
+            tags: ['Monkeys'],
+          },
+        },
+        '/bananas': {
+          get: {
+            summary: 'Get bananas',
+            operationId: 'getBananas',
+            tags: ['Bananas'],
+          },
+        },
+      },
+    }
+
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          onLoaded,
+          onServerChange,
+          onSidebarClick,
+          onShowMore,
+          onDocumentSelect,
+          generateHeadingSlug: (heading: { slug: string }) => `custom-test-slug-${heading.slug}`,
+          generateOperationSlug: (operation: { method: string; path: string }) =>
+            `custom-test-slug-${operation.method}-${operation.path}`,
+          redirect: (hash: string) => hash.replace('#old', '#new'),
+          servers,
+          authentication,
+          defaultHttpClient: {
+            targetKey: 'node',
+            clientKey: 'axios',
+          },
+          hiddenClients: ['unirest', 'node'],
+          proxyUrl: 'https://proxy.example.com',
+          tagsSorter: 'alpha',
+          operationsSorter: 'method',
+          expandAllResponses: true,
+          searchHotKey: 'f',
+          sources: [
+            {
+              slug: 'users-api',
+              content,
+            },
+            {
+              slug: 'posts-api',
+              content: {
+                openapi: '3.1.0',
+                info: { title: 'Posts API', version: '1.0.0' },
+                paths: {
+                  '/posts': {
+                    get: {
+                      summary: 'Get posts',
+                      operationId: 'getPosts',
+                      tags: ['Posts'],
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+    await flushPromises()
+
+    // onLoaded: function
+    expect(onLoaded).toHaveBeenCalled()
+
+    // onServerChange: function
+    const ServerSelector = wrapper.findComponent({ name: 'Selector' })
+    await ServerSelector.vm.$emit('update:modelValue', 'https://api-staging.example.com')
+    expect(onServerChange).toHaveBeenCalled()
+
+    // generateHeadingSlug: function
+    const infoDescription = wrapper.findComponent({ name: 'InfoDescription' })
+    if (infoDescription.exists()) {
+      const h1 = infoDescription.find('h1')
+      if (h1.exists()) {
+        expect(h1.html()).toContain('custom-test-slug-heading-1')
+      }
+    }
+
+    // generateOperationSlug: function
+    const operation = wrapper.findComponent({ name: 'Operation' })
+    if (operation.exists()) {
+      const section = operation.find('section')
+      if (section.exists()) {
+        expect(section.html()).toContain('custom-test-slug-GET-/posts')
+      }
+    }
+
+    // redirect: function
+    expect(replaceStateSpy).toHaveBeenCalledWith({}, '', '#new')
+
+    // servers: array
+    const ServerSelectorComponent = wrapper.findComponent({ name: 'ServerSelector' })
+    expect(ServerSelectorComponent.text().includes('api.example.com')).toBe(true)
+
+    // authentication: object
+    const Auth = wrapper.findComponent({ name: 'Auth' })
+    const button = Auth.find('button[data-testid="data-table-password-toggle"]')
+    await button.trigger('click')
+    expect(Auth.text().includes('test-token')).toBe(true)
+
+    // defaultHttpClient, hiddenClients, proxyUrl
+    expect(wrapper.vm.workspaceStore.workspace['x-scalar-default-client']).toBe('node/axios')
+    const clientOptions = wrapper.findComponent({ name: 'ClientSelector' }).props().clientOptions as ClientOptionGroup[]
+    const clientKeysSet = new Set<string>(clientOptions.flatMap((group) => group.options.map((option) => option.id)))
+    expect(clientKeysSet.has('node/axios')).toBe(false)
+    expect(clientKeysSet.has('java/unirest')).toBe(false)
+    expect(clientKeysSet.has('js/axios')).toBe(true)
+    expect(wrapper.vm.workspaceStore.workspace['x-scalar-active-proxy']).toBe('https://proxy.example.com')
+
+    // expandAllResponses: true
+    const modernLayout = wrapper.findComponent({ name: 'ModernLayout' })
+    if (modernLayout.exists()) {
+      const operationResponses = modernLayout.findComponent({ name: 'OperationResponses' })
+      if (operationResponses.exists()) {
+        expect(operationResponses.props().collapsableItems).toBe(false)
+      }
+    }
+
+    // onSidebarClick: function
+    const sidebarItems = wrapper.findAllComponents({ name: 'ScalarSidebarItem' })
+    const operationItem = sidebarItems.find((item) => item.text().includes('Get posts'))
+    // Entries render as anchors, so click the link rather than the surrounding
+    // list item — only clicks landing on the link drive in-app navigation
+    await operationItem?.find('a').trigger('click')
+    expect(onSidebarClick).toHaveBeenCalled()
+    expect(onSidebarClick).toHaveBeenCalledWith(expect.stringContaining('/posts'))
+
+    // tagsSorter: alpha
+    const tagNames = wrapper.vm.sidebarItems
+      .map((item) => item.title)
+      .filter((text) => ['Apples', 'Bananas', 'Monkeys', 'Zebras'].includes(text))
+    expect(tagNames).toEqual(['Apples', 'Bananas', 'Monkeys', 'Zebras'])
+
+    // operationsSorter: method - operations within a tag are sorted by HTTP method
+    const zebrasTag = wrapper.vm.sidebarItems.find((item) => item.title === 'Zebras')
+    const operationMethods = (zebrasTag as TraversedTag)?.children
+      ?.filter((child) => child.type === 'operation')
+      .map((child) => child.method)
+    expect(operationMethods).toEqual(['delete', 'get', 'post'])
+
+    // onShowMore: function
+    const showMoreButton = wrapper.findComponent({ name: 'ShowMoreButton' })
+    if (showMoreButton.exists()) {
+      await showMoreButton.trigger('click')
+      expect(onShowMore).toHaveBeenCalled()
+      expect(onShowMore).toHaveBeenCalledWith(expect.stringContaining('/bananas'))
+    }
+
+    // onDocumentSelect: function
+    expect(onDocumentSelect).toHaveBeenCalledOnce()
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+    if (documentSelector.exists()) {
+      await documentSelector.vm.$emit('update:modelValue', 'posts-api')
+      await flushPromises()
+      expect(onDocumentSelect).toHaveBeenCalledTimes(2)
+    }
+
+    // searchHotKey: f
+    expect(wrapper.findComponent({ name: 'SearchModal' }).props().modalState.open).toBe(false)
+    await wrapper.trigger('keydown', { key: 'f', ctrlKey: true })
+    expect(wrapper.findComponent({ name: 'SearchModal' }).props().modalState.open).toBe(true)
+  })
+
+  it('alternative values and edge cases', async () => {
+    const content = {
+      ...createBasicDocument(),
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            operationId: 'getUsers',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/SuperImportantUser',
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'Successful response',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        superSecretId: { type: 'string' },
+                        name: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+              '404': {
+                description: 'Not found',
+              },
+            },
+          },
+        },
+        '/posts': {
+          get: {
+            summary: 'Get posts',
+            operationId: 'getPosts',
+            tags: ['Posts'],
+          },
+        },
+      },
+    }
+
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          content,
+          darkMode: false,
+          forceDarkModeState: 'light',
+          operationTitleSource: 'path',
+          orderSchemaPropertiesBy: 'preserve',
+          orderRequiredPropertiesFirst: false,
+          expandAllModelSections: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    // darkMode: false
+    expect(document.body.classList.contains('light-mode')).toBe(true)
+
+    // forceDarkModeState: light
+    expect(document.body.classList.contains('light-mode')).toBe(true)
+
+    // operationTitleSource: path
+    const items = wrapper.findAllComponents({ name: 'ScalarSidebarItem' })
+    const userPathItem = items.find((item) => item.text().includes('/users'))
+    expect(userPathItem?.text().startsWith('/users')).toBe(true)
+
+    // orderSchemaPropertiesBy: preserve, orderRequiredPropertiesFirst: false
+    const propertyNames = wrapper
+      .findComponent({ name: 'RequestBody' })
+      .findAll('.property-name')
+      .map((item) => item.text().split(' ')[0])
+
+    expect(propertyNames).toStrictEqual([
+      'name',
+      'age',
+      'isAdmin',
+      'createdAt',
+      'updatedAt',
+      'address',
+      'phone',
+      'email',
+    ])
+
+    // expandAllModelSections: true
+    const modelTag = wrapper.findComponent({ name: 'ModelTag' })
+    expect(modelTag.text().includes('Show More')).toBe(false)
+    expect(modelTag.text().includes('SuperImportantUser')).toBe(true)
+
+    // expandAllResponses: false (default)
+    const modernLayout = wrapper.findComponent({ name: 'ModernLayout' })
+    if (modernLayout.exists()) {
+      const operationResponses = modernLayout.findComponent({ name: 'OperationResponses' })
+      if (operationResponses.exists()) {
+        expect(operationResponses.props().collapsableItems).toBe(true)
+        expect(operationResponses.text().includes('superSecretId')).toBe(false)
+      }
+    }
+
+    // Test forceDarkModeState: dark separately by remounting
+    wrapper.unmount()
+    await flushPromises()
+
+    const darkWrapper = mountComponent({
+      props: {
+        configuration: {
+          content,
+          forceDarkModeState: 'dark',
+        },
+      },
+    })
+    await flushPromises()
+    expect(document.body.classList.contains('dark-mode')).toBe(true)
+    darkWrapper.unmount()
+  })
+})
+
+describe('ApiReference custom fetch forwarding', () => {
+  it('passes configuration.customFetch to the API client modal', async () => {
+    const customFetch = vi.fn() as unknown as typeof fetch
+    const spy = vi.spyOn(apiClientModalModule, 'createApiClientModal')
+
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          content: createBasicDocument(),
+          customFetch,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(spy).not.toHaveBeenCalled()
+    await wrapper.findComponent({ name: 'TestRequestButton' }).get('button').trigger('click')
+    await flushPromises()
+
+    expect(spy).toHaveBeenCalledOnce()
+    const passedOptions = toValue(spy.mock.calls.at(-1)?.[0].options)
+    expect(passedOptions?.customFetch).toBe(customFetch)
+
+    wrapper.unmount()
+    spy.mockRestore()
+  })
+
+  it('migrates the deprecated configuration.fetch to customFetch', async () => {
+    const customFetch = vi.fn() as unknown as typeof fetch
+    const spy = vi.spyOn(apiClientModalModule, 'createApiClientModal')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          content: createBasicDocument(),
+          fetch: customFetch,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(spy).not.toHaveBeenCalled()
+    await wrapper.findComponent({ name: 'TestRequestButton' }).get('button').trigger('click')
+    await flushPromises()
+
+    expect(spy).toHaveBeenCalledOnce()
+    const passedOptions = toValue(spy.mock.calls.at(-1)?.[0].options)
+    expect(passedOptions?.customFetch).toBe(customFetch)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`deprecated 'fetch' attribute`))
+
+    wrapper.unmount()
+    spy.mockRestore()
+    warn.mockRestore()
+  })
+})
+
+describe('ApiReference AsyncAPI onServerChange', () => {
+  it.each(['modern', 'classic'] as const)(
+    'reveals a filtered-out message through search in %s layout',
+    async (layout) => {
+      const wrapper = mountComponent({
+        props: {
+          configuration: {
+            layout,
+            content: {
+              asyncapi: '3.1.0',
+              info: { title: 'Events', version: '1.0.0' },
+              servers: {
+                mqtt: { host: 'mqtt.example.com', protocol: 'mqtt' },
+                websocket: { host: 'ws.example.com', protocol: 'wss' },
+              },
+              channels: {
+                mqttEvents: {
+                  address: 'mqtt/events',
+                  servers: [{ $ref: '#/servers/mqtt' }],
+                  messages: { updated: { title: 'MQTT Updated', payload: { type: 'string' } } },
+                },
+                wsEvents: {
+                  address: 'ws/events',
+                  tags: [{ name: 'WebSocket' }],
+                  servers: [{ $ref: '#/servers/websocket' }],
+                  messages: { updated: { title: 'WS Updated', payload: { type: 'string' } } },
+                },
+              },
+            },
+          },
+        },
+      })
+      await flushPromises()
+      const content = wrapper.findComponent({ name: 'Content' })
+      const items = content.props('items') as TraversedEntry[]
+      const channel = items.find((entry) => entry.type === 'asyncapi-channel' && entry.channelName === 'mqttEvents')
+      if (!channel || !('children' in channel)) {
+        throw new Error('Expected the MQTT channel')
+      }
+      const message = channel.children?.find((entry) => entry.type === 'asyncapi-message')
+      if (!message) {
+        throw new Error('Expected the MQTT message')
+      }
+      const filters = wrapper.findComponent({ name: 'AsyncApiSidebarFilters' })
+      filters.vm.$emit('update:protocol', 'wss')
+      filters.vm.$emit('update:server', 'websocket')
+      filters.vm.$emit('update:tag', 'WebSocket')
+      await flushPromises()
+      expect((content.props('items') as TraversedEntry[]).map((entry) => entry.id)).not.toContain(channel.id)
+
+      content.props('eventBus').emit('scroll-to:nav-item', { id: message.id })
+      await flushPromises()
+
+      expect(filters.props('protocol')).toBe('')
+      expect(filters.props('server')).toBe('')
+      expect(filters.props('tag')).toBe('')
+      expect((content.props('items') as TraversedEntry[]).map((entry) => entry.id)).toContain(channel.id)
+      expect(wrapper.find(`[id="${message.id}"]`).exists()).toBe(true)
+    },
+  )
+  it('fires onServerChange with the connection URL when an AsyncAPI server is selected', async () => {
+    const onServerChange = vi.fn()
+
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          onServerChange,
+          content: {
+            asyncapi: '3.0.0',
+            info: { title: 'Events API', version: '1.0.0' },
+            servers: {
+              production: { host: 'broker.example.com', protocol: 'wss' },
+              development: { host: '{region}.example.com', protocol: 'wss', variables: { region: { default: 'dev' } } },
+            },
+            channels: { events: { address: '/events' } },
+            operations: { listen: { action: 'receive', channel: { $ref: '#/channels/events' } } },
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    const serverSelector = wrapper.findComponent({ name: 'Selector' })
+    expect(serverSelector.exists()).toBe(true)
+
+    await serverSelector.vm.$emit('update:modelValue', 'development')
+
+    expect(onServerChange).toHaveBeenCalledWith('wss://dev.example.com')
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('neutralizes a closing style tag in customCss', async () => {
+    const wrapper = mountComponent({
+      props: {
+        configuration: {
+          content: createBasicDocument(),
+          customCss: '.a { color: red; }</style><script>globalThis.pwned = true</script>',
+        },
+      },
+    })
+    await flushPromises()
+
+    const styleContent = wrapper.find('style').element.textContent ?? ''
+
+    // The CSS itself still makes it into the style tag
+    expect(styleContent).toContain('.a { color: red; }')
+
+    // But the tag cannot be closed early to smuggle markup into the page
+    expect(styleContent).not.toContain('</style>')
+    expect(styleContent).toContain('<\\/style>')
+    expect(wrapper.find('script').exists()).toBe(false)
+    expect((globalThis as unknown as Record<string, unknown>).pwned).toBeUndefined()
+
+    wrapper.unmount()
+  })
+})
+
+describe('host-app hash routing', () => {
+  afterEach(() => {
+    locationMock.href = 'http://localhost:3000/'
+    locationMock.hash = ''
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['#docs/api-spec', '#docs/api-spec', false],
+    ['#docs/api-spec/tag/users', '#docs/api-spec', false],
+    ['#tag/users', '', false],
+    ['#docs/api-spec/second/tag/users', '#docs/api-spec', true],
+  ])('keeps the host route when opening and navigating from %s', async (hash, prefix, multi) => {
+    locationMock.hash = hash
+    locationMock.href = `http://localhost:3000/${hash}`
+    const updateLocation = (_data: unknown, _unused: string, url?: string | URL | null): void => {
+      const next = new URL(String(url), locationMock.href)
+      locationMock.href = next.href
+      locationMock.hash = next.hash
+    }
+    vi.spyOn(window.history, 'replaceState').mockImplementation(updateLocation)
+    vi.spyOn(window.history, 'pushState').mockImplementation(updateLocation)
+
+    const configuration = {
+      slug: 'doc',
+      content: {
+        openapi: '3.1.0',
+        info: { title: 'Hash routing', version: '1.0.0' },
+        tags: [{ name: 'Users' }, { name: 'Payers' }],
+        paths: {
+          '/users': { get: { tags: ['Users'], responses: {} } },
+          '/payers': { get: { tags: ['Payers'], responses: {} } },
+        },
+      },
+    }
+    const wrapper = mountComponent({
+      props: {
+        configuration: multi ? [configuration, { ...configuration, slug: 'second' }] : configuration,
+      },
+    })
+    await flushPromises()
+
+    const expectedHash = `${prefix || '#'}${prefix ? '/' : ''}${multi ? 'second/' : ''}tag/payers`
+    expect(wrapper.findAll('a').map((link) => link.attributes('href'))).toContain(expectedHash)
+    const eventBus = wrapper.findComponent({ name: 'Content' }).props('eventBus')
+    eventBus.emit('select:nav-item', { id: `${multi ? 'second' : 'doc'}/tag/payers` })
+    await flushPromises()
+    expect(locationMock.hash).toBe(expectedHash)
+  })
+
+  it.each([
+    ['', false, '# Overview\nDetails'],
+    ['', false, 'Introductory prose'],
+    ['', false, ''],
+    ['docs/api-spec/', false, '# Overview\nDetails'],
+    ['', true, '# Overview\nDetails'],
+    ['docs/api-spec/', true, '# Overview\nDetails'],
+  ])(
+    'preserves introduction links through remounts with prefix "%s" and multi-document %s',
+    async (prefix, multi, description) => {
+      const slug = multi ? 'second' : 'doc'
+      const hash = `#${prefix}${multi ? `${slug}/` : ''}description/introduction`
+      locationMock.hash = hash
+      locationMock.href = `http://localhost:3000/${hash}`
+      const updateLocation = (_data: unknown, _unused: string, url?: string | URL | null): void => {
+        const next = new URL(String(url), locationMock.href)
+        locationMock.href = next.href
+        locationMock.hash = next.hash
+      }
+      vi.spyOn(window.history, 'replaceState').mockImplementation(updateLocation)
+      vi.spyOn(window.history, 'pushState').mockImplementation(updateLocation)
+
+      const configuration = {
+        slug: 'doc',
+        content: {
+          openapi: '3.1.0',
+          info: { title: 'Introduction routing', version: '1.0.0', description },
+          paths: {},
+        },
+      }
+      for (const _mount of [0, 1]) {
+        const wrapper = mountComponent({
+          props: { configuration: multi ? [configuration, { ...configuration, slug: 'second' }] : configuration },
+        })
+        await flushPromises()
+        const eventBus = wrapper.findComponent({ name: 'Content' }).props('eventBus')
+        eventBus.emit('select:nav-item', { id: `${slug}/description/introduction` })
+        await flushPromises()
+        expect(locationMock.hash).toBe(hash)
+        wrapper.unmount()
+      }
+    },
+  )
+})
+
+describe('ApiReference developer tools theme', () => {
+  /** Picks a theme in the localhost developer tools, the way the toolbar does it */
+  const pickToolbarTheme = async (wrapper: ReturnType<typeof mountComponent>, theme: string): Promise<void> => {
+    const developerTools = wrapper.findComponent({ name: 'DeveloperTools' })
+    expect(developerTools.exists()).toBe(true)
+    await developerTools.vm.$emit('update:overrides', { theme })
+    await flushPromises()
+  }
+
+  const getStyleContent = (wrapper: ReturnType<typeof mountComponent>): string =>
+    wrapper.find('style').element.textContent ?? ''
+
+  it('wraps the theme in the scalar-theme layer without an override', async () => {
+    const wrapper = mountComponent({
+      props: { configuration: { content: createBasicDocument() } },
+    })
+    await flushPromises()
+
+    expect(getStyleContent(wrapper)).toContain('@layer scalar-theme {')
+  })
+
+  it('emits a toolbar theme without a layer so it beats unlayered integration styles', async () => {
+    const wrapper = mountComponent({
+      props: { configuration: { content: createBasicDocument() } },
+    })
+    await flushPromises()
+
+    await pickToolbarTheme(wrapper, 'moon')
+
+    const styleContent = getStyleContent(wrapper)
+    expect(styleContent).not.toContain('@layer')
+    // The Moon background color
+    expect(styleContent).toContain('#ccc9b3')
+  })
+
+  it('keeps customCss after the unlayered toolbar theme', async () => {
+    const customCss = '.custom-class { color: red; }'
+    const wrapper = mountComponent({
+      props: { configuration: { content: createBasicDocument(), customCss } },
+    })
+    await flushPromises()
+
+    await pickToolbarTheme(wrapper, 'moon')
+
+    const styles = wrapper.findAll('style')
+    expect(styles.map((style) => style.element.textContent).slice(1)).toStrictEqual([customCss])
+    expect(styles[0]?.element.textContent).toContain('#ccc9b3')
+  })
+
+  it('keeps custom CSS imports valid after picking a toolbar theme', async () => {
+    const customCss = '@import url("data:text/css,.light-mode%7B--scalar-background-1:%23ff00ff%7D");'
+    const wrapper = mountComponent({
+      props: { configuration: { content: createBasicDocument(), customCss } },
+    })
+    await flushPromises()
+
+    await pickToolbarTheme(wrapper, 'moon')
+
+    const styles = wrapper.findAll('style')
+    const customStyle = styles[1]?.element as HTMLStyleElement | undefined
+    expect(customStyle?.sheet?.cssRules[0]?.type).toBe(CSSRule.IMPORT_RULE)
+    expect(customStyle?.textContent).toBe(customCss)
+
+    await pickToolbarTheme(wrapper, 'default')
+
+    expect(wrapper.findAll('style').length).toBe(1)
+    expect(getStyleContent(wrapper).startsWith(customCss)).toBe(true)
+  })
+
+  it('keeps the layered theme when the toolbar picks the configured theme', async () => {
+    const wrapper = mountComponent({
+      props: { configuration: { content: createBasicDocument(), theme: 'moon' } },
+    })
+    await flushPromises()
+
+    await pickToolbarTheme(wrapper, 'moon')
+
+    const styleContent = getStyleContent(wrapper)
+    expect(styleContent).toContain('@layer scalar-theme {')
+    expect(styleContent).toContain('#ccc9b3')
+  })
+
+  it('keeps the layered theme when the toolbar picks default and no theme is configured', async () => {
+    const wrapper = mountComponent({
+      props: { configuration: { content: createBasicDocument() } },
+    })
+    await flushPromises()
+
+    await pickToolbarTheme(wrapper, 'default')
+
+    expect(getStyleContent(wrapper)).toContain('@layer scalar-theme {')
+  })
+})

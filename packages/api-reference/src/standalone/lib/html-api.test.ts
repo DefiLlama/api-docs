@@ -1,236 +1,590 @@
+import { sleep } from '@scalar/helpers/testing/sleep'
+import {
+  apiReferenceConfigurationSchema,
+  apiReferenceConfigurationWithSourceSchema,
+} from '@scalar/schemas/api-reference'
+import { coerce } from '@scalar/validation'
+import { createHead } from '@unhead/vue/client'
+import { flushPromises } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
+
 import {
   createApiReference,
   createContainer,
   findDataAttributes,
   getConfigurationFromDataAttributes,
-} from '@/standalone/lib/html-api'
-import { apiReferenceConfigurationSchema } from '@scalar/types/api-reference'
-import { flushPromises } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+  releaseUnusedStyles,
+} from './html-api'
 
-describe('html-api', () => {
-  beforeEach(() => {
-    global.document = createHtmlDocument(`
-      <html>
-        <body>
-          <div id="mount-point"></div>
-        </body>
-      </html>
-    `)
+vi.mock('@unhead/vue/client', async () => {
+  const actual = await vi.importActual<typeof import('@unhead/vue/client')>('@unhead/vue/client')
+
+  return {
+    ...actual,
+    createHead: vi.fn(actual.createHead),
+  }
+})
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'document',
+    createHtmlDocument(`
+    <html>
+      <body>
+        <div id="mount-point"></div>
+      </body>
+    </html>
+  `),
+  )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+const consoleWarnSpy = vi.spyOn(console, 'warn')
+
+// Base config matches getConfigurationFromDataAttributes output (withSource schema + defaults).
+const baseConfig = apiReferenceConfigurationWithSourceSchema({
+  _integration: 'html',
+})
+
+describe('createContainer', () => {
+  it('creates a container element', () => {
+    expect(createContainer(document)).toBeDefined()
+  })
+})
+
+describe('createApiReference', () => {
+  it('creates and mounts the API reference component', () => {
+    const element = document.querySelector('#mount-point')
+    expect(element).toBeInstanceOf(HTMLElement)
+
+    const config = { _integration: 'html' }
+    const apiReference = createApiReference(element!, coerce(apiReferenceConfigurationSchema, config))
+
+    expect(apiReference.app.mount).toBeDefined()
+    expect(apiReference.updateConfiguration).toBeDefined()
+    expect(element?.innerHTML).toContain('Powered by Scalar')
   })
 
-  const consoleWarnSpy = vi.spyOn(console, 'warn')
+  it('adds the integration to the powered by link', () => {
+    const element = document.querySelector('#mount-point')
 
-  // Since we use zod now we have a base config
-  const baseConfig = apiReferenceConfigurationSchema.parse({
-    _integration: 'html',
-  })
-
-  describe('createContainer', () => {
-    it('creates a container element', () => {
-      expect(createContainer(document)).toBeDefined()
-    })
-  })
-
-  describe('createApiReference', () => {
-    it('creates and mounts the API reference component', () => {
-      const element = document.querySelector('#mount-point')
-      expect(element).toBeInstanceOf(HTMLElement)
-
-      const config = { _integration: 'html' }
-      const apiReference = createApiReference(element!, apiReferenceConfigurationSchema.parse(config))
-
-      expect(apiReference.app.mount).toBeDefined()
-      expect(apiReference.updateConfiguration).toBeDefined()
-      expect(element?.innerHTML).toContain('Powered by Scalar')
-    })
-
-    it('handles string selectors for mounting', () => {
-      const config = { _integration: 'html' }
-      const apiReference = createApiReference('#mount-point', apiReferenceConfigurationSchema.parse(config))
-
-      expect(apiReference.app.mount).toBeDefined()
-      expect(apiReference.updateConfiguration).toBeDefined()
-      expect(document.getElementById('mount-point')?.innerHTML).toContain('Powered by Scalar')
-    })
-
-    it('handles scalar:reload-references event', () => {
-      const element = document.querySelector('#mount-point')
-      const config = { _integration: 'html' }
-
-      createApiReference(element!, apiReferenceConfigurationSchema.parse(config))
-      document.dispatchEvent(new Event('scalar:reload-references'))
-
-      expect(consoleWarnSpy).toHaveBeenCalledOnce()
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'scalar:reload-references event has been deprecated, please use the scalarInstance.app.mount method instead.',
-      )
-    })
-
-    it('handles scalar:destroy-references event', () => {
-      const element = document.querySelector('#mount-point')
-      const config = { _integration: 'html' }
-
-      createApiReference(element!, apiReferenceConfigurationSchema.parse(config))
-
-      document.dispatchEvent(new Event('scalar:destroy-references'))
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'scalar:destroy-references event has been deprecated, please use scalarInstance.destroy instead.',
-      )
-    })
-
-    it('handles scalar:update-references-config event', () => {
-      const element = document.querySelector('#mount-point')
-      const config = { _integration: 'html' }
-
-      createApiReference(element!, apiReferenceConfigurationSchema.parse(config))
-
-      const updateEvent = new CustomEvent('scalar:update-references-config', {
-        detail: { configuration: { darkMode: true } },
-      })
-      document.dispatchEvent(updateEvent)
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'scalar:update-references-config event has been deprecated, please use scalarInstance.updateConfiguration instead.',
-      )
-    })
-
-    it('allows mounting after creation', () => {
-      const config = { _integration: 'html' }
-      const app = createApiReference(apiReferenceConfigurationSchema.parse(config))
-
-      // Mount after creation
-      app.app.mount('#mount-point')
-      expect(app).toBeDefined()
-      expect(document.getElementById('mount-point')?.innerHTML).toContain('Powered by Scalar')
-    })
-
-    it('allows updating configuration after creation', async () => {
-      const config = { _integration: 'html' }
-      const app = createApiReference('#mount-point', apiReferenceConfigurationSchema.parse(config))
-
-      // Update configuration after creation
-      const newConfig = {
-        content: '{"openapi":"3.1.0", "info": {"title": "Updated API", "version": "1.0.0"}}',
-      }
-      app.updateConfiguration(newConfig)
-      expect(app).toBeDefined()
-
-      // Assert the configuration was updated
-      expect(app.getConfiguration()).toMatchObject(newConfig)
-      await flushPromises()
-      expect(document.getElementById('mount-point')?.innerHTML).toContain('Updated API')
-    })
-  })
-
-  describe('findDataAttributes (legacy)', () => {
-    it('adds dark-mode class when darkMode is true', () => {
-      const config = apiReferenceConfigurationSchema.parse({
+    createApiReference(
+      element!,
+      coerce(apiReferenceConfigurationSchema, {
         _integration: 'html',
-        darkMode: true,
-      })
+        content: { openapi: '3.1.0', info: { title: 'Test API', version: '1.0.0' }, paths: {} },
+      }),
+    )
 
-      findDataAttributes(document, config)
-      expect(document.body.classList.contains('dark-mode')).toBe(true)
-    })
-
-    it('adds light-mode class when darkMode is false', () => {
-      const config = apiReferenceConfigurationSchema.parse({
-        _integration: 'html',
-        darkMode: false,
-      })
-
-      findDataAttributes(document, config)
-      expect(document.body.classList.contains('light-mode')).toBe(true)
-    })
+    expect(element?.querySelector('a[href*="utm_source=powered-by"]')?.getAttribute('href')).toBe(
+      'https://scalar.com/?utm_source=powered-by&utm_medium=api-reference&utm_campaign=html',
+    )
   })
 
-  describe('getConfigurationFromDataAttributes', () => {
-    it('createApiReference', async () => {
-      global.document = createHtmlDocument(`
+  it('handles string selectors for mounting', () => {
+    const config = { _integration: 'html' }
+    const apiReference = createApiReference('#mount-point', coerce(apiReferenceConfigurationSchema, config))
+
+    expect(apiReference.app.mount).toBeDefined()
+    expect(apiReference.updateConfiguration).toBeDefined()
+    expect(document.getElementById('mount-point')?.innerHTML).toContain('Powered by Scalar')
+  })
+
+  it('creates the head manager once for hydration mounts', () => {
+    const createHeadSpy = vi.mocked(createHead)
+    createHeadSpy.mockClear()
+    const element = document.querySelector('#mount-point')
+    element!.innerHTML = '<div>Server-rendered content</div>'
+
+    const config = { _integration: 'html' }
+    createApiReference(element!, coerce(apiReferenceConfigurationSchema, config))
+
+    expect(createHeadSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('handles scalar:reload-references event', () => {
+    const element = document.querySelector('#mount-point')
+    const config = {
+      _integration: 'html',
+      content: { 'openapi': '3.1.0', 'info': { 'title': 'Test API', 'version': '1.0.0' } },
+    }
+
+    createApiReference(element!, apiReferenceConfigurationWithSourceSchema(config))
+    document.dispatchEvent(new Event('scalar:reload-references'))
+
+    expect(consoleWarnSpy).toHaveBeenCalledOnce()
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'scalar:reload-references event has been deprecated, please use the scalarInstance.app.mount method instead.',
+    )
+  })
+
+  it('handles scalar:destroy-references event', () => {
+    const element = document.querySelector('#mount-point')
+    const config = { _integration: 'html' }
+
+    createApiReference(element!, coerce(apiReferenceConfigurationSchema, config))
+
+    document.dispatchEvent(new Event('scalar:destroy-references'))
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'scalar:destroy-references event has been deprecated, please use scalarInstance.destroy instead.',
+    )
+  })
+
+  it('handles scalar:update-references-config event', () => {
+    const element = document.querySelector('#mount-point')
+    const config = { _integration: 'html' }
+
+    createApiReference(element!, coerce(apiReferenceConfigurationSchema, config))
+
+    const updateEvent = new CustomEvent('scalar:update-references-config', {
+      detail: { configuration: { darkMode: true } },
+    })
+    document.dispatchEvent(updateEvent)
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'scalar:update-references-config event has been deprecated, please use scalarInstance.updateConfiguration instead.',
+    )
+  })
+
+  it('removes the deprecated document listeners on destroy', () => {
+    const element = document.querySelector('#mount-point')
+    const config = { _integration: 'html' }
+
+    const apiReference = createApiReference(element!, coerce(apiReferenceConfigurationSchema, config))
+
+    consoleWarnSpy.mockClear()
+    apiReference.destroy()
+
+    document.dispatchEvent(new Event('scalar:reload-references'))
+    document.dispatchEvent(new Event('scalar:destroy-references'))
+    document.dispatchEvent(new CustomEvent('scalar:update-references-config', { detail: {} }))
+
+    // Listeners are scoped to the instance's `AbortController`, so dispatching
+    // these events after `destroy()` must not run their deprecation warnings —
+    // otherwise each remount during Astro view transitions would leak three
+    // permanent listeners on `document`.
+    expect(consoleWarnSpy).not.toHaveBeenCalled()
+  })
+
+  // The standalone build injects all of its CSS into one <style> tag in <head>.
+  // Under SPA-style navigation (Turbo Drive, htmx) the host swaps the DOM without
+  // reloading the window, so these document-level styles would otherwise linger
+  // and bleed into the host app's next page. `destroy()` detaches them and a fresh
+  // mount re-attaches them. We simulate the injected tag since the bundle's
+  // runtime injection does not run in the test environment.
+  const injectStandaloneStyle = () => {
+    const style = document.createElement('style')
+    style.id = 'scalar-style'
+    style.textContent = ':root { --scalar-loaded-api-reference: true; }'
+    document.head.appendChild(style)
+
+    return style
+  }
+
+  it('releases orphaned styles without changing body classes and restores them on mount', () => {
+    const style = injectStandaloneStyle()
+    document.body.className = 'dark-mode host-theme'
+
+    releaseUnusedStyles()
+    releaseUnusedStyles()
+
+    expect(document.getElementById('scalar-style')).toBeNull()
+    expect(document.body.className).toBe('dark-mode host-theme')
+    const instance = createApiReference('#mount-point', {})
+    expect(document.getElementById('scalar-style')).toBe(style)
+    instance.destroy()
+  })
+
+  it('does not release styles owned by an active reference', () => {
+    const style = injectStandaloneStyle()
+    const instance = createApiReference('#mount-point', {})
+    releaseUnusedStyles()
+    releaseUnusedStyles()
+    expect(document.getElementById('scalar-style')).toBe(style)
+    instance.destroy()
+    expect(document.getElementById('scalar-style')).toBeNull()
+  })
+
+  it('releases styles when destroyed before plugins finish loading', async () => {
+    injectStandaloneStyle()
+    const instance = createApiReference('#mount-point', {
+      pluginUrls: ['data:text/javascript,export default () => ({ name: "late", extensions: [] })'],
+    })
+    const bodyClasses = document.body.className
+    instance.destroy()
+    releaseUnusedStyles()
+    await flushPromises()
+    expect(document.getElementById('scalar-style')).toBeNull()
+    expect(document.body.className).toBe(bodyClasses)
+    expect(document.querySelector('#mount-point')?.innerHTML).toBe('')
+  })
+
+  it('detaches the injected standalone styles on destroy', () => {
+    injectStandaloneStyle()
+    const config = { _integration: 'html' }
+    const apiReference = createApiReference('#mount-point', coerce(apiReferenceConfigurationSchema, config))
+
+    expect(document.getElementById('scalar-style')).not.toBeNull()
+
+    apiReference.destroy()
+    expect(document.getElementById('scalar-style')).toBeNull()
+  })
+
+  it('re-attaches the injected styles when a new instance mounts', () => {
+    injectStandaloneStyle()
+    const config = { _integration: 'html' }
+
+    createApiReference('#mount-point', coerce(apiReferenceConfigurationSchema, config)).destroy()
+    expect(document.getElementById('scalar-style')).toBeNull()
+
+    createApiReference('#mount-point', coerce(apiReferenceConfigurationSchema, config))
+    expect(document.getElementById('scalar-style')).not.toBeNull()
+  })
+
+  it('keeps the styles until the last instance is destroyed', () => {
+    injectStandaloneStyle()
+    const second = document.createElement('div')
+    document.body.appendChild(second)
+
+    const config = { _integration: 'html' }
+    const first = createApiReference('#mount-point', coerce(apiReferenceConfigurationSchema, config))
+    const last = createApiReference(second, coerce(apiReferenceConfigurationSchema, config))
+
+    first.destroy()
+    expect(document.getElementById('scalar-style')).not.toBeNull()
+
+    last.destroy()
+    expect(document.getElementById('scalar-style')).toBeNull()
+  })
+
+  it('allows mounting after creation', async () => {
+    const config = { _integration: 'html' }
+    const app = createApiReference(coerce(apiReferenceConfigurationSchema, config))
+
+    // Mount after creation
+    app.app.mount('#mount-point')
+    expect(app).toBeDefined()
+
+    await flushPromises()
+    await nextTick()
+    expect(document.getElementById('mount-point')?.innerHTML).toContain('Powered by Scalar')
+  })
+
+  it('allows updating configuration after creation', async () => {
+    const config = { _integration: 'html' }
+    const app = createApiReference('#mount-point', coerce(apiReferenceConfigurationSchema, config))
+
+    // Update configuration after creation
+    const newConfig = {
+      content: '{"openapi":"3.1.0", "info": {"title": "Updated API", "version": "1.0.0"}}',
+    }
+    app.updateConfiguration(newConfig)
+    expect(app).toBeDefined()
+
+    // Wait for the update to propagate
+    await flushPromises()
+    await sleep(1000)
+
+    // Assert the configuration was updated
+    expect(app.getConfiguration()).toMatchObject(newConfig)
+    expect(document.getElementById('mount-point')?.innerHTML).toContain('Updated API')
+  })
+
+  it('updates the operations when the configuration changes', async () => {
+    const config = { _integration: 'html', expandOperations: true, slug: 'updated-api' }
+    const app = createApiReference('#mount-point', coerce(apiReferenceConfigurationSchema, config))
+
+    // Update configuration
+    app.updateConfiguration({
+      slug: 'updated-api',
+      content: JSON.stringify({
+        'openapi': '3.1.0',
+        'info': { 'title': 'Updated API', 'version': '1.0.0' },
+        'paths': {
+          '/test': {
+            'get': {
+              'tags': ['Test'],
+              'summary': 'New Operation',
+            },
+          },
+        },
+      }),
+    })
+
+    // Assert the configuration was updated
+    await flushPromises()
+    await sleep(1000)
+
+    expect(document.getElementById('updated-api/tag/test/GET/test')).not.toBeNull()
+    expect(document.getElementById('updated-api/tag/test/GET/test')?.innerHTML).toContain('New Operation')
+
+    // Update configuration
+    app.updateConfiguration({
+      slug: 'updated-api',
+      content: JSON.stringify({
+        'openapi': '3.1.0',
+        'info': { 'title': 'Updated API', 'version': '1.0.0' },
+        'paths': {
+          '/test': {
+            'post': {
+              'tags': ['Test'],
+              'summary': 'Even newer operation',
+            },
+          },
+        },
+      }),
+    })
+
+    await flushPromises()
+
+    await sleep(1000)
+    expect(document.getElementById('updated-api/tag/test/POST/test')).not.toBeNull()
+    expect(document.getElementById('updated-api/tag/test/POST/test')?.innerHTML).toContain('Even newer operation')
+
+    // Assert the configuration was updated
+    await flushPromises()
+  })
+
+  it('loads plugins from pluginUrls before mounting', async () => {
+    const element = document.querySelector('#mount-point')
+
+    // An ESM module that records when the plugin factory is invoked by the plugin manager
+    const pluginUrl =
+      'data:text/javascript,export default () => { globalThis.__scalarUrlPluginInvoked = true; return { name: "url-plugin", extensions: [] } }'
+
+    const config = {
+      ...coerce(apiReferenceConfigurationSchema, { _integration: 'html' }),
+      content: JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'Plugin Test API', version: '1.0.0' },
+        paths: {},
+      }),
+      pluginUrls: [pluginUrl],
+    }
+    createApiReference(element!, config)
+
+    // Mounting is deferred until the plugin module is imported
+    expect(element?.innerHTML).not.toContain('Powered by Scalar')
+
+    await vi.waitFor(() => expect(element?.innerHTML).toContain('Powered by Scalar'))
+
+    // The loaded plugin was registered with the plugin manager
+    expect((globalThis as Record<string, unknown>).__scalarUrlPluginInvoked).toBe(true)
+  })
+
+  it('does not mount when the instance is destroyed while plugins are loading', async () => {
+    const element = document.querySelector('#mount-point')
+
+    const config = {
+      ...coerce(apiReferenceConfigurationSchema, { _integration: 'html' }),
+      pluginUrls: ['data:text/javascript,export default () => ({ name: "url-plugin", extensions: [] })'],
+    }
+    const instance = createApiReference(element!, config)
+    instance.destroy()
+
+    await flushPromises()
+    await sleep(100)
+
+    expect(element?.innerHTML).not.toContain('Powered by Scalar')
+  })
+})
+
+describe('findDataAttributes (legacy)', () => {
+  it('adds dark-mode class when darkMode is true', () => {
+    const config = coerce(apiReferenceConfigurationSchema, {
+      _integration: 'html',
+      darkMode: true,
+    })
+
+    findDataAttributes(document, config)
+    expect(document.body.classList.contains('dark-mode')).toBe(true)
+  })
+
+  it('adds light-mode class when darkMode is false', () => {
+    const config = coerce(apiReferenceConfigurationSchema, {
+      _integration: 'html',
+      darkMode: false,
+    })
+
+    findDataAttributes(document, config)
+    expect(document.body.classList.contains('light-mode')).toBe(true)
+  })
+})
+
+describe('getConfigurationFromDataAttributes', () => {
+  it('createApiReference', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
         <html>
           <body>
             <script id="api-reference" data-url="/openapi.json"></script>
           </body>
         </html>
-      `)
+      `),
+    )
 
-      expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
-        ...baseConfig,
-        proxyUrl: undefined,
-        url: '/openapi.json',
-      })
+    expect(getConfigurationFromDataAttributes(document)).toEqual({
+      ...baseConfig,
+      default: false,
+      url: '/openapi.json',
     })
+  })
 
-    it('handles spec content from script tag', () => {
-      global.document = createHtmlDocument(`
+  it('handles spec content from script tag', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
       <html>
         <body>
           <script id="api-reference" type="application/json">{"openapi":"3.1.0"}</script>
         </body>
       </html>
-    `)
+    `),
+    )
 
-      expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
-        ...baseConfig,
-        proxyUrl: undefined,
-        content: '{"openapi":"3.1.0"}',
-      })
+    expect(getConfigurationFromDataAttributes(document)).toEqual({
+      ...baseConfig,
+      default: false,
+      content: '{"openapi":"3.1.0"}',
     })
+  })
 
-    it('handles proxy URL configuration', () => {
-      global.document = createHtmlDocument(`
+  it('handles proxy URL configuration', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
       <html>
         <body>
           <script id="api-reference" data-proxy-url="https://proxy.example.com" data-url="/spec.json"></script>
         </body>
       </html>
-    `)
+    `),
+    )
 
-      expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
-        ...baseConfig,
-        proxyUrl: 'https://proxy.example.com',
-        url: '/spec.json',
-      })
+    expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
+      ...baseConfig,
+      default: false,
+      proxyUrl: 'https://proxy.example.com',
+      url: '/spec.json',
     })
+  })
 
-    it('handles custom configuration via data-configuration attribute', () => {
-      global.document = createHtmlDocument(`
+  it('handles custom configuration via data-configuration attribute', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
       <html>
         <body>
           <script id="api-reference" data-configuration='{"darkMode":true,"spec":{"url":"/custom.json"}}'></script>
         </body>
       </html>
-    `)
+    `),
+    )
 
-      expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
-        ...baseConfig,
-        darkMode: true,
-        proxyUrl: undefined,
-        url: '/custom.json',
-      })
+    expect(getConfigurationFromDataAttributes(document)).toEqual({
+      ...baseConfig,
+      darkMode: true,
+      default: false,
+      url: '/custom.json',
     })
+  })
 
-    it('handles deprecated data-spec attribute with warning', () => {
-      global.document = createHtmlDocument(`
+  it('preserves multiple sources from the data-configuration attribute', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
+      <html>
+        <body>
+          <script
+            id="api-reference"
+            data-configuration='{"sources":[{"url":"/public.json"},{"url":"/admin.json"}]}'></script>
+        </body>
+      </html>
+    `),
+    )
+
+    // toStrictEqual guarantees we do not emit a stray `proxyUrl: undefined` when none is configured.
+    expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
+      _integration: 'html',
+      sources: [{ url: '/public.json' }, { url: '/admin.json' }],
+    })
+  })
+
+  it('preserves shared configuration and the proxy url alongside multiple sources', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
+      <html>
+        <body>
+          <script
+            id="api-reference"
+            data-proxy-url="https://proxy.example.com"
+            data-configuration='{"theme":"purple","sources":[{"url":"/public.json"},{"url":"/admin.json"}]}'></script>
+        </body>
+      </html>
+    `),
+    )
+
+    expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
+      _integration: 'html',
+      proxyUrl: 'https://proxy.example.com',
+      theme: 'purple',
+      sources: [{ url: '/public.json' }, { url: '/admin.json' }],
+    })
+  })
+
+  it('falls back to single-source parsing when the sources array is empty', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
+      <html>
+        <body>
+          <script
+            id="api-reference"
+            data-url="/openapi.json"
+            data-configuration='{"sources":[]}'></script>
+        </body>
+      </html>
+    `),
+    )
+
+    // An empty sources array carries no documents, so the data-url should still be picked up
+    // and the (unusable) sources key should be dropped by the single-source schema.
+    expect(getConfigurationFromDataAttributes(document)).toEqual({
+      ...baseConfig,
+      default: false,
+      url: '/openapi.json',
+    })
+  })
+
+  it('handles deprecated data-spec attribute with warning', () => {
+    vi.stubGlobal(
+      'document',
+      createHtmlDocument(`
       <html>
         <body>
           <div data-spec='{"openapi":"3.1.0"}'></div>
         </body>
       </html>
-    `)
+    `),
+    )
 
-      expect(getConfigurationFromDataAttributes(document)).toStrictEqual({
-        ...baseConfig,
-        proxyUrl: undefined,
-        content: '{"openapi":"3.1.0"}',
-      })
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('The [data-spec] HTML API is deprecated'))
+    expect(getConfigurationFromDataAttributes(document)).toEqual({
+      ...baseConfig,
+      default: false,
+      content: '{"openapi":"3.1.0"}',
     })
 
-    it('handles deprecated data-spec-url attribute with warning', () => {
-      const doc = createHtmlDocument(`
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('The [data-spec] HTML API is deprecated'))
+  })
+
+  it('handles deprecated data-spec-url attribute with warning', () => {
+    const doc = createHtmlDocument(`
       <html>
         <body>
           <div data-spec-url="/deprecated.json"></div>
@@ -238,26 +592,26 @@ describe('html-api', () => {
       </html>
     `)
 
-      expect(getConfigurationFromDataAttributes(doc)).toStrictEqual({
-        ...baseConfig,
-        proxyUrl: undefined,
-        url: '/deprecated.json',
-      })
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('The [data-spec-url] HTML API is deprecated'))
+    expect(getConfigurationFromDataAttributes(doc)).toEqual({
+      ...baseConfig,
+      default: false,
+      url: '/deprecated.json',
     })
 
-    // We can't log an error anymore, otherwise it would always show for people using the new JS-based API.
-    it.skip('handles missing spec elements with error', () => {
-      expect(getConfigurationFromDataAttributes(document)).toStrictEqual(baseConfig)
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Couldn't find a [data-spec], [data-spec-url] or <script id='api-reference' /> element. Try adding it like this: %c<div data-spec-url='https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml' />",
-        'font-family: monospace;',
-      )
-    })
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('The [data-spec-url] HTML API is deprecated'))
+  })
 
-    it('prioritizes configuration spec URL over data-url attribute', () => {
-      const doc = createHtmlDocument(`
+  // We can't log an error anymore, otherwise it would always show for people using the new JS-based API.
+  it.skip('handles missing spec elements with error', () => {
+    expect(getConfigurationFromDataAttributes(document)).toStrictEqual(baseConfig)
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "Couldn't find a [data-spec], [data-spec-url] or <script id='api-reference' /> element. Try adding it like this: %c<div data-spec-url='https://registry.scalar.com/@scalar/apis/galaxy?format=yaml' />",
+      'font-family: monospace;',
+    )
+  })
+
+  it('prioritizes configuration spec URL over data-url attribute', () => {
+    const doc = createHtmlDocument(`
       <html>
         <body>
           <script
@@ -269,11 +623,10 @@ describe('html-api', () => {
       </html>
     `)
 
-      expect(getConfigurationFromDataAttributes(doc)).toStrictEqual({
-        ...baseConfig,
-        proxyUrl: undefined,
-        url: '/priority.json',
-      })
+    expect(getConfigurationFromDataAttributes(doc)).toEqual({
+      ...baseConfig,
+      default: false,
+      url: '/priority.json',
     })
   })
 })

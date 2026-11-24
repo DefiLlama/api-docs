@@ -1,8 +1,8 @@
 import type { ScalarIconComponent, ScalarIconWeight } from '@scalar/icons/types'
 
-import type { Variants } from './variants'
-import type { Icon } from '../ScalarIcon'
-import type { ScalarTooltipPlacement } from '@/components/ScalarTooltip'
+import type { ButtonVariant } from '../ScalarButton/types'
+import type { Icon as LegacyIcon } from '../ScalarIcon'
+import type { ScalarTooltipPlacement } from '../ScalarTooltip/types'
 
 export type ScalarIconButtonProps = {
   /**
@@ -17,7 +17,7 @@ export type ScalarIconButtonProps = {
    * Use a component from the `@scalar/icons` package to display
    * an icon. String values are deprecated.
    */
-  icon: Icon | ScalarIconComponent
+  icon: LegacyIcon | ScalarIconComponent
   /** Whether the icon button is disabled */
   disabled?: boolean
   /**
@@ -26,13 +26,13 @@ export type ScalarIconButtonProps = {
    * @default 'ghost'
    * @see <ScalarButton>
    */
-  variant?: Variants['variant']
+  variant?: ButtonVariant
   /**
    * The size of the icon button
    *
    * @default 'md'
    */
-  size?: Variants['size']
+  size?: 'xxs' | 'xs' | 'sm' | 'md' | 'full'
   /**
    * The thickness of the icon
    *

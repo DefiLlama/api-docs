@@ -1,5 +1,496 @@
 # @scalar/import
 
+## 0.5.39
+
+No changes in this release.
+
+## 0.5.38
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.5.37
+
+### Patch Changes
+
+- [#10967](https://github.com/scalar/scalar/pull/10967): Use the shared YAML alias limit when importing API descriptions from URLs and embedded content.
+
+## 0.5.36
+
+## 0.5.35
+
+## 0.5.34
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+- [#10719](https://github.com/scalar/scalar/pull/10719): Preserve URL format tokens and error details when logging failed imports.
+
+## 0.5.33
+
+## 0.5.32
+
+## 0.5.31
+
+## 0.5.30
+
+## 0.5.29
+
+### Patch Changes
+
+- [#10411](https://github.com/scalar/scalar/pull/10411): Import API descriptions from reference page URLs, including Hono pages, and retain discovered document URLs for watch mode.
+
+  Ignore JSON-LD website metadata during URL discovery and preserve link and escaped-JSON fallbacks for URLs with unsupported JavaScript escapes.
+
+## 0.5.28
+
+## 0.5.27
+
+## 0.5.26
+
+## 0.5.25
+
+## 0.5.24
+
+## 0.5.23
+
+## 0.5.22
+
+## 0.5.21
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.5.20
+
+## 0.5.19
+
+## 0.5.18
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.5.17
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.5.16
+
+## 0.5.15
+
+## 0.5.14
+
+## 0.5.13
+
+## 0.5.12
+
+## 0.5.11
+
+## 0.5.10
+
+## 0.5.9
+
+## 0.5.8
+
+## 0.5.7
+
+## 0.5.6
+
+## 0.5.5
+
+## 0.5.4
+
+## 0.5.3
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.5.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.1**
+  - [#8420](https://github.com/scalar/scalar/pull/8420): fix TypeScript access to navigator.userAgentData in isMacOS without ts-expect-error
+
+## 0.5.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.0**
+  - [#8336](https://github.com/scalar/scalar/pull/8336): feat: support flushing any pending operations
+
+## 0.5.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.4.55
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.18**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+## 0.4.54
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.17**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): refactor: move helpers to the helpers package to share primitive helpers
+
+## 0.4.53
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.16**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+
+## 0.4.52
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.15**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+## 0.4.51
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.14**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+## 0.4.50
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.13**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+## 0.4.49
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.12**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+## 0.4.48
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.11**
+  - [#8016](https://github.com/scalar/scalar/pull/8016): feat: move history and auth into their own store
+
+## 0.4.47
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.10**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+## 0.4.46
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.9**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+## 0.4.45
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.8**
+  - [#7751](https://github.com/scalar/scalar/pull/7751): fix: auth persistence
+
+## 0.4.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.7**
+  - [#7720](https://github.com/scalar/scalar/pull/7720): feat: escape XML in json2xml
+
+## 0.4.43
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+## 0.4.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+## 0.4.41
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.4**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+## 0.4.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.3**
+  - [#7575](https://github.com/scalar/scalar/pull/7575): feat: add support for object examples + hide body when empty
+
+## 0.4.39
+
+### Patch Changes
+
+- Updated dependencies [[`f7c24e4`](https://github.com/scalar/scalar/commit/f7c24e4995580649dbc3cb87007a683f5dd91f7c)]:
+  - @scalar/helpers@0.2.2
+
+## 0.4.38
+
+### Patch Changes
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `yaml`
+
+- Updated dependencies [[`21aa62e`](https://github.com/scalar/scalar/commit/21aa62e2ebdd262cb5aa53658c3b659736660722)]:
+  - @scalar/helpers@0.2.1
+
+## 0.4.37
+
+### Patch Changes
+
+- Updated dependencies [[`9ec8adf`](https://github.com/scalar/scalar/commit/9ec8adfea017333dee5bc3949104232f7dc57f4a)]:
+  - @scalar/helpers@0.2.0
+
+## 0.4.36
+
+### Patch Changes
+
+- [#7408](https://github.com/scalar/scalar/pull/7408) [`612eb05`](https://github.com/scalar/scalar/commit/612eb05f61ad97272206f1b7ff85a725131ca917) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(import): remove `@scalar/openapi-parser` unused dependency
+
+- Updated dependencies [[`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03), [`86f028d`](https://github.com/scalar/scalar/commit/86f028deb0b456f923edd261f5f4b0fa9b616b7d)]:
+  - @scalar/helpers@0.1.3
+
+## 0.4.35
+
+### Patch Changes
+
+- Updated dependencies [[`d86f1d6`](https://github.com/scalar/scalar/commit/d86f1d6911ecbca70b011a2a0efb6d6e0eca59bb), [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74)]:
+  - @scalar/helpers@0.1.2
+  - @scalar/openapi-parser@0.23.3
+
+## 0.4.34
+
+### Patch Changes
+
+- Updated dependencies [[`9c9dbba`](https://github.com/scalar/scalar/commit/9c9dbbaa940667303f0ace59469fd78c2a741937), [`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74)]:
+  - @scalar/helpers@0.1.1
+  - @scalar/openapi-parser@0.23.2
+
+## 0.4.33
+
+### Patch Changes
+
+- Updated dependencies [[`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d), [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d)]:
+  - @scalar/helpers@0.1.0
+  - @scalar/openapi-parser@0.23.1
+
+## 0.4.32
+
+### Patch Changes
+
+- Updated dependencies [[`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`9661e81`](https://github.com/scalar/scalar/commit/9661e81907d1a9b74ba30f270f2d6c8e49834cd5), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`c84b7c5`](https://github.com/scalar/scalar/commit/c84b7c5e81be83dacbdfcbf9cb1e558dfdc3faa1), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461), [`a821986`](https://github.com/scalar/scalar/commit/a821986332141e69d26885b2d2b32eb0c49f416c), [`e23229d`](https://github.com/scalar/scalar/commit/e23229dfbd9613b5047b28b57901f2fc5a6e33e6)]:
+  - @scalar/openapi-parser@0.23.0
+  - @scalar/helpers@0.0.13
+
+## 0.4.31
+
+### Patch Changes
+
+- Updated dependencies [3f6d0b9]
+  - @scalar/helpers@0.0.12
+  - @scalar/openapi-parser@0.22.3
+
+## 0.4.30
+
+### Patch Changes
+
+- @scalar/openapi-parser@0.22.2
+
+## 0.4.29
+
+### Patch Changes
+
+- @scalar/openapi-parser@0.22.1
+
+## 0.4.28
+
+### Patch Changes
+
+- Updated dependencies [4951456]
+  - @scalar/openapi-parser@0.22.0
+
+## 0.4.27
+
+### Patch Changes
+
+- @scalar/openapi-parser@0.21.2
+
+## 0.4.26
+
+### Patch Changes
+
+- Updated dependencies [e1cdd00]
+  - @scalar/openapi-parser@0.21.1
+
+## 0.4.25
+
+### Patch Changes
+
+- Updated dependencies [a1f865c]
+- Updated dependencies [a1f865c]
+- Updated dependencies [dcf50ef]
+  - @scalar/openapi-parser@0.21.0
+
+## 0.4.24
+
+### Patch Changes
+
+- Updated dependencies [bff46e5]
+  - @scalar/helpers@0.0.11
+  - @scalar/openapi-parser@0.20.6
+
+## 0.4.23
+
+### Patch Changes
+
+- Updated dependencies [39bbc0e]
+  - @scalar/openapi-parser@0.20.5
+
+## 0.4.22
+
+### Patch Changes
+
+- Updated dependencies [821717b]
+  - @scalar/helpers@0.0.10
+  - @scalar/openapi-parser@0.20.4
+
+## 0.4.21
+
+### Patch Changes
+
+- Updated dependencies [b8c4b61]
+  - @scalar/openapi-parser@0.20.3
+
+## 0.4.20
+
+### Patch Changes
+
+- Updated dependencies [98c55d0]
+- Updated dependencies [0e747c7]
+  - @scalar/helpers@0.0.9
+  - @scalar/openapi-parser@0.20.2
+
+## 0.4.19
+
+### Patch Changes
+
+- @scalar/openapi-parser@0.20.1
+
+## 0.4.18
+
+### Patch Changes
+
+- Updated dependencies [d4adeba]
+- Updated dependencies [66b18fc]
+- Updated dependencies [5f022b5]
+- Updated dependencies [c418e92]
+  - @scalar/openapi-parser@0.20.0
+  - @scalar/helpers@0.0.8
+
+## 0.4.17
+
+### Patch Changes
+
+- Updated dependencies [e203e90]
+  - @scalar/openapi-parser@0.19.1
+  - @scalar/helpers@0.0.7
+
+## 0.4.16
+
+### Patch Changes
+
+- Updated dependencies [952bde2]
+- Updated dependencies [2888e18]
+  - @scalar/openapi-parser@0.19.0
+
+## 0.4.15
+
+### Patch Changes
+
+- Updated dependencies [c345d2c]
+- Updated dependencies [c0d6793]
+- Updated dependencies [f3d0216]
+  - @scalar/openapi-parser@0.18.3
+  - @scalar/helpers@0.0.7
+
+## 0.4.14
+
+### Patch Changes
+
+- Updated dependencies [1c2b9f3]
+  - @scalar/openapi-parser@0.18.2
+
 ## 0.4.13
 
 ### Patch Changes

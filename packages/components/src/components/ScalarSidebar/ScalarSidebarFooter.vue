@@ -19,6 +19,7 @@
 export default {}
 </script>
 <script lang="ts" setup>
+import { makePoweredByUrl } from '@scalar/helpers/url/make-powered-by-url'
 import { useBindCx } from '@scalar/use-hooks/useBindCx'
 
 import { ScalarColorModeToggle } from '../ScalarColorModeToggle'
@@ -34,16 +35,20 @@ defineSlots<{
 
 defineOptions({ inheritAttrs: false })
 const { cx } = useBindCx()
+
+/** The footer does not know the integration, so the link goes out without a campaign */
+const poweredByUrl = makePoweredByUrl()
 </script>
 <template>
-  <div v-bind="cx('flex flex-col gap-3 p-3 border-t')">
+  <div v-bind="cx('flex flex-col gap-3 px-3 pb-3 border-sidebar-border')">
     <slot />
     <div class="flex items-center">
-      <div class="flex-1 min-w-0 flex items-center text-sm text-sidebar-c-2">
+      <div class="text-sidebar-c-2 flex min-w-0 flex-1 items-center text-sm">
         <slot name="description">
           <a
             class="no-underline hover:underline"
-            href="https://www.scalar.com"
+            :href="poweredByUrl"
+            rel="noopener"
             target="_blank">
             Powered by Scalar
           </a>

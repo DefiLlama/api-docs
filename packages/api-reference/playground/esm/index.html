@@ -13,21 +13,22 @@
     <script type="module">
       import { createApiReference } from '../../src'
 
-      // CDN:
-      // import { createApiReference } from 'https://esm.sh/@scalar/api-reference';
-
-      // Doesn't work:
-      // import { createApiReference } from 'https://esm.run/@scalar/api-reference';
+      // On the CDN, the built bundle is served from a short URL:
+      // import { createApiReference } from 'https://cdn.jsdelivr.net/npm/@scalar/api-reference/esm.js'
 
       createApiReference('#app', {
         sources: [
           {
             title: 'Scalar Galaxy',
-            url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+            url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
           },
           {
             title: 'Scalar Galaxy (YAML)',
-            url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml',
+            url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=yaml',
+          },
+          {
+            title: 'AsyncAPI Sidebar Filters',
+            url: '../../public/examples/asyncapi-filters.yaml',
           },
           // {
           //   title: 'Stripe',
@@ -35,15 +36,15 @@
           // },
           {
             title: 'Swagger Petstore (2.0)',
-            url: 'https://petstore.swagger.io/v2/swagger.json',
+            url: 'https://storage.googleapis.com/scalar-test-fixtures/oas/petstore-2.0.json',
           },
           {
             title: 'Swagger Petstore (3.0)',
-            url: 'https://petstore3.swagger.io/api/v3/openapi.json',
+            url: 'https://storage.googleapis.com/scalar-test-fixtures/oas/petstore-3.0.json',
           },
           // {
           //   title: 'Swagger Petstore (3.1)',
-          //   url: 'https://petstore31.swagger.io/api/v31/openapi.json',
+          //   url: 'https://storage.googleapis.com/scalar-test-fixtures/oas/petstore-3.1.json',
           // },
           {
             title: 'Val Town',

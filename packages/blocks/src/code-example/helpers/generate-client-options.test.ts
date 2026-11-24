@@ -1,0 +1,277 @@
+import { AVAILABLE_CLIENTS } from '@scalar/snippetz'
+import { describe, expect, it } from 'vitest'
+
+import { generateClientOptions, getCustomClientIds } from './generate-client-options'
+
+describe('generateClientOptions', () => {
+  describe('with all clients allowed', () => {
+    it('returns all available clients grouped by target', () => {
+      const result = generateClientOptions(AVAILABLE_CLIENTS)
+
+      expect(result).toHaveLength(22)
+      expect(result.map((group) => group.label)).toEqual([
+        'C',
+        'C#',
+        'Clojure',
+        'Dart',
+        'F#',
+        'Go',
+        'HTTP',
+        'Java',
+        'JavaScript',
+        'Julia',
+        'Kotlin',
+        'Node.js',
+        'Objective-C',
+        'OCaml',
+        'PHP',
+        'PowerShell',
+        'Python',
+        'R',
+        'Ruby',
+        'Rust',
+        'Shell',
+        'Swift',
+      ])
+    })
+
+    it('structures each group correctly', () => {
+      const result = generateClientOptions(AVAILABLE_CLIENTS)
+
+      expect(result[0]).toEqual({
+        label: 'C',
+        key: 'c',
+        options: [
+          {
+            id: 'c/libcurl',
+            lang: 'c',
+            title: 'C Libcurl',
+            label: 'Libcurl',
+            clientKey: 'libcurl',
+            targetKey: 'c',
+            targetTitle: 'C',
+          },
+        ],
+      })
+    })
+
+    it('returns 42 total client options', () => {
+      const result = generateClientOptions(AVAILABLE_CLIENTS)
+      const allOptions = result.flatMap((group) => group.options)
+
+      expect(allOptions).toHaveLength(42)
+    })
+  })
+
+  describe('with subset of clients allowed', () => {
+    it('includes only allowed clients', () => {
+      const result = generateClientOptions(['js/fetch', 'js/axios', 'node/fetch', 'python/requests'])
+
+      expect(result).toHaveLength(3)
+      expect(result.map((group) => group.label)).toEqual(['JavaScript', 'Node.js', 'Python'])
+
+      const jsGroup = result.find((group) => group.label === 'JavaScript')
+      expect(jsGroup?.options).toHaveLength(2)
+      expect(jsGroup?.options.map((option) => option.id)).toEqual(['js/fetch', 'js/axios'])
+
+      const nodeGroup = result.find((group) => group.label === 'Node.js')
+      expect(nodeGroup?.options).toHaveLength(1)
+      expect(nodeGroup?.options.map((option) => option.id)).toEqual(['node/fetch'])
+
+      const pythonGroup = result.find((group) => group.label === 'Python')
+      expect(pythonGroup?.options).toHaveLength(1)
+      expect(pythonGroup?.options.map((option) => option.id)).toEqual(['python/requests'])
+    })
+
+    it('excludes clients not in the allowed list', () => {
+      const result = generateClientOptions(['js/fetch', 'js/axios'])
+
+      const jsGroup = result.find((group) => group.label === 'JavaScript')
+      const clientIds = jsGroup?.options.map((option) => option.id) ?? []
+
+      expect(clientIds).not.toContain('js/ofetch')
+      expect(clientIds).not.toContain('js/jquery')
+      expect(clientIds).not.toContain('js/xhr')
+    })
+
+    it('filters out groups with no allowed clients', () => {
+      const result = generateClientOptions(['js/fetch', 'python/requests'])
+
+      expect(result.map((group) => group.label)).not.toContain('Node.js')
+      expect(result.map((group) => group.label)).not.toContain('Ruby')
+      expect(result.map((group) => group.label)).not.toContain('Go')
+    })
+  })
+
+  describe('with empty allowed list', () => {
+    it('returns empty array', () => {
+      const result = generateClientOptions([])
+
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('curl special handling', () => {
+    it('sets lang to "curl" for curl client', () => {
+      const result = generateClientOptions(['shell/curl'])
+
+      const shellGroup = result.find((group) => group.label === 'Shell')
+      const curlOption = shellGroup?.options.find((option) => option.id === 'shell/curl')
+
+      expect(curlOption?.lang).toBe('curl')
+    })
+
+    it('sets lang to group key for non-curl clients', () => {
+      const result = generateClientOptions(['js/fetch'])
+
+      const jsGroup = result.find((group) => group.label === 'JavaScript')
+      const fetchOption = jsGroup?.options.find((option) => option.id === 'js/fetch')
+
+      expect(fetchOption?.lang).toBe('js')
+    })
+
+    it('sets lang to group key for other shell clients', () => {
+      const result = generateClientOptions(['shell/httpie', 'shell/wget'])
+
+      const shellGroup = result.find((group) => group.label === 'Shell')
+      const httpieOption = shellGroup?.options.find((option) => option.id === 'shell/httpie')
+      const wgetOption = shellGroup?.options.find((option) => option.id === 'shell/wget')
+
+      expect(httpieOption?.lang).toBe('shell')
+      expect(wgetOption?.lang).toBe('shell')
+    })
+  })
+
+  describe('option structure', () => {
+    it('includes all required fields for each option', () => {
+      const result = generateClientOptions(['js/fetch'])
+
+      const jsGroup = result[0]
+      expect(jsGroup).toBeDefined()
+      const fetchOption = jsGroup!.options[0]
+
+      expect(fetchOption).toHaveProperty('id')
+      expect(fetchOption).toHaveProperty('lang')
+      expect(fetchOption).toHaveProperty('title')
+      expect(fetchOption).toHaveProperty('label')
+      expect(fetchOption).toHaveProperty('targetKey')
+      expect(fetchOption).toHaveProperty('targetTitle')
+      expect(fetchOption).toHaveProperty('clientKey')
+    })
+
+    it('formats titles correctly', () => {
+      const result = generateClientOptions(['js/fetch', 'python/requests', 'python/aiohttp', 'node/axios'])
+
+      const allOptions = result.flatMap((group) => group.options)
+
+      expect(allOptions.find((opt) => opt.id === 'js/fetch')?.title).toBe('JavaScript Fetch')
+      expect(allOptions.find((opt) => opt.id === 'python/requests')?.title).toBe('Python Requests')
+      expect(allOptions.find((opt) => opt.id === 'python/aiohttp')?.title).toBe('Python aiohttp')
+      expect(allOptions.find((opt) => opt.id === 'node/axios')?.title).toBe('Node.js Axios')
+    })
+  })
+
+  describe('multiple clients from same target', () => {
+    it('groups multiple JavaScript clients together', () => {
+      const result = generateClientOptions(['js/fetch', 'js/axios', 'js/ofetch'])
+
+      expect(result).toHaveLength(1)
+      const jsGroup = result[0]
+      expect(jsGroup).toBeDefined()
+      expect(jsGroup!.label).toBe('JavaScript')
+      expect(jsGroup!.options).toHaveLength(3)
+      expect(jsGroup!.options.map((opt) => opt.id)).toEqual(['js/fetch', 'js/axios', 'js/ofetch'])
+    })
+
+    it('groups multiple Node.js clients together', () => {
+      const result = generateClientOptions(['node/fetch', 'node/axios', 'node/undici', 'node/ofetch'])
+
+      expect(result).toHaveLength(1)
+      const nodeGroup = result[0]
+      expect(nodeGroup).toBeDefined()
+      expect(nodeGroup!.label).toBe('Node.js')
+      expect(nodeGroup!.options).toHaveLength(4)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('handles single client', () => {
+      const result = generateClientOptions(['js/fetch'])
+
+      expect(result).toHaveLength(1)
+      const group = result[0]
+      expect(group).toBeDefined()
+      expect(group!.options).toHaveLength(1)
+    })
+
+    it('handles clients from many different targets', () => {
+      const result = generateClientOptions([
+        'c/libcurl',
+        'go/native',
+        'java/unirest',
+        'python/requests',
+        'ruby/native',
+        'rust/reqwest',
+      ])
+
+      expect(result).toHaveLength(6)
+      expect(result.map((group) => group.label)).toEqual(['C', 'Go', 'Java', 'Python', 'Ruby', 'Rust'])
+    })
+
+    it('maintains consistent ordering', () => {
+      const result1 = generateClientOptions(['python/requests', 'js/fetch', 'node/axios'])
+      const result2 = generateClientOptions(['node/axios', 'js/fetch', 'python/requests'])
+
+      expect(result1.map((g) => g.label)).toEqual(result2.map((g) => g.label))
+    })
+  })
+})
+
+describe('getCustomClientIds', () => {
+  it('groups named examples without merging separate SDK variants or legacy samples', () => {
+    expect(
+      getCustomClientIds([
+        { lang: 'Python', label: 'Sync', example: 'simple', source: '' },
+        { lang: 'Python', label: 'Async', example: 'simple', source: '' },
+        { lang: 'Python', label: 'Sync', example: 'detailed', source: '' },
+        { lang: 'Python', label: 'Async', example: 'detailed', source: '' },
+        { lang: 'Python', label: 'Sync', source: '' },
+      ]),
+    ).toEqual(['custom/python', 'custom/python/1', 'custom/python', 'custom/python/1', 'custom/python/2'])
+  })
+
+  it('keys ids by language so a sample can be matched across operations', () => {
+    const ids = getCustomClientIds([
+      { lang: 'python', source: '' },
+      { lang: 'typescript', source: '' },
+    ])
+
+    expect(ids).toEqual(['custom/python', 'custom/typescript'])
+  })
+
+  it('keeps samples that repeat a language individually selectable', () => {
+    const ids = getCustomClientIds([
+      { lang: 'python', source: '' },
+      { lang: 'python', source: '' },
+      { lang: 'go', source: '' },
+    ])
+
+    expect(ids).toEqual(['custom/python', 'custom/python/1', 'custom/go'])
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('falls back to plaintext when a sample has no language', () => {
+    expect(getCustomClientIds([{ source: '' }])).toEqual(['custom/plaintext'])
+  })
+
+  it('lower-cases the language so casing does not break cross-operation matching', () => {
+    expect(getCustomClientIds([{ lang: 'Python', source: '' }])).toEqual(['custom/python'])
+
+    // Differently-cased duplicates of the same language are treated as one
+    const ids = getCustomClientIds([
+      { lang: 'Python', source: '' },
+      { lang: 'python', source: '' },
+    ])
+    expect(ids).toEqual(['custom/python', 'custom/python/1'])
+  })
+})

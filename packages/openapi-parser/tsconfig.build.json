@@ -3,11 +3,11 @@
   "include": ["src"],
   "exclude": ["**/*.test.ts"],
   "compilerOptions": {
+    "rootDir": "src",
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,
     "noEmit": false,
-    "emitDeclarationOnly": true,
     "outDir": "dist/"
   }
 }

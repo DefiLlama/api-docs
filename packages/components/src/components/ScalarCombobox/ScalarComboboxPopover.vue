@@ -1,13 +1,25 @@
+<script lang="ts">
+/**
+ * Scalar Combobox Popover component
+ *
+ * Wraps combobox content in a floating popover panel.
+ * Handles open/close behavior and keyboard interactions.
+ *
+ * @example
+ * <ScalarComboboxPopover>
+ *   <button>Toggle</button>
+ *   <template #popover="{ close }">Content</template>
+ * </ScalarComboboxPopover>
+ */
+export default {}
+</script>
+
 <script setup lang="ts">
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue'
 import { useBindCx } from '@scalar/use-hooks/useBindCx'
 import { ref } from 'vue'
 
-import {
-  ScalarFloating,
-  ScalarFloatingBackdrop,
-  type ScalarFloatingOptions,
-} from '../ScalarFloating'
+import { ScalarFloating, type ScalarFloatingOptions } from '../ScalarFloating'
 import type { ScalarPopoverSlots } from '../ScalarPopover'
 
 defineProps<ScalarFloatingOptions>()
@@ -40,7 +52,7 @@ defineExpose({ popoverButtonRef })
         ref="popoverButtonRef"
         as="template"
         @keydown="handleKeydown">
-        <slot :open="open" />
+        <slot :open />
       </PopoverButton>
       <template
         v-if="open"
@@ -49,13 +61,14 @@ defineExpose({ popoverButtonRef })
           v-slot="{ close }"
           :style="{ width }"
           v-bind="
-            cx('relative flex flex-col max-h-[inherit] w-40 rounded text-sm')
+            cx(
+              'relative flex flex-col max-h-[inherit] w-40 rounded-xl bg-b-1 dark:bg-b-1.5 text-sm shadow-md inset-shadow-border',
+            )
           ">
           <slot
-            :close="close"
+            :close
             name="popover"
-            :open="open" />
-          <ScalarFloatingBackdrop />
+            :open />
         </PopoverPanel>
       </template>
     </ScalarFloating>

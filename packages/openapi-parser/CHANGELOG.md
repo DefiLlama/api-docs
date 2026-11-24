@@ -1,5 +1,823 @@
 # @scalar/openapi-parser
 
+## 0.29.27
+
+No changes in this release.
+
+## 0.29.26
+
+No changes in this release.
+
+## 0.29.25
+
+No changes in this release.
+
+## 0.29.24
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.29.23
+
+No changes in this release.
+
+## 0.29.22
+
+### Patch Changes
+
+- [#10967](https://github.com/scalar/scalar/pull/10967): fix: parse YAML documents that merge shared anchors into many operations
+
+  Since yaml 2.9.1, merge keys (`<<: *anchor`) count toward the alias limit, so large API Gateway exports failed with "Excessive alias count indicates a resource exhaustion attack". The limit is now 100,000 and shared through `YAML_MAX_ALIAS_COUNT` from `@scalar/helpers`.
+
+## 0.29.21
+
+## 0.29.20
+
+### Patch Changes
+
+- [#10792](https://github.com/scalar/scalar/pull/10792): Reuse the JSON/YAML normalizer from `@scalar/json-magic` so JSON documents with a leading UTF-8 BOM parse correctly. Malformed JSON arrays no longer fall back to YAML parsing.
+
+  The exported `normalize` function now uses the shared signature `(content: unknown) => unknown`; callers must narrow the parsed result before accessing its properties.
+
+## 0.29.19
+
+## 0.29.18
+
+## 0.29.17
+
+## 0.29.16
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.29.15
+
+### Patch Changes
+
+- [#10643](https://github.com/scalar/scalar/pull/10643): Distinguish reference locations from schema name maps and literal data when validating, dereferencing, and collecting external references. Preserve `$ref` properties with object or boolean schemas, leave examples and default/enum/const values unchanged, and retain errors for malformed references.
+
+  Retain reference context across external files and fragments. Resolve custom operations while preserving OAuth scope names, discriminator mappings, Link payloads, and specification extension data.
+
+## 0.29.14
+
+## 0.29.13
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+- [#10506](https://github.com/scalar/scalar/pull/10506): Organize imports consistently with the checks enforced in CI.
+
+## 0.29.12
+
+### Patch Changes
+
+- [#10489](https://github.com/scalar/scalar/pull/10489): Report invalid non-exploded structured cookies in OpenAPI 3.2 documents and prevent invalid request and code sample generation. Recommend `style: cookie` with `explode: true`.
+
+## 0.29.11
+
+## 0.29.10
+
+## 0.29.9
+
+## 0.29.8
+
+## 0.29.7
+
+## 0.29.6
+
+## 0.29.5
+
+### Patch Changes
+
+- [#10274](https://github.com/scalar/scalar/pull/10274): Add a standard-agnostic `join` utility with configurable merge strategies and conflict reporting to `@scalar/json-magic/join`. Use it in the OpenAPI parser while retaining OpenAPI upgrades, component prefixes, and OpenAPI conflict reports in the parser.
+
+## 0.29.4
+
+## 0.29.3
+
+### Patch Changes
+
+- [#10216](https://github.com/scalar/scalar/pull/10216): Allow more time for parser comparison tests on slower CI runners.
+
+## 0.29.2
+
+### Patch Changes
+
+- [#10202](https://github.com/scalar/scalar/pull/10202): Explain invalid URI references and OpenAPI component names, and return parser errors for malformed reference escapes.
+- [#10113](https://github.com/scalar/scalar/pull/10113): Ignore unsafe component keys and check own properties when joining API descriptions.
+- [#10141](https://github.com/scalar/scalar/pull/10141): Report the actual document version after upgrading, including preserved OpenAPI 3.2 documents. Return no version for empty or unsupported input.
+- [#10136](https://github.com/scalar/scalar/pull/10136): Restore modal and single-file reference tests, update layout selectors, and remove stale comments. Named-resource resolution remains unsupported and is tested explicitly.
+- [#10140](https://github.com/scalar/scalar/pull/10140): Replace redundant type assertions with compiler-checked annotations, typed accumulators, and existing guards across helpers, API conversion, request handling, and schema rendering.
+
+  Narrow DOM elements and caught errors before accessing their properties. Correct header lookup to include missing values and handle them during PowerShell snippet generation.
+
+  Validate release-note provider responses, represent unresolved references and absent groups in helper return types, and require narrowing merged object values. Preserve AsyncAPI broker credentials separately from HTTP authentication schemes.
+
+## 0.29.1
+
+### Patch Changes
+
+- [#10078](https://github.com/scalar/scalar/pull/10078): Guard mergeObjects (used by join) against prototype pollution, so a `__proto__`, `constructor`, or `prototype` key in an input document can no longer reach Object.prototype
+- [#9990](https://github.com/scalar/scalar/pull/9990): Fix `@scalar/types` leaking into the published type declarations. `@scalar/openapi-parser` referenced `@scalar/types` from its `.d.ts` files while only depending on it as a `devDependency`, so consumers hit `TS2307` (cannot find module). `@scalar/types` is now a regular dependency, and the package uses the shared `UnknownObject` and `AnyObject` utility types from `@scalar/types/utils` directly instead of defining its own local copies (`AnyObject` was added to `@scalar/types/utils` alongside the existing `UnknownObject`).
+
+  The generic `AnyObject` and `UnknownObject` types are no longer re-exported from `@scalar/openapi-parser`. Import them from `@scalar/types/utils` instead.
+
+## 0.29.0
+
+### Minor Changes
+
+- [#9967](https://github.com/scalar/scalar/pull/9967): Add a new `@scalar/openapi-validator` package that validates OpenAPI documents on its own. `@scalar/openapi-parser` now uses it under the hood.
+
+  Two type-level changes in `@scalar/openapi-parser` are worth noting:
+  - `ErrorObject.path` is now `string | string[]` instead of `string[]`. Schema errors carry a JSON Pointer string, semantic errors carry path segments — both shapes were already produced at runtime, the type just says so now. Narrow with `Array.isArray` before treating it as a list.
+  - The unused `ValidationOutcome` type and the internal `OpenApiDocument` alias are no longer exported.
+
+## 0.28.16
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.28.15
+
+## 0.28.14
+
+## 0.28.13
+
+### Patch Changes
+
+- [#9838](https://github.com/scalar/scalar/pull/9838): Show a clearer error when a response is missing its `description`. Before, the
+  validator reported the confusing `must have required property '$ref'` (or
+  `oneOf must match exactly one schema in oneOf`) instead of pointing at the
+  actual problem.
+
+## 0.28.12
+
+## 0.28.11
+
+## 0.28.10
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.28.9
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.28.8
+
+## 0.28.7
+
+## 0.28.6
+
+## 0.28.5
+
+## 0.28.4
+
+## 0.28.3
+
+## 0.28.2
+
+## 0.28.1
+
+## 0.28.0
+
+### Minor Changes
+
+- [#9045](https://github.com/scalar/scalar/pull/9045): refactor: adopt strict versioned @scalar/openapi-types imports in parser types
+
+## 0.27.0
+
+### Minor Changes
+
+- [#8965](https://github.com/scalar/scalar/pull/8965): refactor: adopt strict versioned @scalar/openapi-types imports in parser types
+
+## 0.26.1
+
+## 0.26.0
+
+### Minor Changes
+
+- [#8935](https://github.com/scalar/scalar/pull/8935): feat: pass resolved object to onDereference callback
+
+## 0.25.12
+
+## 0.25.11
+
+## 0.25.10
+
+## 0.25.9
+
+## 0.25.8
+
+### Patch Changes
+
+- [#8579](https://github.com/scalar/scalar/pull/8579): feat(openapi-parser): improve format validation error messages for $ref with non-ASCII characters
+
+## 0.25.7
+
+## 0.25.6
+
+### Patch Changes
+
+- [#8520](https://github.com/scalar/scalar/pull/8520): Normalize trailing `+` in path template parameter names during path-parameter validation so `{name+}` matches a declared `name` path parameter.
+
+## 0.25.5
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.25.4
+
+### Patch Changes
+
+- [#8448](https://github.com/scalar/scalar/pull/8448): fix parser validation for unused path parameters
+
+## 0.25.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.1**
+  - [#8420](https://github.com/scalar/scalar/pull/8420): fix TypeScript access to navigator.userAgentData in isMacOS without ts-expect-error
+
+- **@scalar/json-magic@0.12.3**
+
+- **@scalar/openapi-upgrader@0.2.0**
+
+## 0.25.2
+
+### Patch Changes
+
+- [#8359](https://github.com/scalar/scalar/pull/8359): fix(openapi-parser): replace $dynamicRef with $ref in v3.2 schema for AJV compatibility
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.0**
+  - [#8336](https://github.com/scalar/scalar/pull/8336): feat: support flushing any pending operations
+
+- **@scalar/json-magic@0.12.2**
+
+- **@scalar/openapi-upgrader@0.2.0**
+
+## 0.25.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.12.1**
+  - [#8357](https://github.com/scalar/scalar/pull/8357): chore: improve performance and memory usage of bundler
+
+## 0.25.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-upgrader@0.2.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/openapi-types@0.6.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/json-magic@0.12.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/helpers@0.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.24.17
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-types@0.5.4**
+  - [#8275](https://github.com/scalar/scalar/pull/8275): fix(openapi-types): make the `$ref` property in the `ReferenceObject` type required
+
+- **@scalar/openapi-upgrader@0.1.11**
+  - [#8326](https://github.com/scalar/scalar/pull/8326): feat: keep named request examples when upgrading from Swagger 2.0
+
+- **@scalar/json-magic@0.11.7**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+- **@scalar/helpers@0.2.18**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+## 0.24.16
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.17**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): refactor: move helpers to the helpers package to share primitive helpers
+
+- **@scalar/openapi-upgrader@0.1.10**
+  - [#8272](https://github.com/scalar/scalar/pull/8272): feat: migrate swagger 2.0 response examples
+
+- **@scalar/json-magic@0.11.6**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): fix: properly parse json pointers
+
+## 0.24.15
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-upgrader@0.1.9**
+  - [#8251](https://github.com/scalar/scalar/pull/8251): feat: migrate swagger 2.0 defaults for parameter
+
+## 0.24.14
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.16**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+
+- **@scalar/json-magic@0.11.5**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.15**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/json-magic@0.11.4**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.12
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.14**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/json-magic@0.11.3**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.11
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.11.2**
+  - [#8151](https://github.com/scalar/scalar/pull/8151): fix: resolve external references on windows
+
+- **@scalar/helpers@0.2.13**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.12**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+- **@scalar/json-magic@0.11.1**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.9
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.11.0**
+  - [#8095](https://github.com/scalar/scalar/pull/8095): feat: support loading files into the store
+  - [#8096](https://github.com/scalar/scalar/pull/8096): feat: store relative urls/paths against base under the url mappings
+
+## 0.24.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.10.0**
+  - [#8052](https://github.com/scalar/scalar/pull/8052): feat: allow custom LoaderPlugin plugins in dereference
+
+## 0.24.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.11**
+  - [#8016](https://github.com/scalar/scalar/pull/8016): feat: move history and auth into their own store
+
+- **@scalar/json-magic@0.9.6**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.6
+
+### Patch Changes
+
+- [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.9.5**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/helpers@0.2.10**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.9.4**
+  - [#7922](https://github.com/scalar/scalar/pull/7922): fix: resolve $ref entries inside arrays (e.g. oneOf, allOf) in prefixInternalRefRecursive
+
+## 0.24.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.9.3**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.24.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-upgrader@0.1.8**
+  - [#7842](https://github.com/scalar/scalar/pull/7842): feat: migrate swagger 2.0 responses
+
+## 0.24.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.9.2**
+  - [#7763](https://github.com/scalar/scalar/pull/7763): fix: correctly execute onAfterNodeProcess for ref nodes
+
+## 0.24.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.9.1**
+
+- **@scalar/openapi-upgrader@0.1.7**
+
+## 0.24.0
+
+### Minor Changes
+
+- [#7171](https://github.com/scalar/scalar/pull/7171): refactor: new validator class
+
+## 0.23.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-upgrader@0.1.7**
+  - [#7739](https://github.com/scalar/scalar/pull/7739): fix: upgrade form to multipart/form
+  - [#7694](https://github.com/scalar/scalar/pull/7694): feat: migrate x-example and x-examples
+
+- **@scalar/json-magic@0.9.0**
+  - [#7701](https://github.com/scalar/scalar/pull/7701): Made bundle external document extensions configurable
+
+## 0.23.12
+
+### Patch Changes
+
+- [#7719](https://github.com/scalar/scalar/pull/7719): fix: self-referencing causes infinite loop in `dereference`
+
+## 0.23.11
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.8.10**
+
+- **@scalar/openapi-upgrader@0.1.6**
+
+## 0.23.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.8.9**
+
+- **@scalar/openapi-upgrader@0.1.6**
+
+## 0.23.9
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.8.8**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/openapi-upgrader@0.1.6**
+
+## 0.23.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.8.7**
+
+## 0.23.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/json-magic@0.8.6
+
+## 0.23.6
+
+### Patch Changes
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `yaml`
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a), [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/json-magic@0.8.5
+  - @scalar/openapi-types@0.5.3
+  - @scalar/openapi-upgrader@0.1.6
+
+## 0.23.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/json-magic@0.8.4
+
+## 0.23.4
+
+### Patch Changes
+
+- Updated dependencies [[`e04879c`](https://github.com/scalar/scalar/commit/e04879c65602dfb65393876754f5344751b8953d), [`a164d76`](https://github.com/scalar/scalar/commit/a164d76f21437b3a35210d62a996b6c9d483e5a4), [`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03), [`af54a80`](https://github.com/scalar/scalar/commit/af54a80349269a4269a68f6a372f837177a3537c)]:
+  - @scalar/json-magic@0.8.3
+  - @scalar/openapi-types@0.5.2
+  - @scalar/openapi-upgrader@0.1.5
+
+## 0.23.3
+
+### Patch Changes
+
+- Updated dependencies [[`d86f1d6`](https://github.com/scalar/scalar/commit/d86f1d6911ecbca70b011a2a0efb6d6e0eca59bb)]:
+  - @scalar/json-magic@0.8.2
+  - @scalar/openapi-upgrader@0.1.4
+  - @scalar/openapi-types@0.5.1
+
+## 0.23.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/json-magic@0.8.1
+
+## 0.23.1
+
+### Patch Changes
+
+- [#7235](https://github.com/scalar/scalar/pull/7235) [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(openapi-parser): use `node:path` instead of polyfill
+
+- [#7241](https://github.com/scalar/scalar/pull/7241) [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d) Thanks [@hanspagel](https://github.com/hanspagel)! - chore: use "current" not "latest" scalar registry url
+
+- Updated dependencies [[`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d)]:
+  - @scalar/json-magic@0.8.0
+
+## 0.23.0
+
+### Minor Changes
+
+- [#7121](https://github.com/scalar/scalar/pull/7121) [`9661e81`](https://github.com/scalar/scalar/commit/9661e81907d1a9b74ba30f270f2d6c8e49834cd5) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat(oas-utils): make `dereference` synchronous
+
+- [#7092](https://github.com/scalar/scalar/pull/7092) [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb) Thanks [@baywet](https://github.com/baywet)! - feat - parser - adds support for OpenAPI 3.2.0
+
+### Patch Changes
+
+- [#7116](https://github.com/scalar/scalar/pull/7116) [`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce) Thanks [@baywet](https://github.com/baywet)! - docs adds a mention that OpenAPI 3.2.0 is now supported
+
+- [#7092](https://github.com/scalar/scalar/pull/7092) [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb) Thanks [@baywet](https://github.com/baywet)! - feat: update OpenAPI 3.0 and 3.1 JSON schemas for validation
+
+- [#7182](https://github.com/scalar/scalar/pull/7182) [`c84b7c5`](https://github.com/scalar/scalar/commit/c84b7c5e81be83dacbdfcbf9cb1e558dfdc3faa1) Thanks [@baywet](https://github.com/baywet)! - [fix] adds missing dereference options export in parser
+
+- [#7094](https://github.com/scalar/scalar/pull/7094) [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461) Thanks [@geoffgscott](https://github.com/geoffgscott)! - Migrate to workspace store as primary source of truth.
+
+- [#7196](https://github.com/scalar/scalar/pull/7196) [`a821986`](https://github.com/scalar/scalar/commit/a821986332141e69d26885b2d2b32eb0c49f416c) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(openapi-parser): remove internal unneeded async logic without changing the public API
+
+- [#7149](https://github.com/scalar/scalar/pull/7149) [`e23229d`](https://github.com/scalar/scalar/commit/e23229dfbd9613b5047b28b57901f2fc5a6e33e6) Thanks [@baywet](https://github.com/baywet)! - [docs] updates readme to bundle method and adds migration from load guidance
+
+- Updated dependencies [[`11a6e64`](https://github.com/scalar/scalar/commit/11a6e6405d4f30f001a16d6afda4d2b759c0ed09), [`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`6ca835e`](https://github.com/scalar/scalar/commit/6ca835e5afd3e8c603e073e7c83f2cdd961a0f69), [`43bc5e8`](https://github.com/scalar/scalar/commit/43bc5e8b90dc0edf7176d0ddfc64bf3212494458)]:
+  - @scalar/openapi-upgrader@0.1.4
+  - @scalar/openapi-types@0.5.1
+  - @scalar/json-magic@0.7.0
+
+## 0.22.3
+
+### Patch Changes
+
+- Updated dependencies [2089748]
+- Updated dependencies [8a7fb2a]
+- Updated dependencies [f69e7cc]
+  - @scalar/json-magic@0.6.1
+  - @scalar/openapi-types@0.5.0
+  - @scalar/openapi-upgrader@0.1.3
+
+## 0.22.2
+
+### Patch Changes
+
+- Updated dependencies [15c4240]
+  - @scalar/openapi-types@0.4.1
+  - @scalar/openapi-upgrader@0.1.2
+
+## 0.22.1
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/openapi-types@0.4.0
+  - @scalar/openapi-upgrader@0.1.1
+
+## 0.22.0
+
+### Minor Changes
+
+- 4951456: feat: merge yaml aliases for in-mem representation
+
+### Patch Changes
+
+- Updated dependencies [4951456]
+  - @scalar/json-magic@0.6.0
+
+## 0.21.2
+
+### Patch Changes
+
+- Updated dependencies [6462733]
+  - @scalar/json-magic@0.5.2
+
+## 0.21.1
+
+### Patch Changes
+
+- e1cdd00: fix: update import statement within deprecation message
+- Updated dependencies [41d8600]
+  - @scalar/json-magic@0.5.1
+
+## 0.21.0
+
+### Minor Changes
+
+- a1f865c: refactor: move upgrade() to @scalar/openapi-upgrader
+
+### Patch Changes
+
+- a1f865c: refactor: use @scalar/openapi-upgrader
+- dcf50ef: refactor: move escapeJsonPointer to @scalar/json-magic
+- Updated dependencies [6221e4a]
+- Updated dependencies [fe46413]
+- Updated dependencies [2d612e4]
+- Updated dependencies [dcf50ef]
+- Updated dependencies [02085ef]
+  - @scalar/openapi-upgrader@0.1.0
+  - @scalar/json-magic@0.5.0
+
+## 0.20.6
+
+### Patch Changes
+
+- @scalar/json-magic@0.4.3
+
+## 0.20.5
+
+### Patch Changes
+
+- 39bbc0e: fix: correctly reflect the changes to parameters on the refs
+- Updated dependencies [3bd1209]
+- Updated dependencies [1943b99]
+  - @scalar/json-magic@0.4.2
+
+## 0.20.4
+
+### Patch Changes
+
+- @scalar/json-magic@0.4.1
+
+## 0.20.3
+
+### Patch Changes
+
+- b8c4b61: fix: migrate global and path item parameters from Swagger 2.0 to OpenAPI 3.0
+
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [06a46f0]
+- Updated dependencies [63283aa]
+- Updated dependencies [99894bc]
+  - @scalar/json-magic@0.4.0
+
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [88385b1]
+  - @scalar/json-magic@0.3.1
+
+## 0.20.0
+
+### Minor Changes
+
+- c418e92: feat(openapi-parser): join multiple openapi documents
+
+### Patch Changes
+
+- d4adeba: fix: ensure upgrader doesn't lose schema properties
+- 66b18fc: feat: update the references to handle $refs from the magic proxy
+- 5f022b5: feat: use registry.scalar.com URLs as example
+- Updated dependencies [b93e1fe]
+- Updated dependencies [0fcd446]
+- Updated dependencies [c4bf497]
+- Updated dependencies [d8adbed]
+- Updated dependencies [0c80ef0]
+  - @scalar/json-magic@0.3.0
+  - @scalar/openapi-types@0.3.7
+
+## 0.19.1
+
+### Patch Changes
+
+- e203e90: fix: can’t import plugins from parser package anymore
+  - @scalar/openapi-types@0.3.7
+
+## 0.19.0
+
+### Minor Changes
+
+- 952bde2: feat(json-magic): move json tooling to the new package
+- 2888e18: feat(openapi-parser): partial bundle to a depth
+
+## 0.18.3
+
+### Patch Changes
+
+- c345d2c: fix: added dependency on @scalar/openapi-types
+- Updated dependencies [ccf875a]
+  - @scalar/openapi-types@0.3.7
+
+## 0.18.2
+
+### Patch Changes
+
+- 1c2b9f3: feat: add application and accessCode to swagger 2 upgrader
+
 ## 0.18.1
 
 ### Patch Changes

@@ -16,30 +16,27 @@
     "scalar",
     "references"
   ],
-  "version": "0.2.9",
+  "version": "0.32.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
-    "lint:check": "scalar-lint-check",
-    "lint:fix": "scalar-lint-fix",
-    "test": "vitest",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "types": "dist/index.d.ts",
   "exports": {
+    "./zod": {
+      "import": "./dist/zod.js",
+      "types": "./dist/zod.d.ts",
+      "default": "./dist/zod.js"
+    },
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./api-client": {
-      "import": "./dist/api-client/index.js",
-      "types": "./dist/api-client/index.d.ts",
-      "default": "./dist/api-client/index.js"
     },
     "./api-reference": {
       "import": "./dist/api-reference/index.js",
@@ -50,6 +47,61 @@
       "import": "./dist/entities/index.js",
       "types": "./dist/entities/index.d.ts",
       "default": "./dist/entities/index.js"
+    },
+    "./extensions": {
+      "import": "./dist/extensions/index.js",
+      "types": "./dist/extensions/index.d.ts",
+      "default": "./dist/extensions/index.js"
+    },
+    "./extensions/document": {
+      "import": "./dist/extensions/document/index.js",
+      "types": "./dist/extensions/document/index.d.ts",
+      "default": "./dist/extensions/document/index.js"
+    },
+    "./extensions/example": {
+      "import": "./dist/extensions/example/index.js",
+      "types": "./dist/extensions/example/index.d.ts",
+      "default": "./dist/extensions/example/index.js"
+    },
+    "./extensions/general": {
+      "import": "./dist/extensions/general/index.js",
+      "types": "./dist/extensions/general/index.d.ts",
+      "default": "./dist/extensions/general/index.js"
+    },
+    "./extensions/operation": {
+      "import": "./dist/extensions/operation/index.js",
+      "types": "./dist/extensions/operation/index.d.ts",
+      "default": "./dist/extensions/operation/index.js"
+    },
+    "./extensions/parameter": {
+      "import": "./dist/extensions/parameter/index.js",
+      "types": "./dist/extensions/parameter/index.d.ts",
+      "default": "./dist/extensions/parameter/index.js"
+    },
+    "./extensions/schema": {
+      "import": "./dist/extensions/schema/index.js",
+      "types": "./dist/extensions/schema/index.d.ts",
+      "default": "./dist/extensions/schema/index.js"
+    },
+    "./extensions/security": {
+      "import": "./dist/extensions/security/index.js",
+      "types": "./dist/extensions/security/index.d.ts",
+      "default": "./dist/extensions/security/index.js"
+    },
+    "./extensions/server": {
+      "import": "./dist/extensions/server/index.js",
+      "types": "./dist/extensions/server/index.d.ts",
+      "default": "./dist/extensions/server/index.js"
+    },
+    "./extensions/tag": {
+      "import": "./dist/extensions/tag/index.js",
+      "types": "./dist/extensions/tag/index.d.ts",
+      "default": "./dist/extensions/tag/index.js"
+    },
+    "./extensions/workspace": {
+      "import": "./dist/extensions/workspace/index.js",
+      "types": "./dist/extensions/workspace/index.d.ts",
+      "default": "./dist/extensions/workspace/index.js"
     },
     "./legacy": {
       "import": "./dist/legacy/index.js",
@@ -65,6 +117,16 @@
       "import": "./dist/utils/index.js",
       "types": "./dist/utils/index.d.ts",
       "default": "./dist/utils/index.js"
+    },
+    "./asyncapi/3.1": {
+      "import": "./dist/asyncapi/3.1/index.js",
+      "types": "./dist/asyncapi/3.1/index.d.ts",
+      "default": "./dist/asyncapi/3.1/index.js"
+    },
+    "./openapi/3.1": {
+      "import": "./dist/openapi/3.1/index.js",
+      "types": "./dist/openapi/3.1/index.d.ts",
+      "default": "./dist/openapi/3.1/index.js"
     }
   },
   "files": [
@@ -72,14 +134,13 @@
     "CHANGELOG.md"
   ],
   "dependencies": {
-    "@scalar/openapi-types": "workspace:*",
+    "@scalar/helpers": "workspace:*",
     "nanoid": "catalog:*",
+    "type-fest": "catalog:*",
     "zod": "catalog:*"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
-    "@types/har-format": "^1.2.15",
-    "type-fest": "catalog:*",
+    "@types/har-format": "^1.2.16",
     "vite": "catalog:*"
   }
 }

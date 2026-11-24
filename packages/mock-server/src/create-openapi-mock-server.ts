@@ -1,0 +1,423 @@
+import { normalize } from '@scalar/json-magic/helpers/normalize'
+import { getRaw } from '@scalar/json-magic/magic-proxy'
+import type { OpenAPIV3_1 } from '@scalar/openapi-types'
+import { getResolvedRef, mergeSiblingReferences } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import { type Context, Hono, type MiddlewareHandler } from 'hono'
+import { every } from 'hono/combine'
+import { cors } from 'hono/cors'
+
+import type { MockServerOptions, MockServerResponseHook } from '@/types'
+import { buildSeedContext } from '@/utils/build-seed-context'
+import { executeSeed } from '@/utils/execute-seed'
+import { getOperations } from '@/utils/get-operation'
+import { handleAuthentication } from '@/utils/handle-authentication'
+import { honoRouteFromPath } from '@/utils/hono-route-from-path'
+import { isAuthenticationRequired } from '@/utils/is-authentication-required'
+import { logAuthenticationInstructions } from '@/utils/log-authentication-instructions'
+import {
+  type MockedOperation,
+  getMatchedOperation,
+  getMockedOperation,
+  setMockedOperation,
+} from '@/utils/mocked-operation'
+import { comparePathSpecificity, getPathSpecificity } from '@/utils/path-specificity'
+import type { ProcessedDocument } from '@/utils/process-document'
+import { requestMatchesPinnedQuery } from '@/utils/request-matches-pinned-query'
+import { resolveLogger } from '@/utils/resolve-logger'
+import { MAX_SERVER_URL_EXPANSIONS, resolveServerBasePaths } from '@/utils/resolve-server-base-paths'
+import { setUpAuthenticationRoutes } from '@/utils/set-up-authentication-routes'
+import { splitPathKey } from '@/utils/split-path-key'
+import { validateRequest } from '@/utils/validate-request'
+
+import { store } from './libs/store'
+import { mockAnyResponse } from './routes/mock-any-response'
+import { mockHandlerResponse } from './routes/mock-handler-response'
+import { respondWithOpenApiDocument } from './routes/respond-with-openapi-document'
+
+/**
+ * Make `response` the response of the request, keeping only the headers that were staged before the
+ * request was handled — the CORS headers — where `response` does not set them itself.
+ *
+ * Assigning `c.res` directly would merge every header of the response it replaces into the new one,
+ * overriding the new one's values, so the mock response's own headers (an `ETag`, a declared
+ * `X-Rate-Limit`) would leak into a replacement that deliberately sets different ones.
+ */
+const replaceResponse = (c: Context, response: Response, stagedHeaders: Headers): void => {
+  // Rebuilt so the headers are mutable even when the caller passed a response with immutable ones,
+  // such as one returned by `fetch()`. The body stream is handed over as is, never read.
+  const replacement = new Response(response.body, response)
+
+  stagedHeaders.forEach((value, name) => {
+    if (!replacement.headers.has(name)) {
+      replacement.headers.set(name, value)
+    }
+  })
+
+  // Clearing it first is what stops Hono from merging the replaced response's headers in.
+  c.res = undefined
+  c.res = replacement
+}
+
+/**
+ * Run `onResponse` once the rest of the app has answered a request, sending its replacement when it
+ * returns one.
+ *
+ * Registered as the first middleware after CORS, so it sees every response the app produces —
+ * mocked operations, authentication failures, validation errors, the document exports, `404`s and
+ * the error handler's `500`s (the error handler runs where the error is thrown, deeper down, before
+ * this middleware resumes) — while CORS preflight requests are still answered before it runs.
+ */
+const runResponseHook =
+  (onResponse: MockServerResponseHook): MiddlewareHandler =>
+  async (c, next) => {
+    // The CORS middleware stages its headers on the response before the request is handled. Copied
+    // now, before the mock response is merged over them, so a replacement can be given just these.
+    const stagedHeaders = new Headers(c.res.headers)
+
+    await next()
+
+    const response = c.res
+    let replacement: Response | void
+
+    try {
+      replacement = await onResponse({ context: c, operation: getMatchedOperation(c), response })
+    } catch (error) {
+      // The error handler answers through the context, which would otherwise build the `500` on top
+      // of the mock response and carry all of its headers. Start it from the staged headers instead.
+      replaceResponse(c, new Response(null), stagedHeaders)
+      throw error
+    }
+
+    if (replacement && replacement !== response) {
+      replaceResponse(c, replacement, stagedHeaders)
+    }
+  }
+
+/**
+ * Whether an error carries its own response, the way Hono's `HTTPException` does.
+ *
+ * Checked structurally rather than with `instanceof`, exactly like Hono's own default handler, so an
+ * `HTTPException` thrown from a second copy of Hono is still recognized.
+ */
+const carriesResponse = (error: Error): error is Error & { getResponse: () => Response } =>
+  'getResponse' in error && typeof error.getResponse === 'function'
+
+/** Limit the extra work a single OpenAPI description can add through server URL aliases. */
+const defaultAliasLimits = { serverUrls: MAX_SERVER_URL_EXPANSIONS, generatedRoutes: 10_000 }
+
+/**
+ * Create a mock server instance
+ */
+export const createOpenApiMockServer = async (
+  configuration: MockServerOptions,
+  {
+    document: schema,
+    originalOpenapiVersion,
+    retrievalUri,
+    serverRetrievalUris,
+  }: Extract<ProcessedDocument, { type: 'openapi' }>,
+  aliasLimits = defaultAliasLimits,
+): Promise<Hono> => {
+  const app = new Hono()
+  const generationContext = {
+    openapiVersion: schema.openapi,
+    jsonSchemaDialect: schema.jsonSchemaDialect,
+    originalOpenapiVersion,
+  }
+
+  // Unhandled errors would otherwise reach Hono's default handler, which answers with a plain-text
+  // `Internal Server Error` that says nothing about what broke. A mock server fails for mundane,
+  // document-shaped reasons — a response header name the runtime rejects, an example that cannot be
+  // serialized — so answer with JSON that names the failing operation and repeats the message,
+  // which makes the failure readable in the response instead of something to go reproduce.
+  app.onError((error, c) => {
+    // The status and body such an error chose are deliberate, not an internal failure, so answer
+    // with them. Unlike Hono's default handler, which returns the response directly, it is rebuilt
+    // through the context so headers already staged on the response — those from the CORS
+    // middleware, most of all — still apply.
+    if (carriesResponse(error)) {
+      const response = error.getResponse()
+      return c.newResponse(response.body, response)
+    }
+
+    const operation = getMockedOperation(c)
+
+    // Keep logging the error, as Hono's default handler does, so the stack trace is not lost. Routes
+    // added to the returned app are not mocked operations, so name the concrete request instead —
+    // the log always points somewhere.
+    console.error(
+      operation
+        ? `Error while mocking ${operation.method} ${operation.path}:`
+        : `Error handling ${c.req.method} ${c.req.path}:`,
+      error,
+    )
+
+    return c.json(
+      {
+        error: 'Internal Server Error',
+        message: error.message,
+        // Left out entirely rather than sent as `null`, so a client can test for the key.
+        ...(operation ? { operation } : {}),
+      },
+      500,
+    )
+  })
+
+  const input = configuration?.document ?? configuration?.specification
+  const sourceDocument = typeof input === 'string' ? normalize(input) : input
+  // Source locations need a bundled export so relative references remain usable outside the server.
+  const exportDocument =
+    configuration?.origin ||
+    (typeof input === 'string' && (sourceDocument === null || typeof sourceDocument !== 'object'))
+      ? getRaw(schema)
+      : input
+
+  // Seed data from schemas with x-seed extension
+  // This happens before routes are set up so data is available immediately
+  const schemas = schema?.components?.schemas
+  if (schemas) {
+    for (const [schemaName, schemaObject] of Object.entries(schemas)) {
+      // Merge `$ref` siblings so an `x-seed` placed next to a `$ref` is preserved (OpenAPI 3.1 semantics)
+      const seedCode = (getResolvedRef(schemaObject, mergeSiblingReferences) as any)?.['x-seed']
+
+      if (seedCode && typeof seedCode === 'string') {
+        try {
+          // Check if collection is empty (idempotent seeding)
+          // Use the schema key directly as the collection name
+          const existingItems = store.list(schemaName)
+          if (existingItems.length === 0) {
+            // Build seed context with schema key (used as collection name)
+            const seedContext = buildSeedContext(schemaName)
+
+            // Execute seed code
+            await executeSeed(seedCode, seedContext)
+          }
+        } catch (error) {
+          // Log error but don't fail server startup
+          console.error(`Error seeding schema "${schemaName}":`, error)
+        }
+      }
+    }
+  }
+
+  // CORS headers
+  const allowedMethods = new Set(['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'QUERY'])
+  for (const pathItem of Object.values(schema?.paths ?? {})) {
+    for (const method of Object.keys(getOperations(getResolvedRef(pathItem)))) {
+      allowedMethods.add(method)
+    }
+  }
+  app.use(cors({ origin: '*', allowMethods: [...allowedMethods], exposeHeaders: ['X-Scalar-XML-Error'] }))
+
+  // Registered right after CORS and before every route, so it also wraps the routes a caller adds to
+  // the returned app.
+  if (configuration.onResponse) {
+    app.use(runResponseHook(configuration.onResponse))
+  }
+
+  // Built-in authentication routes take precedence over operation routes at the same URL and method.
+  setUpAuthenticationRoutes(app, schema)
+
+  // The instructions honor `logger` (on by default). The util still prints warnings and errors
+  // about security schemes the mock server cannot handle, which a silenced startup should surface.
+  const logger = resolveLogger(configuration.logger, true)
+  logAuthenticationInstructions(schema?.components?.securitySchemes || {}, logger)
+
+  /** Paths specified in the OpenAPI document */
+  const paths = schema?.paths ?? {}
+
+  // Hono runs every matching route in registration order and the first one that answers wins, so
+  // the order routes are registered in decides which operation serves a request that more than one
+  // path key matches. Two things set that order.
+  //
+  // First, concrete paths come before templated ones, as the OpenAPI Paths Object asks: `/pets/mine`
+  // answers its own requests even when the document declares `/pets/{petId}` first. Segments are
+  // compared from the left and the first one that differs decides; a segment mixing a template with
+  // literal text (`{jobId}:cancel`) ranks between a literal and a bare `{param}`. Path keys that rank
+  // the same keep the order the document declares them in. See `comparePathSpecificity`.
+  //
+  // Second, a path key may pin query parameters to describe a variant of an operation, for example
+  // `/v1/messages?beta=true` next to `/v1/messages`. A variant has to come before the sibling it shares
+  // a path with — otherwise the sibling answers its requests too — so the keys that share a path are
+  // grouped where the first of them appears, and the more pinned parameters a key has the earlier it
+  // goes. A variant that a request does not satisfy hands it on to the next matching route.
+  const pathKeys = Object.keys(paths).map((path) => {
+    const { path: pathname, query } = splitPathKey(path)
+
+    return { path, pathname, query, specificity: getPathSpecificity(pathname) }
+  })
+
+  /** Where each path first shows up in the document, so its variants stay with it */
+  const documentOrder = new Map<string, number>()
+
+  pathKeys.forEach(({ pathname }, index) => {
+    if (!documentOrder.has(pathname)) {
+      documentOrder.set(pathname, index)
+    }
+  })
+
+  // Paths that cannot match the same request may change places here, which is harmless: only the
+  // relative order of overlapping routes decides which operation answers.
+  const orderedPathKeys = [...pathKeys].sort(
+    (a, b) =>
+      comparePathSpecificity(a.specificity, b.specificity) ||
+      (documentOrder.get(a.pathname) ?? 0) - (documentOrder.get(b.pathname) ?? 0) ||
+      b.query.length - a.query.length,
+  )
+
+  /** Route handler of each operation, with the base paths its servers serve it under */
+  const operationRoutes: { method: string; path: string; basePaths: string[]; handler: MiddlewareHandler }[] = []
+  const basePathsByServers = new WeakMap<OpenAPIV3_1.ServerObject[], string[]>()
+  const serverUrlBudget = { remaining: aliasLimits.serverUrls }
+  let remainingRoutes = aliasLimits.generatedRoutes
+  let exceededAliasLimit: string | undefined
+
+  orderedPathKeys.forEach(({ path, query }) => {
+    // A path item may itself be a `$ref`, so resolve it before reading its operations.
+    const referringPathItem = paths[path]
+    const pathItem = getResolvedRef(referringPathItem)
+    const operations = getOperations(pathItem)
+
+    /** Keys for all operations of a specified path */
+    Object.entries(operations).forEach(([method, operation]) => {
+      // Remember which operation this route mocks, so the error handler can name it when something
+      // fails downstream. Recorded on the context rather than mapped back from the request path,
+      // which would not survive the app being mounted under a base path. Registered before the rest
+      // of the route so a failure in request validation is named too. The OpenAPI path key is kept
+      // (rather than the Hono route) because that is what the document author reads.
+      const mockedOperation: MockedOperation = {
+        method,
+        path,
+        ...(operation?.operationId ? { operationId: operation.operationId } : {}),
+      }
+
+      /** Middleware chain answering this operation, in the order it runs */
+      const handlers: MiddlewareHandler[] = []
+
+      // Runs first, so the error handler can name the operation even when validation fails. For a
+      // path key that pins a query it is part of the guarded chain below, so it only fires once the
+      // request actually matches the variant rather than for one that is handed on to the sibling.
+      handlers.push(async (c, next) => {
+        setMockedOperation(c, mockedOperation, operation)
+        await next()
+      })
+
+      // Operation-level security overrides the global requirement, so fall back to the
+      // document-wide `security` when the operation does not define its own.
+      const effectiveSecurity = operation.security ?? schema?.security
+
+      // Check if authentication is required for this operation
+      if (isAuthenticationRequired(effectiveSecurity)) {
+        handlers.push(handleAuthentication(schema, operation))
+      }
+
+      // Notify the `onRequest` callback before validation runs, so it fires for every request —
+      // including ones the validation middleware rejects with a `422`.
+      if (configuration.onRequest) {
+        handlers.push(async (c, next) => {
+          configuration.onRequest?.({ context: c, operation })
+          await next()
+        })
+      }
+
+      // Validate the incoming request against the operation contract (on by default;
+      // opt out with `validateRequest: false`). Runs after authentication but before the
+      // mock handler. Validators are compiled once here, so there is no per-request recompilation.
+      if (configuration.validateRequest !== false) {
+        handlers.push(validateRequest(operation, pathItem?.parameters))
+      }
+
+      // Check if operation has x-handler extension
+      // Validate that it's a non-empty string (consistent with x-seed validation)
+      const handlerCode = operation?.['x-handler']
+      const hasHandler = handlerCode && typeof handlerCode === 'string' && handlerCode.trim().length > 0
+
+      // Route to appropriate handler
+      if (hasHandler) {
+        handlers.push(async (c) => await mockHandlerResponse(c, operation, pathItem?.parameters, generationContext))
+      } else {
+        handlers.push(async (c) => await mockAnyResponse(c, operation, generationContext))
+      }
+
+      // The pinned query parameters are not part of the route, so they are checked here. A request
+      // that does not carry them is handed on to the next matching route — usually the sibling path
+      // key without the query string.
+      const operationChain = every(...handlers)
+
+      // An empty server list overrides the enclosing servers without adding a base path.
+      const servers = [operation.servers, referringPathItem?.servers, pathItem?.servers, schema.servers].find(
+        Array.isArray,
+      )
+      if (servers && !exceededAliasLimit) {
+        const basePaths =
+          basePathsByServers.get(servers) ??
+          resolveServerBasePaths(servers, serverRetrievalUris.get(getRaw(servers)) ?? retrievalUri, serverUrlBudget)
+
+        if (basePaths === undefined) {
+          exceededAliasLimit = `${aliasLimits.serverUrls} server URL combinations`
+        } else if (basePaths.length > remainingRoutes) {
+          exceededAliasLimit = `${aliasLimits.generatedRoutes} generated routes`
+        } else {
+          basePathsByServers.set(servers, basePaths)
+          remainingRoutes -= basePaths.length
+        }
+      }
+
+      operationRoutes.push({
+        method,
+        path,
+        basePaths: (servers && basePathsByServers.get(servers)) ?? [],
+        handler: async (c, next) => {
+          if (
+            (c.req.method !== method && !(method === 'GET' && c.req.method === 'HEAD')) ||
+            !requestMatchesPinnedQuery(c, query)
+          ) {
+            await next()
+
+            return
+          }
+
+          await operationChain(c, next)
+        },
+      })
+    })
+  })
+
+  // Hono uppercases methods during registration. Match the original method ourselves so
+  // additional operations such as COPY and copy remain distinct.
+  const register = (method: string, route: string, handler: MiddlewareHandler): void => {
+    if (method === method.toUpperCase()) {
+      app.on(method, route, handler)
+    } else {
+      app.all(route, handler)
+    }
+  }
+
+  // Each operation answers at its path key and again under the base path of each of its servers. All
+  // of these routes are ordered together, so the most concrete one answers a request no matter where
+  // it comes from. The path keys go first, so on a tie the path the document declares keeps a request
+  // over a copy under a base path, and the stable sort keeps the order set above for the rest.
+  if (exceededAliasLimit) {
+    logger(`Skipped OpenAPI server base-path aliases. The document exceeded the limit of ${exceededAliasLimit}.`)
+  }
+  const aliases = exceededAliasLimit
+    ? []
+    : operationRoutes.flatMap((route) =>
+        route.basePaths.map((basePath) => ({ ...route, path: `${basePath}${route.path}` })),
+      )
+  const routes = [...operationRoutes, ...aliases]
+    .map((route) => ({ ...route, specificity: getPathSpecificity(route.path) }))
+    .sort((a, b) => comparePathSpecificity(a.specificity, b.specificity))
+
+  for (const { method, path, handler } of routes) {
+    register(method, honoRouteFromPath(path), handler)
+  }
+
+  // OpenAPI JSON file
+  app.get('/openapi.json', (c) => respondWithOpenApiDocument(c, exportDocument, 'json'))
+
+  // OpenAPI YAML file
+  app.get('/openapi.yaml', (c) => respondWithOpenApiDocument(c, exportDocument, 'yaml'))
+
+  return app
+}

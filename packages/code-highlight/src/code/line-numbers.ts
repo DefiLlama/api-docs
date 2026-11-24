@@ -4,19 +4,19 @@ import { visit } from 'unist-util-visit'
 // ---------------------------------------------------------------------------
 // Line Numbering plugin
 
-export function isText(element?: ElementContent): element is Text {
+function isText(element?: ElementContent): element is Text {
   return element?.type === 'text'
 }
 
-export function isElement(node?: ElementContent): node is Element {
+function isElement(node?: ElementContent): node is Element {
   return node?.type === 'element'
 }
 
-export function textElement(value: string): Text {
+function textElement(value: string): Text {
   return { type: 'text', value }
 }
 
-export function lineBreak(): Text {
+function lineBreak(): Text {
   return { type: 'text', value: '\n' }
 }
 
@@ -45,7 +45,7 @@ export function codeBlockLinesPlugin() {
         })
 
         // We need to maintain a count of the total lines to allow space for the labels
-        node.properties.style = [`--line-count: ${numLines};`, `--line-digits: ${numLines.toString().length};`]
+        node.properties.style = `--line-count: ${numLines}; --line-digits: ${numLines.toString().length};`
       }
     })
 

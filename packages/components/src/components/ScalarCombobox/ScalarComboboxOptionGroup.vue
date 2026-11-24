@@ -1,3 +1,18 @@
+<script lang="ts">
+/**
+ * Scalar Combobox Option Group component
+ *
+ * Groups related options under an optional label within a combobox.
+ *
+ * @example
+ * <ScalarComboboxOptionGroup>
+ *   <template #label>Group Name</template>
+ *   <!-- options -->
+ * </ScalarComboboxOptionGroup>
+ */
+export default {}
+</script>
+
 <script setup lang="ts">
 import { useId } from 'vue'
 
@@ -15,7 +30,7 @@ const { id = useId(), hidden = false } = defineProps<{
     <div
       v-if="!hidden"
       :id="`${id}-label`"
-      class="min-w-0 truncate px-2.5 py-1.5 text-left text-c-2">
+      class="text-c-2 min-w-0 truncate px-2.5 py-1.5">
       <slot name="label" />
     </div>
     <slot />

@@ -1,67 +1,155 @@
 <script setup lang="ts">
-import type { OpenAPIV3_1 } from '@scalar/openapi-types'
+import type { SchemaRenderingProps } from '@scalar/blocks/schema'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import { isHidden } from '@scalar/workspace-store/helpers/is-hidden'
+import type {
+  OpenApiDocument,
+  ParameterObject,
+  ReferenceType,
+  RequestBodyObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed } from 'vue'
 
-import type { Schemas } from '@/features/Operation/types/schemas'
+import { useLocalization } from '@/features/localization'
+import { flattenDeepObjectQueryParameter } from '@/features/Operation/helpers/flatten-deep-object-query-parameter'
+import type { OperationProps } from '@/features/Operation/Operation.vue'
 
 import ParameterList from './ParameterList.vue'
 import RequestBody from './RequestBody.vue'
 
-const {
-  parameters = [],
-  requestBody,
-  schemas,
-} = defineProps<{
-  parameters?: OpenAPIV3_1.ParameterObject[]
-  requestBody?: OpenAPIV3_1.RequestBodyObject | undefined
-  schemas?: Schemas
-}>()
+const { parameters = [], requestBody } = defineProps<
+  {
+    breadcrumb?: string[]
+    parameters?: ReferenceType<ParameterObject>[]
+    requestBody?: RequestBodyObject | undefined
+    eventBus: WorkspaceEventBus | null
+    /** The document the operation belongs to, used to resolve schema references for display */
+    document?: OpenApiDocument
+    options: Pick<
+      OperationProps['options'],
+      | 'expandAllParameters'
+      | 'hideModels'
+      | 'orderRequiredPropertiesFirst'
+      | 'orderSchemaPropertiesBy'
+      | 'expandAllSchemaProperties'
+      | 'schemaKeyboardNav'
+      | 'showExtensions'
+      | 'maxVisibleRequestBodyProperties'
+      | 'hideModelNames'
+    >
+  } & SchemaRenderingProps
+>()
+const { translate } = useLocalization()
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
-}>()
+/** Thread the selected request body content type up to the layout */
+const selectedContentType = defineModel<string>('selectedContentType')
 
-const handleDiscriminatorChange = (type: string) => {
-  emit('update:modelValue', type)
-}
+type ParameterLocation = Exclude<ParameterObject['in'], 'querystring'>
 
-const filterParameters = (where: 'path' | 'query' | 'header' | 'cookie') =>
-  parameters?.filter((parameter) => parameter.in === where) ?? []
+/** Keep filter objects together without changing their request representation. */
+const parameterSections = computed<{
+  locations: Record<ParameterLocation, ParameterObject[]>
+  groups: Map<ParameterObject, ParameterObject[]>
+}>(() => {
+  const locations: Record<ParameterLocation, ParameterObject[]> = {
+    cookie: [],
+    header: [],
+    path: [],
+    query: [],
+  }
+  const groups = new Map<ParameterObject, ParameterObject[]>()
+
+  for (const reference of parameters) {
+    const parameter = getResolvedRef(reference)
+    if (!parameter || isHidden(parameter)) {
+      continue
+    }
+
+    const flattened = flattenDeepObjectQueryParameter(parameter)
+    const location = parameter.in === 'querystring' ? 'query' : parameter.in
+    // An unexpandable parameter is returned unchanged by the flattening helper.
+    if (flattened.some((field) => field.name !== parameter.name)) {
+      locations[location].push(parameter)
+      groups.set(parameter, flattened)
+    } else {
+      locations[location].push(...flattened)
+    }
+  }
+
+  return { locations, groups }
+})
 </script>
 <template>
   <!-- Path parameters-->
   <ParameterList
-    :parameters="filterParameters('path')"
-    :schemas="schemas">
-    <template #title>Path Parameters</template>
+    :breadcrumb="breadcrumb ? [...breadcrumb, 'path'] : undefined"
+    :collapsableItems="options.expandAllParameters === false"
+    :document="document"
+    :eventBus="eventBus"
+    :expansion="expansion"
+    :options="options"
+    :parameters="parameterSections.locations['path']"
+    :scrollTargetId="scrollTargetId"
+    :specificationExtension="specificationExtension">
+    <template #title>{{ translate('operation.pathParameters') }}</template>
   </ParameterList>
 
   <!-- Query parameters -->
   <ParameterList
-    :parameters="filterParameters('query')"
-    :schemas="schemas">
-    <template #title>Query Parameters</template>
+    :breadcrumb="breadcrumb ? [...breadcrumb, 'query'] : undefined"
+    :collapsableItems="options.expandAllParameters === false"
+    :document="document"
+    :eventBus="eventBus"
+    :expansion="expansion"
+    :options="options"
+    :parameterGroups="parameterSections.groups"
+    :parameters="parameterSections.locations['query']"
+    :scrollTargetId="scrollTargetId"
+    :specificationExtension="specificationExtension">
+    <template #title>{{ translate('operation.queryParameters') }}</template>
   </ParameterList>
 
   <!-- Headers -->
   <ParameterList
-    :parameters="filterParameters('header')"
-    :schemas="schemas">
-    <template #title>Headers</template>
+    :breadcrumb="breadcrumb ? [...breadcrumb, 'headers'] : undefined"
+    :collapsableItems="options.expandAllParameters === false"
+    :document="document"
+    :eventBus="eventBus"
+    :expansion="expansion"
+    :options="options"
+    :parameters="parameterSections.locations['header']"
+    :scrollTargetId="scrollTargetId"
+    :specificationExtension="specificationExtension">
+    <template #title>{{ translate('operation.headers') }}</template>
   </ParameterList>
 
   <!-- Cookies -->
   <ParameterList
-    :parameters="filterParameters('cookie')"
-    :schemas="schemas">
-    <template #title>Cookies</template>
+    :breadcrumb="breadcrumb ? [...breadcrumb, 'cookies'] : undefined"
+    :collapsableItems="options.expandAllParameters === false"
+    :document="document"
+    :eventBus="eventBus"
+    :expansion="expansion"
+    :options="options"
+    :parameters="parameterSections.locations['cookie']"
+    :scrollTargetId="scrollTargetId"
+    :specificationExtension="specificationExtension">
+    <template #title>{{ translate('operation.cookies') }}</template>
   </ParameterList>
 
   <!-- Request body -->
   <RequestBody
     v-if="requestBody"
+    v-model:selectedContentType="selectedContentType"
+    :breadcrumb="breadcrumb ? [...breadcrumb, 'body'] : undefined"
+    :document="document"
+    :eventBus="eventBus"
+    :expansion="expansion"
+    :options="options"
     :requestBody="requestBody"
-    :schemas="schemas"
-    @update:modelValue="handleDiscriminatorChange">
-    <template #title>Body</template>
+    :scrollTargetId="scrollTargetId"
+    :specificationExtension="specificationExtension">
+    <template #title>{{ translate('operation.body') }}</template>
   </RequestBody>
 </template>

@@ -1,11 +1,13 @@
-import type { OpenAPI } from '@scalar/openapi-types'
+import { isObject, isObjectLike } from '@scalar/helpers/object/is-object'
+import type { AnyObject, UnknownObject } from '@scalar/types/utils'
 
 import { ERRORS } from '@/configuration'
-import type { AnyObject, ErrorObject, Filesystem, FilesystemEntry, ThrowOnErrorOption } from '@/types/index'
+import type { ErrorObject, Filesystem, FilesystemEntry, ThrowOnErrorOption } from '@/types/index'
+
 import { getEntrypoint } from './get-entrypoint'
 import { getSegmentsFromPath } from './get-segments-from-path'
-import { isObject } from './is-object'
 import { makeFilesystem } from './make-filesystem'
+import { type ReferenceContext, canResolveReference, getChildReferenceContext } from './reference-context'
 
 // TODO: Add support for all pointer words
 // export const pointerWords = new Set([
@@ -17,10 +19,10 @@ import { makeFilesystem } from './make-filesystem'
 //   '$schema',
 // ])
 
-export type ResolveReferencesResult = {
+type ResolveReferencesResult = {
   valid: boolean
   errors: ErrorObject[]
-  schema: OpenAPI.Document
+  schema: UnknownObject
 }
 
 export type ResolveReferencesOptions = ThrowOnErrorOption & {
@@ -29,7 +31,7 @@ export type ResolveReferencesOptions = ThrowOnErrorOption & {
    *
    * Note that for object schemas, its properties may not be dereferenced when the hook is called.
    */
-  onDereference?: (data: { schema: AnyObject; ref: string }) => void
+  onDereference?: (data: { schema: AnyObject; ref: string; resolved: AnyObject }) => void
 }
 
 /**
@@ -65,23 +67,23 @@ export function resolveReferences(
     return {
       valid: false,
       errors,
-      schema: finalInput as OpenAPI.Document,
+      schema: finalInput as UnknownObject,
     }
   }
 
   // Recursively resolve all references
-  dereference(finalInput, filesystem, file ?? entrypoint, new WeakSet(), errors, options)
+  dereference(finalInput, filesystem, file ?? entrypoint, new WeakSet(), errors, options, 'document')
 
-  // Remove duplicats (according to message) from errors
-  errors = errors.filter(
+  // Remove duplicates (according to message) from errors
+  const uniqueErrors = errors.filter(
     (error, index, self) => index === self.findIndex((t) => t.message === error.message && t.code === error.code),
   )
 
   // Return the resolved specification
   return {
-    valid: errors.length === 0,
-    errors,
-    schema: finalInput as OpenAPI.Document,
+    valid: uniqueErrors.length === 0,
+    errors: uniqueErrors,
+    schema: finalInput,
   }
 }
 
@@ -98,19 +100,52 @@ function dereference(
   errors: ErrorObject[],
 
   options?: ResolveReferencesOptions,
+  context: ReferenceContext = 'object',
 ): void {
-  if (schema === null || resolvedSchemas.has(schema)) {
+  if (context === 'literal' || schema === null || resolvedSchemas.has(schema)) {
     return
   }
   resolvedSchemas.add(schema)
 
-  function resolveExternal(externalFile: FilesystemEntry) {
-    dereference(externalFile.specification, filesystem, externalFile, resolvedSchemas, errors, options)
-
-    return externalFile
+  // A fragment inherits the reference site's context, not its storage container's keys.
+  const resolveExternal = (externalFile: FilesystemEntry, fragment: string): AnyObject | undefined => {
+    const target = resolveUri(`#${fragment}`, options, externalFile, filesystem, resolveExternal, errors)
+    if (isObjectLike(target)) {
+      dereference(target, filesystem, externalFile, resolvedSchemas, errors, options, context)
+    }
+    return target
   }
 
-  while (schema.$ref !== undefined) {
+  /**
+   * Track seen $ref paths to detect self-referencing schemas.
+   *
+   * This only tracks $refs within the current while loop (one resolution chain).
+   * Each schema object gets its own fresh processedRefs when dereference() is called.
+   *
+   * This catches invalid cases like:
+   *   Test: { $ref: '#/components/schemas/Test' }
+   *
+   * But allows valid recursive schemas where the $ref is nested:
+   *   Person: { type: 'object', properties: { friend: { $ref: '#/components/schemas/Person' } } }
+   */
+  const processedRefs = new Set<string>()
+
+  while (canResolveReference(context) && schema.$ref !== undefined) {
+    const selfReferenceDetected = processedRefs.has(schema.$ref)
+
+    if (selfReferenceDetected) {
+      errors.push({
+        code: 'SELF_REFERENCE',
+        message: ERRORS.SELF_REFERENCE.replace('%s', schema.$ref),
+      })
+
+      delete schema.$ref
+
+      break
+    }
+
+    processedRefs.add(schema.$ref)
+
     // Find the referenced content
     const resolved = resolveUri(schema.$ref, options, entrypoint, filesystem, resolveExternal, errors)
 
@@ -130,14 +165,22 @@ function dereference(
     }
 
     if (dereferencedRef) {
-      options?.onDereference?.({ schema, ref: dereferencedRef })
+      options?.onDereference?.({ schema, ref: dereferencedRef, resolved })
     }
   }
 
   // Iterate over the whole object
-  for (const value of Object.values(schema)) {
+  for (const [key, value] of Object.entries(schema)) {
     if (typeof value === 'object' && value !== null) {
-      dereference(value, filesystem, entrypoint, resolvedSchemas, errors, options)
+      dereference(
+        value,
+        filesystem,
+        entrypoint,
+        resolvedSchemas,
+        errors,
+        options,
+        getChildReferenceContext(context, key, value),
+      )
     }
   }
 }
@@ -157,7 +200,7 @@ function resolveUri(
   filesystem: Filesystem,
 
   // a function to resolve references in external file
-  resolve: (file: FilesystemEntry) => FilesystemEntry,
+  resolve: (file: FilesystemEntry, fragment: string) => AnyObject | undefined,
 
   errors: ErrorObject[],
 ): AnyObject | undefined {
@@ -199,22 +242,19 @@ function resolveUri(
 
       return undefined
     }
-    // $ref: 'other-file.yaml'
-    if (path === undefined) {
-      return externalReference.specification
-    }
-
-    // $ref: 'other-file.yaml#/foo/bar'
-    // resolve refs first before accessing properties directly
-    return resolveUri(`#${path}`, options, resolve(externalReference), filesystem, resolve, errors)
+    return resolve(externalReference, path ?? '')
   }
-
-  // Pointers
-  const segments = getSegmentsFromPath(path)
 
   // Try to find the URI
   try {
-    return segments.reduce((acc, key) => {
+    // Decoding malformed percent escapes can throw before the target is read.
+    const segments = getSegmentsFromPath(path)
+
+    return segments.reduce<unknown>((acc, key) => {
+      if (!isObjectLike(acc) || !(key in acc)) {
+        throw new Error(ERRORS.INVALID_REFERENCE.replace('%s', uri))
+      }
+
       return acc[key]
     }, file.specification)
   } catch (_error) {

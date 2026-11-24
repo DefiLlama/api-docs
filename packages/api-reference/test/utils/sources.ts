@@ -1,0 +1,504 @@
+import galaxy from '@scalar/galaxy/latest.json' with { type: 'json' }
+import {
+  PETSTORE_URL_2_0,
+  PETSTORE_URL_3_0,
+  PETSTORE_URL_3_1,
+  STRIPE_URL_3_0,
+} from '@scalar/helpers/url/oas-document-fixtures'
+import type { AnyApiReferenceConfiguration } from '@scalar/types/api-reference'
+
+/** All of the sources */
+export type Sources = typeof sources
+/** A single source configuration */
+export type Source = Sources[number]
+/** The slug of a source */
+export type Slug = Source['slug']
+
+/** A selection of test sources and configurations */
+export const sources = [
+  {
+    title: 'Scalar Galaxy', // optional, would fallback to 'API #1'
+    slug: 'scalar-galaxy', // optional, would be auto-generated from the title or the index
+    content: galaxy,
+  },
+  {
+    title: 'Tag Nesting (OpenAPI 3.2)',
+    slug: 'tag-nesting',
+    url: 'examples/tag-nesting.yaml',
+  },
+  {
+    title: 'Scalar Galaxy (Classic Layout)',
+    slug: 'scalar-galaxy-classic',
+    content: galaxy,
+    layout: 'classic',
+  },
+  {
+    title: 'Scalar Galaxy Events (AsyncAPI)',
+    slug: 'scalar-galaxy-events',
+    url: 'https://registry.scalar.com/@scalar/apis/asyncapi/latest?format=json',
+  },
+  {
+    title: 'Scalar Galaxy Events (AsyncAPI, Classic Layout)',
+    slug: 'scalar-galaxy-events-classic',
+    url: 'https://registry.scalar.com/@scalar/apis/asyncapi/latest?format=json',
+    layout: 'classic',
+  },
+  {
+    title: 'Commerce · Kafka (AsyncAPI)',
+    slug: 'commerce',
+    url: 'examples/asyncapi-design-commerce.json',
+  },
+  {
+    title: 'Fleet · MQTT (AsyncAPI)',
+    slug: 'fleet',
+    url: 'examples/asyncapi-design-fleet.json',
+  },
+  {
+    title: 'Team Chat · WebSockets (AsyncAPI)',
+    slug: 'chat',
+    url: 'examples/asyncapi-design-chat.json',
+  },
+  {
+    title: 'AsyncAPI Query Auth',
+    slug: 'asyncapi-query-auth',
+    url: 'examples/asyncapi-query-auth.yaml',
+  },
+  {
+    title: 'AsyncAPI Bindings',
+    slug: 'asyncapi-bindings',
+    url: 'examples/asyncapi-bindings.yaml',
+  },
+  {
+    title: 'AsyncAPI Bindings (Classic Layout)',
+    slug: 'asyncapi-bindings-classic',
+    url: 'examples/asyncapi-bindings.yaml',
+    layout: 'classic',
+  },
+  {
+    title: 'AsyncAPI Sidebar Filters',
+    slug: 'asyncapi-sidebar-filters',
+    url: 'examples/asyncapi-filters.yaml',
+  },
+  {
+    title: 'Tag Groups',
+    slug: 'tag-groups',
+    content: {
+      openapi: '3.1.0',
+      info: {
+        title: 'Tag Groups API',
+        version: '1.0.0',
+      },
+      tags: [
+        {
+          name: 'Planets',
+          description: 'Planet operations',
+        },
+        {
+          name: 'Moons',
+          description: 'Natural satellites',
+        },
+        {
+          name: 'Stars',
+          description: 'Stellar objects',
+        },
+        {
+          name: 'Stations',
+          description: 'Orbital platforms',
+        },
+      ],
+      paths: {
+        '/planets': {
+          get: {
+            tags: ['Planets'],
+            summary: 'List planets',
+            responses: {
+              '200': {
+                description: 'OK',
+              },
+            },
+          },
+        },
+        '/moons': {
+          get: {
+            tags: ['Moons'],
+            summary: 'List moons',
+            responses: {
+              '200': {
+                description: 'OK',
+              },
+            },
+          },
+        },
+        '/stars': {
+          get: {
+            tags: ['Stars'],
+            summary: 'List stars',
+            responses: {
+              '200': {
+                description: 'OK',
+              },
+            },
+          },
+        },
+        '/stations': {
+          get: {
+            tags: ['Stations'],
+            summary: 'List stations',
+            responses: {
+              '200': {
+                description: 'OK',
+              },
+            },
+          },
+        },
+      },
+      'x-tagGroups': [
+        {
+          name: 'Galaxy',
+          description: 'Bodies and satellites in the local galaxy',
+          tags: ['Planets', 'Moons'],
+        },
+        {
+          name: 'Deep space',
+          description: 'Objects beyond the planetary plane',
+          tags: ['Stars'],
+        },
+        {
+          name: 'Infrastructure',
+          description: 'Built structures and platforms',
+          tags: ['Stations'],
+        },
+      ],
+    },
+  },
+  {
+    title: 'Scalar Galaxy Registry',
+    slug: 'scalar-galaxy-registry',
+    url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
+  },
+  {
+    title: 'Stripe',
+    slug: 'stripe',
+    url: STRIPE_URL_3_0,
+  },
+  {
+    title: 'Relative URL Example',
+    slug: 'relative-url',
+    url: 'examples/openapi.json',
+  },
+  {
+    title: 'SDK Examples',
+    slug: 'sdk-examples',
+    url: 'examples/sdk-examples.yaml',
+  },
+  {
+    title: 'Long Strings Example',
+    slug: 'long-strings',
+    url: 'examples/long-strings.yaml',
+  },
+  {
+    title: 'Swagger Petstore 2.0',
+    slug: 'swagger-petstore-2-0',
+    url: PETSTORE_URL_2_0,
+  },
+  {
+    title: 'Swagger Petstore 3.0',
+    slug: 'swagger-petstore-3-0',
+    url: PETSTORE_URL_3_0,
+  },
+  {
+    title: 'Swagger Petstore 3.1',
+    slug: 'swagger-petstore-3-1',
+    url: PETSTORE_URL_3_1,
+    authentication: {
+      createAnySecurityScheme: true,
+    },
+  },
+  {
+    title: 'Hello World (string)',
+    slug: 'hello-world-string',
+    content: JSON.stringify({
+      openapi: '3.0.0',
+      info: {
+        title: 'Hello World',
+        version: '1.0.0',
+      },
+      paths: {
+        '/hello': {
+          get: {
+            summary: 'Hello World',
+            description: 'Hello World',
+            responses: {
+              200: {
+                description: 'Hello World',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'string',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  },
+  {
+    title: 'Valtown',
+    slug: 'valtown',
+    url: 'https://docs.val.town/openapi.documented.json',
+  },
+  {
+    title: 'Zoom',
+    slug: 'zoom',
+    url: 'https://developers.zoom.us/api-hub/meetings/methods/endpoints.json',
+    operationsSorter: 'alpha',
+  },
+  {
+    title: 'Cloudinary',
+    slug: 'cloudinary',
+    url: 'https://cloudinary.com/documentation/schemas/analysis-api/public-schema.yml',
+  },
+  {
+    title: 'Tailscale',
+    slug: 'tailscale',
+    url: 'https://api.tailscale.com/api/v2?outputOpenapiSchema=true',
+  },
+  {
+    title: 'Maersk',
+    slug: 'maersk',
+    url: 'https://edpmediastorage.blob.core.windows.net/media/air_booking_v1-0_26092023_scalar_spec.yaml',
+  },
+  {
+    title: 'Bolt',
+    slug: 'bolt',
+    url: 'https://assets.bolt.com/external-api-references/bolt.yml',
+  },
+  {
+    title: 'OpenStatus',
+    slug: 'openstatus',
+    url: 'https://api.openstatus.dev/v1/openapi',
+  },
+  {
+    title: 'Spotify',
+    slug: 'spotify',
+    url: 'https://developer.spotify.com/reference/web-api/open-api-schema.yaml',
+  },
+  {
+    title: 'Circular',
+    slug: 'circular',
+    content: {
+      openapi: '3.1.0',
+      info: {
+        title: 'Hello World',
+        version: '1.0.0',
+      },
+      components: {
+        schemas: {
+          JsonObject: {
+            additionalProperties: {
+              $ref: '#/components/schemas/JsonValue',
+            },
+            type: 'object',
+          },
+          JsonValue: {
+            anyOf: [
+              {
+                type: 'string',
+              },
+              {
+                type: 'number',
+                format: 'double',
+              },
+              {
+                type: 'boolean',
+              },
+              {
+                $ref: '#/components/schemas/JsonObject',
+              },
+            ],
+          },
+        },
+      },
+      paths: {
+        '/get': {
+          get: {
+            responses: {
+              '200': {
+                content: {
+                  'application/json': {
+                    schema: {
+                      $ref: '#/components/schemas/JsonObject',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    title: 'Model Names',
+    slug: 'model-names',
+    content: {
+      'openapi': '3.0.4',
+      'info': {
+        'title': 'Test API',
+        'description': 'Test API description',
+        'version': 'v1.0',
+      },
+      'paths': {},
+      'components': {
+        'schemas': {
+          'VehicleAddressModel': {
+            'type': 'object',
+            'properties': {
+              'Id': {
+                'type': 'integer',
+                'description': 'Gets or sets the unique identifier for the entity.',
+                'format': 'int32',
+              },
+              'VehicleId': {
+                'type': 'integer',
+                'description': 'Gets or sets the unique identifier for the vehicle.',
+                'format': 'int32',
+              },
+              'AddressLine1': {
+                'type': 'string',
+                'description':
+                  'Gets or sets the first line of the address, typically including the street name and number.',
+                'nullable': true,
+              },
+              'AddressLine2': {
+                'type': 'string',
+                'description':
+                  'Gets or sets the second line of the address, typically used for apartment, suite, or unit information.',
+                'nullable': true,
+              },
+              'City': {
+                'type': 'string',
+                'description': 'Gets or sets the name of the city.',
+                'nullable': true,
+              },
+              'County': {
+                'type': 'string',
+                'description': 'Gets or sets the name of the county associated with the entity.',
+                'nullable': true,
+              },
+              'PostCode': {
+                'type': 'string',
+                'description': 'Gets or sets the postal code associated with the address.',
+                'nullable': true,
+              },
+            },
+            'additionalProperties': false,
+            'description': 'Represents the address information associated with a vehicle.',
+          },
+          'VehicleModel': {
+            'type': 'object',
+            'properties': {
+              'Id': {
+                'type': 'integer',
+                'description': 'Gets or sets the unique identifier for the entity.',
+                'format': 'int32',
+              },
+              'Name': {
+                'type': 'string',
+                'description': 'Gets or sets the name associated with the object.',
+                'nullable': true,
+              },
+              'Model': {
+                'type': 'string',
+                'description': 'Gets or sets the model name associated with the object.',
+                'nullable': true,
+              },
+              'Make': {
+                'type': 'string',
+                'description': 'Gets or sets the make of the vehicle.',
+                'nullable': true,
+              },
+              'Year': {
+                'type': 'integer',
+                'description': 'Gets or sets the year value.',
+                'format': 'int32',
+              },
+              'Colour': {
+                'type': 'string',
+                'description': 'Gets or sets the colour associated with the object.',
+                'nullable': true,
+              },
+              'LicensePlate': {
+                'type': 'string',
+                'description': 'Gets or sets the license plate number of the vehicle.',
+                'nullable': true,
+              },
+              'Services': {
+                'type': 'array',
+                'items': {
+                  '$ref': '#/components/schemas/VehicleServiceModel',
+                },
+                'nullable': true,
+              },
+              'Address': {
+                '$ref': '#/components/schemas/VehicleAddressModel',
+              },
+            },
+            'additionalProperties': false,
+            'description': 'Represents a vehicle with details such as make, model, year, and associated services.',
+          },
+          'VehicleServiceModel': {
+            'type': 'object',
+            'properties': {
+              'Id': {
+                'type': 'integer',
+                'description': 'Gets or sets the unique identifier for the entity.',
+                'format': 'int32',
+              },
+              'VehicleId': {
+                'type': 'integer',
+                'description': 'Gets or sets the unique identifier for a vehicle.',
+                'format': 'int32',
+              },
+              'ServiceName': {
+                'type': 'string',
+                'description': 'Gets or sets the name of the service.',
+                'nullable': true,
+              },
+              'ServiceDescription': {
+                'type': 'string',
+                'description': 'Gets or sets the description of the service.',
+                'nullable': true,
+              },
+              'ServiceDate': {
+                'type': 'string',
+                'description': 'Gets or sets the date of the service.',
+                'format': 'date-time',
+              },
+              'ServiceCost': {
+                'type': 'number',
+                'description': 'Gets or sets the cost of the service.',
+                'format': 'double',
+              },
+              'ServiceProvider': {
+                'type': 'string',
+                'description': 'Gets or sets the name of the service provider.',
+                'nullable': true,
+              },
+            },
+            'additionalProperties': false,
+            'description': 'Holds the details of a vehicle service',
+          },
+        },
+      },
+    },
+  },
+  {
+    title: 'Galaxy Live',
+    slug: 'galaxy-live',
+    url: 'http://localhost:8080/3.1.yaml',
+  },
+] as const satisfies AnyApiReferenceConfiguration

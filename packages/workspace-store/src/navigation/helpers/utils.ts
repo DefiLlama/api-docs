@@ -1,6 +1,7 @@
+import { getMarkdownHeadings } from '@scalar/helpers/markdown/get-markdown-headings'
+import { slugger } from '@scalar/helpers/string/slugger'
+
 import type { Heading } from '@/navigation/types'
-import { getHeadings } from '@scalar/code-highlight/markdown'
-import GithubSlugger from 'github-slugger'
 
 /**
  * Adds URL-friendly slugs to each heading in the array.
@@ -23,11 +24,11 @@ import GithubSlugger from 'github-slugger'
  * //   { value: 'Installation', depth: 2, slug: 'installation' }
  * // ]
  */
-const withSlugs = (headings: Heading[], slugger: GithubSlugger): Heading[] =>
+const withSlugs = (headings: Heading[], slug: (v: string) => string): Heading[] =>
   headings.map((heading) => {
     return {
       ...heading,
-      slug: slugger.slug(heading.value),
+      slug: slug(heading.value),
     }
   })
 
@@ -53,14 +54,14 @@ const withSlugs = (headings: Heading[], slugger: GithubSlugger): Heading[] =>
  * // ]
  */
 export function getHeadingsFromMarkdown(input: string): Heading[] {
-  const slugger = new GithubSlugger()
+  const { slug } = slugger()
 
-  const headings = getHeadings(input)
+  const headings = getMarkdownHeadings(input)
 
-  return withSlugs(headings as Heading[], slugger)
+  return withSlugs(headings, slug)
 }
 
-export type HeadingLevels = 1 | 2 | 3 | 4 | 5 | 6
+type HeadingLevels = 1 | 2 | 3 | 4 | 5 | 6
 
 /**
  * Returns the lowest heading level from a list of headings.

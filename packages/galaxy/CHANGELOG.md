@@ -1,5 +1,206 @@
 # @scalar/galaxy
 
+## 0.7.4
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.7.3
+
+### Patch Changes
+
+- [#10967](https://github.com/scalar/scalar/pull/10967): Use the shared YAML alias limit when generating JSON example documents.
+
+## 0.7.2
+
+### Patch Changes
+
+- [#10560](https://github.com/scalar/scalar/pull/10560): Register OAuth authorization, token, and refresh endpoints for AsyncAPI mock servers and point the Galaxy AsyncAPI example at its existing token endpoint for refresh requests.
+
+  Support OpenID Connect discovery and token routes in AsyncAPI mocks, return discovery endpoints on the mock origin, and accept form-encoded token exchanges and refresh requests.
+
+## 0.7.1
+
+### Patch Changes
+
+- [#10109](https://github.com/scalar/scalar/pull/10109): Add OpenAPI Link Object examples to the 3.1 and 3.2 documents.
+
+## 0.7.0
+
+### Minor Changes
+
+- [#10014](https://github.com/scalar/scalar/pull/10014): Flesh out the OpenAPI 3.2 example document with the features new to 3.2: named servers, hierarchical tags (`parent`/`kind`/`summary`), the `query` HTTP method, `additionalOperations`, the `querystring` parameter location, sequential/streaming media types via `itemSchema`, positional multipart encoding (`prefixEncoding`/`itemEncoding`), the OAuth 2.0 device authorization flow, `oauth2MetadataUrl`, a deprecated security scheme, and XML `nodeType`.
+
+## 0.6.14
+
+### Patch Changes
+
+- [#9980](https://github.com/scalar/scalar/pull/9980): Add an OpenAPI 3.2 example document, available as `@scalar/galaxy/3.2.yaml` and `@scalar/galaxy/3.2.json`. It is a copy of the 3.1 document on version `3.2.0`. The `latest` document still points at 3.1.
+
+## 0.6.13
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.6.12
+
+### Patch Changes
+
+- [#9697](https://github.com/scalar/scalar/pull/9697): Add credential input UIs for the AsyncAPI broker-specific security scheme types, which previously showed a "not supported yet" message in the Authentication selector. The SASL-style schemes (`userPassword`, `plain`, `scramSha256`, `scramSha512`) get a username + password form like HTTP basic, `X509` gets client certificate + private key (PEM) inputs, `symmetricEncryption`/`asymmetricEncryption` get a single key input, and `gssapi` gets a service name input. The entered credentials are persisted in the auth store with new type-specific secret shapes (`x-scalar-secret-client-certificate`, `x-scalar-secret-private-key`, `x-scalar-secret-service-name`, plus the existing username/password/token extensions) and round-trip through the merged scheme objects the same way as the OpenAPI types. The Galaxy AsyncAPI sample document now defines one scheme of each broker group so the inputs can be exercised.
+
+## 0.6.11
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.6.10
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.6.9
+
+### Patch Changes
+
+- [#9651](https://github.com/scalar/scalar/pull/9651): Merge the Galaxy `Paginated` and `PaginatedResource` schemas into a single `PaginatedResource` schema
+
+## 0.6.8
+
+### Patch Changes
+
+- [#9468](https://github.com/scalar/scalar/pull/9468): Express the `/planets` pagination with a generic `Paginated` template that binds its item type through a JSON Schema 2020-12 `$dynamicRef` / `$dynamicAnchor`, demonstrating the `Paginated<T>` pattern
+
+## 0.6.7
+
+### Patch Changes
+
+- [#9455](https://github.com/scalar/scalar/pull/9455): Add a description to the `Create a celestial body` operation
+
+## 0.6.6
+
+### Patch Changes
+
+- [#9434](https://github.com/scalar/scalar/pull/9434): Flesh out the AsyncAPI example document so it covers more of the spec: a document `id`, operation trait tags, channel summaries, richer channel parameters (enum/default/examples/location), summary/messages/reply on every operation, a request/reply example (`getPlanet`) including a runtime-expression reply address, a reusable message trait with headers and a correlation ID, server variables, and a wired-up OAuth 2.0 scheme
+- [#9379](https://github.com/scalar/scalar/pull/9379): Add a `lint` script and a local Spectral ruleset (`galaxy.ruleset.yaml`) so the example document can be linted with `@scalar/cli document lint`
+
+## 0.6.5
+
+### Patch Changes
+
+- [#9349](https://github.com/scalar/scalar/pull/9349): Tag channels, operations, and messages in the AsyncAPI 3.0 sample so they group consistently with the OpenAPI document.
+
+## 0.6.4
+
+### Patch Changes
+
+- [#9045](https://github.com/scalar/scalar/pull/9045): fix(galaxy): align operation and webhook security requirements with intended auth behavior
+
+## 0.6.3
+
+### Patch Changes
+
+- [#9012](https://github.com/scalar/scalar/pull/9012): fix(galaxy): align operation and webhook security requirements with intended auth behavior
+
+## 0.6.2
+
+### Patch Changes
+
+- [#8626](https://github.com/scalar/scalar/pull/8626): fix: add a complex API key authentication requirement to the Galaxy OpenAPI description document
+
+## 0.6.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.6.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.5.16
+
+### Patch Changes
+
+- [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+## 0.5.15
+
+### Patch Changes
+
+- [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+## 0.5.14
+
+### Patch Changes
+
+- [#8147](https://github.com/scalar/scalar/pull/8147): fix: broken links
+
+## 0.5.13
+
+### Patch Changes
+
+- [#8117](https://github.com/scalar/scalar/pull/8117): feat: post-response scripts
+
+## 0.5.12
+
+### Patch Changes
+
+- [#7332](https://github.com/scalar/scalar/pull/7332) [`93a466e`](https://github.com/scalar/scalar/commit/93a466e79b8a9f0475f36fe7b4254f4bbeaea616) Thanks [@hanspagel](https://github.com/hanspagel)! - feat: use support@scalar.com as the email address
+
+- [#7326](https://github.com/scalar/scalar/pull/7326) [`4455bdc`](https://github.com/scalar/scalar/commit/4455bdc53f645b144bf31912e585bf82c52beb34) Thanks [@hanspagel](https://github.com/hanspagel)! - fix: union discriminator specified in `components.schemas.CelestialBody` is incorrect
+
+- [#7334](https://github.com/scalar/scalar/pull/7334) [`db20273`](https://github.com/scalar/scalar/commit/db20273dbbad0d7dd251506c2301f076329651a0) Thanks [@hanspagel](https://github.com/hanspagel)! - feat: no duplicate descriptions
+
+## 0.5.11
+
+### Patch Changes
+
+- [#7273](https://github.com/scalar/scalar/pull/7273) [`8750cf0`](https://github.com/scalar/scalar/commit/8750cf0e5779df747a73d3fa149beae87eca92ce) Thanks [@hanspagel](https://github.com/hanspagel)! - fix: nullable not supported in OpenAPI 3.1
+
+## 0.5.10
+
+### Patch Changes
+
+- [#7241](https://github.com/scalar/scalar/pull/7241) [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d) Thanks [@hanspagel](https://github.com/hanspagel)! - chore: use "current" not "latest" scalar registry url
+
+## 0.5.9
+
+### Patch Changes
+
+- c883287: feat: add AsyncAPI example
+
+## 0.5.8
+
+### Patch Changes
+
+- 0a91180: chore: add another value to the galaxy server variable enum
+- 3473e08: fix: performance issues on script load
+- 71a5647: feat: circular reference between planet ↔ satellite
+
+## 0.5.7
+
+### Patch Changes
+
+- e24ea3f: feat: add response headers to galaxy spec
+
+## 0.5.6
+
+### Patch Changes
+
+- 525b7d7: feat: publish @scalar/galaxy in the Scalar Registry
+
+## 0.5.5
+
+### Patch Changes
+
+- e0061e8: fix: broken internal link
+
 ## 0.5.4
 
 ### Patch Changes

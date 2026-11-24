@@ -1,15 +1,19 @@
 import { placements } from '@floating-ui/utils'
-import type { Meta, StoryObj } from '@storybook/vue3'
+import type { Meta, StoryObj } from '@storybook/vue3-vite'
 
 import ScalarFloating from './ScalarFloating.vue'
 
 const meta: Meta = {
   component: ScalarFloating,
+  parameters: {
+    layout: 'fullscreen',
+  },
   tags: ['autodocs'],
   argTypes: {
     placement: {
-      control: 'select',
+      control: { type: 'select' },
       options: placements,
+      mapping: Object.fromEntries(placements.map((p) => [p, p])),
     },
     offset: { control: { type: 'range', min: 0, max: 100, step: 1 } },
   },
@@ -19,14 +23,20 @@ const meta: Meta = {
       return { args }
     },
     template: `
-<div class="flex items-center justify-center w-full h-screen">
+<div 
+  class="flex w-screen h-screen items-center justify-center p-2.5"
+  :class="{
+    '!items-start': args?.placement?.startsWith('bottom'),
+    '!items-end': args?.placement?.startsWith('top'),
+    '!justify-start': args?.placement?.startsWith('right'),
+    '!justify-end': args?.placement?.startsWith('left')
+  }"
+>
   <ScalarFloating v-bind="args">
     <div class="rounded border bg-b-2 p-2">Target for #floating</div>
     <template #floating="{ width, height }">
-      <div 
-        class="flex items-center justify-center rounded border shadow bg-b-2 p-1" 
-        :style="{ width, height }">
-        Floating
+      <div class="grid max-w-[inherit] max-h-[inherit] size-60 rounded-xl bg-b-1 dark:bg-b-1.5 shadow-md inset-shadow-border" :style="{ width, height }">
+        <div class="placeholder">Floating</div>
       </div>
     </template>
   </ScalarFloating>
@@ -39,3 +49,10 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Base: Story = {}
+
+export const Resized: Story = {
+  args: {
+    placement: 'bottom-start',
+    resize: true,
+  },
+}

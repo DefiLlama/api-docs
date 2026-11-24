@@ -15,6 +15,30 @@ The site is the Vue app in `examples/web`, built on top of the Scalar monorepo i
 
 Every user agent gets the same HTML homepage. There is no user-agent detection; the site is static.
 
+## Where the DefiLlama customizations live
+
+The Scalar packages in this repository match upstream [scalar/scalar](https://github.com/scalar/scalar), with one small exception listed below. Everything DefiLlama-specific lives in `examples/web`:
+
+| Behaviour | Where |
+| --- | --- |
+| API key bar, saved in the browser (`localStorage` key `scalar-api-key-default`) | `src/components/ApiKeyInput.vue`, `src/api-key-storage.ts` |
+| Free spec plus API-plan-only endpoints, or the full pro spec when a key is set | `src/spec-transform.ts` |
+| Key in the path (`pro-api.llama.fi/{key}/…`, and `/usage/{key}`) for snippets, Test Request and Copy URL | `src/spec-transform.ts` (fills the `YOUR_API_KEY` server variable) |
+| API Plan and Beta badges (from `x-api-plan-only` and `x-api-beta`) | `src/spec-transform.ts` (Scalar's `x-badges`), styled in `src/style.css` |
+| "Please set an API key" reply when Test Request has no key | `customFetch` in `src/pages/StandaloneApiReferencePage.vue` |
+| curl as the default code sample | `defaultHttpClient` in the same page |
+
+The one patch inside Scalar is `packages/api-reference/src/components/OperationsList/OperationsListItem.vue`, between the `DefiLlama` comments. It shows the Deprecated, API Plan and Beta chips in each tag's endpoint list, which Scalar has no option for.
+
+## Syncing with upstream Scalar
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+Conflicts should only be in files we own (README, CLAUDE.md, root `package.json`, `pnpm-workspace.yaml`, `lefthook.yml`, `.gitignore`), in `.github` (keep ours: upstream's workflows publish Scalar's packages and must not run here), and in `OperationsListItem.vue` (keep the `DefiLlama` block). Then run `pnpm install`, `pnpm build:web`, and check the page against the list above.
+
 ## Local development
 
 ```bash
@@ -23,7 +47,7 @@ pnpm dev:web        # http://localhost:5050
 pnpm build:web      # production build into examples/web/dist
 ```
 
-Node 22 (see `.nvmrc`). The build fails on purpose if any emitted HTML, CSS or JS file is larger than 2,000,000 bytes, which is Googlebot's per-resource fetch limit.
+Node 24 (see `.nvmrc`) and pnpm 12 (see `packageManager` in `package.json`). The build fails on purpose if any emitted HTML, CSS or JS file is larger than 2,000,000 bytes, which is Googlebot's per-resource fetch limit.
 
 ## Checking the specs against the live API
 

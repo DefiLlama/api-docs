@@ -1,0 +1,773 @@
+import { resolve } from '@scalar/workspace-store/resolve'
+import type { SchemaObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { describe, expect, it } from 'vitest'
+
+import { optimizeValueForDisplay } from './optimize-value-for-display'
+
+describe('optimizeValueForDisplay', () => {
+  it('should return the original value if it is not an object', () => {
+    // @ts-expect-error
+    expect(optimizeValueForDisplay(1)).toEqual(1)
+  })
+
+  it('should return the original value if there is no discriminator type', () => {
+    const input: SchemaObject = { type: 'string' }
+    expect(optimizeValueForDisplay(input)).toEqual(input)
+  })
+
+  it('should return the original value if discriminator schemas is not an array', () => {
+    const input = { __scalar_: '', oneOf: 'not an array' }
+    // @ts-expect-error a test
+    expect(optimizeValueForDisplay(input)).toEqual(input)
+  })
+
+  it('should ignore the not discriminator type', () => {
+    const input = { __scalar_: '', not: { type: 'string' } } as SchemaObject
+    expect(optimizeValueForDisplay(input)).toEqual(input)
+  })
+
+  it('should mark as nullable if schema contains null type', () => {
+    const input: SchemaObject = {
+      __scalar_: '',
+      oneOf: [{ type: 'string' }, { type: 'null' }],
+    }
+    expect(optimizeValueForDisplay(input)).toEqual({
+      __scalar_: '',
+      type: 'string',
+      nullable: true,
+    })
+  })
+
+  it('should remove null types from schemas', () => {
+    const input = {
+      anyOf: [{ type: 'string' }, { type: 'null' }, { type: 'number' }],
+    } as SchemaObject
+    expect(optimizeValueForDisplay(input)).toEqual({
+      anyOf: [{ type: 'string' }, { type: 'number' }],
+      nullable: true,
+    })
+  })
+
+  it('should merge single remaining schema after null removal', () => {
+    const input: SchemaObject = {
+      __scalar_: '',
+      oneOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+    }
+    expect(optimizeValueForDisplay(input)).toEqual({
+      __scalar_: '',
+      type: 'string',
+      format: 'date-time',
+      nullable: true,
+    })
+  })
+
+  it('should handle multiple remaining schemas', () => {
+    const input = {
+      anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'null' }],
+    } as SchemaObject
+    expect(optimizeValueForDisplay(input)).toEqual({
+      anyOf: [{ type: 'string' }, { type: 'number' }],
+      nullable: true,
+    })
+  })
+
+  it('should preserve other properties when optimizing', () => {
+    const input: SchemaObject = {
+      __scalar_: '',
+      description: 'test field',
+      oneOf: [{ type: 'string' }, { type: 'null' }],
+    }
+    expect(optimizeValueForDisplay(input)).toEqual({
+      __scalar_: '',
+      description: 'test field',
+      type: 'string',
+      nullable: true,
+    })
+  })
+
+  it('should handle allOf discriminator', () => {
+    const input: SchemaObject = {
+      __scalar_: '',
+      allOf: [{ type: 'string' }, { type: 'null' }],
+    }
+    expect(optimizeValueForDisplay(input)).toEqual({
+      __scalar_: '',
+      type: 'string',
+      nullable: true,
+    })
+  })
+
+  it('preserves schema properties when merging allOf schemas', () => {
+    const input: SchemaObject = {
+      __scalar_: '',
+      oneOf: [
+        {
+          __scalar_: '',
+          title: 'Planet',
+          allOf: [
+            {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+              },
+            },
+            {
+              type: 'object',
+              properties: {
+                description: { type: 'string' },
+              },
+            },
+          ],
+        },
+        {
+          __scalar_: '',
+          title: 'Satellite',
+          allOf: [
+            {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+              },
+            },
+            {
+              type: 'object',
+              properties: {
+                description: { type: 'string' },
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(resolve.schema(result?.oneOf?.[0])?.title).toBe('Planet')
+    expect(resolve.schema(result?.oneOf?.[1])?.title).toBe('Satellite')
+  })
+
+  it('should preserve root properties when processing oneOf schemas', () => {
+    const input: SchemaObject = {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+      },
+      oneOf: [
+        { required: ['id'], type: 'object' },
+        { required: ['name'], type: 'object' },
+      ],
+    }
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+          },
+          required: ['name'],
+        },
+      ],
+    })
+  })
+
+  it('unions root and variant properties/required instead of letting a variant overwrite the base (#9657)', () => {
+    // Mirrors the reported issue: an `allOf` factors out shared object properties
+    // next to a `oneOf` whose branches each define their own distinct properties.
+    // The shared base fields must still show up alongside each branch's own
+    // fields, not disappear because the branch happens to declare `properties`.
+    const input: SchemaObject = {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        status: { type: 'string' },
+      },
+      required: ['name', 'status'],
+      oneOf: [
+        {
+          type: 'object',
+          properties: { all_sites: { type: 'boolean' } },
+          required: ['all_sites'],
+        },
+        {
+          type: 'object',
+          properties: { site_ids: { type: 'array', items: { type: 'integer' } } },
+          required: ['site_ids'],
+        },
+      ],
+    }
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            status: { type: 'string' },
+            all_sites: { type: 'boolean' },
+          },
+          required: ['name', 'status', 'all_sites'],
+        },
+        {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            status: { type: 'string' },
+            site_ids: { type: 'array', items: { type: 'integer' } },
+          },
+          required: ['name', 'status', 'site_ids'],
+        },
+      ],
+    })
+  })
+
+  it('unions base and variant properties/required for anyOf branches too (#9657)', () => {
+    // Same regression as the oneOf case, but the composition keyword is anyOf.
+    // Both keywords share the merge path, so the base fields must survive here as well.
+    const input: SchemaObject = {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        status: { type: 'string' },
+      },
+      required: ['name', 'status'],
+      anyOf: [
+        {
+          type: 'object',
+          properties: { all_sites: { type: 'boolean' } },
+          required: ['all_sites'],
+        },
+        {
+          type: 'object',
+          properties: { site_ids: { type: 'array', items: { type: 'integer' } } },
+          required: ['site_ids'],
+        },
+      ],
+    }
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            status: { type: 'string' },
+            all_sites: { type: 'boolean' },
+          },
+          required: ['name', 'status', 'all_sites'],
+        },
+        {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            status: { type: 'string' },
+            site_ids: { type: 'array', items: { type: 'integer' } },
+          },
+          required: ['name', 'status', 'site_ids'],
+        },
+      ],
+    })
+  })
+
+  it('unions a sibling allOf base with each variant instead of overwriting it (#9657)', () => {
+    // The exact shape from the issue: the shared fields live in a single-item
+    // `allOf` base inside every branch (not at the root). Flattening that base
+    // must combine its properties/required with the branch's own, not clobber
+    // the branch fields with the base ones.
+    const input = {
+      oneOf: [
+        {
+          type: 'object',
+          properties: { all_sites: { type: 'boolean' } },
+          required: ['all_sites'],
+          allOf: [
+            {
+              type: 'object',
+              properties: { name: { type: 'string' }, status: { type: 'string' } },
+              required: ['name', 'status'],
+            },
+          ],
+        },
+        {
+          type: 'object',
+          properties: { site_ids: { type: 'array', items: { type: 'integer' } } },
+          required: ['site_ids'],
+          allOf: [
+            {
+              type: 'object',
+              properties: { name: { type: 'string' }, status: { type: 'string' } },
+              required: ['name', 'status'],
+            },
+          ],
+        },
+      ],
+    } as unknown as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            all_sites: { type: 'boolean' },
+            name: { type: 'string' },
+            status: { type: 'string' },
+          },
+          required: ['all_sites', 'name', 'status'],
+        },
+        {
+          type: 'object',
+          properties: {
+            site_ids: { type: 'array', items: { type: 'integer' } },
+            name: { type: 'string' },
+            status: { type: 'string' },
+          },
+          required: ['site_ids', 'name', 'status'],
+        },
+      ],
+    })
+  })
+
+  it('should merge root properties into oneOf schemas when they contain allOf', () => {
+    const input = {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+      },
+      oneOf: [
+        {
+          type: 'object',
+          allOf: [{ type: 'object', required: ['id'] }],
+        },
+        {
+          allOf: [{ required: ['name'] }],
+        },
+      ],
+    } as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+          },
+          required: ['name'],
+        },
+      ],
+    })
+  })
+
+  it('drops a flattened allOf base $ref so it does not overwrite the variant (#9964)', () => {
+    // Mirrors the reported bug: a oneOf variant (Cat) extends a base (Animal)
+    // through a single-$ref allOf. Flattening that allOf must not leave the
+    // base's own $ref on the variant, or the selector shows the base's name
+    // instead of the variant's.
+    const input = {
+      oneOf: [
+        {
+          type: 'object',
+          allOf: [
+            {
+              '$ref': '#/components/schemas/Animal',
+              '$ref-value': {
+                type: 'object',
+                properties: { id: { type: 'string' } },
+              },
+            },
+          ],
+          properties: { type: { type: 'string', const: 'cat' } },
+        },
+        {
+          type: 'object',
+          properties: { type: { type: 'string', const: 'dog' } },
+        },
+      ],
+    } as unknown as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            type: { type: 'string', const: 'cat' },
+          },
+        },
+        {
+          type: 'object',
+          properties: { type: { type: 'string', const: 'dog' } },
+        },
+      ],
+    })
+  })
+
+  it('keeps the allOf base $ref when the variant is a bare wrapper with no identity of its own (#9964)', () => {
+    // A variant that only wraps a single allOf member, with no properties,
+    // required, or $ref of its own, has nothing to protect from the base's
+    // $ref, so the base's $ref is kept as a fallback label instead of being
+    // dropped and leaving the variant unlabeled.
+    const input = {
+      oneOf: [
+        {
+          allOf: [
+            {
+              '$ref': '#/components/schemas/Animal',
+              '$ref-value': {
+                type: 'object',
+                properties: { id: { type: 'string' } },
+              },
+            },
+          ],
+        },
+        {
+          type: 'object',
+          properties: { type: { type: 'string', const: 'dog' } },
+        },
+      ],
+    } as unknown as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          '$ref': '#/components/schemas/Animal',
+          type: 'object',
+          properties: { id: { type: 'string' } },
+        },
+        {
+          type: 'object',
+          properties: { type: { type: 'string', const: 'dog' } },
+        },
+      ],
+    })
+  })
+
+  it('drops a flattened allOf base title/name so it does not overwrite the variant (#9964)', () => {
+    // The base's identity is not only its `$ref`: `getModelNameFromSchema`
+    // prefers `title` (then `name`) over `$ref`, so a base that carries a
+    // `title` would still mislabel every variant even after the base's `$ref`
+    // is dropped. Here the variant (Cat) keeps its own `$ref`, and the base
+    // (Animal) contributes only its properties, not its title.
+    const input = {
+      oneOf: [
+        {
+          '$ref': '#/components/schemas/Cat',
+          type: 'object',
+          allOf: [
+            {
+              '$ref': '#/components/schemas/Animal',
+              title: 'Animal',
+              type: 'object',
+              properties: { id: { type: 'string' } },
+            },
+          ],
+          properties: { meow: { type: 'boolean' } },
+        },
+        {
+          type: 'object',
+          properties: { bark: { type: 'boolean' } },
+        },
+      ],
+    } as unknown as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          '$ref': '#/components/schemas/Cat',
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            meow: { type: 'boolean' },
+          },
+        },
+        {
+          type: 'object',
+          properties: { bark: { type: 'boolean' } },
+        },
+      ],
+    })
+  })
+
+  it('should not merge allOf when it contains multiple items', () => {
+    const input = {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+      },
+      oneOf: [
+        {
+          type: 'object',
+          title: 'MultipleAllOf',
+          allOf: [{ required: ['id'] }, { type: 'object', properties: { name: { type: 'string' } } }],
+        },
+      ],
+    } as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    // Since there's only one schema in oneOf, it gets merged with root properties
+    // but the allOf with multiple items should be preserved
+    expect(result).toEqual({
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+      },
+      title: 'MultipleAllOf',
+      allOf: [{ required: ['id'] }, { type: 'object', properties: { name: { type: 'string' } } }],
+    })
+  })
+
+  it('should preserve allOf with multiple items in anyOf compositions', () => {
+    const input = {
+      description: 'A complex schema',
+      anyOf: [
+        {
+          allOf: [{ type: 'object' }, { properties: { foo: { type: 'string' } } }, { required: ['foo'] }],
+        },
+        {
+          type: 'string',
+        },
+      ],
+    } as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      description: 'A complex schema',
+      anyOf: [
+        {
+          description: 'A complex schema',
+          allOf: [{ type: 'object' }, { properties: { foo: { type: 'string' } } }, { required: ['foo'] }],
+        },
+        {
+          description: 'A complex schema',
+          type: 'string',
+        },
+      ],
+    })
+  })
+
+  it('preserves the parent description for multi-branch oneOf schemas', () => {
+    const input = {
+      description: 'Base schema description',
+      properties: {
+        kind: {
+          type: 'string',
+        },
+      },
+      oneOf: [
+        {
+          title: 'FirstVariant',
+          allOf: [
+            {
+              type: 'object',
+              properties: {
+                kind: {
+                  type: 'string',
+                  description: 'Discriminator field for the first variant.',
+                },
+              },
+            },
+          ],
+          description: 'First variant description.',
+        },
+        {
+          title: 'SecondVariant',
+          allOf: [
+            {
+              type: 'object',
+              properties: {
+                kind: {
+                  type: 'string',
+                  description: 'Discriminator field for the second variant.',
+                },
+              },
+            },
+          ],
+          description: 'Second variant description.',
+        },
+      ],
+    } as unknown as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result?.description).toBe('Base schema description')
+  })
+
+  it('should preserve multiple allOf items when merging root properties into multiple oneOf schemas', () => {
+    const input: SchemaObject = {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+      },
+      oneOf: [
+        {
+          '__scalar_': '',
+          title: 'FirstSchema',
+          allOf: [
+            { required: ['id'], type: 'object' },
+            { properties: { name: { type: 'string' } }, type: 'object' },
+          ],
+        },
+        {
+          '__scalar_': '',
+          title: 'SecondSchema',
+          allOf: [
+            { required: ['id'], type: 'object' },
+            { properties: { email: { type: 'string' } }, type: 'object' },
+          ],
+        },
+      ],
+    }
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      oneOf: [
+        {
+          '__scalar_': '',
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+          title: 'FirstSchema',
+          allOf: [
+            { required: ['id'], type: 'object' },
+            { properties: { name: { type: 'string' } }, 'type': 'object' },
+          ],
+        },
+        {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+          title: 'SecondSchema',
+          '__scalar_': '',
+          allOf: [
+            { required: ['id'], 'type': 'object' },
+            { properties: { email: { type: 'string' } }, type: 'object' },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('unions sibling properties with a single-member allOf instead of dropping them', () => {
+    // Mirrors the reported schema: an object declares its own `properties`
+    // next to an `allOf` holding a single `$ref` base. The sibling properties
+    // (`assetIds`) must survive the flattening, and the root's own annotations
+    // (title, description) must win over the base schema's.
+    const input = {
+      title: 'Geofence Update Payload',
+      description: 'Geofence data to update in Equipment Monitoring table.',
+      type: 'object',
+      properties: {
+        assetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Geofence assigned asset ids',
+        },
+      },
+      allOf: [
+        {
+          '$ref': '#/components/schemas/GeofencePayloadWithoutAssetIds',
+          '$ref-value': {
+            title: 'Geofence Payload without asset ids',
+            description: 'Geofence data to save in Equipment Monitoring table',
+            type: 'object',
+            properties: {
+              updatedBy: { type: 'string' },
+              name: { type: 'string' },
+            },
+            required: ['updatedBy'],
+          },
+        },
+      ],
+    } as unknown as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      // The resolved node keeps its `$ref` so model names still render
+      '$ref': '#/components/schemas/GeofencePayloadWithoutAssetIds',
+      title: 'Geofence Update Payload',
+      description: 'Geofence data to update in Equipment Monitoring table.',
+      type: 'object',
+      properties: {
+        assetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Geofence assigned asset ids',
+        },
+        updatedBy: { type: 'string' },
+        name: { type: 'string' },
+      },
+      required: ['updatedBy'],
+    })
+  })
+
+  it('lets a sibling property redefinition win over the single-member allOf base', () => {
+    // When the root redeclares a property the base also defines, the root's
+    // definition is the more specific one and should be the one rendered.
+    const input = {
+      type: 'object',
+      properties: {
+        updatedBy: { type: 'string', description: 'Name of the updating user' },
+      },
+      allOf: [
+        {
+          type: 'object',
+          properties: {
+            updatedBy: { type: 'string' },
+            name: { type: 'string' },
+          },
+        },
+      ],
+    } as unknown as SchemaObject
+
+    const result = optimizeValueForDisplay(input)
+
+    expect(result).toEqual({
+      type: 'object',
+      properties: {
+        updatedBy: { type: 'string', description: 'Name of the updating user' },
+        name: { type: 'string' },
+      },
+    })
+  })
+})

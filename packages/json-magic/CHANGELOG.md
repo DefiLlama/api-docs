@@ -1,0 +1,711 @@
+# @scalar/json-magic
+
+## 0.22.0
+
+### Minor Changes
+
+- [#11088](https://github.com/scalar/scalar/pull/11088): Add a document graph API for checking and removing unused OpenAPI and AsyncAPI components. Follow transitive references, security requirements, discriminator mappings, schema identities and anchors. Preserve reachable cycles and literal data, remove disconnected reusable content, and support conservative retention when unresolved external references make reachability uncertain.
+- [#11087](https://github.com/scalar/scalar/pull/11087): Add `outputBase` to give bundled local schemas public output identities without changing file loading. Relative identities and resolved references can now serialize identically across checkout directories. In-memory schemas without an origin use a virtual output base; explicitly absolute identifiers, preserved references, and unresolved source locations retain their meaning.
+
+### Patch Changes
+
+- [#11087](https://github.com/scalar/scalar/pull/11087): Keep references across schema resource scopes portable when preserving selected references, including anonymous outer documents, cyclic dependencies, and local-file schema identities.
+
+  The Node file loader now accepts escaped `file:` URIs with the same directory and symlink confinement as native paths. Documents retrieved over HTTP(S) cannot load filesystem targets. Keep malformed local URI references recoverable and omit dynamic anchor declarations when copying anonymous schemas into another resource.
+- [#11149](https://github.com/scalar/scalar/pull/11149): Read local file URLs with native filesystem containment checks. Reject hosted file URLs and confined Windows network paths.
+  Resolve relative references to a declared document identity when URL normalization changes its spelling.
+  Follow nested references in newly exposed targets during document-aware bundling.
+
+## 0.21.1
+
+No changes in this release.
+
+## 0.21.0
+
+### Minor Changes
+
+- [#10997](https://github.com/scalar/scalar/pull/10997): Upgrade referenced OpenAPI 2.0 and 3.0 resources before bundling, including bare fragments interpreted in their owning API description's dialect and media types. Preserve authored reference targets when schemas and parameters move, and retain their context through lazy loading, serialization, and export.
+
+  Add JSON Magic resource and target lifecycle hooks and the typed `upgradeFragment` API. Headerless external resources are traversed through referenced subtrees, including when reached from OpenAPI 3.1/3.2 descriptions. Exports retain compact `x-scalar-upgrade` bookkeeping only when lazy external references still need the original dialect, relocation mappings, or media types.
+
+  Resources already stored in an input bundle's `x-ext` keep their existing layout so saved references remain valid. Legacy keywords in those stored resources, including OpenAPI 2.0 schema `x-nullable` and `type: file`, deliberately remain unconverted; newly loaded legacy resources are upgraded.
+
+### Patch Changes
+
+- [#11089](https://github.com/scalar/scalar/pull/11089): Resolve external RAML and Protobuf dependencies for structured AsyncAPI schema documentation, preserving source fallback when dependencies cannot be fully resolved.
+
+  Show RAML named types in schema headings instead of adding a "RAML type:" line to the description.
+
+  Show inline object item titles in array type signatures across all `@scalar/blocks` consumers, including OpenAPI documentation: an array with `items: { type: 'object', title: 'Pet' }` now displays `array of Pet` instead of `array of object`.
+
+## 0.20.1
+
+### Patch Changes
+
+- [#10983](https://github.com/scalar/scalar/pull/10983): Preserve literal $ref values in AsyncAPI examples, schema values, and extensions during initial loading and lazy resolution without fetching them. Index authored document keys without following virtual proxy links. Keep wrapper resolution independent of key order and ignore reference siblings in AsyncAPI parameter schemas and wrapped OpenAPI 3.0 and draft-04/06 schemas, including identifiers and anchors in those ignored siblings. Traverse only schema and identity keywords supported by the wrapped format so unknown keyword values stay literal, including draft-04 `id` and draft-06/07 `$id` handling.
+- [#10983](https://github.com/scalar/scalar/pull/10983): Resolve references inside AsyncAPI Multi Format Schema Objects and OpenAPI 3.2 media type `itemSchema` fields while preserving literal schema values. Keep `schemaFormat` and `schema` annotations in ordinary JSON Schema objects as literal data. Resolve native AsyncAPI schema `externalDocs` and tuple `additionalItems` references without processing ordinary JSON Schema annotations. Preserve schema contexts inside AsyncAPI protocol bindings. Resolve named AsyncAPI servers, variables, and reusable components even when their names match literal-data keywords. Ignore reference siblings in native AsyncAPI and draft-07 schemas.
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.20.0
+
+### Minor Changes
+
+- [#11037](https://github.com/scalar/scalar/pull/11037): Load object-valued `x-codeSamples.source` and `x-code-samples.source` file references as raw code text, with relative origins and lazy operation loading. Retain failed references and show an unavailable sample instead of silently replacing them with an empty string. Preserve literal `$ref` values in other extensions and example data.
+
+### Patch Changes
+
+- [#11015](https://github.com/scalar/scalar/pull/11015): Update Undici to address CVE-2026-116592 and allow compatible Undici 8 updates without requiring a new Scalar release.
+- [#11005](https://github.com/scalar/scalar/pull/11005): Preserve nested deletions and their application order when a covering parent deletion conflicts with another change.
+
+## 0.19.1
+
+### Patch Changes
+
+- [#10967](https://github.com/scalar/scalar/pull/10967): fix: parse YAML documents that merge shared anchors into many operations
+
+  Since yaml 2.9.1, merge keys (`<<: *anchor`) count toward the alias limit, so large API Gateway exports failed with "Excessive alias count indicates a resource exhaustion attack". The limit is now 100,000 and shared through `YAML_MAX_ALIAS_COUNT` from `@scalar/helpers`.
+
+## 0.19.0
+
+### Minor Changes
+
+- [#10897](https://github.com/scalar/scalar/pull/10897): Resolve proxy references within their schema resource using the shared bundle resolver, and expose resolved targets to lifecycle hooks for scope-aware transformations.
+
+### Patch Changes
+
+- [#10904](https://github.com/scalar/scalar/pull/10904): Share confined document loading between Markdown converters and include HTTP status codes in load errors.
+
+## 0.18.0
+
+### Minor Changes
+
+- [#10619](https://github.com/scalar/scalar/pull/10619): Add `bundleWithDiagnostics` to report reference failures with authored source locations, retain incomplete output, and defer pruning until resolution succeeds. Add opt-in document-aware traversal for OpenAPI, AsyncAPI, and JSON Schema, including literal data boundaries and applicable reference siblings. Preserve cached sources across diagnostic bundle calls.
+
+  Use consistent URI fragment decoding across bundling and the magic proxy, and index newly exposed document fragments without revisiting unrelated subtrees.
+
+### Patch Changes
+
+- [#10786](https://github.com/scalar/scalar/pull/10786): Resolve `$ref` pointers with percent-encoded reserved characters, so `#/paths/~1items%23list` now points at the `/items#list` path instead of resolving to nothing. Preserve literal property names when resolving schema IDs and anchors, including keys containing `/`, `~`, or percent sequences.
+
+## 0.17.0
+
+### Minor Changes
+
+- [#10696](https://github.com/scalar/scalar/pull/10696): Upgrade Undici to 8.12.3. JSON Magic, Mock Server, Workspace Store, OpenAPI to Markdown, and Scalar App now require Node.js 22.19.0 or later; Node.js 22.0 through 22.18 are no longer supported. Undici 8 enables HTTP/2 by default.
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+- [#10715](https://github.com/scalar/scalar/pull/10715): fix: keep maps such as `components.schemas` as objects when partially bundling references whose keys look like numbers (e.g. `#/components/schemas/400`)
+- [#10720](https://github.com/scalar/scalar/pull/10720): Prevent prototype pollution when bundling with unsafe extension keys, isolate URL mappings from inherited or shared objects, and handle prototype property names correctly in the reverse mapping cache.
+
+## 0.16.1
+
+### Patch Changes
+
+- [#10694](https://github.com/scalar/scalar/pull/10694): Update Undici to 7.30.1 to fix security vulnerabilities, including CVE-2026-109869 and CVE-2026-109383, while preserving support for all Node 22 versions.
+
+## 0.16.0
+
+### Minor Changes
+
+- [#10618](https://github.com/scalar/scalar/pull/10618): Add an opt-in `preserveReference` predicate to bundling, retaining selected authored references without loading their targets while preserving schema identities on relocation.
+
+## 0.15.7
+
+### Patch Changes
+
+- [#10505](https://github.com/scalar/scalar/pull/10505): Apply formatting and lint compatibility changes for Biome 2.5.15.
+- [#10529](https://github.com/scalar/scalar/pull/10529): Align import and export ordering with the Biome checks.
+- [#10520](https://github.com/scalar/scalar/pull/10520): Sort imports and exports to satisfy the Biome checks.
+- [#10526](https://github.com/scalar/scalar/pull/10526): Align import and export ordering with the repository CI checks.
+
+## 0.15.6
+
+## 0.15.5
+
+## 0.15.4
+
+### Patch Changes
+
+- [#10412](https://github.com/scalar/scalar/pull/10412): Update the shared Undici dependency to 7.29.1 to fix security advisories while preserving Node 22 compatibility, and update Scalar App’s separate Undici pin to 8.11.2.
+
+## 0.15.3
+
+## 0.15.2
+
+### Patch Changes
+
+- [#10342](https://github.com/scalar/scalar/pull/10342): Prevent prototype pollution when merging documents and writing nested values or JSON references, while preserving prototype-named JSON data properties.
+
+  Dot-separated mutations now reject new `constructor` and `prototype` keys, as well as `__proto__`, instead of creating these keys through inherited properties.
+
+- [#10345](https://github.com/scalar/scalar/pull/10345): Update undici to 7.29.0 to address security vulnerabilities in HTTP requests, proxies, WebSockets, cookies, and caching.
+
+## 0.15.1
+
+## 0.15.0
+
+### Minor Changes
+
+- [#10206](https://github.com/scalar/scalar/pull/10206): Preserve authored references between embedded schema resources when the containing document has no declared identity. This keeps references valid across `$id` scopes and when exporting the bundle to a different retrieval URL.
+- [#10274](https://github.com/scalar/scalar/pull/10274): Add a standard-agnostic `join` utility with configurable merge strategies and conflict reporting to `@scalar/json-magic/join`. Use it in the OpenAPI parser while retaining OpenAPI upgrades, component prefixes, and OpenAPI conflict reports in the parser.
+- [#10206](https://github.com/scalar/scalar/pull/10206): Add generic document identity hooks for bundling and an explicit root URI option for reference proxies. Honor OpenAPI 3.2 `$self` through an OpenAPI plugin in workspace-store, including external documents and partial bundles, and enable it in OpenAPI bundling callers.
+
+  URI resolution now honors root-relative and protocol-relative URLs, query/fragment references, and trailing-slash directory bases for all bundler consumers. Absolute non-HTTP identifiers remain unchanged instead of becoming filesystem paths; loader support is unchanged. Relative HTTP references retain query strings and fragments and are emitted only when they round-trip to the original URL.
+
+  Preserve authored reference spellings through serialized partial bundles and editable exports, while keeping older OpenAPI resolution and configured loader restrictions unchanged.
+
+  Keep references matching authored root schema identifiers intact so schema labels and anchors retain their existing behavior.
+
+## 0.14.0
+
+### Minor Changes
+
+- [#10241](https://github.com/scalar/scalar/pull/10241): Expose helpers for indexing locally embedded `$id` and `$anchor` resources and resolving a reference to its local path.
+
+### Patch Changes
+
+- [#10257](https://github.com/scalar/scalar/pull/10257): Resolve a relative reference reached through a local pointer during a partial bundle against the document origin; it was resolved against an empty base and failed.
+
+## 0.13.5
+
+### Patch Changes
+
+- [#9817](https://github.com/scalar/scalar/pull/9817): Resolve relative `externalValue` URLs on example objects against the document origin, so external request and response examples load even when referenced with a relative path
+- [#9666](https://github.com/scalar/scalar/pull/9666): Only normalize OpenAPI Reference Objects during bundling, never Schema Objects. `normalizeRefs` used to strip every sibling except `$ref` on any node outside `components/schemas`, which also hit inline schemas. In JSON Schema 2020-12 a `$ref` may legally carry sibling keywords — for example a `$defs`/`$dynamicAnchor` binding that specializes a generic template like `Paginated<T>` — and such schemas appear inline anywhere a schema is allowed (a response's `content.<media>.schema`, an `allOf` branch, …). Dropping those siblings discarded the binding, leaving `$dynamicRef` to resolve to the template's empty fallback and rendering an empty array (for example the `data` array of `GET /planets` in the Scalar Galaxy). Reference Objects are still normalized as before. A new `@scalar/helpers/openapi/is-schema-path` helper detects schema positions.
+- [#10112](https://github.com/scalar/scalar/pull/10112): Pin guarded requests to validated public IP addresses and reject custom transports that bypass the connection checks.
+- [#10140](https://github.com/scalar/scalar/pull/10140): Replace redundant type assertions with compiler-checked annotations, typed accumulators, and existing guards across helpers, API conversion, request handling, and schema rendering.
+
+  Narrow DOM elements and caught errors before accessing their properties. Correct header lookup to include missing values and handle them during PowerShell snippet generation.
+
+  Validate release-note provider responses, represent unresolved references and absent groups in helper return types, and require narrowing merged object values. Preserve AsyncAPI broker credentials separately from HTTP authentication schemes.
+
+## 0.13.4
+
+### Patch Changes
+
+- [#10079](https://github.com/scalar/scalar/pull/10079): Harden the mock server against SSRF and local file disclosure through OpenAPI `$ref`s. External `$ref` resolution now refuses to fetch private, loopback, link-local, and metadata addresses, and confines local file reads to the document's directory. The `fetchUrls` and `readFiles` bundling plugins gain opt-in `blockPrivateNetworks` and `basePath` options, so other callers keep their current behavior unless they opt in.
+
+## 0.13.3
+
+## 0.13.2
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.13.1
+
+### Patch Changes
+
+- [#9900](https://github.com/scalar/scalar/pull/9900): Emit array deletions highest-index-first in diff so removing more than one element applies correctly. Before, `diff({ items: [1, 2, 3, 4] }, { items: [1] })` emitted the deletes in ascending index order, and because `apply` removes array elements with `splice`, every delete after the first hit a stale index and left elements behind (`{ items: [1, 3] }`). Deletes on arrays are now ordered from the end of the array, so `apply(a, diff(a, b))` round-trips for arrays that lose any number of elements.
+- [#9906](https://github.com/scalar/scalar/pull/9906): Treat an array and a plain object on the same path as a merge conflict. `isKeyCollisions` compared the two containers key by key, so an array and an object holding the same values under the same indices looked mergeable:
+
+  ```ts
+  isKeyCollisions([1, 2], { 0: 1, 1: 2 }) // → false, so the two were merged
+  mergeObjects([1, 2], { 0: 1, 1: 2 }) // → [1, 2], the object silently absorbed
+  ```
+
+  In practice that meant one side turning `servers: ['https://example.com']` into `servers: { 0: 'https://example.com' }` merged cleanly and lost the container the user picked. Both sides now surface as a conflict to resolve, matching the guard `diff` already applies when a container changes type.
+
+- [#9904](https://github.com/scalar/scalar/pull/9904): Stop the diff utilities from writing through the prototype chain. Documents reach them from remote fetches and user files, and `JSON.parse` turns `__proto__` into a real own property, so `apply({}, diff({}, JSON.parse('{"__proto__": {"polluted": "yes"}}')))` used to write onto `Object.prototype` and poison every object in the runtime. `diff`, `isKeyCollisions` and `mergeObjects` now skip the `__proto__`, `constructor` and `prototype` keys, the trie backing `merge` keys its children on a null prototype, and `apply` rejects any changeset containing one of those segments with an `InvalidChangesDetectedError` before it touches the document.
+
+  This does change behaviour for documents that legitimately carry a property with one of those names, which JSON allows and a schema is free to describe. `diff` no longer compares such a property, so editing it on its own is not reported as a change, and a merge that previously surfaced it as a conflict now merges cleanly. The property still travels along when its parent object is added or updated wholesale, because a new subtree is emitted as a single value. This trade-off matches `preventPollution`, which the rest of the codebase already applies to untrusted keys.
+
+  `@scalar/helpers` gains an `isPollutionKey` predicate next to the existing `preventPollution`, so the list of dangerous keys lives in one place.
+
+- [#9907](https://github.com/scalar/scalar/pull/9907): Explain the root-level change `apply` cannot handle, and document that `diff`, `merge` and `apply` share references with the documents they work on.
+
+  A change with an empty path asks to replace the document itself, which `apply` cannot do since it writes through the parent container of each path. It used to fail with `Process aborted. Path  at depth 0 is undefined, check diff object` halfway through a changeset, and now says so up front and leaves the document untouched:
+
+  ```ts
+  // `diff` emits a change with an empty path whenever the two documents differ at the root
+  apply({ name: 'John' }, [{ path: [], changes: [1, 2], type: 'update' }])
+  // InvalidChangesDetectedError: Process aborted. Root-level replacement is not supported, the
+  // change targets the document itself instead of a property inside it
+  ```
+
+  The changes a diff carries are live references into the documents it compared, so `merge` writes into the document behind its second diff list and an applied document stays structurally shared with the diff. That contract is now spelled out on `diff`, `merge` and `apply` — deep clone the documents when a caller needs isolation.
+
+- [#9902](https://github.com/scalar/scalar/pull/9902): Skip the correct entry when `merge` resolves a delete against a delete. The matching entry was skipped using an index into the first diff list to address the second one, so whenever the two matching deletes sat at different positions in their lists, an unrelated change was silently dropped and the shared delete was duplicated. Merging `[delete x, delete a]` with `[delete a, delete y]` returned `[delete x, delete a, delete a]` instead of `[delete x, delete a, delete y]`.
+
+  One case changes for the worse and is pinned by a test: when a delete is subsumed by a delete on the other side that itself ends up in `conflicts`, the subsumed delete is dropped from the result. That gap already existed, but skipping the wrong index used to hide it for some orderings of the second diff list, so it is now consistent rather than order-dependent.
+
+## 0.13.0
+
+### Minor Changes
+
+- [#9897](https://github.com/scalar/scalar/pull/9897): Export the `get-value-by-path`, `set-value-at-path`, `is-yaml`, and `is-json-object` helpers, and expose `isLocalRef`, `prefixInternalRef`, and `prefixInternalRefRecursive` from the bundle entry point.
+
+### Patch Changes
+
+- [#9898](https://github.com/scalar/scalar/pull/9898): Treat array/object container mismatches as a single update in diff instead of descending into per-index adds. Before, `diff({ tags: {} }, { tags: ['x', 'y'] })` walked the array's indices as object keys and emitted per-index `add` differences, so `apply` wrote numeric string properties onto the existing object and produced the corrupted hybrid `{ tags: { '0': 'x', '1': 'y' } }`. A container type change (either direction) is now one `update` difference carrying the full new value, and applying it replaces the container correctly.
+
+## 0.12.20
+
+## 0.12.19
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.12.18
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.12.17
+
+## 0.12.16
+
+## 0.12.15
+
+## 0.12.14
+
+### Patch Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): fix: strip a leading UTF-8 BOM before JSON.parse in normalize so BOM-prefixed files parse correctly
+
+## 0.12.13
+
+### Patch Changes
+
+- [#9107](https://github.com/scalar/scalar/pull/9107): fix: strip a leading UTF-8 BOM before JSON.parse in normalize so BOM-prefixed files parse correctly
+
+## 0.12.12
+
+## 0.12.11
+
+## 0.12.10
+
+### Patch Changes
+
+- [#9041](https://github.com/scalar/scalar/pull/9041): Export `bundle/value-generator` entry point for use in tests
+- [#9043](https://github.com/scalar/scalar/pull/9043): chore: move test documents to cdn
+
+## 0.12.9
+
+## 0.12.8
+
+## 0.12.7
+
+## 0.12.6
+
+## 0.12.5
+
+## 0.12.4
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.12.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.1**
+  - [#8420](https://github.com/scalar/scalar/pull/8420): fix TypeScript access to navigator.userAgentData in isMacOS without ts-expect-error
+
+## 0.12.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.0**
+  - [#8336](https://github.com/scalar/scalar/pull/8336): feat: support flushing any pending operations
+
+## 0.12.1
+
+### Patch Changes
+
+- [#8357](https://github.com/scalar/scalar/pull/8357): chore: improve performance and memory usage of bundler
+
+## 0.12.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.11.7
+
+### Patch Changes
+
+- [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.18**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+## 0.11.6
+
+### Patch Changes
+
+- [#8310](https://github.com/scalar/scalar/pull/8310): fix: properly parse json pointers
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.17**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): refactor: move helpers to the helpers package to share primitive helpers
+
+## 0.11.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.16**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+
+## 0.11.4
+
+### Patch Changes
+
+- [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.15**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+## 0.11.3
+
+### Patch Changes
+
+- [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.14**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+## 0.11.2
+
+### Patch Changes
+
+- [#8151](https://github.com/scalar/scalar/pull/8151): fix: resolve external references on windows
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.13**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+## 0.11.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.12**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+## 0.11.0
+
+### Minor Changes
+
+- [#8095](https://github.com/scalar/scalar/pull/8095): feat: support loading files into the store
+- [#8096](https://github.com/scalar/scalar/pull/8096): feat: store relative urls/paths against base under the url mappings
+
+## 0.10.0
+
+### Minor Changes
+
+- [#8052](https://github.com/scalar/scalar/pull/8052): feat: allow custom LoaderPlugin plugins in dereference
+
+## 0.9.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.11**
+  - [#8016](https://github.com/scalar/scalar/pull/8016): feat: move history and auth into their own store
+
+## 0.9.5
+
+### Patch Changes
+
+- [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.10**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+## 0.9.4
+
+### Patch Changes
+
+- [#7922](https://github.com/scalar/scalar/pull/7922): fix: resolve $ref entries inside arrays (e.g. oneOf, allOf) in prefixInternalRefRecursive
+
+## 0.9.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.9**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+## 0.9.2
+
+### Patch Changes
+
+- [#7763](https://github.com/scalar/scalar/pull/7763): fix: correctly execute onAfterNodeProcess for ref nodes
+
+## 0.9.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.8**
+  - [#7751](https://github.com/scalar/scalar/pull/7751): fix: auth persistence
+
+## 0.9.0
+
+### Minor Changes
+
+- [#7701](https://github.com/scalar/scalar/pull/7701): Made bundle external document extensions configurable
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.7**
+  - [#7720](https://github.com/scalar/scalar/pull/7720): feat: escape XML in json2xml
+
+## 0.8.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+## 0.8.9
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+## 0.8.8
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.4**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+## 0.8.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.3**
+  - [#7575](https://github.com/scalar/scalar/pull/7575): feat: add support for object examples + hide body when empty
+
+## 0.8.6
+
+### Patch Changes
+
+- Updated dependencies [[`f7c24e4`](https://github.com/scalar/scalar/commit/f7c24e4995580649dbc3cb87007a683f5dd91f7c)]:
+  - @scalar/helpers@0.2.2
+
+## 0.8.5
+
+### Patch Changes
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `yaml`
+
+- Updated dependencies [[`21aa62e`](https://github.com/scalar/scalar/commit/21aa62e2ebdd262cb5aa53658c3b659736660722)]:
+  - @scalar/helpers@0.2.1
+
+## 0.8.4
+
+### Patch Changes
+
+- Updated dependencies [[`9ec8adf`](https://github.com/scalar/scalar/commit/9ec8adfea017333dee5bc3949104232f7dc57f4a)]:
+  - @scalar/helpers@0.2.0
+
+## 0.8.3
+
+### Patch Changes
+
+- [#7417](https://github.com/scalar/scalar/pull/7417) [`e04879c`](https://github.com/scalar/scalar/commit/e04879c65602dfb65393876754f5344751b8953d) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(json-margic): remove `helpers/generate-hash` invalid entrypoint
+
+- [#7387](https://github.com/scalar/scalar/pull/7387) [`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03) Thanks [@geoffgscott](https://github.com/geoffgscott)! - hotfix: patch exports from build tooling bug
+
+- [#7422](https://github.com/scalar/scalar/pull/7422) [`af54a80`](https://github.com/scalar/scalar/commit/af54a80349269a4269a68f6a372f837177a3537c) Thanks [@inyourtime](https://github.com/inyourtime)! - build(json-magic): prevent src folder from being published
+
+- Updated dependencies [[`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03), [`86f028d`](https://github.com/scalar/scalar/commit/86f028deb0b456f923edd261f5f4b0fa9b616b7d)]:
+  - @scalar/helpers@0.1.3
+
+## 0.8.2
+
+### Patch Changes
+
+- [#7392](https://github.com/scalar/scalar/pull/7392) [`d86f1d6`](https://github.com/scalar/scalar/commit/d86f1d6911ecbca70b011a2a0efb6d6e0eca59bb) Thanks [@amritk](https://github.com/amritk)! - fix: move away from wasm hashing algo
+
+- Updated dependencies [[`d86f1d6`](https://github.com/scalar/scalar/commit/d86f1d6911ecbca70b011a2a0efb6d6e0eca59bb), [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74)]:
+  - @scalar/helpers@0.1.2
+
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [[`9c9dbba`](https://github.com/scalar/scalar/commit/9c9dbbaa940667303f0ace59469fd78c2a741937), [`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74)]:
+  - @scalar/helpers@0.1.1
+
+## 0.8.0
+
+### Minor Changes
+
+- [#7235](https://github.com/scalar/scalar/pull/7235) [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat(json-magic): use `@scalar/helpers/node/path` polyfill
+
+### Patch Changes
+
+- [#7266](https://github.com/scalar/scalar/pull/7266) [`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d) Thanks [@amritk](https://github.com/amritk)! - fix: remove useage of crypto.subtle in all contexts
+
+- Updated dependencies [[`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d), [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66)]:
+  - @scalar/helpers@0.1.0
+
+## 0.7.0
+
+### Minor Changes
+
+- [#7185](https://github.com/scalar/scalar/pull/7185) [`6ca835e`](https://github.com/scalar/scalar/commit/6ca835e5afd3e8c603e073e7c83f2cdd961a0f69) Thanks [@DemonHa](https://github.com/DemonHa)! - feat: add support for watch mode
+
+### Patch Changes
+
+- [#7213](https://github.com/scalar/scalar/pull/7213) [`43bc5e8`](https://github.com/scalar/scalar/commit/43bc5e8b90dc0edf7176d0ddfc64bf3212494458) Thanks [@DemonHa](https://github.com/DemonHa)! - fix: proxy performance issue because of multiple proxies
+
+- Updated dependencies [[`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a)]:
+  - @scalar/helpers@0.0.13
+
+## 0.6.1
+
+### Patch Changes
+
+- 2089748: chore: add logs when fetching unsupported formats
+- 8a7fb2a: fix: schema properties starting with an underscore are hidden
+- Updated dependencies [3f6d0b9]
+  - @scalar/helpers@0.0.12
+
+## 0.6.0
+
+### Minor Changes
+
+- 4951456: feat: merge yaml aliases for in-mem representation
+
+## 0.5.2
+
+### Patch Changes
+
+- 6462733: fix: comment out flaky test for now
+
+## 0.5.1
+
+### Patch Changes
+
+- 41d8600: feat: add local ref bundling to bundler
+
+## 0.5.0
+
+### Minor Changes
+
+- fe46413: feat: support for $id and $anchor
+
+### Patch Changes
+
+- dcf50ef: refactor: move escapeJsonPointer to @scalar/json-magic
+
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [bff46e5]
+  - @scalar/helpers@0.0.11
+
+## 0.4.2
+
+### Patch Changes
+
+- 3bd1209: fix: do not throw when we set on an invalid ref
+- 1943b99: chore: emit warning when trying to set an invalid ref
+
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [821717b]
+  - @scalar/helpers@0.0.10
+
+## 0.4.0
+
+### Minor Changes
+
+- 99894bc: feat: correctly validate the schemas
+
+### Patch Changes
+
+- 06a46f0: fix: add proxy cache to fix reactivity issues
+- 63283aa: fix: use hidden properties during validation
+- Updated dependencies [98c55d0]
+- Updated dependencies [0e747c7]
+  - @scalar/helpers@0.0.9
+
+## 0.3.1
+
+### Patch Changes
+
+- 88385b1: fix: external ref linking when starting with a /
+
+## 0.3.0
+
+### Minor Changes
+
+- b93e1fe: feat(workspace-store): support relative external references
+- c4bf497: fix(workspace-store): correctly propagate documents from one state to the other
+- d8adbed: feat(workspace-store): resolve multi level refs
+- 0c80ef0: feat(json-magic): change the way we resolve refs
+
+### Patch Changes
+
+- 0fcd446: feat(workspace-store): performance improvements
+- Updated dependencies [66b18fc]
+  - @scalar/helpers@0.0.8
+
+## 0.2.0
+
+### Minor Changes
+
+- 0afc40c: feat(json-magic): introduce type-safe apply function with tracked target type in diff results
+- 128af48: feat(workspace-store, json-magic): support `externalValue` fields on example object
+
+## 0.1.0
+
+### Minor Changes
+
+- 952bde2: feat(json-magic): move json tooling to the new package

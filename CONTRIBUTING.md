@@ -4,35 +4,40 @@ Contributions are welcome. We're using [pnpm](https://pnpm.io/).
 
 ## Development setup
 
+Use Node.js 24.15.0 or later in the Node 24 release line. The jsdom development dependency requires this minimum; Run `nvm install && nvm use` from the repository root to install and select Node 24 using `.nvmrc`.
+
 1. Clone the repository: `$ git clone git@github.com:scalar/scalar.git`
 2. Install all dependencies: `$ pnpm install`
-3. Build all packages once: `$ pnpm turbo build`
-4. Run the development server: `$ pnpm run dev`
-5. Open your browser: <http://localhost:5050>
+3. Build all packages once: `$ pnpm build:packages`
+4. Run the development server in a specific packages: `$ pnpm dev`
 
 This should give you a nice start page with entrypoints to the various previews and examples.
 
 ### Quick start Development Scripts
 
-These scripts use [`turbo`](https://turbo.build/) to build all the dependencies and run a development server.
+From the root:
 
-| Command                    | Description                                                               |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `pnpm dev`                 | Runs all package `pnpm dev` commands (slow)                               |
-| `pnpm dev:client`          | Runs the API Client dev environment                                       |
-| `pnpm dev:client:desktop`  | Runs the API Client desktop app in an electron dev environment            |
-| `pnpm dev:client:app`      | Runs the API Client desktop app in a browser dev environment (with HMR\*) |
-| `pnpm dev:client:modal`    | Runs the API Client modal layout (with HMR\*)                             |
-| `pnpm dev:client:web`      | Runs the API Client client web app (with HMR\*)                           |
-| `pnpm dev:components`      | Runs storybook for `@scalar/components`                                   |
-| `pnpm dev:nuxt`            | Runs the [Nuxt](https://nuxt.com/) package                                |
-| `pnpm dev:proxy-server`    | Runs the Scalar proxy server locally                                      |
-| `pnpm dev:reference`       | Runs the API References dev environment (with HMR\*)                      |
-| `pnpm dev:reference:react` | Runs the API References React playground                                  |
-| `pnpm dev:void-server`     | Runs the Scalar void server locally                                       |
-| `pnpm dev:web`             | Runs the web examples in `examples/web`                                   |
+```bash
+pnpm build:packages
 
-\* Hot module replacement and file watching only works for the main package being worked on, e.g. changes to `@scalar/api-client` if you're running `pnpm dev:client:app` or `@scalar/api-reference` if you're running `pnpm dev:reference`
+cd packages/$PACKAGE_NAME
+pnpm dev
+```
+
+\* Hot module replacement and file watching only works for the main package being worked on. Other changes require building the package. Running `pnpm build:packages` from the root is slightly less efficient than building only the required dependencies but adequate for most use cases.
+
+## GitHub Codespaces & Devcontainers
+
+We support development using [GitHub Codespaces](https://github.com/features/codespaces) and [devcontainers](https://containers.dev/). This allows you to get started quickly in a cloud-based or local containerized environment without the need to install dependencies locally.
+
+To set up a Codespace, click the green "Code" button on the repository page and select "Create codespace on main".
+
+To work with devcontainers in VS Code, open the repository folder and select "Reopen in Container" from the command palette (requires the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) to be installed).
+
+**Note:** Codespaces may incur costs depending on your usage and GitHub plan.
+**Current limitation:** Only the Node.js stack is supported in our devcontainer setup.
+
+For more details, see the `.devcontainer` folder in the repository.
 
 ## Tests
 
@@ -45,22 +50,95 @@ If you want to add a test and only run your test file, you can filter the test s
 Some tests require an instance of `@scalar/proxy-server` and `@scalar/void-server`. Start them like so:
 
 ```bash
-pnpm dev:void-server
-pnpm dev:proxy-server
+pnpm script run test-servers
 ```
+
+## GitHub Actions dependencies
+
+Workflow dependencies are pinned in `.github/workflows/actions.lock`, including dependencies of shared composite actions. Use `$/` references for actions in this repository so their dependencies can be locked. Local reusable workflow calls keep their `./.github/workflows/` references.
+
+After adding a workflow or changing an action reference, regenerate and verify the lockfile with an authenticated GitHub CLI:
+
+```sh
+gh extension install github/gh-actions-lock --pin v0.4.1
+gh actions-lock
+gh actions-lock --verify
+```
+
+Commit the updated workflows, composite actions, and lockfile together. The Verify Actions Lockfile workflow checks every pull request, and Renovate updates the lockfile when it updates actions. Do not edit the generated lockfile manually. Review changed commit hashes and investigate any changed repository or owner IDs before merging.
+
+## Unused-code checks
+
+In a fresh worktree, install dependencies and build the small set of packages loaded by tooling configurations before running Knip:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm turbo --filter @scalar/helpers --filter @scalar/validation build
+pnpm --filter @scalar/nuxt exec nuxi prepare
+pnpm --filter @scalar/nuxt exec nuxt-module-build build --stub
+pnpm --filter @scalar-examples/nuxt-playground exec nuxi prepare
+pnpm lint:knip
+```
+
+Turbo also builds `@scalar/themes`, which helpers needs. Playwright configurations load helpers, and the Scalar App configuration loads validation. No integration build or full monorepo build is required.
+
+Nuxt preparation generates the `.nuxt/tsconfig.json` files extended by Nuxt and Playwright configurations. The module stub lets the example load the local Nuxt module without a full integration build.
+
+To check only Docusaurus after installing dependencies, run `pnpm knip --workspace integrations/docusaurus`. This check does not require any workspace packages to be built. Knip analyzes the playground configuration statically, so configuration-only references such as sidebars must remain listed in `knip.jsonc`.
+
+## Auto-Generated Files
+
+Some files in this repository are auto-generated and should not be edited manually. Manual changes to these files will be lost when they are regenerated.
+
+### README.md Files
+
+README.md files for integrations are automatically generated from metadata in `package.json`. To regenerate them:
+
+```bash
+pnpm script generate-readme
+```
+
+For more information, see the [scripts README](./tooling/scripts/README.md).
+
+### Java & .NET Enums
+
+The `ScalarTarget` and `ScalarClient` enums for Java and .NET integrations are generated automatically from the TypeScript clients configuration.
+
+For more information, see the [snippetz scripts README](./packages/snippetz/scripts/README.md).
+
 ## PRs
 
 Don't worry, we'll help you to get your PR in. But here is how you can help us:
+
+### AI assisted coding
+
+Use AI, code by hand, or mix both, whatever helps you deliver quality changes. We review the pull request, not how it was written.
+
+To keep reviews healthy and sustainable:
+
+- Keep PRs small and well-scoped.
+- Add tests for regressions, issues, and new features. If it is not tested, it will likely break soon.
+- Explain the problem your PR solves.
+- Update tests and documentation alongside code changes.
+- Coding agents must follow these same contribution guidelines.
+
+What we will close:
+
+- Huge PRs.
+
+When in doubt, and you want to save precious tokens, open an issue first to confirm the plan before implementing.
 
 ### Semantic PR titles
 
 We require a semantic PR title, here is an example:
 
-```
-docs: Add information about semantic commits
-^     ^
-|     |__ Subject
-|________ Prefix
+```text
+fix(api-client): crashes when API returns null
+^   ^            ^
+|   |            |
+|   |            |____ subject
+|   |_________________ package
+|_____________________ type of change
 ```
 
 Here are all the prefixes you need to know:

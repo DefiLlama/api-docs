@@ -1,0 +1,516 @@
+import { describe, expect, it } from 'vitest'
+
+import { createVoidServer } from '@/create-void-server'
+
+const getSignature = (bytes: Uint8Array, offset: number): number => {
+  return new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true)
+}
+
+const extractStoredEntry = (bytes: Uint8Array): { content: string; fileName: string } => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const fileNameLength = view.getUint16(26, true)
+  const extraFieldLength = view.getUint16(28, true)
+  const fileNameOffset = 30
+  const contentOffset = fileNameOffset + fileNameLength + extraFieldLength
+  const uncompressedSize = view.getUint32(22, true)
+
+  const fileName = new TextDecoder().decode(bytes.slice(fileNameOffset, fileNameOffset + fileNameLength))
+  const content = new TextDecoder().decode(bytes.slice(contentOffset, contentOffset + uncompressedSize))
+
+  return {
+    fileName,
+    content,
+  }
+}
+
+describe('createVoidServer', () => {
+  it('allows QUERY requests in CORS preflight', async () => {
+    const server = createVoidServer({ logger: false })
+    const response = await server.request('/planets', {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': 'https://example.com',
+        'Access-Control-Request-Method': 'QUERY',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    })
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(response.headers.get('Access-Control-Allow-Methods')?.split(',')).toStrictEqual([
+      'GET',
+      'HEAD',
+      'PUT',
+      'POST',
+      'DELETE',
+      'PATCH',
+      'QUERY',
+    ])
+    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('content-type')
+  })
+
+  it('echoes the QUERY method and JSON request body', async () => {
+    const server = createVoidServer({ logger: false })
+    const body = { name: 'Earth', habitable: true }
+    const response = await server.request('/planets', {
+      method: 'QUERY',
+      headers: { 'Content-Type': 'application/json', 'Origin': 'https://example.com' },
+      body: JSON.stringify(body),
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(await response.json()).toStrictEqual({
+      method: 'QUERY',
+      path: '/planets',
+      headers: { 'content-type': 'application/json', 'origin': 'https://example.com' },
+      cookies: {},
+      query: {},
+      body,
+    })
+  })
+
+  it('can disable request logging', async () => {
+    const server = await createVoidServer({ logger: false })
+
+    expect(server.routes.some((route) => route.handler.name === 'logger2')).toBe(false)
+  })
+
+  it('accepts a custom request logger', async () => {
+    const logLines: string[] = []
+    const server = await createVoidServer({
+      logger: (line) => logLines.push(line),
+    })
+
+    await server.request('/logger-test')
+
+    expect(logLines[0]).toBe('<-- GET /logger-test')
+    expect(logLines[1]).toContain('--> GET /logger-test')
+  })
+
+  it('GET /foobar', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/foobar')
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      path: '/foobar',
+    })
+  })
+
+  it('GET /', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/')
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      path: '/',
+    })
+  })
+
+  it('returns the headers', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      headers: {
+        'X-Custom-Header': 'foobar',
+      },
+    })
+
+    expect(await response.json()).toMatchObject({
+      headers: {
+        'x-custom-header': 'foobar',
+      },
+    })
+  })
+
+  it('returns the method', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/')
+
+    expect(await response.json()).toMatchObject({
+      method: 'GET',
+    })
+  })
+
+  it('returns the query parameters', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/?foo=bar')
+
+    expect(await response.json()).toMatchObject({
+      query: {
+        foo: 'bar',
+      },
+    })
+  })
+
+  it('deals with array query parameters', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/?foo=foo&foo=bar&example=value')
+
+    expect(await response.json()).toMatchObject({
+      query: {
+        foo: ['foo', 'bar'],
+        example: 'value',
+      },
+    })
+  })
+
+  it('returns the JSON body', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+      body: JSON.stringify({
+        foo: 'bar',
+      }),
+    })
+
+    expect((await response.json()).body).toMatchObject({
+      foo: 'bar',
+    })
+  })
+
+  it('returns plain text body', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: 'foobar',
+    })
+
+    expect((await response.json()).body).toBe('foobar')
+  })
+
+  it('returns form data', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'foo=bar&foo%20bar=yes',
+    })
+
+    expect((await response.json()).body).toStrictEqual({
+      'foo': 'bar',
+      'foo bar': 'yes',
+    })
+  })
+
+  it('returns multipart form data', async () => {
+    const server = await createVoidServer()
+
+    const formData = new FormData()
+
+    // Just a simple string
+    formData.append('foo', 'bar')
+    // Key has whitespaces
+    formData.append('foo bar', 'yes')
+
+    const response = await server.request('/', {
+      method: 'POST',
+      body: formData,
+    })
+
+    expect((await response.json()).body).toStrictEqual({
+      'foo': 'bar',
+      'foo bar': 'yes',
+    })
+  })
+
+  it('returns multipart form data with a file', async () => {
+    const server = await createVoidServer()
+
+    // File
+    const formData = new FormData()
+    formData.append('file', new Blob(['foobar']), 'file.txt')
+
+    const response = await server.request('/', {
+      method: 'POST',
+      body: formData,
+    })
+
+    const body = (await response.json()).body
+
+    expect(body).toMatchObject({
+      file: {
+        name: 'file.txt',
+        sizeInBytes: 6,
+        type: 'application/octet-stream',
+      },
+    })
+
+    expect(body.file.lastModified).toBeDefined()
+  })
+
+  it('returns multipart form data with multiple files', async () => {
+    const server = await createVoidServer()
+
+    // Multiple files in a single field
+    const formData = new FormData()
+    formData.append('files', new Blob(['foobar']), 'file1.txt')
+    formData.append('files', new Blob(['foobar']), 'file2.txt')
+
+    const response = await server.request('/', {
+      method: 'POST',
+      body: formData,
+    })
+
+    const body = (await response.json()).body
+
+    expect(body.files).toMatchObject([
+      {
+        name: 'file1.txt',
+        sizeInBytes: 6,
+        type: 'application/octet-stream',
+      },
+      {
+        name: 'file2.txt',
+        sizeInBytes: 6,
+        type: 'application/octet-stream',
+      },
+    ])
+
+    expect(body.files[0].lastModified).toBeDefined()
+    expect(body.files[1].lastModified).toBeDefined()
+  })
+
+  it('returns form data with dot syntax', async () => {
+    const server = await createVoidServer()
+
+    const formData = new FormData()
+
+    // Dot syntax
+    formData.append('foo.bar', 'yes')
+
+    const response = await server.request('/', {
+      method: 'POST',
+      body: formData,
+    })
+
+    expect((await response.json()).body).toStrictEqual({
+      foo: {
+        bar: 'yes',
+      },
+    })
+  })
+
+  it('returns just a blob', async () => {
+    const server = await createVoidServer()
+
+    // Send just a blob
+    const response = await server.request('/', {
+      method: 'POST',
+      body: new Blob(['foobar']),
+    })
+
+    expect((await response.json()).body).toStrictEqual('foobar')
+  })
+
+  it('returns the cookies', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      method: 'POST',
+      headers: {
+        cookie: 'foo=bar;',
+      },
+      credentials: 'include',
+    })
+
+    expect((await response.json()).cookies).toMatchObject({
+      foo: 'bar',
+    })
+  })
+
+  it('returns 404', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/404')
+
+    expect(response.status).toBe(404)
+    expect(await response.text()).toBe('Not Found')
+  })
+
+  it('returns no content for 204', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/204')
+
+    expect(response.status).toBe(204)
+    expect(await response.text()).toBe('')
+  })
+
+  it('returns 500', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/500')
+
+    expect(response.status).toBe(500)
+    expect(await response.text()).toBe('Internal Server Error')
+  })
+
+  it('returns 503', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/503')
+
+    expect(response.status).toBe(503)
+    expect(await response.text()).toBe('Service Unavailable')
+  })
+
+  it('returns the authentication header bearer', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      headers: {
+        Authorization: 'Bearer 123',
+      },
+    })
+
+    expect(await response.json()).toMatchObject({
+      authentication: {
+        type: 'http.bearer',
+        token: '123',
+      },
+    })
+  })
+
+  it('returns the authentication header basic', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      headers: {
+        Authorization: 'Basic YmFy',
+      },
+    })
+
+    expect(await response.json()).toMatchObject({
+      authentication: {
+        type: 'http.basic',
+        token: 'YmFy',
+        value: 'bar',
+      },
+    })
+  })
+
+  it('returns JSON for a path ending with .json', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/foobar.json')
+
+    expect(await response.text()).toContain('{"method":"GET"')
+    expect(response.headers.get('Content-Type')).toContain('application/json')
+  })
+
+  it('returns ZIP for path ending with .zip', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/foobar.zip?foo=bar')
+    const zipBytes = new Uint8Array(await response.arrayBuffer())
+
+    expect(response.headers.get('Content-Type')).toContain('application/zip')
+    expect(getSignature(zipBytes, 0)).toBe(0x04034b50)
+    expect(getSignature(zipBytes, zipBytes.length - 22)).toBe(0x06054b50)
+
+    const { fileName, content } = extractStoredEntry(zipBytes)
+    expect(fileName).toBe('request.json')
+    expect(content).toContain('"path": "/foobar.zip"')
+    expect(content).toContain('"foo": "bar"')
+  })
+
+  it('returns XML', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      headers: {
+        Accept: 'application/xml',
+      },
+    })
+
+    expect(await response.text()).toContain('<method>GET</method>')
+    expect(response.headers.get('Content-Type')).toContain('application/xml')
+  })
+
+  it('returns ZIP for accept header application/zip', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/mirror', {
+      headers: {
+        Accept: 'application/zip',
+      },
+    })
+    const zipBytes = new Uint8Array(await response.arrayBuffer())
+
+    expect(response.headers.get('Content-Type')).toContain('application/zip')
+    expect(getSignature(zipBytes, 0)).toBe(0x04034b50)
+    expect(getSignature(zipBytes, zipBytes.length - 22)).toBe(0x06054b50)
+
+    const { fileName, content } = extractStoredEntry(zipBytes)
+    expect(fileName).toBe('request.json')
+    expect(content).toContain('"path": "/mirror"')
+    expect(content).toContain('"method": "GET"')
+  })
+
+  it('returns XML for a path ending with .xml', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/foobar.xml')
+
+    expect(await response.text()).toContain('<method>GET</method>')
+    expect(response.headers.get('Content-Type')).toContain('application/xml')
+  })
+
+  it('returns HTML', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/', {
+      headers: {
+        Accept: 'text/html',
+      },
+    })
+
+    expect(await response.text()).toContain('<strong>method:</strong> GET</li>')
+    expect(response.headers.get('Content-Type')).toContain('text/html')
+  })
+
+  it('returns HTML for path ending with .html', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/foobar.html')
+
+    expect(await response.text()).toContain('<strong>method:</strong> GET</li>')
+    expect(response.headers.get('Content-Type')).toContain('text/html')
+  })
+
+  it('returns an SSE content type for /stream', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/stream')
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toContain('text/event-stream')
+  })
+
+  it('includes security headers in responses', async () => {
+    const server = await createVoidServer()
+
+    const response = await server.request('/')
+
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(response.headers.get('Content-Security-Policy')).toBe("default-src 'none'; style-src 'unsafe-inline'")
+  })
+})

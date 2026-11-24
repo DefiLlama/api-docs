@@ -1,0 +1,58 @@
+# Package Registries
+
+Each target publishes to the registry for its language. This page is the at-a-glance map; follow the link in the table for step-by-step setup, including both authentication options and the exact secrets to add.
+
+For how publishing works end to end, see [Publishing](overview.md).
+
+## Quick reference
+
+> [!NOTE]
+> The Swift, Rust, and C++ targets are experimental.
+
+| Target | `publish` key | Registry | Default auth | Secrets to add |
+| ------ | ------------- | -------- | ------------ | -------------- |
+| [TypeScript](typescript.md) | `npm` | npm | OIDC | none (OIDC) or `NPM_TOKEN` |
+| [Python](python.md) | `pypi` | PyPI | OIDC | none (OIDC) or `PYPI_API_TOKEN` (or `PYPI_TOKEN`) |
+| [Go](go.md) | `go` | Go modules | Git tag | none |
+| [Rust](rust.md) (experimental) | `cargo` | crates.io | OIDC | none (OIDC) or `CARGO_REGISTRY_TOKEN` |
+| [Java and Kotlin](java.md) | `maven` | Maven Central | Token + GPG | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` (or `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `GPG_SIGNING_KEY`, `GPG_SIGNING_PASSWORD`) |
+| [C#](csharp.md) | `nuget` | NuGet | OIDC | `NUGET_USER` (OIDC) or `NUGET_API_KEY` |
+| [Ruby](ruby.md) | `rubygems` | RubyGems | OIDC | none (OIDC) or `RUBYGEMS_API_KEY` (or `GEM_HOST_API_KEY`) |
+| [PHP](php.md) | `packagist` | Packagist | Git tag | none, or `PACKAGIST_USERNAME` and `PACKAGIST_API_TOKEN` (or `PACKAGIST_SAFE_KEY`) to notify Packagist of each release |
+| [Swift](swift.md) (experimental) | `swiftpm` | Swift Package Manager | Git tag | none |
+| [Dart](dart.md) | `pub` | pub.dev | OIDC, published from `sdk-release.yml` dispatched at the release tag | none (OIDC) or `PUB_TOKEN` |
+| [CLI](cli.md) | `npm`, `binaries`, `homebrew` | npm / GitHub Release / Homebrew | OIDC or token | none (npm OIDC) or `NPM_TOKEN`, plus `HOMEBREW_TAP_TOKEN` (or `HOMEBREW_TAP_GITHUB_TOKEN`) for Homebrew |
+| C++ (experimental) | — | — | — | none (built in CI, no registry) |
+
+> [!NOTE]
+> Publishing to an internal registry instead — Artifactory, AWS CodeArtifact, Nexus, GitLab, Azure Artifacts — is not in this table, because it does not need a `publish` key. Add a workflow your repository owns; see [Private Registries](private-registries.md) for copy-paste examples.
+
+## Two ways to authenticate
+
+Registries that support OIDC (`npm`, `pypi`, `cargo`, `nuget`, `rubygems`, `pub`) default to it. Pick one option per target. pub.dev registers a tag pattern rather than a workflow, and its release publishes from `sdk-release.yml` dispatched at the release tag (see [Dart](dart.md)).
+
+- **OIDC trusted publishing** (the default where available): the `publish` job proves its identity to the registry with a short-lived GitHub token, so there is **nothing to store or rotate**. You register the repository and workflow as a trusted publisher on the registry once. This is what `"<registry>": true` gives you. PyPI and RubyGems accept a *pending* publisher for a package that does not exist yet; npm and crates.io only register one on a package that already exists, so their first release uses a token, and pub.dev enables automated publishing only on an existing package, so its first version is published by hand with `dart pub publish`.
+- **API token / key**: you create a token on the registry and add it as a [repository secret](github.md#adding-repository-secrets). Switch a target to this with `authMethod: "access-token"`. Maven Central only supports this style, and also requires a GPG key for signing.
+
+```json
+{
+  "targets": {
+    "typescript": {
+      "publish": { "npm": { "authMethod": "access-token" } }
+    }
+  }
+}
+```
+
+> [!IMPORTANT]
+> When you register a trusted publisher, the workflow filename is **`release-please.yml`** — the workflow whose inline `publish` job does the automated publish. NuGet's OIDC login also reads your nuget.org profile name from a `NUGET_USER` secret. `sdk-release.yml` is the manual re-publish path; add it as a second trusted publisher only if you dispatch it.
+
+> [!NOTE]
+> Swift Package Manager is tag-served: it has no upload step and no secrets, and the `vX.Y.Z` Git tag and GitHub Release cut when a release pull request merges are the published version. Go and Packagist versions are tags too, but both still get a release workflow, which uploads nothing: Go's warms the public module proxy, and PHP's validates `composer.json` and notifies Packagist of the tag.
+
+## C++
+
+> [!NOTE]
+> The C++ target is experimental.
+
+C++ has no universal package registry. The C++ target generates a CI workflow that builds with CMake but no release workflow. Distribute the build artifacts from the GitHub Release however suits your users.

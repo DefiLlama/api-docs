@@ -1,11 +1,11 @@
 import { useMediaQuery } from '@vueuse/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
-import { screens } from './constants'
+import { computed, ref, toValue } from 'vue'
 
+import { screens } from './constants'
 import { useBreakpoints } from './useBreakpoints'
 
-vi.mock('@vueuse/core', () => ({
+vi.mock(import('@vueuse/core'), () => ({
   useMediaQuery: vi.fn(),
 }))
 
@@ -20,7 +20,7 @@ describe('useBreakpoints', () => {
   })
 
   it('should expose media queries for a given screen size', () => {
-    vi.mocked(useMediaQuery).mockImplementation((query) => ref(query === screens.md))
+    vi.mocked(useMediaQuery).mockImplementation((query) => computed(() => toValue(query) === screens.md))
 
     const { mediaQueries } = useBreakpoints()
     expect(mediaQueries.sm.value).toEqual(false)
@@ -29,7 +29,8 @@ describe('useBreakpoints', () => {
 
   it('should update breakpoints when the media query changes', () => {
     const mdQuery = ref(false)
-    vi.mocked(useMediaQuery).mockImplementation((query) => (query === screens.md ? mdQuery : ref(false)))
+
+    vi.mocked(useMediaQuery).mockImplementation((_query) => computed(() => mdQuery.value))
 
     const { breakpoints } = useBreakpoints()
 
@@ -40,15 +41,15 @@ describe('useBreakpoints', () => {
     expect(breakpoints.value.md).toEqual(true)
   })
 
-  it('works in SSG environment without window', () => {
-    const originalWindow = global.window
-
+  it('works in SSG environment without window', ({ onTestFinished }) => {
     // Mock SSG environment by removing window
-    // @ts-expect-error
-    delete global.window
+    vi.stubGlobal('window', undefined)
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
 
     // Mock useMediaQuery to return false since there's no window
-    vi.mocked(useMediaQuery).mockImplementation(() => ref(false))
+    vi.mocked(useMediaQuery).mockImplementation(() => computed(() => false))
 
     const { screens: exposedScreens, mediaQueries, breakpoints } = useBreakpoints()
 
@@ -64,8 +65,5 @@ describe('useBreakpoints', () => {
     Object.values(breakpoints.value).forEach((value) => {
       expect(value).toBe(false)
     })
-
-    // Restore window
-    global.window = originalWindow
   })
 })

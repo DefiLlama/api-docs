@@ -1,2 +1,9 @@
-export { createMarkdownFromOpenApi } from './create-markdown-from-openapi'
-export { createHtmlFromOpenApi } from './create-markdown-from-openapi'
+export type { HttpMethod } from '@scalar/helpers/http/http-methods'
+
+export type { OpenApiMarkdownRenderer } from './create-markdown-from-openapi'
+export {
+  createMarkdownFromOpenApi,
+  createOpenApiMarkdownRenderer,
+} from './create-markdown-from-openapi'
+export type { DocumentLoadOptions } from './load-document'
+export type { OpenApiRenderOptions, OperationSelector, SchemaReferenceOptions } from './select-document'

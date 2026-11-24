@@ -1,0 +1,19 @@
+export { default as HttpMethod } from './components/HttpMethod.vue'
+export { default as ScalarSidebar } from './components/ScalarSidebar.vue'
+export { default as SidebarHttpBadge } from './components/SidebarHttpBadge.vue'
+export { default as SidebarItem } from './components/SidebarItem.vue'
+export {
+  type SidebarState,
+  createSidebarState,
+} from './helpers/create-sidebar-state'
+export { filterItems } from './helpers/filter-items'
+export { generateReverseIndex } from './helpers/generate-reverse-index'
+export { getChildEntry } from './helpers/get-child-entry'
+export { scrollSidebarToTop } from './helpers/scroll-sidebar-to-top'
+export {
+  type DragOffset,
+  type DraggingItem,
+  type HoveredItem,
+  useDraggable,
+} from './hooks/use-draggable'
+export type { Item, SidebarOptions } from './types.ts'

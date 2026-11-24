@@ -1,0 +1,378 @@
+# @scalar/blocks
+
+## 0.9.0
+
+### Minor Changes
+
+- [#11137](https://github.com/scalar/scalar/pull/11137): Add an opt-in ASP.NET Core form naming mode through the API Reference configuration option `multipartNaming: "indexed-dot"`. The body editor, sent requests, and code samples use indexed dotted names such as `Certificates[0].name` for nested fields in multipart and URL-encoded request bodies.
+
+### Patch Changes
+
+- [#11146](https://github.com/scalar/scalar/pull/11146): Update compatible npm dependencies for AI chat, encoding, analytics, date handling, HTTP serving, and application query caching.
+
+## 0.8.1
+
+No changes in this release.
+
+## 0.8.0
+
+### Minor Changes
+
+- [#11103](https://github.com/scalar/scalar/pull/11103): Support `x-scalar-token-prefix` on header API keys. Generated code examples and outgoing requests add the configured prefix while stored credentials remain unchanged.
+
+### Patch Changes
+
+- [#11123](https://github.com/scalar/scalar/pull/11123): Fix the API reference freezing on schemas with several recursive or cross-referencing `$ref`s. Generated examples that are too large to render at full depth are now rendered at the deepest depth that fits.
+
+## 0.7.4
+
+### Patch Changes
+
+- [#11050](https://github.com/scalar/scalar/pull/11050): Include upgraded OpenAPI 3.0 and Swagger 2.0 file uploads, file arrays, and empty binary request bodies in generated code examples.
+- [#11089](https://github.com/scalar/scalar/pull/11089): Resolve external RAML and Protobuf dependencies for structured AsyncAPI schema documentation, preserving source fallback when dependencies cannot be fully resolved.
+
+  Show RAML named types in schema headings instead of adding a "RAML type:" line to the description.
+
+  Show inline object item titles in array type signatures across all `@scalar/blocks` consumers, including OpenAPI documentation: an array with `items: { type: 'object', title: 'Pet' }` now displays `array of Pet` instead of `array of object`.
+- [#11029](https://github.com/scalar/scalar/pull/11029): fix: respect contains match counts in simple array examples
+
+  Generate matching and nonmatching primitive items for direct contains constraints, counting tuple prefixes and respecting item schemas, length bounds, uniqueness, and the declared dialect. Authored examples remain authoritative. Candidate generation is bounded and may return a partial example for contradictory constraints.
+
+  Complex references and compositions, nested object or array candidate synthesis, and XML branch reconstruction retain existing best-effort behavior and are deferred to a follow-up.
+- [#11029](https://github.com/scalar/scalar/pull/11029): fix: handle boolean array item schemas when looking up model names
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+- [#11110](https://github.com/scalar/scalar/pull/11110): Add a `text-auto-contrast-*` Tailwind utility that picks readable black or white text for any background color, and use it for colored badges and the environment color checkmark.
+
+## 0.7.3
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Support TypeScript 6 builds and compiler API consumers while preserving runtime output and public handler types. Keep Nuxt build tooling on its supported TypeScript 5 compiler.
+- [#11068](https://github.com/scalar/scalar/pull/11068): fix(snippetz): send text-only multipart forms as multipart
+
+  Code examples for a `multipart/form-data` body with only text fields kept a bare `Content-Type: multipart/form-data` header with no boundary, so clients sent either two Content-Type headers or a body the server cannot split. The header is now left to the HTTP client for every structured multipart body, as it already was for file uploads.
+
+  Python `requests` and `httpx` examples now pass text-only fields through `files=` as `(None, value)` tuples, and `aiohttp` uses `FormData(default_to_multipart=True)`, because all three send plain text fields urlencoded otherwise.
+- [#11081](https://github.com/scalar/scalar/pull/11081): fix(blocks): turn picker carets with their own menus
+
+  In the classic layout, the client picker and the example picker of an expanded operation pointed their carets up while their menus were closed, because the carets followed any open Headless UI ancestor, such as the operation accordion. Each caret now follows its own picker, so it points up only while that menu is open.
+- [#11080](https://github.com/scalar/scalar/pull/11080): Keep the selected request example readable on narrow request example cards. Beside Ask AI Agent and Test Request, the example picker could shrink to an empty button, hiding the example name and leaving keyboard focus on an empty box, for example at 320px wide or with the longer button labels of some languages. The picker now keeps room for its name, up to about eight characters, and the buttons wrap onto a second line when they do not fit beside it. Wider cards keep a single line.
+- [#10816](https://github.com/scalar/scalar/pull/10816): Add `documentTypes` to `createWorkspaceStore`, so the store can ingest document formats it does not support natively. A registered type claims a document before the OpenAPI and AsyncAPI pipelines run, and the store keeps it as an opaque plugin document with `plugin` navigation entries built by the type.
+
+## 0.7.2
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+- [#10980](https://github.com/scalar/scalar/pull/10980): feat: redesign code cards as a padded shell with the code on a lifted surface
+
+  This changes the default look of every `ScalarCard`, not only the cards in the API reference. `ScalarCard` drops its border and dividers for a 12px shell with 4px of padding, and each plain `ScalarCardSection` becomes an 8px surface lifted off it. If you use these components in your own app, check your cards after this bump:
+
+  - A card recolored to match its page (for example `bg-b-1` on a `bg-b-1` page) no longer has an edge. Pass `border` to bring it back, or give the card a fill that differs from the page.
+  - Two plain sections in a row are two surfaces with a 4px gap, where they were one box with a divider.
+  - Content placed straight in `ScalarCard` without a section sits inside the 4px padding. Pass `p-0` to remove it.
+
+  In the API reference, the request example, example responses, operations list and AsyncAPI cards all pick this up. The surface color is derived from `--scalar-background-2`, and its outline from `--scalar-shadow-1` and `--scalar-border-color`. A copy button on a surface sits one step above it, toward the text color. Set `--scalar-card-surface`, `--scalar-card-surface-raised` or `--scalar-card-surface-shadow` on `.scalar-card` to change them. Every class name is unchanged, and the new rules are single-class selectors, so existing theme and `customCss` rules keep winning.
+- [#11037](https://github.com/scalar/scalar/pull/11037): Load object-valued `x-codeSamples.source` and `x-code-samples.source` file references as raw code text, with relative origins and lazy operation loading. Retain failed references and show an unavailable sample instead of silently replacing them with an empty string. Preserve literal `$ref` values in other extensions and example data.
+- [#11041](https://github.com/scalar/scalar/pull/11041): fix: render the first request example on the server
+- [#10961](https://github.com/scalar/scalar/pull/10961): Preserve named example summaries and names in header, parameter, and body example lists as muted labels above the value boxes while copying only their values. Keep schema example objects intact when their payload contains fields named `value` or `summary`.
+
+  Retain raw object examples in legacy schema example maps.
+- [#11002](https://github.com/scalar/scalar/pull/11002): Use shared multi-type schema definitions when formatting array union labels.
+
+## 0.7.1
+
+### Patch Changes
+
+- [#10990](https://github.com/scalar/scalar/pull/10990): Use the canonical `js` target when generating JavaScript code examples.
+
+## 0.7.0
+
+### Minor Changes
+
+- [#10894](https://github.com/scalar/scalar/pull/10894): Substitute explicitly mapped reader credentials into custom code samples with default masking, public field opt-outs, and real values on copy.
+- [#10893](https://github.com/scalar/scalar/pull/10893): Allow custom code samples to use separate picker headings with an optional `group` field.
+
+### Patch Changes
+
+- [#10949](https://github.com/scalar/scalar/pull/10949): Show response header examples, including media type examples and OpenAPI 3.2 cookie examples, with explicit examples taking precedence over schema examples. Preserve this precedence through composed schemas and fall back to media type examples when header examples have no usable values.
+
+  Keep external example URLs visible and preserve line breaks in displayed string examples. Across all schemas, array-level examples take precedence over item examples.
+
+  Preserve `x-example` and `x-examples` on OpenAPI 2.0 response headers during upgrades.
+
+- [#10902](https://github.com/scalar/scalar/pull/10902): Render self-contained Avro, RAML, and Protobuf schemas as native field and type documentation, retaining copyable source for unsupported schemas.
+
+## 0.6.4
+
+### Patch Changes
+
+- [#10733](https://github.com/scalar/scalar/pull/10733): Align AsyncAPI message and server extensions with their surrounding content and reduce excess spacing.
+- [#10814](https://github.com/scalar/scalar/pull/10814): fix(blocks): keep explicit badge colors above themed utility defaults
+- [#10771](https://github.com/scalar/scalar/pull/10771): Place request actions below the method and path in narrow fallback cards, keeping button labels readable without clipping.
+- [#10812](https://github.com/scalar/scalar/pull/10812): Keep deprecated schemas and properties in generated JSON and XML examples by default. Remove the `includeDeprecated` option; deprecation no longer filters example values. Read/write and optional-property filtering still apply.
+
+## 0.6.3
+
+## 0.6.2
+
+## 0.6.1
+
+## 0.6.0
+
+### Minor Changes
+
+- [#10687](https://github.com/scalar/scalar/pull/10687): Display operation-level AsyncAPI message payload examples in a dark code card with message and example selection, plus selectable reply payload examples below it. Keep message and reply schemas in the left column.
+
+  Preserve declared AsyncAPI message order in the documentation and example picker.
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+- [#10652](https://github.com/scalar/scalar/pull/10652): Display authored AsyncAPI server-variable examples in the shared Example/Examples popup with copy support, including examples from referenced variables.
+
+  Keep the shared examples popup label clickable when hovered and align server-variable popups with their labels to avoid overlapping the sidebar.
+
+## 0.5.4
+
+### Patch Changes
+
+- [#10669](https://github.com/scalar/scalar/pull/10669): fix: wrap long operation paths in request example cards instead of truncating them, and move the client picker below the path when it does not fit
+
+## 0.5.3
+
+### Patch Changes
+
+- [#10597](https://github.com/scalar/scalar/pull/10597): Render AsyncAPI string discriminators with inherited schema variants and effective discriminator values.
+- [#10530](https://github.com/scalar/scalar/pull/10530): Render AsyncAPI external documentation on servers, channels, operations, messages, tags, and schemas, with referenced objects and descriptions, using the existing OpenAPI link presentation.
+
+  Keep AsyncAPI messages searchable when navigation renders them beneath operations.
+
+- [#10599](https://github.com/scalar/scalar/pull/10599): Preserve recursive schemas when generating request bodies, code samples, and response examples instead of replacing recursion points with null or empty arrays.
+- [#10640](https://github.com/scalar/scalar/pull/10640): Translate the built-in descriptions of integer and string formats (`int32`, `date-time`, `binary` and others) into the configured locale.
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 0.5.2
+
+### Patch Changes
+
+- [#10554](https://github.com/scalar/scalar/pull/10554): Render AsyncAPI boolean schemas with explanations in message payloads, headers, and reusable models.
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+- [#10505](https://github.com/scalar/scalar/pull/10505): Apply formatting and lint compatibility changes for Biome 2.5.15.
+- [#10550](https://github.com/scalar/scalar/pull/10550): Display AsyncAPI message correlation ID descriptions and runtime expressions, with links to identifiable header and payload fields.
+- [#10534](https://github.com/scalar/scalar/pull/10534): feat(api-reference): add Generate SDK buttons to the developer tools, client libraries and request examples that open the Explore Scalar dialog when running locally and the document does not list its own SDKs
+- [#10555](https://github.com/scalar/scalar/pull/10555): Keep expanded query parameter checkboxes independent and preserve disabled field values while excluding them from requests.
+- [#10508](https://github.com/scalar/scalar/pull/10508): Add built-in Traditional Chinese (Taiwan) translations for `zh-TW`, including case and underscore variants, across API Reference, API Client, and schema blocks.
+
+## 0.5.1
+
+### Patch Changes
+
+- [#10489](https://github.com/scalar/scalar/pull/10489): Report invalid non-exploded structured cookies in OpenAPI 3.2 documents and prevent invalid request and code sample generation. Recommend `style: cookie` with `explode: true`.
+- [#10479](https://github.com/scalar/scalar/pull/10479): Keep query parameter values raw for code examples that use client query maps, and encode values once when constructing snippet URLs.
+- [#10487](https://github.com/scalar/scalar/pull/10487): Honor OpenAPI 3.2 allowReserved for path parameters while escaping forbidden path characters and preserving the encoded path in Ruby code examples.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#10443](https://github.com/scalar/scalar/pull/10443): Add a showExtensions allowlist to display OpenAPI extensions on operations, parameters, response headers, and schema fields without a custom plugin, with a schema-style value tree from the blocks package.
+- [#10397](https://github.com/scalar/scalar/pull/10397): Extract the schema renderer into @scalar/blocks so other Scalar surfaces can reuse the schema tree while preserving API Reference behavior.
+
+  Keep the public API Reference Schema and SchemaProperty exports connected to extension plugins and deep-link navigation when mounted outside ApiReference.
+
+  Expose shared presentation components through @scalar/blocks/shared, group host integration APIs under schema/helpers and schema/expansion, and keep schema stories and visual regression coverage with Blocks.
+
+  Preserve literal toolbar icon types so Storybook previews can be type checked.
+
+  Pass schema navigation, extension rendering, and shared expansion state explicitly through props instead of providing or injecting host context.
+
+### Patch Changes
+
+- [#10460](https://github.com/scalar/scalar/pull/10460): Preserve multipart file metadata in generated code examples, including arrays and composed schemas, read actual file bytes across code example targets, let HTTP clients set the multipart boundary, and preserve typed text fields without turning them into file attachments.
+- [#10468](https://github.com/scalar/scalar/pull/10468): Stop the schema property copy-link button from taking width from a collapsed preview such as `{ compound, percentage }`. Its 24px hit box now overhangs the end of the line, so the row gives up only the icon and its gap, however the consuming app orders its stylesheets.
+
+## 0.4.3
+
+### Patch Changes
+
+- [#10372](https://github.com/scalar/scalar/pull/10372): fix: improve keyboard and screen reader access to code blocks and multiselect comboboxes
+  - The code block scroller is exposed as a named group ("Code sample: Shell cURL" in the API Reference, localizable via `operation.codeSample`) so screen readers announce it when it receives focus
+  - The code block copy button now has a stable accessible name ("Copy Shell code") in every state, including while its visible label is hidden
+  - In multiselect comboboxes such as the auth scheme picker, Space toggles the active option while the search query is empty instead of hiding the whole list
+
+## 0.4.2
+
+## 0.4.1
+
+### Patch Changes
+
+- [#10392](https://github.com/scalar/scalar/pull/10392): Give code samples, including virtualized large examples, a named keyboard-scrollable region and keep copy buttons descriptively named before hover or focus.
+- [#10369](https://github.com/scalar/scalar/pull/10369): fix: address a batch of screen reader and keyboard accessibility findings
+
+  Corrects programmatic semantics only, with no change to how anything renders:
+  the current sidebar item now reports `aria-current`, the single content type
+  readout leaves the tab order, collapsible sections no longer announce their
+  title twice, the password toggle reports its state through `aria-pressed`, the
+  two document download buttons get distinct accessible names, response status
+  tabs announce what each code means, and the client picker and its search field
+  get accessible names.
+
+## 0.4.0
+
+### Minor Changes
+
+- [#10192](https://github.com/scalar/scalar/pull/10192): Mock-server XML response bytes now use the shared schema-aware serializer instead of `json2xml`, including attributes, namespaces, and root naming. Existing XML response snapshots may need updating. Supplied serialized XML remains unchanged.
+
+  Generate XML examples from schema metadata, preserving attributes, namespaces, array wrappers, repeated elements, and OpenAPI 3.2 text and CDATA nodes. Use the same XML serialization for request bodies, code snippets, response examples, mock responses, and Markdown documentation. Preserve serialized media examples and escape schema string examples as element text.
+
+  Explain XML generation failures in response example panels, including the serialized-example escape hatch for large payloads. Expose XML generation failures in mock response headers with `X-Scalar-XML-Error`, containing the first error diagnostic code. Report diagnostics to other consumers through a callback or the developer console, and format element-only descendants within mixed content without changing text values.
+
+## 0.3.0
+
+### Minor Changes
+
+- [#10310](https://github.com/scalar/scalar/pull/10310): Connect SDK code samples to named request body examples using optional example and contentType fields. Keep the example switcher available for static samples and use the selected request example in API client snippets. Display unavailable linked samples as a localized status message in all supported languages.
+
+### Patch Changes
+
+- [#10322](https://github.com/scalar/scalar/pull/10322): Use OpenAPI 3.2 dataValue and serializedValue examples for named parameters in the editor, outgoing requests, and code samples. Preserve already serialized values without encoding them twice.
+
+  Optional parameters with `dataValue` or `serializedValue` examples are now enabled by default, matching legacy `value` examples. Explicitly disabled examples remain disabled.
+
+  Parameter-level `serializedValue` examples remain editable as raw wire text, including parameter names and percent encoding (for example, `term=hello` rather than `hello`). Media-level cookie examples are percent-encoded when sent, matching generated snippets. Generating snippets no longer modifies the input cookies.
+
+- [#10189](https://github.com/scalar/scalar/pull/10189): Support OpenAPI 3.2 `in: querystring` parameters, including content-based serialization, editing the entire query string, schema rendering, and generated request URLs.
+
+  Non-form whole-query content, including JSON delimiters, is percent-encoded in request URLs and code samples. Use an example with `serializedValue` on the parameter itself for URI-ready query content that must retain its existing encoding.
+
+  Preserve the encoding of named query values when they coexist with whole-query content in generated code samples, while encoding query authentication values once.
+
+  Explain why the whole-query editor disables adding named parameters. Existing named parameters follow the whole-query value, preserving duplicate keys for the server to interpret.
+
+- [#10186](https://github.com/scalar/scalar/pull/10186): Support OpenAPI 3.2 additionalOperations in operation storage, navigation, documentation, callbacks, and the API client. Preserve custom HTTP method spelling when displaying and sending requests and generating code samples.
+
+  Traversed operation and webhook methods now use the exported `OperationMethod` type, which accepts custom strings while retaining known-method editor completion. Consumers must handle unknown methods; this open type cannot provide exhaustive checking over the fixed HTTP method set. Unknown method presentation uses `colorClass` and `colorVar`, matching known methods. Preserve uppercase and mixed-case additional operation names consistently.
+
+## 0.2.0
+
+### Minor Changes
+
+- [#10178](https://github.com/scalar/scalar/pull/10178): Support OpenAPI 3.2 streaming item schemas in the workspace store, request body examples, and API reference schema views. Frame generated and structured examples as JSON Lines, JSON Sequence, or server-sent events while preserving explicit wire-format strings.
+
+  Preserve generated falsy request examples (`0`, `false`, and empty strings) for non-streaming bodies as well.
+
+  Use cURL `--data-binary` for supported streaming media types, making framed body handling explicit. Authored arrays and objects are framed as stream records; authored wire-format strings remain unchanged. SSE records with no valid fields are safely omitted with one console warning per serialization call reporting the omitted count, including when all records are omitted.
+
+### Patch Changes
+
+- [#10201](https://github.com/scalar/scalar/pull/10201): Support positional and nested multipart request encoding with prefixEncoding, itemEncoding, and nested encoding objects. Keep generated code snippets in sync with multipart request bodies.
+
+  Reject ambiguous named positional items and multipart nesting beyond eight levels. Use a stable fallback root for XML parts.
+
+  Document multipart content-type defaults and wildcard selection policies. Route structured XML parts through a shared adapter while retaining legacy root-name behavior.
+
+  Regenerate multipart boundaries that collide with resolved text or nested delimiters, keeping binary payload bytes intact.
+
+- [#10208](https://github.com/scalar/scalar/pull/10208): Share OpenAPI 3.2 example-value selection across request bodies, response examples, and code snippets. Preserve serialized payloads verbatim, serialize structured JSON strings correctly, retain falsy values, and replace original example sources after body edits. Keep dataValue and serializedValue during document ingestion.
+
+  Editing a request body, including form fields, discards its authored `externalValue` URL and replaces it with the edited inline value in the workspace and exported API description. Rendering or focusing a form field preserves the external source.
+
+  Form editors prefer structured `dataValue` when both example fields exist, while raw editors, requests, and code snippets preserve `serializedValue` as wire text. Structured examples now affect generated request payloads and snippets; XML remains raw-only in the request editor.
+
+- [#10198](https://github.com/scalar/scalar/pull/10198): Support OpenAPI 3.2 cookie serialization with semicolon-separated entries and no percent-encoding in requests and code examples.
+
+  Browser XHR and jQuery code examples now set explicit Cookie header values through `document.cookie` and enable credentialed requests, including when no structured HAR cookies are supplied. Run the cookie setup on the request origin. Requests without cookie-style parameters retain structured HAR cookies alongside explicit Cookie headers.
+
+  Warn once per parameter name in the developer console when cookie-style parameters declare invalid `explode: false`, then use the expanded fallback consistently for requests and snippets. Browser cookie setup cannot assign cookies to an unrelated API domain; credentialed cross-origin responses require the appropriate CORS configuration and eligible stored cookies.
+
+## 0.1.20
+
+### Patch Changes
+
+- [#10240](https://github.com/scalar/scalar/pull/10240): Load external examples on demand when their selected preview is visible or Test Request opens, instead of downloading every payload while loading the API description. Share and cache downloads, preserve relative URL origins, and show loading and retry states while preventing incomplete requests from being sent.
+
+## 0.1.19
+
+## 0.1.18
+
+## 0.1.17
+
+### Patch Changes
+
+- [#9851](https://github.com/scalar/scalar/pull/9851): Serialize OpenAPI 3.2 `querystring` parameters when generating code snippets, so their values land in the request query string instead of being silently dropped.
+- [#10140](https://github.com/scalar/scalar/pull/10140): Replace redundant type assertions with compiler-checked annotations, typed accumulators, and existing guards across helpers, API conversion, request handling, and schema rendering.
+
+  Narrow DOM elements and caught errors before accessing their properties. Correct header lookup to include missing values and handle them during PowerShell snippet generation.
+
+  Validate release-note provider responses, represent unresolved references and absent groups in helper return types, and require narrowing merged object values. Preserve AsyncAPI broker credentials separately from HTTP authentication schemes.
+
+- [#10142](https://github.com/scalar/scalar/pull/10142): Send multipart array properties as separate parts with the same field name, applying encoding to each item. Preserve JSON item content types, uploaded files, and array values after form edits, and generate matching code snippets.
+
+  Send JSON form fields without an upload filename and preserve fields and files in request history.
+
+  Rename the RestSharp snippet's internal `getMethod` helper so it no longer clashes with the `getMethod` that Nitro bundles into server builds (the new multipart imports shifted chunking and surfaced the collision).
+
+## 0.1.16
+
+## 0.1.15
+
+## 0.1.14
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.1.13
+
+### Patch Changes
+
+- [#9872](https://github.com/scalar/scalar/pull/9872): Bump shared runtime dependencies: `js-base64` (`^3.7.8` -> `^3.9.2`) and `type-fest` (`^5.3.1` -> `^5.8.0`).
+
+## 0.1.12
+
+## 0.1.11
+
+## 0.1.10
+
+## 0.1.9
+
+### Patch Changes
+
+- [#9752](https://github.com/scalar/scalar/pull/9752): fix: stop vendoring a second copy of the themes reset in the standalone stylesheet
+
+  The blocks `style.css` build pulled in `@scalar/components/style.css`, which re-imports `@scalar/themes/style.css` — so the published stylesheet shipped two unlayered copies of the universal reset. Loaded after the other Scalar packages, the late duplicate clobbered component font sizes, padding, and colors. Blocks now composes the lean `@scalar/components/vue-styles.css` instead, matching how `@scalar/api-reference` and `@scalar/components` build their stylesheets, and exposes `./vue-styles.css` alongside `./style.css` and `./tailwind.config.css`.
+
+- [#9689](https://github.com/scalar/scalar/pull/9689): fix: multipart/form-data array-of-objects fields now serialize as a JSON array instead of a single object in generated request examples
+
+## 0.1.8
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.1.7
+
+## 0.1.6
+
+## 0.1.5
+
+## 0.1.4
+
+## 0.1.3
+
+## 0.1.2
+
+## 0.1.1
+
+### Patch Changes
+
+- [#9610](https://github.com/scalar/scalar/pull/9610): Only show required parameters in code examples. Optional query, header, and cookie parameters are now omitted from the generated request snippets unless they are explicitly enabled via the `x-disabled: false` extension.
+
+## 0.1.0
+
+### Minor Changes
+
+- [#8519](https://github.com/scalar/scalar/pull/8519): refactor: extract the code example block into `@scalar/blocks/code-example`. `api-client`, `api-client-react`, and `api-reference` now import `CodeExample`, `findClient`, `generateClientOptions`, and the related helpers from the new package. `workspace-store` exports `isParamDisabled` with an optional `defaultDisabled` argument.
+
+  **Breaking (`@scalar/api-client`):** the `@scalar/api-client/blocks/operation-code-sample` and `@scalar/api-client/v2/blocks/operation-code-sample` export paths have been removed. Import from `@scalar/blocks/code-example` instead, and use the renamed `CodeExample` / `CodeExampleProps` (previously `OperationCodeSample` / `OperationCodeSampleProps`).

@@ -1,10 +1,31 @@
+import type {
+  Document as OpenApiDocumentV3_2,
+  MediaTypeObject as OpenApiMediaTypeObjectV3_2,
+  ResponseObject as OpenApiResponseObjectV3_2,
+} from '@scalar/openapi-types/3.2'
+import type { AnyObject } from '@scalar/types/utils'
 import { describe, expect, it } from 'vitest'
 
 import { dereference } from './dereference'
+import { validate } from './validate'
 
-describe('dereference', async () => {
-  it('dereferences an OpenAPI 3.1.0 file', async () => {
-    const result = await dereference(`{
+describe('dereference', () => {
+  it('dereferences an OpenAPI 3.2.0 file', () => {
+    const result = dereference(`{
+      "openapi": "3.2.0",
+      "info": {
+          "title": "Hello World",
+          "version": "1.0.0"
+      },
+      "paths": {}
+    }`)
+
+    expect(result.errors).toStrictEqual([])
+    expect((result.schema as AnyObject).info.title).toBe('Hello World')
+  })
+
+  it('dereferences an OpenAPI 3.1.0 file', () => {
+    const result = dereference(`{
       "openapi": "3.1.0",
       "info": {
           "title": "Hello World",
@@ -14,11 +35,91 @@ describe('dereference', async () => {
     }`)
 
     expect(result.errors).toStrictEqual([])
-    expect(result.schema.info.title).toBe('Hello World')
+    expect((result.schema as AnyObject).info.title).toBe('Hello World')
   })
 
-  it('dereferences an OpenAPI 3.0.0 file', async () => {
-    const result = await dereference(`{
+  it('handles circular references', () => {
+    const DOCUMENT = {
+      openapi: '3.1.0',
+      info: {
+        title: 'Circular Reference',
+        version: '1.0.0',
+      },
+      paths: {},
+      components: {
+        schemas: {
+          CircularReference: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              parent: { $ref: '#/components/schemas/CircularReference' },
+            },
+          },
+        },
+      },
+    }
+
+    const result = dereference(DOCUMENT)
+
+    expect(result.errors).toStrictEqual([])
+
+    // Verify the circular reference is resolved without infinite loop
+    const circularReferenceSchema = (result.schema as AnyObject).components.schemas.CircularReference
+
+    expect(circularReferenceSchema.properties.name.type).toBe('string')
+    expect(circularReferenceSchema.properties.parent.properties.name.type).toBe('string')
+
+    // Circular references can't be JSON.stringify'd (easily)
+    expect(() => JSON.stringify(result.schema)).toThrow()
+  })
+
+  it('throws an error for self-referencing schemas', () => {
+    const DOCUMENT = {
+      openapi: '3.1.0',
+      info: {
+        title: 'Hello World',
+        version: '1.0.0',
+      },
+      paths: {
+        '/test': {
+          get: {
+            responses: {
+              '200': {
+                content: {
+                  'application/json': {
+                    schema: {
+                      $ref: '#/components/schemas/Test',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Test: {
+            $ref: '#/components/schemas/Test',
+          },
+        },
+      },
+    }
+
+    const result = dereference(DOCUMENT)
+
+    expect(result.errors).toStrictEqual([
+      {
+        code: 'SELF_REFERENCE',
+        message: "Can't resolve reference to itself: #/components/schemas/Test",
+      },
+    ])
+
+    expect((result.schema as AnyObject).info.title).toBe('Hello World')
+  })
+
+  it('dereferences an OpenAPI 3.0.0 file', () => {
+    const result = dereference(`{
       "openapi": "3.0.0",
       "info": {
           "title": "Hello World",
@@ -28,11 +129,11 @@ describe('dereference', async () => {
     }`)
 
     expect(result.errors).toStrictEqual([])
-    expect(result.schema.info.title).toBe('Hello World')
+    expect((result.schema as AnyObject).info.title).toBe('Hello World')
   })
 
-  it('dereferences an Swagger 2.0 file', async () => {
-    const result = await dereference(`{
+  it('dereferences an Swagger 2.0 file', () => {
+    const result = dereference(`{
       "swagger": "2.0",
       "info": {
           "title": "Hello World",
@@ -42,11 +143,11 @@ describe('dereference', async () => {
     }`)
 
     expect(result.errors).toStrictEqual([])
-    expect(result.schema.info.title).toBe('Hello World')
+    expect((result.schema as AnyObject).info.title).toBe('Hello World')
   })
 
-  it('returns version 3.1', async () => {
-    const result = await dereference(`{
+  it('returns version 3.1', () => {
+    const result = dereference(`{
       "openapi": "3.1.0",
       "info": {
           "title": "Hello World",
@@ -59,8 +160,8 @@ describe('dereference', async () => {
     expect(result.version).toBe('3.1')
   })
 
-  it('returns version 3.0', async () => {
-    const result = await dereference(`{
+  it('returns version 3.0', () => {
+    const result = dereference(`{
       "openapi": "3.0.0",
       "info": {
           "title": "Hello World",
@@ -73,8 +174,8 @@ describe('dereference', async () => {
     expect(result.version).toBe('3.0')
   })
 
-  it('returns version 2.0', async () => {
-    const result = await dereference(`{
+  it('returns version 2.0', () => {
+    const result = dereference(`{
       "swagger": "2.0",
       "info": {
           "title": "Hello World",
@@ -87,8 +188,8 @@ describe('dereference', async () => {
     expect(result.version).toBe('2.0')
   })
 
-  it(`doesn't return version 4.0`, async () => {
-    const result = await dereference(`{
+  it(`doesn't return version 4.0`, () => {
+    const result = dereference(`{
       "openapi": "4.0",
       "info": {
           "title": "Hello World",
@@ -100,7 +201,7 @@ describe('dereference', async () => {
     expect(result.version).toBe(undefined)
   })
 
-  it('dereferences a simple reference', async () => {
+  it('dereferences and validates a response containing a schema reference', async () => {
     const openapi = {
       openapi: '3.1.0',
       info: {
@@ -112,7 +213,6 @@ describe('dereference', async () => {
           get: {
             responses: {
               '200': {
-                // TODO: This is valid in @apidevtools/swagger, but not with our implementation
                 description: 'foobar',
                 content: {
                   'application/json': {
@@ -140,29 +240,38 @@ describe('dereference', async () => {
       },
     }
 
-    const result = await dereference(openapi)
+    const result = dereference(openapi)
+    const validation = await validate(openapi)
+
+    expect(validation.valid).toBe(true)
+    expect(validation.errors).toStrictEqual([])
+    expect(result.schema).toHaveProperty(['paths', '/test', 'get', 'responses', '200', 'description'], 'foobar')
 
     expect(result.errors).toStrictEqual([])
 
     // Original
-    expect(result.specification.paths['/test'].get.responses['200'].content['application/json'].schema).toEqual({
+    expect(
+      (result.specification as AnyObject).paths['/test'].get.responses['200'].content['application/json'].schema,
+    ).toEqual({
       $ref: '#/components/schemas/Test',
     })
 
     // Resolved references
-    expect(result.schema.paths['/test'].get.responses['200'].content['application/json'].schema).toEqual({
-      type: 'object',
-      properties: {
-        id: {
-          type: 'string',
+    expect((result.schema as AnyObject).paths['/test'].get.responses['200'].content['application/json'].schema).toEqual(
+      {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+          },
         },
       },
-    })
+    )
   })
 
-  it('throws an error', async () => {
-    expect(async () => {
-      await dereference(
+  it('throws an error', () => {
+    expect(() => {
+      dereference(
         {
           openapi: '3.1.0',
           info: {},
@@ -180,10 +289,10 @@ describe('dereference', async () => {
           throwOnError: true,
         },
       )
-    }).rejects.toThrowError("Can't resolve reference: #/components/requestBodies/DoesNotExist")
+    }).toThrowError("Can't resolve reference: #/components/requestBodies/DoesNotExist")
   })
 
-  it('resolves external file references', async () => {
+  it('resolves external file references', () => {
     const filesystem = [
       {
         isEntrypoint: true,
@@ -244,12 +353,12 @@ describe('dereference', async () => {
       },
     ]
 
-    const result = await dereference(filesystem)
+    const result = dereference(filesystem)
 
     expect(result.errors).toStrictEqual([])
 
     // Check if the external reference was resolved
-    expect(result.schema.components.schemas.ExternalSchema).toEqual({
+    expect((result.schema as AnyObject).components.schemas.ExternalSchema).toEqual({
       type: 'object',
       properties: {
         id: {
@@ -269,7 +378,7 @@ describe('dereference', async () => {
     })
   })
 
-  it('calls onDereference when resolving references', async () => {
+  it('calls ondereference when resolving references', () => {
     const openapi = {
       openapi: '3.1.0',
       info: {
@@ -279,6 +388,20 @@ describe('dereference', async () => {
       paths: {
         '/test': {
           get: {
+            responses: {
+              '200': {
+                description: 'foobar',
+                content: {
+                  'application/json': {
+                    schema: {
+                      $ref: '#/components/schemas/Test',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          post: {
             responses: {
               '200': {
                 description: 'foobar',
@@ -308,10 +431,10 @@ describe('dereference', async () => {
       },
     }
 
-    const dereferencedSchemas: Array<{ schema: any; ref: string }> = []
+    const dereferencedSchemas: Array<{ schema: any; ref: string; resolved: any }> = []
 
-    const result = await dereference(openapi, {
-      onDereference: ({ schema, ref }) => {
+    const result = dereference(openapi, {
+      onDereference: ({ schema, ref, resolved }) => {
         expect(schema).toEqual({
           type: 'object',
           properties: {
@@ -323,11 +446,129 @@ describe('dereference', async () => {
 
         expect(ref).toEqual('#/components/schemas/Test')
 
-        dereferencedSchemas.push({ schema, ref })
+        dereferencedSchemas.push({ schema, ref, resolved })
       },
     })
 
     expect(result.errors).toStrictEqual([])
-    expect(dereferencedSchemas).toHaveLength(1)
+    expect(dereferencedSchemas).toHaveLength(2)
+    expect(dereferencedSchemas[0].resolved).toBe(dereferencedSchemas[1].resolved)
+    expect((result.schema as AnyObject).components.schemas.Test).toBe(dereferencedSchemas[0].resolved)
+  })
+
+  it('dereferences operations with query operations', () => {
+    const openapi = {
+      openapi: '3.2.0',
+      info: {
+        title: 'Hello World',
+        version: '1.0.0',
+      },
+      paths: {
+        '/test': {
+          query: {
+            responses: {
+              '200': {
+                description: 'foobar',
+                content: {
+                  'application/json': {
+                    schema: {
+                      $ref: '#/components/schemas/Test',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Test: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const result = dereference(openapi)
+
+    expect(result.errors).toStrictEqual([])
+
+    // Original
+    expect(
+      (
+        (
+          (result.specification as OpenApiDocumentV3_2).paths['/test'].query.responses['200'] as
+            | OpenApiResponseObjectV3_2
+            | undefined
+        )?.content['application/json'] as OpenApiMediaTypeObjectV3_2 | undefined
+      )?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/Test',
+    })
+  })
+
+  it('dereferences operations with additional operations', () => {
+    const openapi = {
+      openapi: '3.2.0',
+      info: {
+        title: 'Hello World',
+        version: '1.0.0',
+      },
+      paths: {
+        '/test': {
+          additionalOperations: {
+            makeUnicorns: {
+              responses: {
+                '200': {
+                  description: 'foobar',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        $ref: '#/components/schemas/Test',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Test: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const result = dereference(openapi)
+
+    expect(result.errors).toStrictEqual([])
+
+    // Original
+    expect(
+      (
+        (
+          (result.specification as OpenApiDocumentV3_2).paths['/test'].additionalOperations?.makeUnicorns.responses[
+            '200'
+          ] as OpenApiResponseObjectV3_2 | undefined
+        )?.content['application/json'] as OpenApiMediaTypeObjectV3_2 | undefined
+      )?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/Test',
+    })
   })
 })

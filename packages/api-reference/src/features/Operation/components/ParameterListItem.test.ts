@@ -1,0 +1,658 @@
+import { SchemaProperty, SchemaRailPanel } from '@scalar/blocks/schema'
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import {
+  ParameterObjectSchema,
+  ResponseObjectSchema,
+  SchemaObjectSchema,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
+
+import { SpecificationExtension } from '@/features/specification-extension'
+import { scrollTargetId } from '@/helpers/lazy-bus'
+
+import ParameterListItem from './ParameterListItem.vue'
+
+const baseOptions = {
+  hideModels: false,
+  orderRequiredPropertiesFirst: false,
+  orderSchemaPropertiesBy: 'alpha' as const,
+  expandAllSchemaProperties: false,
+  schemaKeyboardNav: false,
+}
+
+describe('ParameterListItem', () => {
+  it('preserves expanded fields when navigating inside an open deep-object group', async () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        name: 'filters',
+        eventBus: null,
+        options: baseOptions,
+        breadcrumb: ['operation', 'query'],
+        collapsableItems: true,
+        collapsableChildItems: true,
+        parameter: coerceValue(ParameterObjectSchema, {
+          name: 'filters',
+          in: 'query',
+          schema: { type: 'object' },
+        }),
+        childParameters: ['first', 'second'].map((name) =>
+          coerceValue(ParameterObjectSchema, {
+            name: `filters[${name}]`,
+            in: 'query',
+            schema: { type: 'string', description: `${name} details` },
+          }),
+        ),
+      },
+    })
+
+    try {
+      await wrapper.get('button[aria-expanded]').trigger('click')
+      const firstField = wrapper.findAllComponents(ParameterListItem)[0]!
+      await firstField.get('button[aria-expanded]').trigger('click')
+      expect(firstField.get('button[aria-expanded]').attributes('aria-expanded')).toBe('true')
+
+      scrollTargetId.value = 'operation.query.filters[second]'
+      await nextTick()
+      scrollTargetId.value = ''
+      await nextTick()
+      scrollTargetId.value = 'operation.query.filters[second]'
+      await nextTick()
+
+      expect(
+        wrapper.findAllComponents(ParameterListItem)[0]!.get('button[aria-expanded]').attributes('aria-expanded'),
+      ).toBe('true')
+
+      await wrapper.get('button[aria-expanded]').trigger('click')
+      scrollTargetId.value = ''
+      await nextTick()
+      scrollTargetId.value = 'operation.query.filters[second]'
+      await nextTick()
+      expect(wrapper.get('button[aria-expanded]').attributes('aria-expanded')).toBe('true')
+    } finally {
+      scrollTargetId.value = ''
+      wrapper.unmount()
+    }
+  })
+
+  it('renders selected extensions from both a parameter and its schema', () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        name: 'limit',
+        eventBus: null,
+        options: { ...baseOptions, showExtensions: ['x-owner', 'x-policy'] },
+        specificationExtension: SpecificationExtension,
+        parameter: coerceValue(ParameterObjectSchema, {
+          name: 'limit',
+          in: 'query',
+          'x-owner': 'Platform',
+          schema: coerceValue(SchemaObjectSchema, { type: 'integer', 'x-policy': 'public' }),
+        }),
+      },
+    })
+    expect(wrapper.text()).toContain('"Platform"')
+    expect(wrapper.text()).toContain('"public"')
+  })
+
+  it.each([false, true])('shows structural response types with hideModels=%s', (hideModels) => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        eventBus: null,
+        name: '200',
+        options: { ...baseOptions, hideModels, hideModelNames: true, expandAllSchemaProperties: true },
+        parameter: coerceValue(ResponseObjectSchema, {
+          description: 'Order created',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/OrderResponse',
+                '$ref-value': {
+                  type: 'object',
+                  properties: {
+                    order: {
+                      $ref: '#/components/schemas/Order',
+                      '$ref-value': {
+                        type: 'object',
+                        properties: {
+                          customer: { type: 'object', title: 'Customer', properties: { name: { type: 'string' } } },
+                        },
+                      },
+                    },
+                    orders: { type: 'array', items: { type: 'object', title: 'Order' } },
+                  },
+                },
+              },
+            },
+          },
+        }),
+      },
+    })
+    expect(wrapper.text()).toContain('object')
+    expect(wrapper.text()).toContain('array of object')
+    expect(wrapper.text()).toContain('customer')
+    expect(wrapper.text()).toContain('name')
+    expect(wrapper.text()).not.toContain('OrderResponse')
+    expect(wrapper.text()).not.toContain('Customer')
+    expect(wrapper.text()).not.toContain('Type: Order')
+  })
+
+  it.each(['inline array', 'referenced array', 'object'] as const)(
+    'indents the children of an expanded %s parameter (#10380)',
+    async (variant) => {
+      const item = coerceValue(SchemaObjectSchema, {
+        type: 'object',
+        properties: { field: { type: 'string' } },
+      })
+      const schema = coerceValue(
+        SchemaObjectSchema,
+        variant === 'object'
+          ? item
+          : {
+              type: 'array',
+              items:
+                variant === 'referenced array' ? { $ref: '#/components/schemas/Filter', '$ref-value': item } : item,
+            },
+      )
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          name: 'filters',
+          parameter: { name: 'filters', in: 'query', schema, description: 'Search filters.' },
+          options: baseOptions,
+          eventBus: null,
+        },
+      })
+
+      // Nesting is visual behavior here: the panel supplies the indentation.
+      const panel = wrapper.getComponent(SchemaRailPanel)
+      expect(panel.props('depth')).toBe(1)
+      expect(panel.props('closeOnRail')).toBe(false)
+      expect(panel.text()).toContain('field')
+      expect(panel.getComponent(SchemaProperty).props('depth')).toBe(1)
+      expect(wrapper.find('button[aria-expanded]').exists()).toBe(false)
+      expect(wrapper.text()).toContain('Search filters.')
+      await wrapper.get('.property-heading').trigger('click')
+      expect(panel.isVisible()).toBe(true)
+      wrapper.unmount()
+    },
+  )
+
+  it('indents compact parameter children only once when opened', async () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        name: 'filters',
+        parameter: {
+          name: 'filters',
+          in: 'query',
+          schema: {
+            type: 'array',
+            items: { type: 'object', properties: { field: { type: 'string' } } },
+          },
+        },
+        collapsableItems: true,
+        options: baseOptions,
+        eventBus: null,
+      },
+    })
+
+    const toggle = wrapper.get('button[aria-expanded]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+    expect(wrapper.text()).toContain('field')
+    expect(wrapper.findAllComponents(SchemaRailPanel).length).toBe(1)
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    wrapper.unmount()
+  })
+
+  it('displays both the complete body and stream item schemas', () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        collapsableItems: false,
+        eventBus: null,
+        name: '200',
+        options: baseOptions,
+        parameter: coerceValue(ResponseObjectSchema, {
+          description: 'Events',
+          content: {
+            'application/jsonl': {
+              schema: { type: 'array', maxItems: 10 },
+              itemSchema: {
+                type: 'object',
+                properties: { message: { type: 'string', description: 'Streamed message' } },
+              },
+            },
+          },
+        }),
+      },
+    })
+    expect(wrapper.text()).toContain('Stream item')
+    expect(wrapper.text()).toContain('Streamed message')
+    expect(wrapper.findComponent(SchemaProperty).props('schema')).toHaveProperty('maxItems', 10)
+  })
+
+  it('keeps a compact parameter without details static', () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        collapsableItems: true,
+        eventBus: null,
+        name: 'limit',
+        options: baseOptions,
+        parameter: { in: 'query', name: 'limit', required: true },
+      },
+    })
+
+    expect(wrapper.text()).toContain('limit')
+    expect(wrapper.text()).toContain('required')
+    expect(wrapper.find('button[aria-expanded]').exists()).toBe(false)
+  })
+
+  it('opens a compact parameter description without a schema', async () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        collapsableItems: true,
+        eventBus: null,
+        name: 'limit',
+        options: baseOptions,
+        parameter: { in: 'query', name: 'limit', description: 'Maximum results.' },
+      },
+    })
+
+    const toggle = wrapper.get('button[aria-expanded]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.text()).toContain('Maximum results.')
+  })
+
+  it('opens a compact parameter when its anchor is the initial scroll target', () => {
+    scrollTargetId.value = 'operation.query.limit'
+    try {
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          collapsableItems: true,
+          breadcrumb: ['operation', 'query'],
+          eventBus: null,
+          name: 'limit',
+          options: baseOptions,
+          parameter: { in: 'query', name: 'limit', schema: { type: 'integer', enum: [10, 20] } },
+        },
+      })
+      const toggle = wrapper.get('button[aria-expanded]')
+      expect(wrapper.attributes('id')).toBe('operation.query.limit')
+      expect(toggle.attributes('aria-expanded')).toBe('true')
+      expect(wrapper.text()).toContain('20')
+      wrapper.unmount()
+    } finally {
+      scrollTargetId.value = ''
+    }
+  })
+
+  it('keeps scalar response details visible when responses are collapsible', () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        collapsableItems: true,
+        eventBus: null,
+        name: '204',
+        options: baseOptions,
+        parameter: { description: 'No content' },
+      },
+    })
+    expect(wrapper.text()).toContain('No content')
+    expect(wrapper.find('button[aria-expanded]').exists()).toBe(false)
+  })
+
+  it('keeps model names visible when hideModels is enabled', () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        collapsableItems: false,
+        eventBus: null,
+        name: 'pet',
+        options: {
+          hideModels: true,
+          orderRequiredPropertiesFirst: false,
+          orderSchemaPropertiesBy: 'alpha',
+          expandAllSchemaProperties: false,
+          schemaKeyboardNav: false,
+        },
+        parameter: {
+          in: 'query',
+          name: 'pet',
+          required: false,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'object',
+            title: 'Pet',
+            properties: {
+              name: { type: 'string' },
+            },
+          }),
+        },
+      },
+    })
+
+    const schemaProperty = wrapper.findComponent(SchemaProperty)
+    expect(schemaProperty.props('hideModelNames')).toBe(false)
+  })
+
+  // https://github.com/scalar/scalar/issues/9431
+  it('keeps the content schema description visible when responses are expanded', () => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        collapsableItems: false,
+        eventBus: null,
+        name: '200',
+        options: baseOptions,
+        parameter: coerceValue(ResponseObjectSchema, {
+          description: 'OK',
+          content: {
+            'text/csv': {
+              schema: {
+                type: 'string',
+                description: 'Description for CSV response.',
+              },
+              example: 'brand,value\nBest Brand,123',
+            },
+          },
+        }),
+      },
+    })
+
+    const text = wrapper.text()
+    // The response description and the schema description are both shown.
+    expect(text).toContain('OK')
+    expect(text).toContain('Description for CSV response.')
+  })
+
+  describe('response header anchors', () => {
+    const responseWithHeader = coerceValue(ResponseObjectSchema, {
+      description: 'OK',
+      headers: {
+        'X-Rate-Limit': { schema: { type: 'integer' } },
+      },
+    })
+
+    /** Anchor ids rendered with the headers group open via expand-all. */
+    const headerAnchorIds = (): string[] => {
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          breadcrumb: ['tag/pets/GET/pets', 'responses'],
+          collapsableItems: false,
+          eventBus: null,
+          name: '200',
+          options: { ...baseOptions, expandAllSchemaProperties: true },
+          parameter: responseWithHeader,
+        },
+      })
+
+      return wrapper
+        .findAll('[id]')
+        .map((element) => element.attributes('id') ?? '')
+        .filter((id) => id.includes('X-Rate-Limit'))
+    }
+
+    it('qualifies the anchor id by status code', () => {
+      // Every status shares one `responses` breadcrumb, so without the status
+      // the header groups of 200 and 404 collide on one expansion node.
+      expect(headerAnchorIds()).toEqual(['tag/pets/GET/pets.responses.200.headers.X-Rate-Limit'])
+    })
+  })
+  it.each(['parameter', 'response'] as const)('preserves named %s example labels and payloads', (surface) => {
+    const examples = {
+      first: { summary: 'Friendly summary', value: { value: 'payload', summary: 'ordinary data' } },
+      second: { value: 'fallback sample' },
+    }
+    const schema = coerceValue(SchemaObjectSchema, { type: 'string' })
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        name: 'example',
+        eventBus: null,
+        options: baseOptions,
+        parameter:
+          surface === 'parameter'
+            ? { name: 'example', in: 'query', schema, examples }
+            : { description: 'Response body', content: { 'application/json': { schema, examples } } },
+      },
+    })
+    expect(
+      wrapper
+        .findAll('button[aria-label]')
+        .map((button) => button.attributes('aria-label'))
+        .filter((label) => label?.startsWith('Copy example value:')),
+    ).toStrictEqual([
+      'Copy example value: Friendly summary: {"value":"payload","summary":"ordinary data"}',
+      'Copy example value: second: fallback sample',
+    ])
+    wrapper.unmount()
+  })
+
+  it.each(['query', 'path', 'header', 'cookie'] as const)(
+    'shows one example when a %s parameter overrides an identical schema example',
+    (location) => {
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          name: 'term',
+          eventBus: null,
+          options: baseOptions,
+          parameter: {
+            name: 'term',
+            in: location,
+            required: location === 'path',
+            description: 'Parameter description',
+            example: 'Y',
+            schema: { type: 'string', description: 'Parameter description', example: 'Y' },
+          },
+        },
+      })
+      try {
+        expect(wrapper.findAll('button[aria-label="Copy example value: Y"]').length).toBe(1)
+        expect(wrapper.text().split('Parameter description').length - 1).toBe(1)
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+
+  it.each(['example', 'examples'] as const)('prefers an explicit parameter example over schema.%s', (keyword) => {
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        name: 'term',
+        eventBus: null,
+        options: baseOptions,
+        parameter: {
+          name: 'term',
+          in: 'query',
+          example: 'parameter',
+          schema: { type: 'string', [keyword]: keyword === 'example' ? 'schema' : ['schema'] },
+        },
+      },
+    })
+    try {
+      const labels = wrapper
+        .findAll('button[aria-label]')
+        .map((button) => button.attributes('aria-label'))
+        .filter((label) => label?.startsWith('Copy example value:'))
+      expect(labels).toStrictEqual(['Copy example value: parameter'])
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it.each(['oneOf', 'anyOf', 'allOf'] as const)(
+    'overrides examples in %s branches without changing the schema',
+    (keyword) => {
+      const branch = coerceValue(SchemaObjectSchema, {
+        type: 'string',
+        example: 'schema',
+        examples: ['schema multiple'],
+      })
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          name: 'term',
+          eventBus: null,
+          options: baseOptions,
+          parameter: {
+            name: 'term',
+            in: 'query',
+            example: 'parameter',
+            schema: coerceValue(SchemaObjectSchema, { [keyword]: [branch] }),
+          },
+        },
+      })
+      try {
+        const labels = wrapper
+          .findAll('button[aria-label]')
+          .map((button) => button.attributes('aria-label'))
+          .filter((label) => label?.startsWith('Copy example value:'))
+        expect(labels).toStrictEqual(['Copy example value: parameter'])
+        expect(branch.example).toBe('schema')
+        expect(branch.examples).toStrictEqual(['schema multiple'])
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+
+  it.each(['oneOf', 'anyOf'] as const)('preserves response schema examples inside %s variants', async (keyword) => {
+    const schema = coerceValue(SchemaObjectSchema, {
+      example: 'root schema',
+      [keyword]: [
+        { title: 'Text', type: 'string', example: 'text variant' },
+        { title: 'Number', type: 'number', example: 42 },
+      ],
+    })
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        name: '200',
+        collapsableItems: true,
+        eventBus: null,
+        options: baseOptions,
+        parameter: {
+          description: 'OK',
+          content: { 'application/json': { schema, example: 'media' } },
+        },
+      },
+    })
+    try {
+      await wrapper.get('button[aria-expanded]').trigger('click')
+      const labels = wrapper
+        .findAll('button[aria-label]')
+        .map((button) => button.attributes('aria-label'))
+        .filter((label) => label?.startsWith('Copy example value:'))
+      expect(labels).toStrictEqual(['Copy example value: text variant', 'Copy example value: media'])
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('overrides a resolved schema reference without changing its examples', () => {
+    const schema = coerceValue(SchemaObjectSchema, { type: 'string', example: 'schema' })
+    const wrapper = mount(ParameterListItem, {
+      props: {
+        name: 'term',
+        eventBus: null,
+        options: baseOptions,
+        parameter: {
+          name: 'term',
+          in: 'query',
+          examples: { sample: { summary: 'Parameter sample', value: 'parameter' } },
+          schema: { $ref: '#/components/schemas/Term', '$ref-value': schema },
+        },
+      },
+    })
+    try {
+      const labels = wrapper
+        .findAll('button[aria-label]')
+        .map((button) => button.attributes('aria-label'))
+        .filter((label) => label?.startsWith('Copy example value:'))
+      expect(labels).toStrictEqual(['Copy example value: Parameter sample: parameter'])
+      expect(schema.example).toBe('schema')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it.each(['query', 'querystring'] as const)(
+    'keeps schema example maps for %s parameters without explicit examples',
+    (location) => {
+      const schema = coerceValue(SchemaObjectSchema, { type: 'string' })
+      // @ts-expect-error Legacy API descriptions may contain a named map instead of an examples array.
+      schema.examples = { legacy: { id: 1 } }
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          name: 'term',
+          eventBus: null,
+          options: baseOptions,
+          parameter: {
+            name: 'term',
+            in: location,
+            content: { 'application/json': { schema } },
+          },
+        },
+      })
+      try {
+        const labels = wrapper
+          .findAll('button[aria-label]')
+          .map((button) => button.attributes('aria-label'))
+          .filter((label) => label?.startsWith('Copy example value:'))
+        expect(labels).toStrictEqual(['Copy example value: legacy: {"id":1}'])
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+
+  it.each(['parameter', 'response'] as const)(
+    'renders a singular %s media type example instead of schema examples',
+    (surface) => {
+      const content = {
+        'application/json': {
+          example: 'media',
+          schema: coerceValue(SchemaObjectSchema, { type: 'string', example: 'schema', examples: ['schema multiple'] }),
+        },
+      }
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          name: 'term',
+          eventBus: null,
+          options: baseOptions,
+          parameter: surface === 'parameter' ? { name: 'term', in: 'query', content } : { description: 'OK', content },
+        },
+      })
+      try {
+        const labels = wrapper
+          .findAll('button[aria-label]')
+          .map((button) => button.attributes('aria-label'))
+          .filter((label) => label?.startsWith('Copy example value:'))
+        expect(labels).toStrictEqual(['Copy example value: media'])
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+
+  it.each(['parameter', 'response'] as const)(
+    'keeps %s content schema examples when no explicit example is available',
+    (surface) => {
+      const content = {
+        'application/json': { schema: coerceValue(SchemaObjectSchema, { type: 'string', examples: ['schema'] }) },
+      }
+      const wrapper = mount(ParameterListItem, {
+        props: {
+          name: 'term',
+          eventBus: null,
+          options: baseOptions,
+          parameter: surface === 'parameter' ? { name: 'term', in: 'query', content } : { description: 'OK', content },
+        },
+      })
+      try {
+        const labels = wrapper
+          .findAll('button[aria-label]')
+          .map((button) => button.attributes('aria-label'))
+          .filter((label) => label?.startsWith('Copy example value:'))
+        expect(labels).toStrictEqual(['Copy example value: schema'])
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+})

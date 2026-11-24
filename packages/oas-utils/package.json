@@ -16,113 +16,47 @@
     "specification",
     "yaml"
   ],
-  "version": "0.4.14",
+  "version": "0.20.27",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
-    "lint:check": "eslint .",
-    "lint:fix": "eslint .  --fix",
-    "test": "vitest",
-    "typegen:migration": "vite-node ./src/migrations/generate-types.ts",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "exports": {
-    "./entities/cookie": {
-      "import": "./dist/entities/cookie/index.js",
-      "types": "./dist/entities/cookie/index.d.ts",
-      "default": "./dist/entities/cookie/index.js"
-    },
-    "./entities/environment": {
-      "import": "./dist/entities/environment/index.js",
-      "types": "./dist/entities/environment/index.d.ts",
-      "default": "./dist/entities/environment/index.js"
-    },
-    "./entities/hotkeys": {
-      "import": "./dist/entities/hotkeys/index.js",
-      "types": "./dist/entities/hotkeys/index.d.ts",
-      "default": "./dist/entities/hotkeys/index.js"
-    },
-    "./entities/shared": {
-      "import": "./dist/entities/shared/index.js",
-      "types": "./dist/entities/shared/index.d.ts",
-      "default": "./dist/entities/shared/index.js"
-    },
-    "./entities/spec": {
-      "import": "./dist/entities/spec/index.js",
-      "types": "./dist/entities/spec/index.d.ts",
-      "default": "./dist/entities/spec/index.js"
-    },
-    "./entities/workspace": {
-      "import": "./dist/entities/workspace/index.js",
-      "types": "./dist/entities/workspace/index.d.ts",
-      "default": "./dist/entities/workspace/index.js"
-    },
     "./helpers": {
       "import": "./dist/helpers/index.js",
       "types": "./dist/helpers/index.d.ts",
       "default": "./dist/helpers/index.js"
     },
-    "./helpers/operation-to-har": {
-      "import": "./dist/helpers/operation-to-har/index.js",
-      "types": "./dist/helpers/operation-to-har/index.d.ts",
-      "default": "./dist/helpers/operation-to-har/index.js"
-    },
-    "./helpers/security": {
-      "import": "./dist/helpers/security/index.js",
-      "types": "./dist/helpers/security/index.d.ts",
-      "default": "./dist/helpers/security/index.js"
-    },
     "./migrations": {
       "import": "./dist/migrations/index.js",
       "types": "./dist/migrations/index.d.ts",
       "default": "./dist/migrations/index.js"
-    },
-    "./spec-getters": {
-      "import": "./dist/spec-getters/index.js",
-      "types": "./dist/spec-getters/index.d.ts",
-      "default": "./dist/spec-getters/index.js"
-    },
-    "./transforms": {
-      "import": "./dist/transforms/index.js",
-      "types": "./dist/transforms/index.d.ts",
-      "default": "./dist/transforms/index.js"
     }
   },
   "files": [
     "dist",
     "CHANGELOG.md"
   ],
-  "module": "dist/index.js",
   "dependencies": {
-    "@hyperjump/browser": "^1.1.0",
-    "@hyperjump/json-schema": "^1.9.6",
     "@scalar/helpers": "workspace:*",
-    "@scalar/object-utils": "workspace:*",
-    "@scalar/openapi-types": "workspace:*",
     "@scalar/themes": "workspace:*",
     "@scalar/types": "workspace:*",
     "@scalar/workspace-store": "workspace:*",
-    "@types/har-format": "^1.2.15",
     "flatted": "catalog:*",
-    "microdiff": "catalog:*",
-    "nanoid": "catalog:*",
-    "type-fest": "catalog:*",
-    "yaml": "catalog:*",
-    "zod": "catalog:*"
+    "vue": "catalog:*",
+    "yaml": "catalog:*"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
-    "@scalar/openapi-parser": "workspace:*",
-    "@scalar/openapi-types": "workspace:*",
     "@types/node": "catalog:*",
-    "type-fest": "^4.20.0",
+    "fake-indexeddb": "catalog:*",
     "vite": "catalog:*",
-    "vitest": "catalog:*",
-    "zod-to-ts": "github:amritk/zod-to-ts#build"
+    "vitest": "catalog:*"
   }
 }

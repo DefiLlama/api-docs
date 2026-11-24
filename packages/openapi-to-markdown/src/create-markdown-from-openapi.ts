@@ -1,59 +1,38 @@
-import { dereference, upgrade } from '@scalar/openapi-parser'
-import type { OpenAPI } from '@scalar/openapi-types'
-import { minify } from 'html-minifier-terser'
-import rehypeParse from 'rehype-parse'
-import rehypeRemark from 'rehype-remark'
-import rehypeSanitize from 'rehype-sanitize'
-import remarkGfm from 'remark-gfm'
-import remarkStringify from 'remark-stringify'
-import { unified } from 'unified'
-import { createSSRApp } from 'vue'
-import { renderToString } from 'vue/server-renderer'
-import MarkdownReference from './components/MarkdownReference.vue'
+import type { OpenApiDocument } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
 
-type AnyDocument = OpenAPI.Document | Record<string, unknown> | string
+import { type DocumentLoadOptions, loadDocument } from './load-document'
+import { createDocumentRenderer } from './render-document'
+import { type OpenApiRenderOptions, createDocumentLookup, selectDocument } from './select-document'
 
-export async function createHtmlFromOpenApi(input: AnyDocument) {
-  // TODO: Use the new store here.
-  const { specification: upgraded } = upgrade(input)
-  const { schema: content } = await dereference(upgraded)
-
-  // Create and configure a server-side rendered Vue app
-  const app = createSSRApp(MarkdownReference, {
-    content,
-  })
-
-  // Get static HTML
-  const html = await renderToString(app)
-
-  // Clean the output
-  return minify(html, {
-    removeComments: true,
-    removeEmptyElements: true,
-    collapseWhitespace: true,
-    continueOnParseError: true,
-    noNewlinesBeforeTagClose: true,
-    preserveLineBreaks: true,
-    removeEmptyAttributes: true,
-    decodeEntities: true,
-    useShortDoctype: true,
-  })
+type AnyDocument = OpenApiDocument | Record<string, unknown> | string
+/** A resolved API description that can render multiple pages without loading it again. */
+export type OpenApiMarkdownRenderer = {
+  render: (options?: OpenApiRenderOptions) => Promise<string>
 }
 
-export async function createMarkdownFromOpenApi(content: AnyDocument) {
-  return markdownFromHtml(await createHtmlFromOpenApi(content))
+/**
+ * Load and resolve an API description once, then render any number of selections.
+ * Each renderer owns its document; create a new renderer to pick up source changes.
+ */
+export const createOpenApiMarkdownRenderer = async (
+  input: AnyDocument,
+  options?: DocumentLoadOptions,
+): Promise<OpenApiMarkdownRenderer> => {
+  const content = await loadDocument(input, options)
+
+  const renderDocument = createDocumentRenderer()
+  const lookup = createDocumentLookup(content)
+  const render = async (options?: OpenApiRenderOptions): Promise<string> =>
+    await renderDocument(selectDocument(content, options, lookup), options)
+  return { render }
 }
 
-export async function markdownFromHtml(html: string): Promise<string> {
-  const file = await unified()
-    .use(rehypeParse, { fragment: true })
-    .use(remarkGfm)
-    .use(rehypeSanitize)
-    .use(rehypeRemark)
-    .use(remarkStringify, {
-      bullet: '-',
-    })
-    .process(html)
-
-  return String(file)
+/** Generate Markdown from an API description, optionally scoped to a single page. */
+export const createMarkdownFromOpenApi = async (
+  input: AnyDocument,
+  options?: OpenApiRenderOptions & { documentLoading?: DocumentLoadOptions },
+): Promise<string> => {
+  const { documentLoading, ...renderOptions } = options ?? {}
+  const renderer = await createOpenApiMarkdownRenderer(input, documentLoading)
+  return renderer.render(renderOptions)
 }

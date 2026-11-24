@@ -1,0 +1,249 @@
+# scalar_api_reference
+
+## 0.2.30
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.83.0
+
+No changes in this release.
+
+## 0.2.29
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.82.1
+
+No changes in this release.
+
+## 0.2.28
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.82.0
+
+No changes in this release.
+
+## 0.2.27
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.81.0
+
+No changes in this release.
+
+## 0.2.26
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.80.0
+
+No changes in this release.
+
+## 0.2.25
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.79.0
+
+### Patch Changes
+
+- [#11058](https://github.com/scalar/scalar/pull/11058): Prevent HTML injection in embedded Rust configuration and bundle URLs, and preserve literal template placeholders in user data.
+
+  Make the raw `render_scalar` helper internal so callers cannot bypass JSON validation. Use `scalar_html` with a `serde_json::Value` or `scalar_html_from_json` with a JSON string instead.
+
+## 0.2.24
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.78.1
+
+No changes in this release.
+
+## 0.2.23
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.78.0
+
+## 0.2.22
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.77.0
+
+## 0.2.21
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.76.4
+
+## 0.2.20
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.76.3
+
+## 0.2.19
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.76.2
+
+## 0.2.18
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.76.1
+
+## 0.2.17
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.76.0
+
+## 0.2.16
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.75.1
+
+## 0.2.15
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.75.0
+
+## 0.2.14
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.74.0
+
+## 0.2.13
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.73.1
+
+## 0.2.12
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.73.0
+
+## 0.2.11
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.72.4
+
+## 0.2.10
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.72.3
+
+## 0.2.9
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.72.2
+
+## 0.2.8
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.72.1
+
+### Patch Changes
+
+- [#10347](https://github.com/scalar/scalar/pull/10347): Update the Rust lockfile to patched actix-http, time, bytes, and rand releases.
+
+## 0.2.7
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.72.0
+
+## 0.2.6
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.71.0
+
+## 0.2.5
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.70.0
+
+## 0.2.4
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.69.2
+
+## 0.2.3
+
+### Bundled API Reference
+
+- @scalar/api-reference@1.69.1
+
+### Patch Changes
+
+- [#10223](https://github.com/scalar/scalar/pull/10223): Track bundled API Reference updates so frontend changes trigger Rust releases and appear in the changelog.
+
+## 0.2.2
+
+### Patch Changes
+
+- [#8497](https://github.com/scalar/scalar/pull/8497): fix rust crates.io publish in CI by allowing the workflow's intentional pre-publish file updates.
+
+## 0.2.1
+
+### Patch Changes
+
+- [#8476](https://github.com/scalar/scalar/pull/8476): fix rust publish packaging so `ui/scalar.js` is included in the crate
+
+## 0.2.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.1.5
+
+### Patch Changes
+
+- [#8305](https://github.com/scalar/scalar/pull/8305): fix: assets not published
+
+## 0.1.4
+
+### Patch Changes
+
+- [#8103](https://github.com/scalar/scalar/pull/8103): feat: agent scalar configuration
+
+## 0.1.3
+
+### Patch Changes
+
+- [#7810](https://github.com/scalar/scalar/pull/7810): docs: update documentation domain
+
+## 0.1.2
+
+### Patch Changes
+
+- [#7241](https://github.com/scalar/scalar/pull/7241) [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d) Thanks [@hanspagel](https://github.com/hanspagel)! - chore: use "current" not "latest" scalar registry url
+
+## 0.1.1
+
+### Patch Changes
+
+- dc70b5c: docs: update link to documentation
+
+## 0.1.0
+
+### Minor Changes
+
+- 0ede576: hello world :)

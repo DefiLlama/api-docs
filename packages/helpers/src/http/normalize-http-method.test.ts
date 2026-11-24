@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest'
-import { normalizeHttpMethod } from './normalize-http-method'
-import { HTTP_METHODS } from './http-methods'
+import { describe, expect, it } from 'vitest'
+
 import { consoleWarnSpy } from '@/testing/console-spies'
+
+import { HTTP_METHODS } from './http-methods'
+import { normalizeHttpMethod } from './normalize-http-method'
 
 describe('normalizeHttpMethod', () => {
   describe('valid HTTP methods', () => {
@@ -19,6 +21,10 @@ describe('normalizeHttpMethod', () => {
       expect(consoleWarnSpy).not.toHaveBeenCalled()
     })
 
+    it.each(['query', 'QUERY', ' Query '])('normalizes %s to query', (method) => {
+      expect(normalizeHttpMethod(method)).toBe('query')
+    })
+
     it('should handle whitespace in valid methods', () => {
       expect(normalizeHttpMethod(' get ')).toBe('get')
       expect(normalizeHttpMethod('\tpost\n')).toBe('post')
@@ -34,7 +40,7 @@ describe('normalizeHttpMethod', () => {
     })
 
     it('should return default method for non-string inputs', () => {
-      const nonStringInputs = [123, true, false, {}, [], () => {}, Symbol('test')]
+      const nonStringInputs = [123, true, false, {}, [], () => undefined, Symbol('test')]
 
       nonStringInputs.forEach((input) => {
         expect(normalizeHttpMethod(input as unknown as string)).toBe('get')
@@ -76,9 +82,7 @@ describe('normalizeHttpMethod', () => {
 
     it('should handle whitespace-only strings', () => {
       expect(normalizeHttpMethod('   ')).toBe('get')
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'Request method is not a valid request method. Using get as the default.',
-      )
+      expect(consoleWarnSpy).toHaveBeenCalledWith('    is not a valid request method. Using get as the default.')
     })
   })
 

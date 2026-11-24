@@ -1,0 +1,231 @@
+# @scalar/server-side-rendering
+
+## 0.1.75
+
+### Patch Changes
+
+- [#11146](https://github.com/scalar/scalar/pull/11146): Update compatible npm dependencies for AI chat, encoding, analytics, date handling, HTTP serving, and application query caching.
+
+## 0.1.74
+
+No changes in this release.
+
+## 0.1.73
+
+No changes in this release.
+
+## 0.1.72
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.1.71
+
+No changes in this release.
+
+## 0.1.70
+
+No changes in this release.
+
+## 0.1.69
+
+No changes in this release.
+
+## 0.1.68
+
+## 0.1.67
+
+### Patch Changes
+
+- [#10845](https://github.com/scalar/scalar/pull/10845): Prevent custom CSS and themes from closing style elements in generated HTML.
+
+## 0.1.66
+
+## 0.1.65
+
+## 0.1.64
+
+## 0.1.63
+
+## 0.1.62
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.1.61
+
+## 0.1.60
+
+## 0.1.59
+
+## 0.1.58
+
+## 0.1.57
+
+## 0.1.56
+
+## 0.1.55
+
+## 0.1.54
+
+## 0.1.53
+
+### Patch Changes
+
+- [#10344](https://github.com/scalar/scalar/pull/10344): Share JSON and property-name escaping for inline scripts between client-side and server-side rendering.
+
+## 0.1.52
+
+## 0.1.51
+
+## 0.1.50
+
+## 0.1.49
+
+## 0.1.48
+
+## 0.1.47
+
+## 0.1.46
+
+## 0.1.45
+
+## 0.1.44
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.1.43
+
+## 0.1.42
+
+## 0.1.41
+
+## 0.1.40
+
+## 0.1.39
+
+## 0.1.38
+
+## 0.1.37
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.1.36
+
+## 0.1.35
+
+## 0.1.34
+
+## 0.1.33
+
+## 0.1.32
+
+## 0.1.31
+
+## 0.1.30
+
+## 0.1.29
+
+## 0.1.28
+
+## 0.1.27
+
+### Patch Changes
+
+- [#9555](https://github.com/scalar/scalar/pull/9555): Serialize the hydration config compactly instead of pretty-printed. This shrinks the inline hydration script in every server-rendered page and speeds up serialization for large configs.
+- [#9556](https://github.com/scalar/scalar/pull/9556): Speed up the per-render check that rejects nested functions in the config. The common case (no functions) now skips building path strings for every node, while the precise error message is still produced when a nested function is found.
+
+## 0.1.26
+
+## 0.1.25
+
+## 0.1.24
+
+## 0.1.23
+
+## 0.1.22
+
+## 0.1.21
+
+## 0.1.20
+
+## 0.1.19
+
+## 0.1.18
+
+### Patch Changes
+
+- [#9274](https://github.com/scalar/scalar/pull/9274): fix(server-side-rendering): update build script to correct import path
+
+## 0.1.17
+
+## 0.1.16
+
+## 0.1.15
+
+### Patch Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): Integrate Unhead server-side head rendering in SSR output so `metaData` and title tags are included in the server-rendered HTML document.
+
+## 0.1.14
+
+### Patch Changes
+
+- [#8967](https://github.com/scalar/scalar/pull/8967): Integrate Unhead server-side head rendering in SSR output so `metaData` and title tags are included in the server-rendered HTML document.
+
+## 0.1.13
+
+## 0.1.12
+
+## 0.1.11
+
+## 0.1.10
+
+## 0.1.9
+
+## 0.1.8
+
+## 0.1.7
+
+## 0.1.6
+
+## 0.1.5
+
+## 0.1.4
+
+### Patch Changes
+
+- [#8919](https://github.com/scalar/scalar/pull/8919): fix build externals so Node built-ins remain runtime imports in the SSR bundle
+
+## 0.1.3
+
+### Patch Changes
+
+- [#8875](https://github.com/scalar/scalar/pull/8875): Preserve top-level function config values in SSR hydration output and throw when nested functions cannot be serialized safely.
+- [#8875](https://github.com/scalar/scalar/pull/8875): fix(server-side-rendering): escape dynamic hydration property keys
+- [#8859](https://github.com/scalar/scalar/pull/8859): refactor api-reference exports and enforce strict Vite entrypoint resolution from package exports
+
+## 0.1.2
+
+### Patch Changes
+
+- [#8836](https://github.com/scalar/scalar/pull/8836): fix(server-side-rendering): harden inline script serialization against injection
+
+## 0.1.1
+
+## 0.1.0
+
+### Minor Changes
+
+- [#8431](https://github.com/scalar/scalar/pull/8431): feat: init :)
+
+### Patch Changes
+
+- [#8758](https://github.com/scalar/scalar/pull/8758): feat: default to dark-mode for non-js users
+- [#8758](https://github.com/scalar/scalar/pull/8758): fix(server-side-rendering): respect dark mode config for initial body class

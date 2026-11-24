@@ -1,33 +1,49 @@
+<script lang="ts">
+/**
+ * Scalar Sidebar Search Button component
+ *
+ * A styled button that serves as a search trigger in the sidebar.
+ * Displays a magnifying glass icon and an optional keyboard shortcut.
+ *
+ * @example
+ * <ScalarSidebarSearchButton>
+ *   <template #shortcut>⌘K</template>
+ * </ScalarSidebarSearchButton>
+ */
+export default {}
+</script>
 <script setup lang="ts">
 import { ScalarIconMagnifyingGlass } from '@scalar/icons'
 import { useBindCx } from '@scalar/use-hooks/useBindCx'
 
-defineProps<{
-  hotKey?: string
+const { shortcutLabel = 'Keyboard Shortcut:' } = defineProps<{
+  shortcutLabel?: string
 }>()
 
 defineOptions({ inheritAttrs: false })
 const { cx } = useBindCx()
 </script>
 <template>
+  <!-- role="search" is a landmark for a search region, not a button control -->
   <button
     type="button"
-    role="search"
     v-bind="
       cx(
         'flex items-center rounded border text-base h-8 gap-1 pl-2 pr-1',
         'bg-sidebar-b-search border-sidebar-border-search text-sidebar-c-search',
       )
     ">
-    <ScalarIconMagnifyingGlass class="size-4" />
-    <span class="flex-1 text-left leading-none">
+    <ScalarIconMagnifyingGlass
+      aria-hidden="true"
+      class="size-4" />
+    <span class="flex-1 text-start leading-none">
       <slot>Search...</slot>
     </span>
     <span
       v-if="$slots.shortcut"
-      class="uppercase text-sidebar-c-2 bg-b-2 leading-none py-1 px-1.25 rounded">
-      <span class="sr-only">Keyboard Shortcut:</span>
-      <kbd>
+      class="text-sidebar-c-2 rounded border px-1.25 py-1 text-xs leading-none font-medium uppercase">
+      <span class="sr-only">{{ shortcutLabel }}</span>
+      <kbd dir="ltr">
         <slot name="shortcut" />
       </kbd>
     </span>

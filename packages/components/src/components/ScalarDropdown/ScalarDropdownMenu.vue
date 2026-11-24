@@ -18,9 +18,7 @@ export default {}
 </script>
 <script setup lang="ts">
 import { useBindCx } from '@scalar/use-hooks/useBindCx'
-import type { Component } from 'vue'
-
-import { ScalarFloatingBackdrop } from '../ScalarFloating'
+import { type Component } from 'vue'
 
 defineProps<{
   /** The component to render */
@@ -29,9 +27,9 @@ defineProps<{
 
 defineSlots<{
   /** The menu contents */
-  default(): unknown
-  /** Overrides the backdrop for the dropdown */
-  backdrop?(): unknown
+  default?(): unknown
+  /** Overrides the normal menu list element */
+  menu?(): unknown
 }>()
 
 defineOptions({ inheritAttrs: false })
@@ -41,17 +39,18 @@ const { cx } = useBindCx()
   <!-- Background container -->
   <component
     :is="is ?? 'div'"
-    role="menu"
-    tabindex="0"
-    v-bind="cx('relative flex w-56')">
+    v-bind="
+      cx(
+        'relative flex w-56 rounded-xl bg-b-1 dark:bg-b-1.5 shadow-md inset-shadow-border',
+      )
+    ">
     <!-- Scroll container -->
-    <div class="custom-scroll min-h-0 flex-1">
+    <div class="custom-scroll min-h-0 flex-1 rounded-[inherit]">
       <!-- Menu items -->
-      <div class="flex flex-col p-0.75">
-        <slot />
-      </div>
-      <slot name="backdrop">
-        <ScalarFloatingBackdrop />
+      <slot name="menu">
+        <div class="flex flex-col p-0.75">
+          <slot />
+        </div>
       </slot>
     </div>
   </component>

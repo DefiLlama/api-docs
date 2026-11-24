@@ -1,0 +1,35 @@
+import { YAML_MAX_ALIAS_COUNT } from '@scalar/helpers/general/yaml-max-alias-count'
+import YAML from 'yaml'
+
+import type { LoaderPlugin } from '@/bundle'
+import { isYaml } from '@/helpers/is-yaml'
+
+/**
+ * Creates a plugin that parses YAML strings into JavaScript objects.
+ * @returns A plugin object with validate and exec functions
+ * @example
+ * ```ts
+ * const yamlPlugin = parseYaml()
+ * const result = yamlPlugin.exec('name: John\nage: 30')
+ * // result = { name: 'John', age: 30 }
+ * ```
+ */
+export function parseYaml(): LoaderPlugin {
+  return {
+    type: 'loader',
+    validate: isYaml,
+    exec: (value) => {
+      try {
+        return Promise.resolve({
+          ok: true,
+          data: YAML.parse(value, { merge: true, maxAliasCount: YAML_MAX_ALIAS_COUNT }),
+          raw: value,
+        })
+      } catch {
+        return Promise.resolve({
+          ok: false,
+        })
+      }
+    },
+  }
+}

@@ -1,4 +1,9 @@
-export type { TraverseSpecOptions as createNavigationOptions } from './types'
-
-// biome-ignore lint/performance/noBarrelFile: <explanation>
+export { getOpenapiObject } from './helpers/get-openapi-object'
+export { type OperationEntriesMap, getOperationEntries } from './helpers/get-operation-entries'
+export { getParentEntry } from './helpers/get-parent-entry'
+export { type TagEntriesMap, getTagEntries } from './helpers/get-tag-entries'
+export { traverseAsyncApiDocument } from './helpers/traverse-asyncapi-document'
 export { traverseDocument as createNavigation } from './helpers/traverse-document'
+export { getUniqueExampleName } from './helpers/traverse-examples'
+export { traversePluginDocument } from './helpers/traverse-plugin-document'
+export type { TraverseSpecOptions as createNavigationOptions } from './types'

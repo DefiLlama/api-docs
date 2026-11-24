@@ -1,0 +1,1068 @@
+import { createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import { type VueWrapper, mount } from '@vue/test-utils'
+import { assert, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
+
+import OAuth2 from '@/v2/blocks/scalar-auth-selector-block/components/OAuth2.vue'
+import OpenIDConnect from '@/v2/blocks/scalar-auth-selector-block/components/OpenIDConnect.vue'
+import RequestAuthDataTableInput from '@/v2/blocks/scalar-auth-selector-block/components/RequestAuthDataTableInput.vue'
+import RequestAuthTab from '@/v2/blocks/scalar-auth-selector-block/components/RequestAuthTab.vue'
+
+// Avoid a real OAuth round-trip (window.open) when the Authorize shortcut is clicked.
+vi.mock('@/v2/blocks/scalar-auth-selector-block/helpers/run-oauth2-authorize', () => ({
+  runOAuth2Authorize: vi.fn(),
+  storeOAuth2Tokens: vi.fn(),
+}))
+
+import { runOAuth2Authorize } from '@/v2/blocks/scalar-auth-selector-block/helpers/run-oauth2-authorize'
+
+describe('RequestAuthTab', () => {
+  it('initially selects the first OIDC flow and allows switching to another discovered flow', async () => {
+    const flows = {
+      authorizationCode: {
+        authorizationUrl: 'https://example.com/auth',
+        tokenUrl: 'https://example.com/token',
+        scopes: { openid: '' },
+        'x-scalar-secret-client-id': 'scalar',
+        'x-usePkce': 'SHA-256',
+      },
+      implicit: { authorizationUrl: 'https://example.com/auth', scopes: { openid: '' } },
+    }
+    const scheme = { type: 'openIdConnect', openIdConnectUrl: 'https://example.com/discovery', flows }
+    const wrapper = mountWithProps({ securitySchemes: { oidc: scheme }, selectedSecuritySchemas: { oidc: ['openid'] } })
+    expect(wrapper.findComponent(OAuth2).props('type')).toBe('authorizationCode')
+    const implicitButton = wrapper.findAll('button').find((button) => button.text() === 'implicit')!
+    await implicitButton.trigger('click')
+    expect(wrapper.findComponent(OAuth2).props('type')).toBe('implicit')
+    wrapper.unmount()
+  })
+
+  const baseEnvironment = {
+    uid: 'env-1' as any,
+    name: 'Default',
+    color: '#FFFFFF',
+    value: '',
+    isDefault: true,
+  }
+
+  const baseServer = {
+    url: 'https://api.example.com',
+    description: 'Test server',
+  }
+
+  const eventBus = createWorkspaceEventBus()
+
+  const mountWithProps = (
+    custom: Partial<{
+      selectedSecuritySchemas: any
+      securitySchemes: any
+      isStatic: boolean
+      environment: any
+      server: any
+      proxyUrl: string
+    }> = {},
+  ) => {
+    const selectedSecuritySchemas = custom.selectedSecuritySchemas ?? {
+      'BearerAuth': [],
+    }
+
+    const securitySchemes = custom.securitySchemes ?? {
+      'BearerAuth': {
+        type: 'http',
+        scheme: 'bearer',
+        description: 'Bearer token authentication',
+        'x-scalar-secret-token': '',
+      },
+    }
+
+    return mount(RequestAuthTab, {
+      attachTo: document.body,
+      props: {
+        proxyUrl: custom.proxyUrl ?? '',
+        environment: custom.environment ?? baseEnvironment,
+        isStatic: custom.isStatic ?? true,
+        selectedSecuritySchemas,
+        securitySchemes,
+        eventBus,
+        server: custom.server ?? baseServer,
+      },
+    })
+  }
+
+  it('edits only the raw credential for a header API key with a prefix', async () => {
+    const wrapper = mountWithProps({
+      securitySchemes: {
+        key: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'Authorization',
+          'x-scalar-token-prefix': 'token',
+          'x-scalar-secret-token': 'abc',
+        },
+      },
+      selectedSecuritySchemas: { key: [] },
+    })
+    const input = wrapper
+      .findAllComponents(RequestAuthDataTableInput)
+      .find((field) => field.props('type') === 'password')!
+    expect(input.text()).not.toContain('(token)')
+    expect(input.props('modelValue')).toBe('abc')
+    const emitted = vi.fn()
+    const unsubscribe = eventBus.on('auth:update:security-scheme-secrets', emitted)
+    input.vm.$emit('update:modelValue', 'new-key')
+    await nextTick()
+    expect(emitted).toHaveBeenCalledExactlyOnceWith({
+      name: 'key',
+      payload: { type: 'apiKey', 'x-scalar-secret-token': 'new-key' },
+    })
+    unsubscribe()
+    wrapper.unmount()
+  })
+
+  describe('HTTP Bearer Authentication', () => {
+    it('renders Bearer token input when scheme type is http and scheme is bearer', async () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BearerAuth': {
+            type: 'http',
+            scheme: 'bearer',
+            description: 'Bearer token authentication',
+            // A value, so the reveal toggle (only shown when there is something to reveal) renders
+            'x-scalar-secret-token': 'secret-token',
+          },
+        },
+      })
+
+      const input = wrapper.findComponent(RequestAuthDataTableInput)
+      expect(input.exists()).toBe(true)
+      expect(input.props('type')).toBe('password')
+      expect(input.text()).toContain('Bearer Token')
+
+      // The visible label names the masked native input ...
+      const labelId = input.get('label').attributes('id')
+      expect(labelId).toBeTruthy()
+      expect(input.get('input').attributes('aria-labelledby')).toBe(labelId)
+
+      // ... and the unmasked contenteditable editor, which a <label for> cannot reach.
+      await input.get('[data-testid="data-table-password-toggle"]').trigger('click')
+      await nextTick()
+      expect(input.get('.code-input-lite__editor').attributes('aria-labelledby')).toBe(labelId)
+    })
+
+    it('emits auth:update:security-scheme-secrets when Bearer token is updated', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BearerAuth': {
+            type: 'http',
+            scheme: 'bearer',
+            'x-scalar-secret-token': '',
+          },
+        },
+      })
+
+      const input = wrapper.findComponent(RequestAuthDataTableInput)
+      const emitted = vi.fn()
+      eventBus.on('auth:update:security-scheme-secrets', emitted)
+      input.vm.$emit('update:modelValue', 'new-token-123')
+
+      expect(emitted).toHaveBeenCalledTimes(1)
+      expect(emitted).toHaveBeenCalledWith({
+        payload: {
+          type: 'http',
+          'x-scalar-secret-token': 'new-token-123',
+        },
+        name: 'BearerAuth',
+      })
+    })
+
+    it('displays existing Bearer token value', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BearerAuth': {
+            type: 'http',
+            scheme: 'bearer',
+            'x-scalar-secret-token': 'existing-token-456',
+          },
+        },
+      })
+
+      const input = wrapper.findComponent(RequestAuthDataTableInput)
+      expect(input.props('modelValue')).toBe('existing-token-456')
+    })
+  })
+
+  describe('HTTP Basic Authentication', () => {
+    it('renders username and password inputs when scheme type is http and scheme is basic', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BasicAuth': {
+            type: 'http',
+            scheme: 'basic',
+            description: 'Basic authentication',
+            'x-scalar-secret-username': '',
+            'x-scalar-secret-password': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'BasicAuth': [],
+        },
+      })
+
+      const inputs = wrapper.findAllComponents(RequestAuthDataTableInput)
+      expect(inputs).toHaveLength(2)
+
+      // Username input
+      assert(inputs[0])
+      expect(inputs[0].props('required')).toBe(true)
+      expect(inputs[0].text()).toContain('Username')
+      // Non-password fields render the contenteditable editor, named by the visible label.
+      expect(inputs[0].get('.code-input-lite__editor').attributes('aria-labelledby')).toBe(
+        inputs[0].get('label').attributes('id'),
+      )
+
+      // Password input
+      assert(inputs[1])
+      expect(inputs[1].props('type')).toBe('password')
+      expect(inputs[1].text()).toContain('Password')
+    })
+
+    it('emits auth:update:security-scheme-secrets when username is updated', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BasicAuth': {
+            type: 'http',
+            scheme: 'basic',
+            'x-scalar-secret-username': '',
+            'x-scalar-secret-password': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'BasicAuth': [],
+        },
+      })
+
+      const inputs = wrapper.findAllComponents(RequestAuthDataTableInput)
+      assert(inputs[0])
+      const emitted = vi.fn()
+      eventBus.on('auth:update:security-scheme-secrets', emitted)
+      inputs[0].vm.$emit('update:modelValue', 'testuser')
+
+      expect(emitted).toHaveBeenCalledTimes(1)
+      expect(emitted).toHaveBeenCalledWith({
+        payload: {
+          type: 'http',
+          'x-scalar-secret-username': 'testuser',
+        },
+        name: 'BasicAuth',
+      })
+    })
+
+    it('emits auth:update:security-scheme-secrets when password is updated', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BasicAuth': {
+            type: 'http',
+            scheme: 'basic',
+            'x-scalar-secret-username': '',
+            'x-scalar-secret-password': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'BasicAuth': [],
+        },
+      })
+
+      const inputs = wrapper.findAllComponents(RequestAuthDataTableInput)
+      assert(inputs[1])
+      const emitted = vi.fn()
+      eventBus.on('auth:update:security-scheme-secrets', emitted)
+      inputs[1].vm.$emit('update:modelValue', 'testpass')
+
+      expect(emitted).toHaveBeenCalledTimes(1)
+      expect(emitted).toHaveBeenCalledWith({
+        payload: {
+          type: 'http',
+          'x-scalar-secret-password': 'testpass',
+        },
+        name: 'BasicAuth',
+      })
+    })
+  })
+
+  describe('API Key Authentication', () => {
+    it('renders name and value inputs when scheme type is apiKey', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'ApiKeyAuth': {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
+            description: 'API Key authentication',
+            'x-scalar-secret-token': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'ApiKeyAuth': [],
+        },
+      })
+
+      const inputs = wrapper.findAllComponents(RequestAuthDataTableInput)
+      expect(inputs).toHaveLength(2)
+
+      // Name input
+      assert(inputs[0])
+      expect(inputs[0].text()).toContain('Name')
+      // The contenteditable editor is not labelable, so there is no <label for> pointing at it.
+      expect(inputs[0].get('label').attributes('for')).toBeUndefined()
+
+      // Value input
+      assert(inputs[1])
+      expect(inputs[1].props('type')).toBe('password')
+      expect(inputs[1].text()).toContain('Value')
+    })
+
+    it('emits auth:update:security-scheme when API key name is updated', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'ApiKeyAuth': {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
+            'x-scalar-secret-token': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'ApiKeyAuth': [],
+        },
+      })
+
+      const inputs = wrapper.findAllComponents(RequestAuthDataTableInput)
+      assert(inputs[0])
+      const emitted = vi.fn()
+      eventBus.on('auth:update:security-scheme', emitted)
+      inputs[0].vm.$emit('update:modelValue', 'X-Custom-Key')
+
+      expect(emitted).toHaveBeenCalledTimes(1)
+      expect(emitted).toHaveBeenCalledWith({
+        payload: {
+          type: 'apiKey',
+          name: 'X-Custom-Key',
+        },
+        name: 'ApiKeyAuth',
+      })
+    })
+
+    it('clears the API key name using the clear button', async () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          ApiKeyAuth: { type: 'apiKey', in: 'header', name: 'apikey-aa', 'x-scalar-secret-token': 'secret' },
+        },
+        selectedSecuritySchemas: { ApiKeyAuth: [] },
+      })
+      const emitted = vi.fn()
+      const unsubscribe = eventBus.on('auth:update:security-scheme', emitted)
+      const input = wrapper.findAllComponents(RequestAuthDataTableInput)[0]
+      assert(input)
+      await input.get('button').trigger('click')
+      expect(emitted).toHaveBeenCalledExactlyOnceWith({
+        name: 'ApiKeyAuth',
+        payload: { type: 'apiKey', name: '' },
+      })
+      unsubscribe()
+      wrapper.unmount()
+    })
+
+    it('renders only the value input for an AsyncAPI apiKey (in: user), hiding the name field', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BrokerKey': {
+            type: 'apiKey',
+            in: 'user',
+            description: 'Broker API key',
+            'x-scalar-secret-token': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'BrokerKey': [],
+        },
+      })
+
+      const inputs = wrapper.findAllComponents(RequestAuthDataTableInput)
+      // No Name row (AsyncAPI apiKey has no parameter name) — only the Value input.
+      expect(inputs).toHaveLength(1)
+      assert(inputs[0])
+      expect(inputs[0].props('type')).toBe('password')
+      expect(inputs[0].text()).toContain('Value')
+      expect(wrapper.text()).not.toContain('Name')
+    })
+
+    it('explains that mutual TLS does not accept browser credentials', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BrokerAuth': {
+            type: 'mutualTLS',
+            description: 'A scheme type without a dedicated input UI',
+          },
+        },
+        selectedSecuritySchemas: {
+          'BrokerAuth': [],
+        },
+      })
+
+      expect(wrapper.text()).toContain('client certificate presented during the TLS handshake')
+      expect(wrapper.findAllComponents(RequestAuthDataTableInput)).toHaveLength(0)
+    })
+
+    it('emits auth:update:security-scheme-secrets when API key value is updated', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'ApiKeyAuth': {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
+            'x-scalar-secret-token': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'ApiKeyAuth': [],
+        },
+      })
+
+      const inputs = wrapper.findAllComponents(RequestAuthDataTableInput)
+      assert(inputs[1])
+      const emitted = vi.fn()
+      eventBus.on('auth:update:security-scheme-secrets', emitted)
+      inputs[1].vm.$emit('update:modelValue', 'secret-key-value')
+
+      expect(emitted).toHaveBeenCalledTimes(1)
+      expect(emitted).toHaveBeenCalledWith({
+        payload: {
+          type: 'apiKey',
+          'x-scalar-secret-token': 'secret-key-value',
+        },
+        name: 'ApiKeyAuth',
+      })
+    })
+  })
+
+  describe('AsyncAPI broker authentication', () => {
+    it.each(['userPassword', 'plain', 'scramSha256', 'scramSha512'] as const)(
+      'explains that the %s credentials are not sent by the browser client',
+      (type) => {
+        const wrapper = mountWithProps({
+          securitySchemes: {
+            'BrokerAuth': {
+              type,
+              'x-scalar-secret-username': '',
+              'x-scalar-secret-password': '',
+            },
+          },
+          selectedSecuritySchemas: {
+            'BrokerAuth': [],
+          },
+        })
+
+        expect(wrapper.text()).toContain('not sent by the browser client')
+        expect(wrapper.findAllComponents(RequestAuthDataTableInput)).toHaveLength(0)
+      },
+    )
+
+    it('explains that X509 credentials are not sent by the browser client', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'CertAuth': {
+            type: 'X509',
+            'x-scalar-secret-client-certificate': '',
+            'x-scalar-secret-private-key': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'CertAuth': [],
+        },
+      })
+
+      expect(wrapper.text()).toContain('not sent by the browser client')
+      expect(wrapper.findAllComponents(RequestAuthDataTableInput)).toHaveLength(0)
+    })
+
+    it.each(['symmetricEncryption', 'asymmetricEncryption'] as const)(
+      'explains that the %s credentials are not sent by the browser client',
+      (type) => {
+        const wrapper = mountWithProps({
+          securitySchemes: {
+            'EncryptionAuth': {
+              type,
+              'x-scalar-secret-token': '',
+            },
+          },
+          selectedSecuritySchemas: {
+            'EncryptionAuth': [],
+          },
+        })
+
+        expect(wrapper.text()).toContain('not sent by the browser client')
+        expect(wrapper.findAllComponents(RequestAuthDataTableInput)).toHaveLength(0)
+      },
+    )
+
+    it('explains that GSSAPI credentials are not sent by the browser client', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'KerberosAuth': {
+            type: 'gssapi',
+            'x-scalar-secret-service-name': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'KerberosAuth': [],
+        },
+      })
+
+      expect(wrapper.text()).toContain('not sent by the browser client')
+      expect(wrapper.findAllComponents(RequestAuthDataTableInput)).toHaveLength(0)
+    })
+  })
+
+  describe('OAuth2 Authentication', () => {
+    it('renders OAuth2 component when scheme type is oauth2', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OAuth2': {
+            type: 'oauth2',
+            flows: {
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: { read: 'Read', write: 'Write' },
+              },
+            },
+            description: 'OAuth2 authentication',
+          },
+        },
+        selectedSecuritySchemas: {
+          'OAuth2': [],
+        },
+      })
+
+      const oauth2Component = wrapper.findComponent(OAuth2)
+      expect(oauth2Component.exists()).toBe(true)
+    })
+
+    it('passes proxyUrl to OAuth2 component', () => {
+      const wrapper = mountWithProps({
+        proxyUrl: 'https://proxy.example.com',
+        securitySchemes: {
+          'OAuth2': {
+            type: 'oauth2',
+            flows: {
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: { read: 'Read', write: 'Write' },
+              },
+            },
+          },
+        },
+        selectedSecuritySchemas: {
+          'OAuth2': [],
+        },
+      })
+
+      const oauth2Component = wrapper.findComponent(OAuth2)
+      expect(oauth2Component.exists()).toBe(true)
+      expect(oauth2Component.props('proxyUrl')).toBe('https://proxy.example.com')
+    })
+
+    it('emits update:selectedScopes when OAuth2 component emits update:selectedScopes', async () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OAuth2': {
+            type: 'oauth2',
+            flows: {
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: { read: 'Read', write: 'Write' },
+              },
+            },
+          },
+        },
+        selectedSecuritySchemas: {
+          'OAuth2': [],
+        },
+      })
+
+      const oauth2Component = wrapper.findComponent(OAuth2)
+      oauth2Component.vm.$emit('update:selectedScopes', { scopes: ['read'] })
+      await nextTick()
+
+      const emitted = wrapper.emitted('update:selectedScopes')
+      assert(emitted)
+      assert(emitted[0])
+      expect(emitted![0][0]).toEqual({
+        id: ['OAuth2'],
+        name: 'OAuth2',
+        scopes: ['read'],
+      })
+    })
+  })
+
+  describe('OpenID Connect Authentication', () => {
+    it('renders OpenID discovery form when scheme type is openIdConnect and no flows are discovered', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OpenIDConnect': {
+            type: 'openIdConnect',
+            openIdConnectUrl: 'https://example.com/.well-known/openid_configuration',
+            description: 'OpenID Connect authentication',
+          },
+        },
+        selectedSecuritySchemas: {
+          'OpenIDConnect': [],
+        },
+      })
+
+      expect(wrapper.findComponent(OpenIDConnect).exists()).toBe(true)
+      expect(wrapper.text()).toContain('Fetch Configuration')
+    })
+
+    it('renders OAuth2 flow editor when openIdConnect flows are already available', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OpenIDConnect': {
+            type: 'openIdConnect',
+            openIdConnectUrl: 'https://example.com/.well-known/openid_configuration',
+            flows: {
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: { openid: 'OpenID' },
+              },
+            },
+          },
+        },
+        selectedSecuritySchemas: {
+          'OpenIDConnect': [],
+        },
+      })
+
+      expect(wrapper.findComponent(OpenIDConnect).exists()).toBe(false)
+      expect(wrapper.findComponent(OAuth2).exists()).toBe(true)
+    })
+
+    it('does not render undefined in multi-scheme header before discovery flows are available', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OpenIDConnect': {
+            type: 'openIdConnect',
+            openIdConnectUrl: 'https://example.com/.well-known/openid_configuration',
+            description: 'OpenID Connect authentication',
+          },
+          'BearerAuth': {
+            type: 'http',
+            scheme: 'bearer',
+            'x-scalar-secret-token': '',
+          },
+        },
+        selectedSecuritySchemas: {
+          'OpenIDConnect': [],
+          'BearerAuth': [],
+        },
+      })
+
+      // Label should not contain the description — it is rendered separately as rich text
+      expect(wrapper.text()).toContain('OpenIDConnect')
+      expect(wrapper.text()).toContain('OpenID Connect authentication')
+      expect(wrapper.text()).not.toContain('OpenIDConnect: undefined')
+    })
+
+    it('resets active flow when rediscovered flows do not include previously selected key', async () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OpenIDConnect': {
+            type: 'openIdConnect',
+            openIdConnectUrl: 'https://example.com/.well-known/openid_configuration',
+            flows: {
+              implicit: {
+                authorizationUrl: 'https://example.com/auth',
+                scopes: { openid: 'OpenID' },
+              },
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: { profile: 'Profile' },
+              },
+            },
+          },
+        },
+        selectedSecuritySchemas: {
+          'OpenIDConnect': [],
+        },
+      })
+
+      const flowTabs = wrapper.findAll('button')
+      const implicitTab = flowTabs.find((tab) => tab.text() === 'implicit')
+      expect(implicitTab, 'Implicit flow tab should exist').toBeTruthy()
+      await implicitTab!.trigger('click')
+
+      await wrapper.setProps({
+        securitySchemes: {
+          'OpenIDConnect': {
+            type: 'openIdConnect',
+            openIdConnectUrl: 'https://example.com/.well-known/openid_configuration',
+            flows: {
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/new-auth',
+                tokenUrl: 'https://example.com/new-token',
+                refreshUrl: '',
+                'x-usePkce': 'no',
+                'x-scalar-secret-client-id': '',
+                'x-scalar-secret-client-secret': '',
+                'x-scalar-secret-redirect-uri': '',
+                'x-scalar-secret-token': '',
+                scopes: { email: 'Email' },
+              },
+            },
+          },
+        },
+      })
+      await nextTick()
+
+      const oauth2Component = wrapper.findComponent(OAuth2)
+      expect(oauth2Component.exists()).toBe(true)
+      expect(oauth2Component.props('type')).toBe('authorizationCode')
+    })
+
+    it('resets to the first visible flow when the active flow becomes hidden via x-scalar-ignore', async () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OAuth2': {
+            type: 'oauth2',
+            flows: {
+              implicit: {
+                authorizationUrl: 'https://example.com/auth',
+                scopes: { openid: 'OpenID' },
+              },
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: { profile: 'Profile' },
+              },
+            },
+          },
+        },
+        selectedSecuritySchemas: {
+          'OAuth2': [],
+        },
+      })
+
+      // Select the authorizationCode tab.
+      const acTab = wrapper.findAll('button').find((tab) => tab.text() === 'authorizationCode')
+      expect(acTab, 'authorizationCode tab should exist').toBeTruthy()
+      await acTab!.trigger('click')
+      await nextTick()
+      expect(wrapper.findComponent(OAuth2).props('type')).toBe('authorizationCode')
+
+      // Hide the currently active flow via x-scalar-ignore. Cast because this test only cares about
+      // flow visibility, not the full secret shape the strict prop type otherwise requires.
+      await wrapper.setProps({
+        securitySchemes: {
+          'OAuth2': {
+            type: 'oauth2',
+            flows: {
+              implicit: {
+                authorizationUrl: 'https://example.com/auth',
+                scopes: { openid: 'OpenID' },
+              },
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                'x-scalar-ignore': true,
+                scopes: { profile: 'Profile' },
+              },
+            },
+          },
+        } as any,
+      })
+      await nextTick()
+
+      // The active flow is now hidden, so the selection resets to the first visible flow.
+      expect(wrapper.findComponent(OAuth2).props('type')).toBe('implicit')
+    })
+
+    it('hides ignored flows and orders tabs by x-order, defaulting to the first', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OAuth2': {
+            type: 'oauth2',
+            flows: {
+              clientCredentials: {
+                tokenUrl: 'https://example.com/token',
+                scopes: {},
+                'x-scalar-ignore': true,
+              },
+              implicit: {
+                authorizationUrl: 'https://example.com/auth',
+                scopes: {},
+                'x-order': 2,
+              },
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: {},
+                'x-order': 1,
+              },
+            },
+          },
+        },
+        selectedSecuritySchemas: {
+          'OAuth2': [],
+        },
+      })
+
+      const flowKeys = ['implicit', 'authorizationCode', 'clientCredentials', 'password']
+      const flowTabs = wrapper
+        .findAll('button')
+        .map((tab) => tab.text())
+        .filter((text) => flowKeys.includes(text))
+
+      // clientCredentials is hidden; the remaining tabs follow x-order.
+      expect(flowTabs).toEqual(['authorizationCode', 'implicit'])
+
+      // The first (lowest x-order) flow is the default.
+      const oauth2Component = wrapper.findComponent(OAuth2)
+      expect(oauth2Component.props('type')).toBe('authorizationCode')
+    })
+  })
+
+  describe('shows correct description', () => {
+    it('show correct description for HTTP Bearer scheme', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BearerAuth': {
+            type: 'http',
+            scheme: 'bearer',
+            description: 'Bearer token authentication',
+          },
+        },
+        selectedSecuritySchemas: {
+          'BearerAuth': [],
+        },
+      })
+
+      expect(wrapper.text()).toContain('Bearer token authentication')
+    })
+
+    it('show correct description for API Key scheme', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'ApiKeyAuth': {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
+            description: 'API Key authentication',
+          },
+        },
+        selectedSecuritySchemas: {
+          'ApiKeyAuth': [],
+        },
+      })
+
+      expect(wrapper.text()).toContain('API Key authentication')
+    })
+
+    it('show correct label for OAuth2 scheme', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'OAuth2': {
+            type: 'oauth2',
+            flows: {
+              authorizationCode: {
+                authorizationUrl: 'https://example.com/auth',
+                tokenUrl: 'https://example.com/token',
+                scopes: { read: 'Read', write: 'Write' },
+              },
+            },
+            description: 'OAuth2 authentication',
+          },
+        },
+        selectedSecuritySchemas: {
+          'OAuth2': [],
+        },
+      })
+
+      expect(wrapper.text()).toContain('OAuth2 authentication')
+    })
+  })
+
+  describe('Multiple Security Schemes', () => {
+    it('renders multiple security schemes when multiple are selected', () => {
+      const wrapper = mountWithProps({
+        securitySchemes: {
+          'BearerAuth': {
+            type: 'http',
+            scheme: 'bearer',
+            description: 'Bearer token authentication',
+          },
+          'ApiKeyAuth': {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
+            description: 'API Key authentication',
+          },
+        },
+        selectedSecuritySchemas: {
+          'BearerAuth': [],
+          'ApiKeyAuth': [],
+        },
+      })
+
+      // Headers show scheme name + type info but never the raw description text
+      expect(wrapper.text()).toContain('BearerAuth: bearer')
+      expect(wrapper.text()).toContain('ApiKeyAuth: header')
+      // Descriptions are rendered separately as rich text below each header
+      expect(wrapper.text()).toContain('Bearer token authentication')
+      expect(wrapper.text()).toContain('API Key authentication')
+    })
+  })
+
+  describe('OAuth2 token acquisition', () => {
+    const schemesWithOauth2 = {
+      BearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        description: 'Bearer token authentication',
+        'x-scalar-secret-token': '',
+      },
+      OAuth2: {
+        type: 'oauth2',
+        flows: {
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/auth',
+            tokenUrl: 'https://example.com/token',
+            refreshUrl: '',
+            'x-usePkce': 'no',
+            scopes: {},
+          },
+        },
+      },
+    }
+
+    it('renders an Authorize via OAuth2 shortcut when a bearer scheme has an oauth2 source', () => {
+      const wrapper = mountWithProps({ securitySchemes: schemesWithOauth2 })
+
+      expect(wrapper.text()).toContain('Authorize via OAuth2')
+    })
+
+    it('hides the shortcut when there is no oauth2 acquisition source', () => {
+      // Default mountWithProps: bearer scheme only, no oauth2
+      const wrapper = mountWithProps()
+
+      expect(wrapper.text()).not.toContain('Authorize via OAuth2')
+    })
+
+    it('keeps Authorize rightmost, with Refresh between the gear and Authorize', () => {
+      /** Accessible names of the Get a token row controls, left to right */
+      const rowControls = (wrapper: ReturnType<typeof mountWithProps>): string[] => {
+        const label = wrapper.findAll('span').find((span) => span.text() === 'Get a token')
+        const buttons = label?.element.parentElement?.querySelectorAll('button') ?? []
+
+        return [...buttons].map((button) => (button.getAttribute('aria-label') ?? button.textContent ?? '').trim())
+      }
+
+      const withoutToken = mountWithProps({ securitySchemes: schemesWithOauth2 })
+      expect(rowControls(withoutToken)).toEqual(['Configure OAuth2', 'Authorize via OAuth2'])
+
+      // Refresh only appears once there is a token, and slots in without moving Authorize
+      const withToken = mountWithProps({
+        securitySchemes: {
+          ...schemesWithOauth2,
+          BearerAuth: { ...schemesWithOauth2.BearerAuth, 'x-scalar-secret-token': 'token' },
+        },
+      })
+      expect(rowControls(withToken)).toEqual(['Configure OAuth2', 'Refresh', 'Authorize via OAuth2'])
+    })
+
+    it('runs authorize against the bearer scheme on click', async () => {
+      vi.mocked(runOAuth2Authorize).mockResolvedValue([null, { accessToken: 'tok' }])
+
+      const wrapper = mountWithProps({ securitySchemes: schemesWithOauth2 })
+      const button = wrapper.findAll('button').find((b) => b.text().includes('Authorize via'))
+      await button?.trigger('click')
+      await nextTick()
+
+      expect(runOAuth2Authorize).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bearerSchemeName: 'BearerAuth',
+          oauth2Name: 'OAuth2',
+        }),
+      )
+    })
+  })
+
+  describe('reset to default', () => {
+    const schemes = {
+      bearer: { type: 'http', scheme: 'bearer' },
+      basic: { type: 'http', scheme: 'basic', 'x-scalar-secret-username': '', 'x-scalar-secret-password': '' },
+      apiKey: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
+      brokerApiKey: { type: 'apiKey', in: 'password' },
+    } as const
+
+    const fields = [
+      ['bearer', 'x-scalar-secret-token', 'Bearer Token'],
+      ['basic', 'x-scalar-secret-username', 'Username'],
+      ['basic', 'x-scalar-secret-password', 'Password'],
+      ['apiKey', 'x-scalar-secret-token', 'Value'],
+      ['brokerApiKey', 'x-scalar-secret-token', 'Value'],
+    ] as const
+
+    const findReset = (
+      kind: keyof typeof schemes,
+      field: string,
+      label: string,
+      secrets: Record<string, unknown>,
+    ): { wrapper: ReturnType<typeof mountWithProps>; reset: VueWrapper | undefined } => {
+      const wrapper = mountWithProps({
+        selectedSecuritySchemas: { Auth: [] },
+        securitySchemes: { Auth: { ...schemes[kind], [field]: '', ...secrets } },
+      })
+      const reset = wrapper
+        .findAllComponents(RequestAuthDataTableInput)
+        // Match the visible label exactly, since other fields carry buttons such as "Clear Value"
+        .find((input) => input.get('label').text() === label)!
+        .findAllComponents({ name: 'ScalarIconButton' })
+        .find((button) => button.props('label') === 'Reset to default')
+      return { wrapper, reset }
+    }
+
+    it.each(fields)('hides reset for %s %s without a default', (kind, field, label) => {
+      const { wrapper, reset } = findReset(kind, field, label, { [field]: 'typed' })
+      expect(reset).toBeUndefined()
+      wrapper.unmount()
+    })
+
+    it.each(fields)('hides reset for %s %s when it equals its default', (kind, field, label) => {
+      const { wrapper, reset } = findReset(kind, field, label, {
+        [field]: 'configured',
+        'x-scalar-secret-defaults': { [field]: 'configured' },
+      })
+      expect(reset).toBeUndefined()
+      wrapper.unmount()
+    })
+
+    it.each(fields)('resets %s %s when overridden or cleared', async (kind, field, label) => {
+      const defaults = { 'x-scalar-secret-defaults': { [field]: 'configured' } }
+      const cleared = findReset(kind, field, label, { ...defaults, [field]: '' })
+      expect(cleared.reset).toBeDefined()
+      cleared.wrapper.unmount()
+
+      const { wrapper, reset } = findReset(kind, field, label, { ...defaults, [field]: 'typed' })
+      const emitted = vi.fn()
+      const stop = eventBus.on('auth:reset:security-scheme-secret', emitted)
+      await reset!.trigger('click')
+      expect(emitted).toHaveBeenCalledExactlyOnceWith({ name: 'Auth', field })
+      stop()
+      wrapper.unmount()
+    })
+  })
+})

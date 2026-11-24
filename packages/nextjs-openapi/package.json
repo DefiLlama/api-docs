@@ -16,17 +16,15 @@
     "scalar",
     "references"
   ],
-  "version": "0.2.12",
+  "version": "0.3.62",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "dev": "next dev playground -p 5066",
-    "lint:check": "scalar-lint-check",
-    "lint:fix": "scalar-lint-fix",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "exports": {
@@ -44,14 +42,14 @@
     "@scalar/nextjs-api-reference": "workspace:*",
     "@scalar/ts-to-openapi": "workspace:*",
     "@scalar/types": "workspace:*",
-    "fast-glob": "^3.3.2"
+    "fast-glob": "^3.3.3"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
     "@types/node": "catalog:*",
     "@types/react": "catalog:*",
     "@types/react-dom": "catalog:*",
     "next": "catalog:*",
-    "openapi-types": "^12.1.3"
+    "openapi-types": "^12.1.3",
+    "vitest": "catalog:*"
   }
 }

@@ -1,0 +1,2851 @@
+import { buildRequest, requestFactory } from '@scalar/workspace-store/request-example'
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import {
+  type OperationObject,
+  type ParameterObject,
+  SchemaObjectSchema,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import type { Request as HarRequest } from 'har-format'
+import { describe, expect, it, vi } from 'vitest'
+
+import { processParameters } from './process-parameters'
+
+describe('parameter styles', () => {
+  it('generates formatted query and header values while preserving authored examples', () => {
+    const result = processParameters({
+      harRequest: createHarRequest('https://example.com/events'),
+      defaultDisabled: false,
+      parameters: [
+        { name: 'email', in: 'query', schema: { type: 'string', format: 'email' } },
+        { name: 'X-Id', in: 'header', schema: { type: 'string', format: 'uuid4' } },
+        { name: 'contact', in: 'query', schema: { type: 'string', format: 'email', example: 'custom@example.org' } },
+        { name: 'plain', in: 'header', schema: { type: 'string' } },
+      ],
+    })
+    expect(result.queryString).toStrictEqual([
+      { name: 'email', value: 'hello@example.com' },
+      { name: 'contact', value: 'custom@example.org' },
+    ])
+    expect(result.headers).toStrictEqual([
+      { name: 'X-Id', value: '919108f7-52d1-4320-9bac-f847db4148a8' },
+      { name: 'plain', value: '' },
+    ])
+  })
+
+  it.each([true, false])(
+    'omits disabled nested properties from snippets with defaultDisabled %s',
+    (defaultDisabled) => {
+      const result = processParameters({
+        harRequest: {
+          url: 'https://example.com/licenses',
+          method: 'GET',
+          headers: [],
+          queryString: [],
+          cookies: [],
+          httpVersion: 'HTTP/1.1',
+          headersSize: 0,
+          bodySize: 0,
+        },
+        defaultDisabled,
+        parameters: [
+          {
+            name: 'filters',
+            in: 'query',
+            style: 'deepObject',
+            explode: true,
+            schema: { type: 'object' },
+            examples: {
+              default: {
+                value: { email: 'saved', user: { address: { city: 'Paris', country: 'FR' } } },
+                'x-disabled': true,
+                'x-scalar-disabled-properties': { '[]': true, '["user","address","city"]': false },
+              },
+            },
+          },
+        ],
+      })
+      expect(result.queryString).toStrictEqual([{ name: 'filters[user][address][city]', value: 'Paris' }])
+    },
+  )
+  it.each([true, false])(
+    'respects defaultDisabled %s for enum suggestions in generated snippets',
+    (defaultDisabled) => {
+      const result = processParameters({
+        harRequest: {
+          url: 'https://example.com/api/media',
+          method: 'GET',
+          headers: [],
+          queryString: [],
+          cookies: [],
+          httpVersion: 'HTTP/1.1',
+          headersSize: 0,
+          bodySize: 0,
+        },
+        defaultDisabled,
+        parameters: [
+          { name: 'mediaType', in: 'query', schema: { type: 'string', enum: ['None', 'Image'] } },
+          { name: 'X-Media-Type', in: 'header', schema: { type: 'string', enum: ['None', 'Image'] } },
+          { name: 'media', in: 'cookie', schema: { type: 'string', enum: ['None', 'Image'] } },
+        ],
+      })
+      expect(result.queryString).toStrictEqual(defaultDisabled ? [] : [{ name: 'mediaType', value: 'None' }])
+      expect(result.headers).toStrictEqual(defaultDisabled ? [] : [{ name: 'X-Media-Type', value: 'None' }])
+      expect(result.cookies).toStrictEqual(defaultDisabled ? [] : [{ name: 'media', value: 'None' }])
+    },
+  )
+
+  it('preserves new example values and serialized query/path/cookie text', () => {
+    const result = processParameters({
+      harRequest: {
+        url: 'https://example.com/{id}',
+        method: 'GET',
+        headers: [],
+        queryString: [],
+        cookies: [],
+        httpVersion: 'HTTP/1.1',
+        headersSize: 0,
+        bodySize: 0,
+      },
+      defaultDisabled: true,
+      parameters: [
+        { name: 'id', in: 'path', required: true, examples: { default: { serializedValue: 'a%2Fb' } } },
+        { name: 'term', in: 'query', examples: { default: { serializedValue: 'term=a%20b&term=c%2Fd' } } },
+        { name: 'X-Audit', in: 'header', examples: { default: { serializedValue: 'hello-wire' } } },
+        { name: 'color', in: 'cookie', style: 'cookie', examples: { default: { dataValue: ['blue', 'black'] } } },
+        { name: 'preferences', in: 'cookie', examples: { default: { serializedValue: 'greeting=hello%20world' } } },
+      ],
+    })
+    expect(result).toStrictEqual({
+      url: 'https://example.com/a%2Fb?term=a%20b&term=c%2Fd',
+      hasSerializedQuery: true,
+      headers: [
+        { name: 'X-Audit', value: 'hello-wire' },
+        { name: 'Cookie', value: 'color=blue; color=black; greeting=hello%20world' },
+      ],
+      queryString: [],
+      cookies: [],
+      hasCookieStyleEntries: true,
+    })
+  })
+
+  const createHarRequest = (url: string): HarRequest => ({
+    url,
+    method: 'get',
+    headers: [],
+    queryString: [],
+    httpVersion: 'HTTP/1.1',
+    cookies: [],
+    headersSize: 0,
+    bodySize: 0,
+  })
+
+  const runProcessParameters = (args: {
+    harRequest: HarRequest
+    parameters: OperationObject['parameters']
+    example?: string | undefined
+  }) => processParameters({ ...args, defaultDisabled: true })
+
+  it.each([
+    { location: 'query', serialized: true, value: 'term=a%20b' },
+    { location: 'path', serialized: true, value: 'a%20b' },
+    { location: 'header', serialized: true, value: 'a b' },
+    { location: 'cookie', serialized: true, value: 'term=a%20b' },
+    { location: 'query', serialized: false, value: 'a b' },
+    { location: 'path', serialized: false, value: 'a b' },
+    { location: 'header', serialized: false, value: 'a b' },
+    { location: 'cookie', serialized: false, value: 'a b' },
+  ] as const)(
+    'aligns $location examples across client and snippets (serialized: $serialized)',
+    ({ location, serialized, value }) => {
+      const example = { serializedValue: value }
+      const parameter: ParameterObject = {
+        name: 'term',
+        in: location,
+        required: true,
+        ...(serialized
+          ? { examples: { default: example } }
+          : { content: { 'text/plain': { examples: { default: example } } } }),
+      }
+      const path = location === 'path' ? '/{term}' : '/'
+      const { request } = requestFactory({
+        exampleName: 'default',
+        method: 'get',
+        path,
+        environment: { color: '#FFFFFF', variables: [] },
+        globalCookies: [],
+        proxyUrl: '',
+        server: { url: 'https://example.com' },
+        defaultHeaders: {},
+        isElectron: false,
+        selectedSecuritySchemes: [],
+        operation: { parameters: [parameter] },
+      })
+      const built = buildRequest(request, { envVariables: {} })
+      if (!built.ok) {
+        throw new Error('Expected a successful request')
+      }
+      const [url, init] = built.data.requestPayload
+      const snippet = runProcessParameters({
+        harRequest: createHarRequest(`https://example.com${path}`),
+        parameters: [parameter],
+      })
+      const query = snippet.queryString
+        .map(({ name, value }) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+        .join('&')
+      expect(String(url).replaceAll('+', '%20')).toBe(`${snippet.url}${query ? `?${query}` : ''}`)
+      if (location === 'header') {
+        expect(new Headers(init.headers).get('term')).toBe(snippet.headers[0]?.value)
+      }
+      if (location === 'cookie') {
+        const cookie =
+          snippet.headers.find(({ name }) => name.toLowerCase() === 'cookie')?.value ??
+          snippet.cookies
+            .map(({ name, value }) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+            .join('; ')
+        expect(new Headers(init.headers).get('cookie')).toBe(cookie)
+      }
+    },
+  )
+
+  it.each([false, true])('keeps cookie inputs unchanged with serialized cookies: %s', (includeSerialized) => {
+    const harRequest = createHarRequest('https://example.com/')
+    harRequest.headers = [{ name: 'Cookie', value: 'session=existing' }]
+    harRequest.cookies = [{ name: 'global', value: 'a b' }]
+    const original = structuredClone(harRequest)
+    const parameters: OperationObject['parameters'] = [
+      { name: 'regular', in: 'cookie', examples: { default: { value: 'c d' } } },
+      {
+        name: 'media',
+        in: 'cookie',
+        content: { 'text/plain': { examples: { default: { serializedValue: 'e f' } } } },
+      },
+      ...(includeSerialized
+        ? [{ name: 'wire', in: 'cookie' as const, examples: { default: { serializedValue: 'wire=g%20h' } } }]
+        : []),
+    ]
+    const result = runProcessParameters({ harRequest, parameters })
+    expect(harRequest).toStrictEqual(original)
+    expect(runProcessParameters({ harRequest, parameters })).toStrictEqual(result)
+    expect(result.cookies).toStrictEqual(
+      includeSerialized
+        ? []
+        : [
+            { name: 'global', value: 'a b' },
+            { name: 'regular', value: 'c d' },
+            { name: 'media', value: 'e f' },
+          ],
+    )
+    expect(result.headers).toStrictEqual([
+      {
+        name: 'Cookie',
+        value: includeSerialized
+          ? 'session=existing; global=a%20b; regular=c%20d; media=e%20f; wire=g%20h'
+          : 'session=existing',
+      },
+    ])
+  })
+
+  it('warns authors before expanding invalid cookie-style explode: false in snippets', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/'),
+      parameters: [
+        { name: 'color', in: 'cookie', style: 'cookie', explode: false, required: true, example: ['blue', 'black'] },
+      ],
+    })
+    expect(result.headers).toStrictEqual([{ name: 'Cookie', value: 'color=blue; color=black' }])
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
+      'Cookie parameter "color" uses invalid explode: false with style: cookie; serializing with explode: true.',
+    )
+    warning.mockRestore()
+  })
+
+  it.each([
+    { value: 'Hello%2C%20world!', expected: 'color=Hello%2C%20world!' },
+    { value: ['blue', 'black'], expected: 'color=blue; color=black' },
+    { value: { greeting: 'Hello%2C%20world!', code: 42 }, expected: 'greeting=Hello%2C%20world!; code=42' },
+    { value: '', expected: 'color=' },
+  ])('preserves cookie style in the HAR header: $expected', ({ value, expected }) => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/'),
+      parameters: [{ name: 'color', in: 'cookie', style: 'cookie', required: true, example: value }],
+    })
+    expect(result.headers).toStrictEqual([{ name: 'Cookie', value: expected }])
+    expect(result.cookies).toStrictEqual([])
+  })
+
+  it('merges cookie style with existing headers and legacy cookies without changing the input header', () => {
+    const harRequest = createHarRequest('/')
+    harRequest.headers = [{ name: 'cookie', value: 'session=abc' }]
+    harRequest.cookies = [{ name: 'legacy', value: 'a b' }]
+    const result = runProcessParameters({
+      harRequest,
+      parameters: [{ name: 'token', in: 'cookie', style: 'cookie', required: true, example: '%2F+==' }],
+    })
+    expect(result.headers).toStrictEqual([{ name: 'cookie', value: 'session=abc; legacy=a%20b; token=%2F+==' }])
+    expect(result.cookies).toStrictEqual([])
+    expect(harRequest.headers).toStrictEqual([{ name: 'cookie', value: 'session=abc' }])
+  })
+
+  it('keeps a whole JSON query in the snippet URL without a name or equals sign', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('https://example.com/search?old=true'),
+      parameters: [
+        {
+          name: 'json',
+          in: 'querystring',
+          required: true,
+          content: { 'application/json': { example: { flag: true } } },
+        },
+      ],
+    })
+    expect(result.url).toBe('https://example.com/search?%7B%22flag%22%3Atrue%7D')
+    expect(result.queryString).toStrictEqual([])
+  })
+
+  describe('matrix style', () => {
+    it('should handle matrix style with explode=false and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{;color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'matrix',
+            explode: false,
+            examples: {
+              blue: {
+                value: 'blue',
+              },
+            },
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+            }),
+          },
+        ],
+        example: 'blue',
+      })
+
+      expect(result.url).toBe('/api/users;color=blue')
+    })
+
+    it('should handle matrix style with explode=false and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{;color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'matrix',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users;color=blue,black,brown')
+    })
+
+    it('should handle matrix style with explode=false and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{;color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'matrix',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users;color=R,100,G,200,B,150')
+    })
+
+    it('should handle matrix style with explode=true and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{;color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'matrix',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'blue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users;color=blue')
+    })
+
+    it('should handle matrix style with explode=true and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{;color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'matrix',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users;color=blue;color=black;color=brown')
+    })
+
+    it('should handle matrix style with explode=true and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{;color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'matrix',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users;R=100;G=200;B=150')
+    })
+  })
+
+  describe('label style', () => {
+    it('should handle label style with explode=false and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{.color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'label',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'blue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users.blue')
+    })
+
+    it('should handle label style with explode=false and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{.color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'label',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users.blue,black,brown')
+    })
+
+    it('should handle label style with explode=false and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{.color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'label',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users.R,100,G,200,B,150')
+    })
+
+    it('should handle label style with explode=true and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{.color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'label',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'blue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users.blue')
+    })
+
+    it('should handle label style with explode=true and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{.color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'label',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users.blue.black.brown')
+    })
+
+    it('should handle label style with explode=true and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users{.color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'label',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users.R=100.G=200.B=150')
+    })
+  })
+
+  describe('simple style', () => {
+    it('should handle simple style with explode=false and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'simple',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'blue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users/blue')
+    })
+
+    it('should handle simple style with explode=false and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'simple',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users/blue,black,brown')
+    })
+
+    it('should handle simple style with explode=false and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'simple',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users/R,100,G,200,B,150')
+    })
+
+    it('should handle simple style with explode=true and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'simple',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'blue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users/blue')
+    })
+
+    it('should handle simple style with explode=true and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'simple',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users/blue,black,brown')
+    })
+
+    it('should handle simple style with explode=true and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{color}'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'path',
+            style: 'simple',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users/R=100,G=200,B=150')
+    })
+  })
+
+  describe('form style', () => {
+    it('should handle form style with explode=false and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'blue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'blue' }])
+    })
+
+    it('should handle form style with explode=false and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'blue,black,brown' }])
+    })
+
+    it('should handle form style with explode=false and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'R,100,G,200,B,150' }])
+    })
+
+    it('should handle form style with explode=true and single value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'form',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'blue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'blue' }])
+    })
+
+    it('should handle form style with explode=true and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'form',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([
+        { name: 'color', value: 'blue' },
+        { name: 'color', value: 'black' },
+        { name: 'color', value: 'brown' },
+      ])
+    })
+
+    it('should handle form style with explode=true and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'form',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([
+        { name: 'R', value: '100' },
+        { name: 'G', value: '200' },
+        { name: 'B', value: '150' },
+      ])
+    })
+  })
+
+  describe('spaceDelimited style', () => {
+    it('should handle spaceDelimited style with explode=false and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'spaceDelimited',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'blue black brown' }])
+    })
+
+    it('should handle spaceDelimited style with explode=false and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'spaceDelimited',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'R 100 G 200 B 150' }])
+    })
+  })
+
+  describe('pipeDelimited style', () => {
+    it('should handle pipeDelimited style with explode=false and array values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'pipeDelimited',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['blue', 'black', 'brown'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'blue|black|brown' }])
+    })
+
+    it('should handle pipeDelimited style with explode=false and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'pipeDelimited',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([{ name: 'color', value: 'R|100|G|200|B|150' }])
+    })
+  })
+
+  describe('deepObject style', () => {
+    it('should handle deepObject style with explode=true and object values', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'deepObject',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+                G: { type: 'integer' },
+                B: { type: 'integer' },
+              },
+              example: { R: 100, G: 200, B: 150 },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.queryString).toEqual([
+        { name: 'color[R]', value: '100' },
+        { name: 'color[G]', value: '200' },
+        { name: 'color[B]', value: '150' },
+      ])
+    })
+
+    it('falls back to bracket notation when deepObject is used without explode', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'color',
+            in: 'query',
+            required: true,
+            style: 'deepObject',
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                R: { type: 'integer' },
+              },
+              example: { R: 100 },
+            }),
+          },
+        ],
+      })
+
+      // explode:false with deepObject is spec-undefined; we still emit bracket notation
+      // instead of silently dropping the parameter (mirrors process-body).
+      expect(result.queryString).toEqual([{ name: 'color[R]', value: '100' }])
+    })
+
+    it('falls back to repeated-name parts when deepObject is used on an array', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'tags',
+            in: 'query',
+            required: true,
+            style: 'deepObject',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['a', 'b', 'c'],
+            }),
+          },
+        ],
+      })
+
+      // deepObject-on-array is spec-undefined; fall back to form/explode:true repeated parts.
+      expect(result.queryString).toEqual([
+        { name: 'tags', value: 'a' },
+        { name: 'tags', value: 'b' },
+        { name: 'tags', value: 'c' },
+      ])
+    })
+
+    it('expands nested arrays with the trailing bracket convention', () => {
+      // Regression test for https://github.com/scalar/scalar/issues/9492
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'filters',
+            in: 'query',
+            required: true,
+            style: 'deepObject',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                applicationInstanceId: {
+                  type: 'object',
+                  properties: { in: { type: 'array', items: { type: 'integer' } } },
+                },
+              },
+              example: { applicationInstanceId: { in: [1, 2] } },
+            }),
+          },
+        ],
+      })
+
+      expect(result.queryString).toEqual([
+        { name: 'filters[applicationInstanceId][in][]', value: '1' },
+        { name: 'filters[applicationInstanceId][in][]', value: '2' },
+      ])
+    })
+  })
+
+  describe('header parameters', () => {
+    it('should handle header parameter with string value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'Authorization',
+            in: 'header',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'Bearer token123',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.headers).toEqual([{ name: 'Authorization', value: 'Bearer token123' }])
+    })
+
+    it('should handle header parameter with simple style and explode=true', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'Accept',
+            in: 'header',
+            required: true,
+            style: 'simple',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['application/json', 'application/xml', 'text/plain'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      // Arrays in simple style are always comma-separated regardless of explode
+      expect(result.headers).toEqual([{ name: 'Accept', value: 'application/json,application/xml,text/plain' }])
+    })
+
+    it('should handle header parameter with simple style and explode=false', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'Accept',
+            in: 'header',
+            required: true,
+            style: 'simple',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['application/json', 'application/xml', 'text/plain'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.headers).toEqual([{ name: 'Accept', value: 'application/json,application/xml,text/plain' }])
+    })
+
+    it('should handle header parameter with object and explode=true', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'X-Custom-Header',
+            in: 'header',
+            required: true,
+            style: 'simple',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                version: { type: 'string' },
+                client: { type: 'string' },
+              },
+              example: { version: '1.0', client: 'web' },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.headers).toEqual([{ name: 'X-Custom-Header', value: 'version=1.0,client=web' }])
+    })
+
+    it('should handle header parameter with object and explode=false', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'X-Custom-Header',
+            in: 'header',
+            required: true,
+            style: 'simple',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                version: { type: 'string' },
+                client: { type: 'string' },
+              },
+              example: { version: '1.0', client: 'web' },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.headers).toEqual([{ name: 'X-Custom-Header', value: 'version,1.0,client,web' }])
+    })
+
+    it('should enforce simple style for headers even if other style is specified', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'Authorization',
+            in: 'header',
+            required: true,
+            style: 'form', // This should be ignored and default to 'simple'
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'Bearer token123',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.headers).toEqual([{ name: 'Authorization', value: 'Bearer token123' }])
+    })
+
+    it('should preserve existing headers when adding new ones', () => {
+      const harRequest = createHarRequest('/api/users')
+      harRequest.headers = [{ name: 'X-Existing-Header', value: 'existingValue' }]
+
+      const result = runProcessParameters({
+        harRequest,
+        parameters: [
+          {
+            name: 'X-New-Header',
+            in: 'header',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'newValue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.headers).toEqual([
+        { name: 'X-Existing-Header', value: 'existingValue' },
+        { name: 'X-New-Header', value: 'newValue' },
+      ])
+    })
+  })
+
+  describe('cookie parameters', () => {
+    it('should handle cookie parameter with string value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+            }),
+            examples: { 'alpha': { value: 'abc123' } },
+          },
+        ],
+        example: 'alpha',
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'sessionId', value: 'abc123' }])
+    })
+
+    it('should handle cookie parameter with form style and explode=true (default)', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'preferences',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['dark', 'compact', 'notifications'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([
+        { name: 'preferences', value: 'dark' },
+        { name: 'preferences', value: 'compact' },
+        { name: 'preferences', value: 'notifications' },
+      ])
+    })
+
+    it('should handle cookie parameter with form style and explode=false', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'preferences',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['dark', 'compact', 'notifications'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'preferences', value: 'dark,compact,notifications' }])
+    })
+
+    it('should handle cookie parameter with object and explode=true', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'settings',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                theme: { type: 'string' },
+                language: { type: 'string' },
+                timezone: { type: 'string' },
+              },
+              example: { theme: 'dark', language: 'en', timezone: 'UTC' },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([
+        { name: 'theme', value: 'dark' },
+        { name: 'language', value: 'en' },
+        { name: 'timezone', value: 'UTC' },
+      ])
+    })
+
+    it('should handle cookie parameter with object and explode=false', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'settings',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                theme: { type: 'string' },
+                language: { type: 'string' },
+                timezone: { type: 'string' },
+              },
+              example: { theme: 'dark', language: 'en', timezone: 'UTC' },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'settings', value: 'theme,dark,language,en,timezone,UTC' }])
+    })
+
+    it('should enforce form style for cookies even if other style is specified', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'cookie',
+            required: true,
+            style: 'simple', // This should be ignored and default to 'form'
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'abc123',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'sessionId', value: 'abc123' }])
+    })
+
+    it('should handle cookie parameter with number value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'userId',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'integer',
+              example: 12345,
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'userId', value: '12345' }])
+    })
+
+    it('should handle cookie parameter with boolean value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'premium',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'boolean',
+              example: true,
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'premium', value: 'true' }])
+    })
+
+    it('should handle multiple cookie parameters', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'abc123',
+            }),
+          },
+          {
+            name: 'theme',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'dark',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([
+        { name: 'sessionId', value: 'abc123' },
+        { name: 'theme', value: 'dark' },
+      ])
+    })
+
+    it('should handle cookie parameter with array value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'preferences',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['dark', 'compact', 'notifications'],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'preferences', value: 'dark,compact,notifications' }])
+    })
+
+    it('should handle cookie parameter with object value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'settings',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                theme: { type: 'string' },
+                language: { type: 'string' },
+                timezone: { type: 'string' },
+              },
+              example: { theme: 'dark', language: 'en', timezone: 'UTC' },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'settings', value: 'theme,dark,language,en,timezone,UTC' }])
+    })
+
+    it('should handle cookie parameter with null value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              nullable: true,
+              example: null,
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'sessionId', value: 'null' }])
+    })
+
+    it('should handle cookie parameter with undefined value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([
+        {
+          name: 'sessionId',
+          value: '',
+        },
+      ])
+    })
+
+    it('should handle cookie parameter with empty string value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: '',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'sessionId', value: '' }])
+    })
+
+    it('should handle cookie parameter with special characters', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'auth_token',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example:
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([
+        {
+          name: 'auth_token',
+          value:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+        },
+      ])
+    })
+
+    it('should handle cookie parameter with URL-encoded characters', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'user_pref',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'name=John Doe&email=john@example.com',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'user_pref', value: 'name=John Doe&email=john@example.com' }])
+    })
+
+    it('should handle cookie parameter with numeric array', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'scores',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'integer' },
+              example: [85, 92, 78, 96],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'scores', value: '85,92,78,96' }])
+    })
+
+    it('should handle cookie parameter with boolean array', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'flags',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'boolean' },
+              example: [true, false, true, true],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'flags', value: 'true,false,true,true' }])
+    })
+
+    it('should handle cookie parameter with mixed array', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'mixed_data',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: {},
+              example: ['string', 123, true, null],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'mixed_data', value: 'string,123,true,null' }])
+    })
+
+    it('should handle cookie parameter with nested object', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'user_config',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              properties: {
+                preferences: {
+                  type: 'object',
+                  properties: {
+                    theme: { type: 'string' },
+                    notifications: { type: 'boolean' },
+                  },
+                },
+                metadata: {
+                  type: 'object',
+                  properties: {
+                    version: { type: 'string' },
+                    timestamp: { type: 'string' },
+                  },
+                },
+              },
+              example: {
+                preferences: { theme: 'dark', notifications: true },
+                metadata: { version: '1.0.0', timestamp: '2023-01-01T00:00:00Z' },
+              },
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([
+        {
+          name: 'user_config',
+          value: 'preferences,theme,dark,notifications,true,metadata,version,1.0.0,timestamp,2023-01-01T00:00:00Z',
+        },
+      ])
+    })
+
+    it('should handle cookie parameter with empty array', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'tags',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: { type: 'string' },
+              example: [],
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'tags', value: '' }])
+    })
+
+    it('should handle cookie parameter with empty object', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'config',
+            in: 'cookie',
+            required: true,
+            style: 'form',
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'object',
+              example: {},
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([{ name: 'config', value: '' }])
+    })
+
+    it('should preserve existing cookies when adding new ones', () => {
+      const harRequest = createHarRequest('/api/users')
+      harRequest.cookies = [{ name: 'existingCookie', value: 'existingValue' }]
+
+      const result = runProcessParameters({
+        harRequest,
+        parameters: [
+          {
+            name: 'newCookie',
+            in: 'cookie',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'newValue',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toBe('/api/users')
+      expect(result.cookies).toEqual([
+        { name: 'existingCookie', value: 'existingValue' },
+        { name: 'newCookie', value: 'newValue' },
+      ])
+    })
+  })
+
+  describe('query parameters', () => {
+    it('should add empty query string if no parameters are present', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'email',
+            in: 'query',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+            }),
+          },
+        ],
+      })
+
+      expect(result.queryString).toEqual([{ name: 'email', value: '' }])
+    })
+
+    it('handles query parameter with array value and explicit explode: false', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'tags',
+            description: 'Filter by tags',
+            in: 'query',
+            required: false,
+            explode: false,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: {
+                type: 'string',
+              },
+            }),
+            examples: {
+              default: {
+                value: ['javascript', 'typescript', 'vue'],
+                'x-disabled': false,
+              },
+            },
+          },
+        ],
+      })
+
+      // With explicit explode: false, array values should be comma-separated and kept raw in HAR
+      expect(result.queryString).toEqual([{ name: 'tags', value: 'javascript,typescript,vue' }])
+    })
+
+    it('handles query parameter with array value from named example', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'domains',
+            in: 'query',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: {
+                type: 'string',
+              },
+              title: 'Domains',
+            }),
+            examples: {
+              list: {
+                summary: 'A list of domains',
+                value: ['example.com', 'example.org'],
+              },
+            },
+          },
+        ],
+        example: 'list',
+      })
+
+      // Form style query parameters default to explode: true
+      // Array values should be serialized as multiple parameters
+      expect(result.queryString).toEqual([
+        { name: 'domains', value: 'example.com' },
+        { name: 'domains', value: 'example.org' },
+      ])
+    })
+
+    it('handles query parameter with stringified array value from named example', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'domains',
+            in: 'query',
+            required: true,
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'array',
+              items: {
+                type: 'string',
+              },
+              title: 'Domains',
+            }),
+            examples: {
+              list: {
+                summary: 'A list of domains',
+                value: JSON.stringify(['example.com', 'example.org']),
+              },
+            },
+          },
+        ],
+        example: 'list',
+      })
+
+      // Stringified array values are treated as literal strings, not parsed
+      expect(result.queryString).toEqual([
+        { name: 'domains', value: 'example.com' },
+        { name: 'domains', value: 'example.org' },
+      ])
+    })
+
+    it('handles query parameter with stringified object value from named example and no schema', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'user',
+            in: 'query',
+            required: true,
+            examples: {
+              list: {
+                value: JSON.stringify({ name: 'John', age: 30 }),
+              },
+            },
+          },
+        ],
+        example: 'list',
+      })
+
+      // Form style query parameters default to explode: true
+      // Object values without schema should be serialized as JSON string and kept raw in HAR
+      expect(result.queryString).toEqual([{ name: 'user', value: '{"name":"John","age":30}' }])
+    })
+  })
+
+  it('serializes whole text queries without a parameter name', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/users'),
+      parameters: [
+        { name: 'q', in: 'querystring', required: true, content: { 'text/plain': { example: 'hello world' } } },
+      ],
+    })
+    expect(result.url).toBe('/api/users?hello%20world')
+    expect(result.queryString).toEqual([])
+  })
+
+  it('serializes a whole form query directly into the URL', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/users'),
+      parameters: [
+        {
+          name: 'filter',
+          in: 'querystring',
+          required: true,
+          content: { 'application/x-www-form-urlencoded': { example: { page: 1, limit: 10 } } },
+        },
+      ],
+    })
+    expect(result.url).toBe('/api/users?page=1&limit=10')
+    expect(result.queryString).toEqual([])
+  })
+
+  describe('content-based parameters', () => {
+    it('handles query parameter with object value in application/json content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'offset',
+            description: 'The number of items to skip before starting to collect the result set',
+            in: 'query',
+            required: false,
+            content: {
+              'application/json': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'object',
+                }),
+                examples: {
+                  default: {
+                    value: {
+                      test: 'what',
+                    },
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Object values should be serialized as JSON strings and kept raw in HAR
+      expect(result.queryString).toEqual([{ name: 'offset', value: '{"test":"what"}' }])
+    })
+
+    it('handles query parameter with text/plain content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'description',
+            description: 'Plain text description',
+            in: 'query',
+            required: false,
+            content: {
+              'text/plain': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'string',
+                }),
+                examples: {
+                  default: {
+                    value: 'This is plain text content',
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Plain text values remain raw in HAR
+      expect(result.queryString).toEqual([{ name: 'description', value: 'This is plain text content' }])
+    })
+
+    it('handles query parameter with text/xml content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'xmlData',
+            description: 'XML formatted data',
+            in: 'query',
+            required: false,
+            content: {
+              'text/xml': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'string',
+                }),
+                examples: {
+                  default: {
+                    value: '<root><item>value</item></root>',
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // XML values remain raw in HAR
+      expect(result.queryString).toEqual([{ name: 'xmlData', value: '<root><item>value</item></root>' }])
+    })
+
+    it('handles query parameter with application/xml content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'payload',
+            description: 'Application XML data',
+            in: 'query',
+            required: false,
+            content: {
+              'application/xml': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'string',
+                }),
+                examples: {
+                  default: {
+                    value: '<?xml version="1.0"?><data><field>test</field></data>',
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Application XML values remain raw in HAR
+      expect(result.queryString).toEqual([
+        {
+          name: 'payload',
+          value: '<?xml version="1.0"?><data><field>test</field></data>',
+        },
+      ])
+    })
+
+    it('handles query parameter with application/x-www-form-urlencoded content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'formData',
+            description: 'URL encoded form data',
+            in: 'query',
+            required: false,
+            content: {
+              'application/x-www-form-urlencoded': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'string',
+                }),
+                examples: {
+                  default: {
+                    value: 'username=john_doe&email=john@example.com',
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Form data remain raw in HAR
+      expect(result.queryString).toEqual([{ name: 'formData', value: 'username=john_doe&email=john@example.com' }])
+    })
+
+    it('handles query parameter with text/html content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'htmlContent',
+            description: 'HTML formatted content',
+            in: 'query',
+            required: false,
+            content: {
+              'text/html': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'string',
+                }),
+                examples: {
+                  default: {
+                    value: '<div><p>Hello World</p></div>',
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // HTML values remain raw in HAR
+      expect(result.queryString).toEqual([{ name: 'htmlContent', value: '<div><p>Hello World</p></div>' }])
+    })
+
+    it('handles query parameter with application/octet-stream content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'binaryData',
+            description: 'Binary data as base64',
+            in: 'query',
+            required: false,
+            content: {
+              'application/octet-stream': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'string',
+                  format: 'binary',
+                }),
+                examples: {
+                  default: {
+                    value: 'SGVsbG8gV29ybGQ=',
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Binary data (base64 encoded) remain raw in HAR
+      expect(result.queryString).toEqual([{ name: 'binaryData', value: 'SGVsbG8gV29ybGQ=' }])
+    })
+
+    it('handles content-based parameter with array value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'tags',
+            description: 'Filter by tags',
+            in: 'query',
+            required: false,
+            content: {
+              'application/json': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'array',
+                  items: {
+                    type: 'string',
+                  },
+                }),
+                examples: {
+                  default: {
+                    value: ['javascript', 'typescript', 'vue'],
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Array values in content should be serialized as JSON strings and kept raw in HAR
+      expect(result.queryString).toEqual([{ name: 'tags', value: '["javascript","typescript","vue"]' }])
+    })
+
+    it('handles content-based parameter with nested object value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'filter',
+            description: 'Complex filter object',
+            in: 'query',
+            required: false,
+            content: {
+              'application/json': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'object',
+                }),
+                examples: {
+                  default: {
+                    value: {
+                      user: {
+                        name: 'John',
+                        age: 30,
+                      },
+                      active: true,
+                    },
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Nested objects should be serialized as JSON strings and kept raw in HAR
+      expect(result.queryString).toEqual([
+        {
+          name: 'filter',
+          value: '{"user":{"name":"John","age":30},"active":true}',
+        },
+      ])
+    })
+
+    it('uses parameter content type, not request content type', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users'),
+        parameters: [
+          {
+            name: 'data',
+            description: 'JSON data parameter',
+            in: 'query',
+            required: false,
+            content: {
+              'application/json': {
+                schema: coerceValue(SchemaObjectSchema, {
+                  type: 'object',
+                }),
+                examples: {
+                  default: {
+                    value: {
+                      id: 123,
+                      name: 'Test',
+                    },
+                    'x-disabled': false,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      })
+
+      // Should use parameter's content type (application/json), not request's (text/html)
+      // The value should be JSON stringified and kept raw in HAR
+      expect(result.queryString).toEqual([{ name: 'data', value: '{"id":123,"name":"Test"}' }])
+    })
+  })
+
+  describe('path parameters', () => {
+    it('should add variable name if no value or example is provided', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{username}'),
+        parameters: [
+          {
+            name: 'username',
+            in: 'path',
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toEqual('/api/users/{username}')
+    })
+
+    it('should replace the variable with the example value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{username}'),
+        parameters: [
+          {
+            name: 'username',
+            in: 'path',
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+              example: 'scalarUser',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toEqual('/api/users/scalarUser')
+    })
+
+    it('should replace the variable with the upper example value', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{username}'),
+        parameters: [
+          {
+            name: 'username',
+            in: 'path',
+            example: 'scalarUser',
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+            }),
+          },
+        ],
+      })
+
+      expect(result.url).toEqual('/api/users/scalarUser')
+    })
+
+    it('should replace the variable with the example value from examples', () => {
+      const result = runProcessParameters({
+        harRequest: createHarRequest('/api/users/{username}'),
+        parameters: [
+          {
+            name: 'username',
+            in: 'path',
+            schema: coerceValue(SchemaObjectSchema, {
+              type: 'string',
+            }),
+            examples: {
+              'example1': {
+                value: 'scalarUser',
+              },
+            },
+          },
+        ],
+      })
+
+      expect(result.url).toEqual('/api/users/scalarUser')
+    })
+  })
+
+  describe('content-based parameters', () => {
+    /**
+     * Tests for parameters that use the `content` field instead of `schema`.
+     * According to OpenAPI 3.1, parameters can use either `schema` or `content`.
+     * Content parameters only exist in query parameters.
+     * When `content` is used, serialization follows the content type (e.g., JSON stringification
+     * for application/json), not style-based serialization.
+     */
+
+    describe('query parameters with content', () => {
+      it('should serialize query parameter with application/json content as JSON', () => {
+        const result = runProcessParameters({
+          harRequest: createHarRequest('/api/users'),
+          parameters: [
+            {
+              name: 'filter',
+              in: 'query',
+              required: true,
+              content: {
+                'application/json': {
+                  examples: {
+                    default: {
+                      value: { status: 'active', limit: 10 },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        })
+
+        // Should be JSON stringified and kept raw in HAR
+        expect(result.queryString).toStrictEqual([
+          {
+            name: 'filter',
+            value: '{"status":"active","limit":10}',
+          },
+        ])
+      })
+
+      it('should serialize query parameter with application/json content for array', () => {
+        const result = runProcessParameters({
+          harRequest: createHarRequest('/api/users'),
+          parameters: [
+            {
+              name: 'ids',
+              in: 'query',
+              required: true,
+              content: {
+                'application/json': {
+                  examples: {
+                    default: {
+                      value: [1, 2, 3],
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        })
+
+        // Should be JSON stringified and kept raw in HAR
+        expect(result.queryString).toStrictEqual([{ name: 'ids', value: '[1,2,3]' }])
+      })
+
+      it('should serialize query parameter with text/plain content as string', () => {
+        const result = runProcessParameters({
+          harRequest: createHarRequest('/api/users'),
+          parameters: [
+            {
+              name: 'data',
+              in: 'query',
+              required: true,
+              content: {
+                'text/plain': {
+                  examples: {
+                    default: {
+                      value: { key: 'value' },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        })
+
+        // Object values are serialized as JSON strings and kept raw in HAR
+        expect(result.queryString).toStrictEqual([{ name: 'data', value: '{"key":"value"}' }])
+      })
+    })
+  })
+})
+
+describe('allowReserved query parameter encoding', () => {
+  const createHarRequest = (url: string): HarRequest => ({
+    url,
+    method: 'get',
+    headers: [],
+    queryString: [],
+    httpVersion: 'HTTP/1.1',
+    cookies: [],
+    headersSize: 0,
+    bodySize: 0,
+  })
+
+  const runProcessParameters = (args: {
+    harRequest: HarRequest
+    parameters: OperationObject['parameters']
+    example?: string | undefined
+  }) => processParameters({ ...args, defaultDisabled: true })
+
+  it('keeps query parameter values raw by default', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'query',
+          in: 'query',
+          required: true,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'string',
+            example: 'hello world&foo=bar',
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toEqual([{ name: 'query', value: 'hello world&foo=bar' }])
+  })
+
+  it('does not URL encode query parameter values when allowReserved is true', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'query',
+          in: 'query',
+          required: true,
+          allowReserved: true,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'string',
+            example: 'hello world&foo=bar',
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toStrictEqual([])
+    expect(result.url).toBe('/api/search?query=hello world&foo=bar')
+  })
+
+  it('keeps query parameter values raw when allowReserved is false', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'query',
+          in: 'query',
+          required: true,
+          allowReserved: false,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'string',
+            example: 'test/path?query=value',
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toEqual([{ name: 'query', value: 'test/path?query=value' }])
+  })
+
+  it('keeps form style array values raw by default', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'tags',
+          in: 'query',
+          required: true,
+          style: 'form',
+          explode: true,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['tag one', 'tag&two'],
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toEqual([
+      { name: 'tags', value: 'tag one' },
+      { name: 'tags', value: 'tag&two' },
+    ])
+  })
+
+  it('does not URL encode form style array values when allowReserved is true', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'tags',
+          in: 'query',
+          required: true,
+          style: 'form',
+          explode: true,
+          allowReserved: true,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['tag one', 'tag&two'],
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toStrictEqual([])
+    expect(result.url).toBe('/api/search?tags=tag one&tags=tag&two')
+  })
+
+  it('keeps deepObject style values raw by default', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'filter',
+          in: 'query',
+          required: true,
+          style: 'deepObject',
+          explode: true,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+            },
+            example: { name: 'John Doe&Co' },
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toEqual([{ name: 'filter[name]', value: 'John Doe&Co' }])
+  })
+
+  it('does not URL encode deepObject style values when allowReserved is true', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'filter',
+          in: 'query',
+          required: true,
+          style: 'deepObject',
+          explode: true,
+          allowReserved: true,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+            },
+            example: { name: 'John Doe&Co' },
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toStrictEqual([])
+    expect(result.url).toBe('/api/search?filter%5Bname%5D=John Doe&Co')
+  })
+
+  it('keeps content-based parameter values raw by default', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'data',
+          in: 'query',
+          required: true,
+          content: {
+            'application/json': {
+              examples: {
+                default: {
+                  value: { key: 'value with spaces' },
+                },
+              },
+            },
+          },
+        },
+      ],
+    })
+
+    expect(result.queryString).toEqual([{ name: 'data', value: '{"key":"value with spaces"}' }])
+  })
+
+  it('does not URL encode content-based parameter values when allowReserved is true', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'data',
+          in: 'query',
+          required: true,
+          allowReserved: true,
+          content: {
+            'application/json': {
+              examples: {
+                default: {
+                  value: { key: 'value with spaces' },
+                },
+              },
+            },
+          },
+        },
+      ],
+    })
+
+    expect(result.queryString).toStrictEqual([])
+    expect(result.url).toBe('/api/search?data={"key":"value with spaces"}')
+  })
+
+  it('keeps spaceDelimited style values raw by default', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'colors',
+          in: 'query',
+          required: true,
+          style: 'spaceDelimited',
+          explode: false,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['red&blue', 'green'],
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toEqual([{ name: 'colors', value: 'red&blue green' }])
+  })
+
+  it('keeps pipeDelimited style values raw by default', () => {
+    const result = runProcessParameters({
+      harRequest: createHarRequest('/api/search'),
+      parameters: [
+        {
+          name: 'colors',
+          in: 'query',
+          required: true,
+          style: 'pipeDelimited',
+          explode: false,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['red&blue', 'green'],
+          }),
+        },
+      ],
+    })
+
+    expect(result.queryString).toEqual([{ name: 'colors', value: 'red&blue|green' }])
+  })
+})
+
+describe('processParameters defaultDisabled', () => {
+  const createHarRequest = (url: string): HarRequest => ({
+    url,
+    method: 'get',
+    headers: [],
+    queryString: [],
+    httpVersion: 'HTTP/1.1',
+    cookies: [],
+    headersSize: 0,
+    bodySize: 0,
+  })
+
+  const optionalQueryParameters: OperationObject['parameters'] = [
+    {
+      name: 'filter',
+      in: 'query',
+      required: false,
+      schema: coerceValue(SchemaObjectSchema, {
+        type: 'string',
+        example: 'active',
+      }),
+    },
+  ]
+
+  it('includes populated optional query parameters when defaultDisabled is true', () => {
+    const result = processParameters({
+      harRequest: createHarRequest('/items'),
+      parameters: optionalQueryParameters,
+      defaultDisabled: true,
+    })
+
+    expect(result.queryString).toStrictEqual([{ name: 'filter', value: 'active' }])
+  })
+
+  it.each([undefined, null, ''])('omits empty optional values (%s) when defaultDisabled is true', (value) => {
+    const result = processParameters({
+      harRequest: createHarRequest('/items'),
+      parameters: [
+        {
+          name: 'filter',
+          in: 'query',
+          schema: coerceValue(SchemaObjectSchema, { type: 'string' }),
+          examples: { default: { value } },
+        },
+      ],
+      example: 'default',
+      defaultDisabled: true,
+    })
+    expect(result.queryString).toStrictEqual([])
+  })
+
+  it('includes optional query parameters from schema when defaultDisabled is false', () => {
+    const result = processParameters({
+      harRequest: createHarRequest('/items'),
+      parameters: optionalQueryParameters,
+      defaultDisabled: false,
+    })
+
+    expect(result.queryString).toStrictEqual([{ name: 'filter', value: 'active' }])
+  })
+
+  it('omits parameters when the selected example sets x-disabled true even if defaultDisabled is false', () => {
+    const result = processParameters({
+      harRequest: createHarRequest('/items'),
+      parameters: [
+        {
+          name: 'filter',
+          in: 'query',
+          required: false,
+          schema: coerceValue(SchemaObjectSchema, {
+            type: 'string',
+            example: 'active',
+          }),
+          examples: {
+            default: {
+              value: 'from-example',
+              'x-disabled': true,
+            },
+          },
+        },
+      ],
+      example: 'default',
+      defaultDisabled: false,
+    })
+
+    expect(result.queryString).toEqual([])
+  })
+})

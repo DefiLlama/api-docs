@@ -1,0 +1,322 @@
+# @scalar/openapi-upgrader
+
+## 0.5.1
+
+### Patch Changes
+
+- [#11105](https://github.com/scalar/scalar/pull/11105): Finish migrating legacy `nullable` schema keywords when upgrading OpenAPI 3.0 descriptions, so downstream request validators can compile the upgraded schemas and enforce the rest of the request contract.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#10997](https://github.com/scalar/scalar/pull/10997): Upgrade referenced OpenAPI 2.0 and 3.0 resources before bundling, including bare fragments interpreted in their owning API description's dialect and media types. Preserve authored reference targets when schemas and parameters move, and retain their context through lazy loading, serialization, and export.
+
+  Add JSON Magic resource and target lifecycle hooks and the typed `upgradeFragment` API. Headerless external resources are traversed through referenced subtrees, including when reached from OpenAPI 3.1/3.2 descriptions. Exports retain compact `x-scalar-upgrade` bookkeeping only when lazy external references still need the original dialect, relocation mappings, or media types.
+
+  Resources already stored in an input bundle's `x-ext` keep their existing layout so saved references remain valid. Legacy keywords in those stored resources, including OpenAPI 2.0 schema `x-nullable` and `type: file`, deliberately remain unconverted; newly loaded legacy resources are upgraded.
+
+## 0.4.11
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.4.10
+
+### Patch Changes
+
+- [#10952](https://github.com/scalar/scalar/pull/10952): Fix shared Swagger 2.0 body and form-data parameters being left in parameter arrays instead of request bodies. Preserve operation media types, combine form fields, and inherit path-level bodies regardless of property order.
+
+## 0.4.9
+
+No changes in this release.
+
+## 0.4.8
+
+### Patch Changes
+
+- [#10736](https://github.com/scalar/scalar/pull/10736): Exclude benchmark fixtures from published build output.
+- [#10925](https://github.com/scalar/scalar/pull/10925): Keep `type: file` inside Swagger 2.0 example data when upgrading to OpenAPI 3.0. Continue converting file schemas in reusable responses and parameters named like data keywords. Preserve example and default data on schemas and reusable parameters whose names match schema-map keywords. Continue upgrading response headers whose names match data keywords. Limit Swagger-specific data guards to the 2.0 upgrade so OpenAPI 3.0 request bodies and callbacks named `x-example` still upgrade. Preserve example payloads on reusable objects named `headers`.
+- [#10948](https://github.com/scalar/scalar/pull/10948): Convert Swagger 2.0 discriminator strings to Discriminator Objects so upgrades preserve the discriminating property name.
+
+  Preserve x-ms-discriminator-value and x-discriminator-value aliases from allOf subtypes in discriminator mappings, including inherited subtypes, without replacing authored mappings.
+
+- [#10949](https://github.com/scalar/scalar/pull/10949): Show response header examples, including media type examples and OpenAPI 3.2 cookie examples, with explicit examples taking precedence over schema examples. Preserve this precedence through composed schemas and fall back to media type examples when header examples have no usable values.
+
+  Keep external example URLs visible and preserve line breaks in displayed string examples. Across all schemas, array-level examples take precedence over item examples.
+
+  Preserve `x-example` and `x-examples` on OpenAPI 2.0 response headers during upgrades.
+
+- [#10920](https://github.com/scalar/scalar/pull/10920): Prefer operation-level `produces` over the global `produces` when upgrading Swagger 2.0 response content.
+
+## 0.4.7
+
+## 0.4.6
+
+### Patch Changes
+
+- [#10701](https://github.com/scalar/scalar/pull/10701): Preserve descriptions and specification extensions on OAuth2 and Basic security schemes, and preserve extensions on form-data fields when upgrading OpenAPI 2.0 API descriptions.
+
+## 0.4.5
+
+### Patch Changes
+
+- [#10613](https://github.com/scalar/scalar/pull/10613): The 3.0 to 3.1 upgrade no longer skips the `default` entry of a Responses Object, which it mistook for the `default` keyword, so schemas in a default response are upgraded too.
+- [#10613](https://github.com/scalar/scalar/pull/10613): Upgrade a `oneOf`/`anyOf` arm that only says `nullable: true` (optionally with annotations, including `default`) to `{ type: 'null' }`, so `oneOf: [{ nullable: true }, { $ref: X }]` becomes "X or null" in OpenAPI 3.1 instead of an arm that accepts any value.
+
+  Preserve nested extension payloads when upgrading nullable-only union arms.
+
+## 0.4.4
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+
+## 0.4.3
+
+### Patch Changes
+
+- [#10501](https://github.com/scalar/scalar/pull/10501): Keep Swagger 2.0 named examples whose name contains a slash, such as `Coupons/Promos`. Only registered media types are treated as media-type keys, so one such name no longer drops every request body example.
+
+## 0.4.2
+
+## 0.4.1
+
+## 0.4.0
+
+### Minor Changes
+
+- [#10346](https://github.com/scalar/scalar/pull/10346): Add `onIncompatible: 'ignore'` for best-effort OpenAPI 3.2 upgrades. Apply available migrations and return the document despite compatibility issues, without mutating the input. Strict mode remains the default; malformed versions and clone errors still throw.
+
+## 0.3.1
+
+### Patch Changes
+
+- [#10306](https://github.com/scalar/scalar/pull/10306): Preserve Swagger 2.0 `x-nullable` when upgrading schemas, parameters, and headers.
+
+## 0.3.0
+
+### Minor Changes
+
+- [#10211](https://github.com/scalar/scalar/pull/10211): Preserve literal data and tag groups when upgrading to OpenAPI 3.2, migrate XML metadata only in schemas, and remove incompatible legacy XML flags. Make 3.2 upgrades leave the input unchanged, match the complete source version, prevent previously inactive parameter settings from changing serialization, and report path-specific errors for detected compatibility issues that require an author's decision.
+
+  Tag `kind` values may change: navigation groups are classified from actual operation-tag usage instead of name substrings. Malformed 3.1 versions now report explicit errors, and successful 3.2 upgrades clone the input only once.
+
+  Expose `UpgradeIncompatibilityError` so Markdown generation can retain OpenAPI 3.1 for descriptions requiring author decisions instead of failing or silently changing semantics. Clone safety and malformed-version errors still propagate.
+
+  The mock server also retains OpenAPI 3.1 when the strict 3.2 migration reports compatibility diagnostics. Existing inline XML descriptions continue loading without inventing element names.
+
+  Read only own data properties during migration so inherited parameter lists, XML metadata, and reference targets cannot modify prototype-owned objects.
+
+  Add `upgrade(input, '3.2', { onIncompatible: 'collect' })` to return a complete document and compatibility diagnostics. Compatible descriptions upgrade to 3.2; incompatible descriptions retain 3.1 without partial transformations. Strict mode remains the default, and malformed-version and clone-safety errors still propagate. The Markdown converter and mock server now use the shared collect mode.
+
+### Patch Changes
+
+- [#10278](https://github.com/scalar/scalar/pull/10278): Only migrate XML metadata in schemas when upgrading to OpenAPI 3.2. Preserve example payloads and other data containing xml properties instead of changing them or throwing errors.
+- [#10276](https://github.com/scalar/scalar/pull/10276): Migrate x-tagGroups to OpenAPI 3.2 parent tags and remove the extension, preserving group names, member order, and tag metadata. Resolve group/tag name collisions with unique names and preserve group labels with summary. Warn and preserve the original tags and extension for ambiguous or malformed hierarchies so the API description can still render. Avoid mutating a document prototype during tag migration.
+
+## 0.2.17
+
+### Patch Changes
+
+- [#10236](https://github.com/scalar/scalar/pull/10236): Omit exclusive bounds without a minimum or maximum when upgrading OpenAPI 3.0 descriptions.
+- [#10236](https://github.com/scalar/scalar/pull/10236): Avoid undefined or inferred media types for base64-encoded data when upgrading OpenAPI 3.0 descriptions.
+- [#10236](https://github.com/scalar/scalar/pull/10236): Fix format conversion for nullable strings when upgrading OpenAPI 3.0 descriptions.
+- [#10236](https://github.com/scalar/scalar/pull/10236): Omit JSON type constraints for raw binary schemas and preserve media metadata when upgrading OpenAPI 3.0 descriptions.
+
+## 0.2.16
+
+### Patch Changes
+
+- [#9666](https://github.com/scalar/scalar/pull/9666): Only normalize OpenAPI Reference Objects during bundling, never Schema Objects. `normalizeRefs` used to strip every sibling except `$ref` on any node outside `components/schemas`, which also hit inline schemas. In JSON Schema 2020-12 a `$ref` may legally carry sibling keywords — for example a `$defs`/`$dynamicAnchor` binding that specializes a generic template like `Paginated<T>` — and such schemas appear inline anywhere a schema is allowed (a response's `content.<media>.schema`, an `allOf` branch, …). Dropping those siblings discarded the binding, leaving `$dynamicRef` to resolve to the template's empty fallback and rendering an empty array (for example the `data` array of `GET /planets` in the Scalar Galaxy). Reference Objects are still normalized as before. A new `@scalar/helpers/openapi/is-schema-path` helper detects schema positions.
+- [#10140](https://github.com/scalar/scalar/pull/10140): Replace redundant type assertions with compiler-checked annotations, typed accumulators, and existing guards across helpers, API conversion, request handling, and schema rendering.
+
+  Narrow DOM elements and caught errors before accessing their properties. Correct header lookup to include missing values and handle them during PowerShell snippet generation.
+
+  Validate release-note provider responses, represent unresolved references and absent groups in helper return types, and require narrowing merged object values. Preserve AsyncAPI broker credentials separately from HTTP authentication schemes.
+
+## 0.2.15
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.2.14
+
+### Patch Changes
+
+- [#9910](https://github.com/scalar/scalar/pull/9910): Keep the full schema of a Swagger 2.0 `formData` parameter when upgrading to OpenAPI 3.0. The request body property was rebuilt from `type`, `description` and `format` only, so a parameter with `type: 'array'` lost its `items` and consumers of the upgraded document saw an array of unknown values. `items`, `enum`, `default` and the other validation keywords now survive, and the array `collectionFormat` is carried over as an OpenAPI 3.0 `encoding` entry (`style`/`explode`) instead of being dropped.
+
+## 0.2.13
+
+### Patch Changes
+
+- [#9827](https://github.com/scalar/scalar/pull/9827): Convert nullable `$ref` patterns to the 3.1 null-union form when upgrading from OpenAPI 3.0 to 3.1
+
+## 0.2.12
+
+### Patch Changes
+
+- [#9758](https://github.com/scalar/scalar/pull/9758): fix: stop the 3.0 to 3.1 upgrade from mangling non-schema nodes
+
+  The upgrade applied its schema transforms to every object node, regardless of where it sat in the document. Three cases are now handled correctly:
+  - Members named `example` inside a map of named subschemas (`properties`, `patternProperties`, `$defs`, `definitions`, and `components/schemas`) are names, not the `example` keyword, so they are no longer rewritten into an `examples` array.
+  - Data held by the `example`, `default`, `const`, and `enum` keywords, and by an Example Object's `value`, is left untouched instead of being walked as if it were a schema (which turned `nullable: true` into a type array, collapsed `exclusiveMinimum`, renamed a nested `x-webhooks`, and so on).
+  - `x-webhooks` is only renamed to `webhooks` at the document root, not wherever a key happens to share that name.
+
+## 0.2.11
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.2.10
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.2.9
+
+## 0.2.8
+
+## 0.2.7
+
+### Patch Changes
+
+- [#9043](https://github.com/scalar/scalar/pull/9043): chore: move test documents to cdn
+
+## 0.2.6
+
+## 0.2.5
+
+### Patch Changes
+
+- [#8825](https://github.com/scalar/scalar/pull/8825): chore: moving files around in preparation for the big deletion of client v1
+
+## 0.2.4
+
+## 0.2.3
+
+### Patch Changes
+
+- [#8622](https://github.com/scalar/scalar/pull/8622): fix: swagger 2.0 mixed media types for produces & examples
+
+## 0.2.2
+
+### Patch Changes
+
+- [#8502](https://github.com/scalar/scalar/pull/8502): feat: transforms x-examples keyed by example name
+
+## 0.2.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.2.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-types@0.6.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.1.11
+
+### Patch Changes
+
+- [#8326](https://github.com/scalar/scalar/pull/8326): feat: keep named request examples when upgrading from Swagger 2.0
+
+#### Updated Dependencies
+
+- **@scalar/openapi-types@0.5.4**
+  - [#8275](https://github.com/scalar/scalar/pull/8275): fix(openapi-types): make the `$ref` property in the `ReferenceObject` type required
+
+## 0.1.10
+
+### Patch Changes
+
+- [#8272](https://github.com/scalar/scalar/pull/8272): feat: migrate swagger 2.0 response examples
+
+## 0.1.9
+
+### Patch Changes
+
+- [#8251](https://github.com/scalar/scalar/pull/8251): feat: migrate swagger 2.0 defaults for parameter
+
+## 0.1.8
+
+### Patch Changes
+
+- [#7842](https://github.com/scalar/scalar/pull/7842): feat: migrate swagger 2.0 responses
+
+## 0.1.7
+
+### Patch Changes
+
+- [#7739](https://github.com/scalar/scalar/pull/7739): fix: upgrade form to multipart/form
+- [#7694](https://github.com/scalar/scalar/pull/7694): feat: migrate x-example and x-examples
+
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/openapi-types@0.5.3
+
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`a164d76`](https://github.com/scalar/scalar/commit/a164d76f21437b3a35210d62a996b6c9d483e5a4)]:
+  - @scalar/openapi-types@0.5.2
+
+## 0.1.4
+
+### Patch Changes
+
+- [#7215](https://github.com/scalar/scalar/pull/7215) [`11a6e64`](https://github.com/scalar/scalar/commit/11a6e6405d4f30f001a16d6afda4d2b759c0ed09) Thanks [@luke-hagar-sp](https://github.com/luke-hagar-sp)! - fix: don't upgrade "example" if it's just a key
+
+- [#7092](https://github.com/scalar/scalar/pull/7092) [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb) Thanks [@baywet](https://github.com/baywet)! - feat - upgrader - adds support for migrating XML nodes to 3.2.0
+
+- Updated dependencies [[`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce)]:
+  - @scalar/openapi-types@0.5.1
+
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [f69e7cc]
+  - @scalar/openapi-types@0.5.0
+
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [15c4240]
+  - @scalar/openapi-types@0.4.1
+
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/openapi-types@0.4.0
+
+## 0.1.0
+
+### Minor Changes
+
+- 6221e4a: hello world :)
+- 02085ef: feat: add OpenAPI 3.1 > 3.2 upgrader (not enabled by default)
+
+### Patch Changes
+
+- 2d612e4: fix: consumed media types are not deleted for non-existing body parameter and referenced parameter is added empty schema object

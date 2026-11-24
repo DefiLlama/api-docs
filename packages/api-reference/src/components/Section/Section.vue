@@ -1,37 +1,22 @@
 <script setup lang="ts">
-import IntersectionObserver from '@/components/IntersectionObserver.vue'
-import { useSidebar } from '@/features/sidebar'
-import { useNavState } from '@/hooks/useNavState'
+import { useTemplateRef } from 'vue'
 
-const props = defineProps<{
-  id?: string
-  label?: string
+import { useIntersection } from '@/hooks/use-intersection'
+
+const emit = defineEmits<{
+  (e: 'intersecting'): void
 }>()
 
-const { getSectionId, isIntersectionEnabled, replaceUrlState } = useNavState()
-const { setCollapsedSidebarItem } = useSidebar()
+const section = useTemplateRef<HTMLElement>('section')
 
-function handleScroll() {
-  if (!props.label || !isIntersectionEnabled.value) {
-    return
-  }
-
-  replaceUrlState(props.id ?? '')
-
-  // Open models and webhooks on scroll
-  if (props.id?.startsWith('model') || props.id?.startsWith('webhook')) {
-    setCollapsedSidebarItem(getSectionId(props.id), true)
-  }
-}
+useIntersection(section, () => emit('intersecting'))
 </script>
 <template>
-  <IntersectionObserver
-    is="section"
-    :id="id"
-    class="section"
-    @intersecting="handleScroll">
+  <section
+    ref="section"
+    class="section">
     <slot />
-  </IntersectionObserver>
+  </section>
 </template>
 
 <style scoped>
@@ -46,7 +31,11 @@ function handleScroll() {
   padding: 90px 0;
 
   /* Offset by header height to line up scroll position */
-  scroll-margin-top: var(--refs-header-height);
+  scroll-margin-top: var(--refs-viewport-offset);
+}
+/* Navigation moves focus here for accessibility, but the section is not a control. */
+.section[tabindex='-1']:focus {
+  outline: none;
 }
 .section:has(~ div.contents) {
   border-bottom: var(--scalar-border-width) solid var(--scalar-border-color);
@@ -55,7 +44,7 @@ function handleScroll() {
   padding: 48px 0;
   gap: 24px;
 }
-@container narrow-references-container (max-width: 900px) {
+@container references-container (max-width: 900px) {
   .references-classic .section,
   .section {
     padding: 48px 24px;

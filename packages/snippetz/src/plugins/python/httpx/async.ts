@@ -1,4 +1,5 @@
 import type { Plugin } from '@scalar/types/snippetz'
+
 import { requestsLikeGenerate } from '@/plugins/python/requestsLike'
 
 /**
@@ -9,13 +10,13 @@ export const pythonHttpxAsync: Plugin = {
   client: 'httpx_async',
   title: 'HTTPX (Async)',
   generate(request, configuration) {
-    let formattedReq = requestsLikeGenerate('await client', request, configuration)
+    let formattedReq = requestsLikeGenerate('await client', request, configuration, 'httpx')
     // add indent
     formattedReq = formattedReq
       .split('\n')
       .map((line) => (line.trim() === '' ? line : '    ' + line))
       .join('\n')
 
-    return `with httpx.AsyncClient() as client:\n${formattedReq}`
+    return `async with httpx.AsyncClient() as client:\n${formattedReq}`
   },
 }

@@ -1,0 +1,266 @@
+# @scalar-internal/build-scripts
+
+Internal CLI to quickly run repository scripts for the Scalar monorepo.
+
+This tool provides a collection of commands to help manage packages, run tests, update dependencies, and perform various maintenance tasks across the workspace.
+
+## Installation
+
+This is an internal tool used within the Scalar monorepo. To use it, run commands via pnpm:
+
+```bash
+pnpm --filter @scalar-internal/build-scripts start <command>
+```
+
+Or use the shorthand script:
+
+```bash
+pnpm script <command>
+```
+
+## Native TypeScript compiler
+
+The workspace `tsgo` command runs stable TypeScript 7 through an isolated dependency. The root `tsc` and compiler API stay on TypeScript 6 for Vue and other tools that require it. Existing package scripts keep their working directory and compiler arguments.
+
+## Commands
+
+### `packages format`
+
+Format and validate all `package.json` files in the workspace.
+
+This command:
+- Formats `package.json` files in `packages/`, `integrations/`, `projects/`, and `examples/` directories
+- Sorts keys according to a predefined order
+- Validates required fields (license, author, repository, etc.)
+- Ensures packages are ESM modules (with exceptions)
+- Validates required scripts exist
+- Ensures peer dependencies are installed as dev dependencies
+
+**Usage:**
+```bash
+pnpm --filter @scalar-internal/build-scripts start packages format
+```
+
+### `packages outdated [packages...]`
+
+Check for outdated packages in the workspace catalog.
+
+This command checks all packages in the `pnpm-workspace.yaml` catalogs and reports which ones have newer versions available. You can optionally filter by package name patterns using glob patterns.
+
+**Usage:**
+```bash
+# Check all packages
+pnpm --filter @scalar-internal/build-scripts start packages outdated
+
+# Check specific packages using glob patterns
+pnpm --filter @scalar-internal/build-scripts start packages outdated "commander" "prettier*"
+```
+
+The output shows:
+- Package name
+- Current version
+- Latest available version
+- Color-coded version difference (major/minor/patch)
+
+### `packages update <packages...>`
+
+Update packages in the workspace catalog to their latest versions.
+
+This command updates the specified packages in `pnpm-workspace.yaml` to their latest available versions. Use glob patterns to match multiple packages.
+
+**Usage:**
+```bash
+# Update specific packages
+pnpm --filter @scalar-internal/build-scripts start packages update "commander" "prettier"
+
+# Update all packages matching a pattern
+pnpm --filter @scalar-internal/build-scripts start packages update "prettier*"
+```
+
+After updating, run `pnpm install` to install the new versions.
+
+### `wait -p, --ports <ports...>`
+
+Wait for services to start on specified ports.
+
+This command polls HTTP endpoints on the given ports until they respond successfully, or times out after 30 seconds. Useful for waiting for test servers or other services to be ready.
+
+**Usage:**
+```bash
+# Wait for a single port
+pnpm --filter @scalar-internal/build-scripts start wait -p 3000
+
+# Wait for multiple ports
+pnpm --filter @scalar-internal/build-scripts start wait -p 3000 3001 8080
+```
+
+The command will:
+- Ping each port every second
+- Exit with code 0 when all ports are ready
+- Exit with code 1 if any port doesn't respond within 30 seconds
+
+### `update-snapshots`
+
+Update Playwright test snapshot files.
+
+This command processes Playwright test results and updates snapshot files for the CDN API Reference tests. It's intended to be run in the `test-cdn-jsdelvr.yml` GitHub Actions workflow.
+
+**Usage:**
+```bash
+pnpm --filter @scalar-internal/build-scripts start update-snapshots
+```
+
+The command:
+- Reads test results from `playwright/test-results/`
+- Filters out retry reports
+- Copies actual snapshots to the snapshot folder
+- Renames files with browser name and platform (linux/macos)
+
+### `cat`
+
+Test terminal color output (debugging utility).
+
+This command displays a colorful ASCII art cat and demonstrates all available terminal color outputs. Useful for testing terminal color support and debugging color-related issues.
+
+**Usage:**
+```bash
+pnpm --filter @scalar-internal/build-scripts start cat
+```
+
+### `run test-servers`
+
+Run test servers concurrently.
+
+This command starts both the void-server and proxy-server test servers in parallel using `concurrently`. Useful for local development and testing.
+
+**Usage:**
+```bash
+pnpm --filter @scalar-internal/build-scripts start run test-servers
+```
+
+The command runs:
+- `@scalar/void-server` on its default port
+- `proxy-scalar-com` on its default port
+
+Both servers run with `CI=1` environment variable set. The proxy uses `test:server`, a separate Go test harness bound to `127.0.0.1` that allows private targets for local fixtures. This harness is excluded from normal proxy builds and Docker images; the normal executable always blocks private targets. While the harness runs, local callers, including browser requests, can use it to reach private targets. An existing server on port 5051 is reused only if its health response identifies it as the fixture harness; otherwise the command fails without stopping that server.
+
+### Playwright Docker images
+
+The Playwright Docker Images workflow builds and smoke-tests `scalarapi/playwright`
+and `scalarapi/playwright-runner` on amd64 and arm64 when their build files or
+the workspace `@playwright/test` pin change. It validates browser startup through
+`playwright run-server` and checks the runner's WebGL default and opt-in.
+
+Set `src/commands/playwright-docker/release-tag` to the Playwright version the
+images should install (for example, `1.65.1`). Add a suffix to release another
+image with the same Playwright version. After a successful package release on
+`main`, CI checks Docker Hub and builds and smoke-tests the selected tag if
+either image is missing. It publishes only the missing images using the
+`production-dockerhub` environment.
+
+The workflow summary lists the published tags. After publishing, update the
+runner tags in `.github/workflows/pr.yml` and `.github/workflows/main.yml`,
+and the image tag in `packages/helpers/src/playwright/docker.ts`, to the full tag.
+Update the workspace `@playwright/test` pin and lockfile in the same change
+if the Playwright version changed. PR validation checks these pins together when
+any runner image pin changes. The pins can stay on the previous release while
+the selected tag is pending.
+
+#### `update-playwright-docker` manual fallback
+
+This command reads the same `release-tag` as CI and skips images that already
+have that tag. Use a new tag for another image revision. The manual command
+builds and publishes missing images without running the workflow's smoke tests:
+- `scalarapi/playwright:<tag>` - Base Playwright image
+- `scalarapi/playwright-runner:<tag>` - Runner image
+
+Both images are built for `linux/amd64` and `linux/arm64` with buildx and pushed as a
+multi-arch manifest, so the runner works on amd64 CI runners as well as arm64 (Apple
+Silicon) machines. The command creates a reusable `scalar-multiarch` buildx builder on
+first run.
+
+In the runner image, the default headless browser starts with `--disable-webgl`, because
+software-rendered WebGL makes pages that draw continuously too slow to test. Start the
+container with `-e SCALAR_RUNNER_ENABLE_WEBGL=1` to turn WebGL back on; any other value
+keeps it off. The flag applies to HTML canvas in the default headless browser.
+Full Chromium (including headed mode) and `OffscreenCanvas` are unaffected.
+
+**Usage:**
+```bash
+pnpm --filter @scalar-internal/build-scripts start update-playwright-docker
+```
+
+**Note:** This command requires Docker (with buildx) to be installed and configured, and
+you must have push access to the `scalarapi` Docker Hub organization.
+
+### `generate-blog`
+
+Generate blog index post rows and update `scalar.config.json` from post files.
+
+Scans `documentation/blog/` for markdown files matching `YYYY-MM-DD-slug.md`, then:
+- Rewrites the auto-generated post list section (between `<!-- generated -->` / `<!-- /generated -->` markers) in `documentation/blog/index.md`. Existing summaries are preserved and normalized for concise list rows.
+- Updates `/blog` navigation in `scalar.config.json`, converting `/blog` to a single page entry with a books icon, generating hidden `/blog/posts/*` routes, and preserving custom titles plus page-level head scripts.
+
+**Usage:**
+```bash
+pnpm --filter @scalar-internal/build-scripts start generate-blog
+```
+
+### `generate-cli-docs -c, --context <file>`
+
+Generate the Scalar CLI command reference (`documentation/guides/cli/commands.md` and one page per command group in `commands/`) from the JSON that `scalar context` prints.
+
+The `commands/` directory is owned by this command: it is cleared on every run. A new command group gets a page automatically, but it only appears in the sidebar once it is added to `scalar.config.json`. The scheduled `update-scalar-cli-documentation` workflow runs this daily against the latest published CLI.
+
+**Usage:**
+```bash
+npx @scalar/cli@latest context > cli-context.json
+pnpm script generate-cli-docs --context cli-context.json
+```
+
+### `generate-readme`
+
+Generate README.md files for packages with scalarReadme metadata.
+
+This command scans all packages in `packages/` and `integrations/` directories, finds those with `scalarReadme` metadata in their `package.json`, and generates standardized README.md files.
+
+> The metadata key is intentionally named `scalarReadme` and not `readme`: npm treats a `readme` field in `package.json` as the readme _text_ and publishes it to the registry, which clobbers the real README.md with `[object Object]` on npmjs.com.
+
+**Usage:**
+```bash
+pnpm --filter @scalar-internal/build-scripts start generate-readme
+```
+
+The generated README includes:
+- Title from metadata
+- Badges (npm, pypi, nuget, docker, crates.io) based on package type
+- Package description
+- Optional image (if provided)
+- Documentation link
+- Optional extra content
+- Changelog link (if CHANGELOG.md exists)
+- Community section
+- License section
+
+**Package.json metadata format:**
+```json
+{
+  "scalarReadme": {
+    "title": "Package Name",
+    "badges": [
+      { "type": "npm-version" },
+      { "type": "npm-downloads" },
+      { "type": "pypi-version", "package": "package-name" }
+    ],
+    "documentation": "https://docs.example.com",
+    "image": {
+      "url": "https://example.com/image.png",
+      "altText": "Screenshot of the package"
+    },
+    "extraContent": {
+      "headline": "Additional Info",
+      "content": "Some extra content here"
+    }
+  }
+}
+```

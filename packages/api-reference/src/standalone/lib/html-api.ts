@@ -1,21 +1,94 @@
-import type { ReferenceProps } from '@/types'
-import {
-  type AnyApiReferenceConfiguration,
-  type ApiReferenceConfiguration,
-  type CreateApiReference,
-  apiReferenceConfigurationSchema,
+import { apiReferenceConfigurationWithSourceSchema } from '@scalar/schemas/api-reference'
+import type {
+  AnyApiReferenceConfiguration,
+  ApiReferenceConfigurationWithMultipleSources,
+  ApiReferenceConfigurationWithSource,
+  CreateApiReference,
 } from '@scalar/types/api-reference'
-import { createHead } from '@unhead/vue'
-import { createApp, h, reactive } from 'vue'
+import { isConfigurationWithSources } from '@scalar/types/api-reference'
+import { createHead } from '@unhead/vue/client'
+import { createApp, createSSRApp, h, reactive } from 'vue'
 
 import { default as ApiReference } from '@/components/ApiReference.vue'
+import { hasPluginUrls, loadPluginsFromUrls } from '@/standalone/lib/load-plugins-from-urls'
 
 const getSpecScriptTag = (doc: Document) => doc.getElementById('api-reference')
 
 /**
+ * The id given to the standalone build's single injected `<style>` tag.
+ * Keep in sync with `vite.standalone.config.ts` and `vite.standalone.esm.config.ts`.
+ */
+const STANDALONE_STYLE_ID = 'scalar-style'
+
+/**
+ * Per-document bookkeeping for the standalone build's injected styles.
+ *
+ * The CDN build injects all of its CSS into one `<style>` tag in `<head>`. Under
+ * SPA-style navigation (Turbo Drive, htmx boost, Astro view transitions) the host
+ * swaps the DOM without reloading the window, so those document-level styles
+ * (`@layer scalar-base`, the `:root` theme variables) would otherwise linger and
+ * bleed into the host app's next page. We reference-count the live instances and
+ * detach the styles when the last one is destroyed, re-attaching them when a new
+ * instance mounts so navigating back to the reference is still styled.
+ *
+ * State is keyed by document so the counter survives navigations (the JS context
+ * persists) while staying isolated per page.
+ */
+const standaloneStyleState = new WeakMap<Document, { count: number; detachedStyle: HTMLStyleElement | null }>()
+
+const getStandaloneStyleState = (doc: Document): { count: number; detachedStyle: HTMLStyleElement | null } => {
+  const existing = standaloneStyleState.get(doc)
+  if (existing) {
+    return existing
+  }
+
+  const state = { count: 0, detachedStyle: null }
+  standaloneStyleState.set(doc, state)
+
+  return state
+}
+
+/** Track a freshly mounted instance and restore previously detached styles. */
+const retainStandaloneStyles = (doc: Document): void => {
+  const state = getStandaloneStyleState(doc)
+  state.count += 1
+
+  if (state.detachedStyle && !doc.getElementById(STANDALONE_STYLE_ID)) {
+    doc.head.appendChild(state.detachedStyle)
+    state.detachedStyle = null
+  }
+}
+
+/** Release an instance and detach the injected styles once the last one is gone. */
+const releaseStandaloneStyles = (doc: Document): void => {
+  const state = getStandaloneStyleState(doc)
+  state.count = Math.max(0, state.count - 1)
+
+  releaseUnusedStyles(doc)
+}
+
+/** Detach orphaned bundle CSS without mounting an app or changing active instance counts. */
+export const releaseUnusedStyles = (doc: Document = document): void => {
+  const state = getStandaloneStyleState(doc)
+  if (state.count > 0) {
+    return
+  }
+
+  const styleElement = doc.getElementById(STANDALONE_STYLE_ID)
+  if (styleElement instanceof HTMLStyleElement) {
+    state.detachedStyle = styleElement
+    styleElement.remove()
+  }
+}
+
+type DataAttributeConfiguration =
+  | ApiReferenceConfigurationWithSource
+  | Partial<ApiReferenceConfigurationWithMultipleSources>
+
+/**
  * Reading the configuration from the data-attributes.
  */
-export function getConfigurationFromDataAttributes(doc: Document): ApiReferenceConfiguration {
+export function getConfigurationFromDataAttributes(doc: Document): DataAttributeConfiguration {
   const specElement = doc.querySelector('[data-spec]')
   const specUrlElement = doc.querySelector('[data-spec-url]')
   const configurationScriptElement = doc.querySelector('#api-reference[data-configuration]')
@@ -33,7 +106,7 @@ export function getConfigurationFromDataAttributes(doc: Document): ApiReferenceC
       }
     }
 
-    return apiReferenceConfigurationSchema.parse({ _integration: 'html' })
+    return apiReferenceConfigurationWithSourceSchema({ _integration: 'html' })
   }
 
   const getUrl = () => {
@@ -115,24 +188,40 @@ export function getConfigurationFromDataAttributes(doc: Document): ApiReferenceC
   if (!specUrlElement && !specElement && !getSpecScriptTag(doc)) {
     // Stay quiet.
   } else {
+    const configuration = getConfiguration()
+    const proxyUrl = getProxyUrl()
+
+    // A non-empty `sources` array means the user configured multiple documents. Preserve it as-is
+    // rather than passing it through the single-source schema, which would strip the property and
+    // leave the reference with no documents to render. An empty array carries no documents, so we
+    // fall through to the single-source parsing below (which can still pick up a data-url/content).
+    if (isConfigurationWithSources(configuration) && configuration.sources?.length) {
+      return {
+        _integration: 'html',
+        // Only include `proxyUrl` when one is actually configured so we do not emit `proxyUrl: undefined`.
+        ...(proxyUrl ? { proxyUrl } : {}),
+        ...configuration,
+      }
+    }
+
     const urlOrContent = getContent() ? { content: getContent() } : { url: getUrl() }
 
-    return apiReferenceConfigurationSchema.parse({
+    return apiReferenceConfigurationWithSourceSchema({
       _integration: 'html',
-      proxyUrl: getProxyUrl(),
-      ...getConfiguration(),
+      proxyUrl,
+      ...configuration,
       ...urlOrContent,
     })
   }
 
-  return apiReferenceConfigurationSchema.parse({ _integration: 'html' })
+  return apiReferenceConfigurationWithSourceSchema({ _integration: 'html' })
 }
 
 /**
  * Mount the Scalar API Reference on a given document.
  * Read the HTML data-attributes for configuration.
  */
-export function findDataAttributes(doc: Document, configuration: ApiReferenceConfiguration) {
+export function findDataAttributes(doc: Document, configuration: DataAttributeConfiguration) {
   /** @deprecated Use the new <script id="api-reference" data-url="/scalar.json" /> API instead. */
   const specElement = doc.querySelector('[data-spec]')
   /** @deprecated Use the new <script id="api-reference" data-url="/scalar.json" /> API instead. */
@@ -182,32 +271,73 @@ export const createApiReference: CreateApiReference = (
   // Create an id prefix for useId so we don't have collisions with other Vue apps
   const idPrefix = 'scalar-refs'
 
-  const props = reactive<ReferenceProps>({
-    // Either the configuration will be the second arugment or it MUST be the first (configuration only)
+  const props = reactive<{ configuration: AnyApiReferenceConfiguration }>({
+    // Either the configuration will be the second argument or it MUST be the first (configuration only)
     configuration: optionalConfiguration ?? (elementOrSelectorOrConfig as AnyApiReferenceConfiguration) ?? {},
   })
 
-  // Create a new Vue app instance
-  let app = createApp(() => h(ApiReference, props))
+  const createReferenceApp = (isSsr = false) => {
+    const referenceApp = isSsr ? createSSRApp(() => h(ApiReference, props)) : createApp(() => h(ApiReference, props))
 
-  // Meta tags, etc.
-  app.use(createHead())
+    // Meta tags, etc.
+    referenceApp.use(createHead())
+    referenceApp.config.idPrefix = idPrefix
 
-  app.config.idPrefix = idPrefix
+    return referenceApp
+  }
 
   // If we have an optional config, then we must mount the element immediately (not sure why type is not narrowing)
-  if (optionalConfiguration) {
-    // If the element is a string, we need to find the actual DOM element
-    const element =
-      typeof elementOrSelectorOrConfig === 'string'
-        ? document.querySelector(elementOrSelectorOrConfig)
-        : (elementOrSelectorOrConfig as Element)
+  const mountElement = (() => {
+    if (!optionalConfiguration) {
+      return null
+    }
+    return typeof elementOrSelectorOrConfig === 'string'
+      ? document.querySelector(elementOrSelectorOrConfig)
+      : (elementOrSelectorOrConfig as Element)
+  })()
 
-    if (element) {
-      app.mount(element)
+  // Detect server-rendered content and use createSSRApp for hydration
+  const shouldHydrate = !!optionalConfiguration && !!mountElement && mountElement.children.length > 0
+  let app = createReferenceApp(shouldHydrate)
+
+  // Track whether this instance mounted so `destroy` only releases the shared
+  // standalone styles for instances that actually retained them.
+  let hasMounted = false
+
+  if (optionalConfiguration) {
+    if (mountElement) {
+      const mount = () => {
+        app.mount(mountElement)
+        hasMounted = true
+        retainStandaloneStyles(document)
+      }
+
+      if (hasPluginUrls(props.configuration)) {
+        // Plugins referenced by URL must be resolved before the app mounts — plugin registration
+        // happens once at first render and is not reactive, so a plugin that arrives later would
+        // never be picked up.
+        void loadPluginsFromUrls(props.configuration).then(() => {
+          // Skip mounting when the instance was destroyed while the plugins were loading.
+          if (!abortController.signal.aborted) {
+            mount()
+          }
+        })
+      } else {
+        mount()
+      }
     } else {
       console.error('Could not find a mount point for API References:', elementOrSelectorOrConfig)
     }
+  }
+
+  // Tie the deprecated `document` listeners to an AbortController so `destroy`
+  // can remove them all at once. Without this, every `createApiReference()`
+  // call leaks three permanent listeners — visible during Astro view
+  // transitions where each navigation creates a new instance.
+  const abortController = new AbortController()
+  const listenerOptions: AddEventListenerOptions = {
+    capture: false,
+    signal: abortController.signal,
   }
 
   /**
@@ -241,18 +371,24 @@ export const createApiReference: CreateApiReference = (
 
       // Create a new Vue app instance
       app.unmount()
-      app = createApp(() => h(ApiReference, props))
-      app.use(createHead())
-      app.config.idPrefix = idPrefix
+      app = createReferenceApp()
       app.mount(currentElement)
     },
-    false,
+    listenerOptions,
   )
 
   /** Destroy the current API Reference instance */
   const destroy = () => {
-    delete props['configuration']
-    app.unmount()
+    abortController.abort()
+    props.configuration = {}
+
+    // Only unmount an app that actually mounted. With `pluginUrls`, mounting is deferred until the
+    // plugin modules resolve, so `destroy` can run first — unmounting then would just warn.
+    if (hasMounted) {
+      hasMounted = false
+      app.unmount()
+      releaseStandaloneStyles(document)
+    }
   }
 
   /**
@@ -265,7 +401,7 @@ export const createApiReference: CreateApiReference = (
       console.warn('scalar:destroy-references event has been deprecated, please use scalarInstance.destroy instead.')
       destroy()
     },
-    false,
+    listenerOptions,
   )
 
   /**
@@ -282,7 +418,7 @@ export const createApiReference: CreateApiReference = (
         Object.assign(props, ev.detail)
       }
     },
-    false,
+    listenerOptions,
   )
 
   const instance = {

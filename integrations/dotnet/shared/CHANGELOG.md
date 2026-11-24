@@ -1,0 +1,108 @@
+# @scalar/dotnet-shared
+
+## 1.2.0
+
+### Minor Changes
+
+- [#11137](https://github.com/scalar/scalar/pull/11137): Add an opt-in ASP.NET Core form naming mode through the API Reference configuration option `multipartNaming: "indexed-dot"`. The body editor, sent requests, and code samples use indexed dotted names such as `Certificates[0].name` for nested fields in multipart and URL-encoded request bodies.
+
+## 1.1.0
+
+### Minor Changes
+
+- [#11103](https://github.com/scalar/scalar/pull/11103): Support `x-scalar-token-prefix` on header API keys. Generated code examples and outgoing requests add the configured prefix while stored credentials remain unchanged.
+
+### Patch Changes
+
+- [#11143](https://github.com/scalar/scalar/pull/11143): Expose the `showBadgesInSidebar` option in Java, FastAPI, Django Ninja, and .NET integrations so applications can enable sidebar badges. Badges remain hidden by default.
+
+## 1.0.0
+
+### Major Changes
+
+- [#10975](https://github.com/scalar/scalar/pull/10975): feat!: drop .NET 8 and .NET 9 support (both reached end of support on November 10, 2026); packages now target .NET 10 and later
+
+### Minor Changes
+
+- [#11036](https://github.com/scalar/scalar/pull/11036): Expose `showDefaultClientsWithSdkInstallation` through the Python, Java, and .NET integrations to show built-in HTTP clients alongside SDK installation tabs.
+- [#11033](https://github.com/scalar/scalar/pull/11033): Expose the selected code sample client persistence option in .NET, Java, FastAPI, and Django Ninja. Disable it to avoid reading or writing the selected-client local storage key while keeping page-local selection available.
+
+## 0.6.0
+
+### Minor Changes
+
+- [#10974](https://github.com/scalar/scalar/pull/10974): feat: add .NET 11 support (`net11.0` target framework)
+
+## 0.5.0
+
+### Minor Changes
+
+- [#10731](https://github.com/scalar/scalar/pull/10731): Support OpenID Connect flow defaults, including client ID, selected scopes, and PKCE, after discovery. Prefer a sole configured flow while retaining other discovered flows. Add typed OpenID Connect authentication configuration for .NET.
+
+## 0.4.0
+
+### Minor Changes
+
+- [#10728](https://github.com/scalar/scalar/pull/10728): Add per-document authentication overrides merged with global defaults and an optional security scheme allowlist for the authentication UI.
+
+## 0.3.0
+
+### Minor Changes
+
+- [#10521](https://github.com/scalar/scalar/pull/10521): Add native configuration and fluent helpers for OAuth2 device authorization flows.
+- [#10519](https://github.com/scalar/scalar/pull/10519): Add ShowExtensions and WithShowExtensions to display selected specification extensions from .NET integrations.
+- [#10517](https://github.com/scalar/scalar/pull/10517): Add FeaturedClients and WithFeaturedClients to configure which HTTP clients appear as tabs in the Client Libraries block, in order.
+- [#10520](https://github.com/scalar/scalar/pull/10520): Add native .NET localization options for locale, text direction, and nested translation overrides in the API Reference and embedded API Client.
+- [#10518](https://github.com/scalar/scalar/pull/10518): Expose schema display controls in the shared .NET options: model names, visible request body properties, parameter expansion, and nested schema expansion.
+
+## 0.2.3
+
+### Patch Changes
+
+- [#9764](https://github.com/scalar/scalar/pull/9764): feat: add `Scalar.Aws.Lambda` integration to render the Scalar API reference from AWS Lambda functions fronted by Amazon API Gateway HTTP API (payload format 2.0). Supports both a zero-DI static handler factory (`ScalarApiReferenceHandler.Create`) and a DI-registered service (`AddScalarApiReference` / `IScalarApiReference`).
+
+  The hosting-agnostic request processor, render result, and static-asset table that already powered `Scalar.Azure.Functions` were moved into the shared project behind a new `SCALAR_SERVERLESS` constant so `Scalar.Aws.Lambda` can reuse them too. No public API or behavior change for `Scalar.AspNetCore`, `Scalar.Aspire`, or `Scalar.Azure.Functions`.
+
+## 0.2.2
+
+### Patch Changes
+
+- [#9620](https://github.com/scalar/scalar/pull/9620): chore: extract the hosting-agnostic HTML/static-asset rendering core into the shared project so it can be reused across .NET integrations. No public API or behavior change for `Scalar.AspNetCore`.
+
+## 0.2.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.2.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.1.3
+
+### Patch Changes
+
+- [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+## 0.1.2
+
+### Patch Changes
+
+- [#8102](https://github.com/scalar/scalar/pull/8102): feat: agent scalar configuration
+
+## 0.1.1
+
+### Patch Changes
+
+- [#7313](https://github.com/scalar/scalar/pull/7313) [`64a33a4`](https://github.com/scalar/scalar/commit/64a33a4a08755f48e4839a7e7e20187f14de8ab2) Thanks [@xC0dex](https://github.com/xC0dex)! - feat: add support for showDeveloperTools configuration
+
+- [#7312](https://github.com/scalar/scalar/pull/7312) [`fe58c16`](https://github.com/scalar/scalar/commit/fe58c16460a7ee46aa8bbc4a74211abcfdb66509) Thanks [@xC0dex](https://github.com/xC0dex)! - feat: add telemetry option
+
+## 0.1.0
+
+### Minor Changes
+
+- [#7096](https://github.com/scalar/scalar/pull/7096) [`f754dc1`](https://github.com/scalar/scalar/commit/f754dc1bff8dcbe04748dd103d1ed9763a977503) Thanks [@xC0dex](https://github.com/xC0dex)! - feat: use shared .NET code

@@ -1,0 +1,622 @@
+import { apiReferenceConfigurationSchema } from '@scalar/schemas/api-reference'
+import { coerce } from '@scalar/validation'
+import { createWorkspaceStore } from '@scalar/workspace-store/client'
+import { createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import type {
+  TraversedEntry,
+  TraversedOperation,
+  TraversedSchema,
+  TraversedTag,
+  TraversedWebhook,
+} from '@scalar/workspace-store/schemas/navigation'
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import { type OpenApiDocument, ServerObjectSchema } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import type { ComponentProps } from '@test/utils/types'
+import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { computed, ref } from 'vue'
+
+vi.mock('@/plugins/hooks/usePluginManager', () => ({
+  usePluginManager: () => ({
+    getSpecificationExtensions: vi.fn(),
+  }),
+}))
+
+vi.mock('@/helpers/lazy-bus', () => ({
+  getLazyPlaceholderHeight: () => undefined,
+  requestLazyRender: () => undefined,
+  setLazyPlaceholderHeight: () => undefined,
+  scrollTargetId: ref(''),
+  // Matches the empty `scrollTargetId` above: with no live target, nothing is
+  // on the path. Schema and ParameterListItem read this rather than comparing
+  // against `scrollTargetId` themselves, so the mock has to carry it.
+  isOnScrollTargetPath: () => false,
+  useLazyBus: () => ({
+    isReady: computed(() => true),
+  }),
+}))
+
+const { default: TraversedEntryComponent } = await import('./TraversedEntry.vue')
+
+const mockDocument = {
+  'x-scalar-original-document-hash': 'test-hash',
+  openapi: '3.1.0' as const,
+  info: {
+    title: 'Test API',
+    version: '1.0.0',
+  },
+  paths: {
+    '/users': {
+      get: {
+        tags: ['users'],
+        summary: 'Get Users',
+        responses: { '200': { description: 'OK' } },
+      },
+      post: {
+        tags: ['users'],
+        summary: 'Create User',
+        responses: { '201': { description: 'Created' } },
+      },
+    },
+    '/planets': {
+      get: {
+        tags: ['planets'],
+        summary: 'Get Planets',
+        responses: { '200': { description: 'OK' } },
+      },
+      post: {
+        tags: ['planets'],
+        summary: 'Create Planet',
+        responses: { '201': { description: 'Created' } },
+      },
+    },
+  },
+  webhooks: {
+    'user.created': {
+      post: {
+        summary: 'User Created',
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    'user.updated': {
+      put: {
+        summary: 'User Updated',
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+  tags: [
+    {
+      name: 'users',
+      description: 'User management operations',
+    },
+    {
+      name: 'planets',
+      description: 'Planet management operations',
+    },
+  ],
+  components: {
+    schemas: {},
+  },
+  security: [],
+}
+
+const mockConfig = coerce(apiReferenceConfigurationSchema, {
+  layout: 'modern',
+  theme: 'default',
+  hideModels: false,
+  tagsSorter: 'alpha',
+  operationsSorter: 'alpha',
+})
+
+const mockServer = coerceValue(ServerObjectSchema, {
+  name: 'Test Server',
+  url: 'https://api.example.com',
+})
+
+// Mock WorkspaceStore with documents
+const mockStore = createWorkspaceStore({
+  meta: {
+    'x-scalar-active-document': 'default',
+  },
+})
+
+await mockStore.addDocument({
+  name: 'default',
+  document: mockDocument,
+})
+
+const eventBus = createWorkspaceEventBus()
+
+const makeMockProps = (entries: TraversedEntry[]): ComponentProps<typeof TraversedEntryComponent> => ({
+  entries,
+  selectedServer: mockServer,
+  selectedClient: mockStore.workspace['x-scalar-default-client'],
+  selectedExample: mockStore.workspace['x-scalar-default-example'],
+  expandedItems: {},
+  securitySchemes: {},
+  eventBus,
+  authStore: mockStore.auth,
+  options: mockConfig,
+  document: mockDocument,
+  clientOptions: [],
+})
+
+const createMockOperation = (overrides: Partial<TraversedOperation> = {}): TraversedOperation => ({
+  type: 'operation',
+  id: 'operation-1',
+  title: 'Get Users',
+  method: 'get',
+  path: '/users',
+  ref: '#/paths/users/get',
+  ...overrides,
+})
+
+const createMockWebhook = (overrides: Partial<TraversedWebhook> = {}): TraversedWebhook => ({
+  type: 'webhook',
+  id: 'webhook-1',
+  title: 'User Created',
+  method: 'post',
+  name: 'user.created',
+  ref: '#/webhooks/user.created/post',
+  ...overrides,
+})
+
+const createMockTag = (overrides: Partial<TraversedTag> = {}): TraversedTag => ({
+  type: 'tag',
+  id: 'tag-1',
+  title: 'Users',
+  children: [],
+  isGroup: false,
+  name: 'users',
+  ...overrides,
+})
+
+const createMockTagGroup = (overrides: Partial<TraversedTag> = {}): TraversedTag => ({
+  type: 'tag',
+  id: 'tag-group-1',
+  title: 'Content Management',
+  children: [],
+  name: 'content-management',
+  isGroup: true,
+  ...overrides,
+})
+
+const createMockWebhookGroup = (overrides: Partial<TraversedTag> = {}): TraversedTag => ({
+  type: 'tag',
+  id: 'webhook-group-1',
+  title: 'Webhooks',
+  children: [],
+  name: 'webhooks',
+  isGroup: false,
+  isWebhooks: true,
+  ...overrides,
+})
+
+afterEach(() => {
+  vi.clearAllMocks()
+  vi.unstubAllGlobals()
+})
+
+describe('TraversedEntry', () => {
+  it('renders a single operation correctly', () => {
+    const operation = createMockOperation()
+    const entries: TraversedEntry[] = [operation]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    // Check that Operation component is rendered
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('Get Users')
+  })
+
+  it('renders multiple operations correctly', () => {
+    const operations: TraversedEntry[] = [
+      createMockOperation({ id: 'op-1', title: 'Get Users', path: '/users', method: 'get' }),
+      createMockOperation({ id: 'op-2', title: 'Create User', path: '/users', method: 'post' }),
+    ]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(operations),
+    })
+
+    const operationComponents = wrapper.findAllComponents({ name: 'Operation' })
+    expect(operationComponents).toHaveLength(2)
+    expect(wrapper.text()).toContain('Get Users')
+    expect(wrapper.text()).toContain('Create User')
+  })
+
+  it('renders a single webhook correctly', () => {
+    const webhook = createMockWebhook()
+    const entries: TraversedEntry[] = [webhook]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    // Check that Operation component is rendered for webhooks
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('User Created')
+  })
+
+  it('renders multiple webhooks correctly', () => {
+    const webhooks: TraversedEntry[] = [
+      createMockWebhook({ id: 'webhook-1', name: 'user.created', method: 'post' }),
+      createMockWebhook({ id: 'webhook-2', name: 'user.updated', method: 'put' }),
+    ]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(webhooks),
+    })
+
+    const operationComponents = wrapper.findAllComponents({ name: 'Operation' })
+    expect(operationComponents).toHaveLength(2)
+    expect(wrapper.text()).toContain('User Created')
+    expect(wrapper.text()).toContain('User Updated')
+  })
+
+  it('renders a regular tag correctly', () => {
+    const tag = createMockTag()
+    const entries: TraversedEntry[] = [tag]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    // Check that Tag component is rendered
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('Users')
+  })
+
+  it('renders tag with children correctly', () => {
+    const tag = createMockTag({
+      children: [createMockOperation({ id: 'child-op-1', title: 'Get Users', path: '/users', method: 'get' })],
+    })
+    const entries: TraversedEntry[] = [tag]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('Get Users')
+  })
+
+  it('does not render tag when it has no children', () => {
+    const tag = createMockTag({ children: [] })
+    const entries: TraversedEntry[] = [tag]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(false)
+  })
+
+  it('renders tag group correctly', () => {
+    const tagGroup = createMockTagGroup({
+      children: [createMockOperation({ id: 'group-op-1', title: 'Get Users', path: '/users', method: 'get' })],
+    })
+    const entries: TraversedEntry[] = [tagGroup]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    // Tag groups render their children directly without a Tag wrapper
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('Get Users')
+  })
+
+  it('exposes the tag group id as a scroll anchor', () => {
+    // Modern layout flattens tag groups, so the group needs its own anchor
+    // element. Without it, selecting the group from search or the sidebar has
+    // nothing to scroll to.
+    const tagGroup = createMockTagGroup({
+      id: 'tag-group/auth',
+      children: [createMockOperation({ id: 'group-op-1', title: 'Get Users', path: '/users', method: 'get' })],
+    })
+    const entries: TraversedEntry[] = [tagGroup]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.find('#tag-group\\/auth').exists()).toBe(true)
+  })
+
+  it('renders empty tag group correctly', () => {
+    const tagGroup = createMockTagGroup({ children: [] })
+    const entries: TraversedEntry[] = [tagGroup]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    // Empty tag groups should not render anything
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(false)
+  })
+
+  it('renders webhook group correctly', () => {
+    const webhookGroup = createMockWebhookGroup({
+      children: [createMockWebhook({ id: 'group-webhook-1', name: 'user.created', method: 'post' })],
+    })
+    const entries: TraversedEntry[] = [webhookGroup]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('User Created')
+  })
+
+  it('renders empty webhook group correctly', () => {
+    const webhookGroup = createMockWebhookGroup({ children: [] })
+    const entries: TraversedEntry[] = [webhookGroup]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(false)
+  })
+
+  it('renders mixed entry types correctly', () => {
+    const entries: TraversedEntry[] = [
+      createMockOperation({ id: 'op-1', title: 'Get Users', path: '/users', method: 'get' }),
+      createMockWebhook({ id: 'webhook-1', name: 'user.created', method: 'post' }),
+      createMockTag({
+        id: 'tag-1',
+        title: 'Users',
+        children: [createMockOperation({ id: 'tag-op-1', title: 'Create User', path: '/users', method: 'post' })],
+      }),
+    ]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    const operationComponents = wrapper.findAllComponents({ name: 'Operation' })
+    expect(operationComponents).toHaveLength(3)
+    expect(wrapper.text()).toContain('Get Users')
+    expect(wrapper.text()).toContain('User Created')
+    expect(wrapper.text()).toContain('Create User')
+
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(true)
+    expect(wrapper.text()).toContain('Users')
+  })
+
+  it('passes moreThanOneTag as true when multiple tags exist', () => {
+    const entries: TraversedEntry[] = [
+      createMockTag({ id: 'tag-1', title: 'Users' }),
+      createMockTag({ id: 'tag-2', title: 'Posts' }),
+    ]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    const tagComponents = wrapper.findAllComponents({ name: 'Tag' })
+    expect(tagComponents).toHaveLength(2)
+
+    // Check that moreThanOneTag prop is passed correctly
+    tagComponents.forEach((tagComponent) => {
+      expect(tagComponent.props('moreThanOneTag')).toBe(true)
+    })
+  })
+
+  it('passes moreThanOneTag as false when only one tag exists', () => {
+    const entries: TraversedEntry[] = [createMockTag({ id: 'tag-1', title: 'Users' })]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    const tagComponent = wrapper.findComponent({ name: 'Tag' })
+    expect(tagComponent.exists()).toBe(true)
+    expect(tagComponent.props('moreThanOneTag')).toBe(false)
+  })
+
+  it('handles empty entries array', () => {
+    const entries: TraversedEntry[] = []
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(false)
+  })
+
+  it('handles undefined children in tag', () => {
+    const tag = createMockTag({ children: undefined as any })
+    const entries: TraversedEntry[] = [tag]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.findComponent({ name: 'Tag' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(false)
+  })
+
+  it('handles undefined children in tag group', () => {
+    const tagGroup = createMockTagGroup({ children: undefined as any })
+    const entries: TraversedEntry[] = [tagGroup]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    expect(wrapper.findComponent({ name: 'Operation' }).exists()).toBe(false)
+  })
+
+  it('passes correct props to Operation component', () => {
+    const operation = createMockOperation()
+    const entries: TraversedEntry[] = [operation]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    const operationComponent = wrapper.findComponent({ name: 'Operation' })
+    expect(operationComponent.props('path')).toBe('/users')
+    expect(operationComponent.props('method')).toBe('get')
+    expect(operationComponent.props('id')).toBe('operation-1')
+    expect(operationComponent.props('server')).toStrictEqual(mockServer)
+  })
+
+  it('passes correct props to Tag component', () => {
+    const tag = createMockTag()
+    const entries: TraversedEntry[] = [tag]
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: makeMockProps(entries),
+    })
+
+    const tagComponent = wrapper.findComponent({ name: 'Tag' })
+    expect(tagComponent.props('tag')).toEqual(tag)
+    expect(tagComponent.props('moreThanOneTag')).toBe(false)
+  })
+
+  it('renders the target schema of a plain reference alias model', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'aliases',
+      document: {
+        openapi: '3.1.0',
+        info: { title: 'Alias models', version: '1' },
+        components: {
+          schemas: {
+            User: {
+              type: 'object',
+              description: 'The aliased user record',
+              properties: { email: { type: 'string', description: 'The user contact address' } },
+            },
+            UserAlias: { $ref: '#/components/schemas/User' },
+          },
+        },
+      },
+    })
+    const model: TraversedSchema = {
+      type: 'model',
+      id: 'model-user-alias',
+      title: 'UserAlias',
+      name: 'UserAlias',
+      ref: '#/components/schemas/UserAlias',
+    }
+    const wrapper = mount(TraversedEntryComponent, {
+      props: {
+        ...makeMockProps([model]),
+        document: store.workspace.documents.aliases as OpenApiDocument,
+        expandedItems: { 'model-user-alias': true },
+      },
+    })
+
+    expect(wrapper.text()).toContain('UserAlias')
+    expect(wrapper.text()).toContain('The aliased user record')
+    expect(wrapper.text()).toContain('email')
+    expect(wrapper.text()).toContain('The user contact address')
+  })
+
+  it('does not render an unresolved sparse model reference', async () => {
+    const model: TraversedSchema = {
+      type: 'model',
+      id: 'sparse-model',
+      title: 'SparseModel',
+      name: 'SparseModel',
+      ref: '#/components/schemas/SparseModel',
+    }
+    const props = makeMockProps([model])
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'sparse',
+      document: { openapi: '3.1.0', info: { title: 'Sparse models', version: '1' }, components: { schemas: {} } },
+    })
+    const document = store.workspace.documents.sparse as OpenApiDocument
+    // Sparse chunks arrive before their referenced document has been loaded. Workspace proxies
+    // expose a virtual $ref-value property even when its target is still unavailable.
+    Object.assign(document.components?.schemas ?? {}, { SparseModel: { $ref: './unloaded.json' } })
+    const sparse = document.components!.schemas!.SparseModel!
+    expect('$ref-value' in sparse).toBe(true)
+    expect(Reflect.get(sparse, '$ref-value')).toBeUndefined()
+    const wrapper = mount(TraversedEntryComponent, { props: { ...props, document } })
+    expect(wrapper.findComponent({ name: 'Model' }).exists()).toBe(false)
+  })
+
+  // A model whose item type is bound with a `$dynamicRef`/`$dynamicAnchor` (a named `Paginated<User>`).
+  // The model must render the bound `User` shape, not the template's empty placeholder. See #9883.
+  it('renders the bound item type for a named $dynamicRef binding schema', async () => {
+    const store = createWorkspaceStore({ meta: { 'x-scalar-active-document': 'default' } })
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.0',
+        info: { title: 'DynamicRef', version: '1.0.0' },
+        components: {
+          schemas: {
+            User: {
+              description: 'Bound user record',
+              type: 'object',
+              required: ['id', 'email'],
+              properties: { id: { type: 'string' }, email: { type: 'string', format: 'email' } },
+            },
+            PaginatedTemplate: {
+              $id: 'https://example.com/schemas/PaginatedTemplate',
+              $defs: { itemType: { $dynamicAnchor: 'itemType', not: true } },
+              type: 'object',
+              required: ['items'],
+              properties: { items: { type: 'array', items: { $dynamicRef: '#itemType' } } },
+            },
+            PaginatedUserResponse: {
+              $id: 'https://example.com/schemas/PaginatedUserResponse',
+              // The key differs from the anchor: binding depends on $dynamicAnchor, not the $defs key.
+              $defs: { boundItemType: { $dynamicAnchor: 'itemType', $ref: '#/components/schemas/User' } },
+              $ref: '#/components/schemas/PaginatedTemplate',
+            },
+          },
+        },
+      },
+    })
+
+    const model: TraversedSchema = {
+      type: 'model',
+      id: 'model-paginated-user-response',
+      title: 'PaginatedUserResponse',
+      name: 'PaginatedUserResponse',
+      ref: '#/components/schemas/PaginatedUserResponse',
+    }
+
+    const wrapper = mount(TraversedEntryComponent, {
+      props: {
+        entries: [model],
+        selectedServer: mockServer,
+        selectedClient: store.workspace['x-scalar-default-client'],
+        selectedExample: store.workspace['x-scalar-default-example'],
+        // Expand the model and its properties so the nested item type renders without driving disclosures.
+        expandedItems: { 'model-paginated-user-response': true },
+        securitySchemes: {},
+        eventBus,
+        authStore: store.auth,
+        options: coerce(apiReferenceConfigurationSchema, {
+          layout: 'modern',
+          hideModels: false,
+          expandAllSchemaProperties: true,
+        }),
+        document: store.workspace.documents['default'] as OpenApiDocument,
+        clientOptions: [],
+      },
+    })
+
+    expect(wrapper.text()).toContain('PaginatedUserResponse')
+    expect(wrapper.text()).toContain('Bound user record')
+    expect(wrapper.text()).toContain('email')
+  })
+})

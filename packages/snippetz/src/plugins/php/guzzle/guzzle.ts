@@ -1,5 +1,8 @@
 import type { Plugin } from '@scalar/types/snippetz'
 
+import { accumulateRepeatedValue, normalizeMethod, reduceQueryParams } from '@/libs/http'
+import { Raw, getCookieDomain, objectToString, quotePhpString } from '@/libs/php'
+
 /**
  * php/guzzle
  */
@@ -13,7 +16,7 @@ export const phpGuzzle: Plugin = {
     }
 
     const options: Record<string, any> = {}
-    const method = (request.method || 'GET').toUpperCase()
+    const method = normalizeMethod(request.method)
     const url = request.url || ''
 
     // Handle headers
@@ -33,20 +36,18 @@ export const phpGuzzle: Plugin = {
 
     // Handle query parameters
     if (request.queryString && request.queryString.length > 0) {
-      const query: Record<string, string> = {}
-      request.queryString.forEach((param) => {
-        query[param.name] = param.value
-      })
-      options.query = query
+      options.query = reduceQueryParams(request.queryString)
     }
 
-    // Handle cookies
+    // Handle cookies: Guzzle only accepts a CookieJarInterface for the `cookies` option
+    let cookieJar = ''
     if (request.cookies && request.cookies.length > 0) {
       const cookies: Record<string, string> = {}
       request.cookies.forEach((cookie) => {
         cookies[cookie.name] = cookie.value
       })
-      options.cookies = cookies
+      cookieJar = `$jar = \\GuzzleHttp\\Cookie\\CookieJar::fromArray(${objectToString(cookies)}, ${quotePhpString(getCookieDomain(url))});\n\n`
+      options.cookies = new Raw('$jar')
     }
 
     // Handle authentication
@@ -59,30 +60,51 @@ export const phpGuzzle: Plugin = {
       if (request.postData.mimeType === 'application/json') {
         try {
           options.json = JSON.parse(request.postData.text || '{}')
-        } catch (e) {
+        } catch (_e) {
           // If JSON parsing fails, use the raw text
           options.body = request.postData.text
         }
       } else if (request.postData.mimeType === 'multipart/form-data') {
         if (request.postData.params) {
-          options.multipart = request.postData.params.map((param) => ({
-            name: param.name,
-            contents: param.fileName ? `fopen('${param.fileName}', 'r')` : param.value || '',
-          }))
+          options.multipart = request.postData.params.map((param) => {
+            const part: Record<string, any> = {
+              name: param.name,
+              contents: param.fileName ? new Raw(`fopen(${quotePhpString(param.fileName)}, 'rb')`) : param.value || '',
+            }
+
+            if (param.contentType) {
+              part.headers = { 'Content-Type': param.contentType }
+            }
+
+            return part
+          })
         } else if (request.postData.text) {
           try {
             options.form_params = JSON.parse(request.postData.text)
-          } catch (e) {
+          } catch (_e) {
             options.body = request.postData.text
           }
         }
       } else if (request.postData.mimeType === 'application/x-www-form-urlencoded') {
         if (request.postData.params) {
-          const formParams: Record<string, string> = {}
+          // A repeated field name keeps every value instead of the last one
+          const formParams: Record<string, string | string[]> = {}
           request.postData.params.forEach((param) => {
-            formParams[param.name] = param.value || ''
+            accumulateRepeatedValue(formParams, param.name, param.value || '')
           })
-          options.form_params = formParams
+          if (Object.values(formParams).some(Array.isArray)) {
+            // Guzzle encodes arrays with indexed names, so serialize repeated fields directly.
+            options.body = new URLSearchParams(
+              request.postData.params.map(({ name, value }) => [name, value ?? '']),
+            ).toString()
+            const headers = options.headers ?? {}
+            if (!Object.keys(headers).some((name) => name.toLowerCase() === 'content-type')) {
+              headers['Content-Type'] = 'application/x-www-form-urlencoded'
+            }
+            options.headers = headers
+          } else {
+            options.form_params = formParams
+          }
         }
       } else {
         // For other mime types (like application/octet-stream), use the raw body
@@ -100,60 +122,16 @@ export const phpGuzzle: Plugin = {
     }
 
     // Generate the PHP code
-    let code = '$client = new GuzzleHttp\\Client();\n\n'
+    let code = `$client = new GuzzleHttp\\Client();\n\n${cookieJar}`
 
     if (Object.keys(options).length > 0) {
       // Format the options array with proper indentation
-      const formattedOptions = formatOptionsArray(options)
-      code += `$response = $client->request('${method}', '${url}', ${formattedOptions});`
+      const formattedOptions = objectToString(options)
+      code += `$response = $client->request(${objectToString(method)}, ${objectToString(url)}, ${formattedOptions});`
     } else {
-      code += `$response = $client->request('${method}', '${url}');`
+      code += `$response = $client->request(${objectToString(method)}, ${objectToString(url)});`
     }
 
     return code
   },
-}
-
-/**
- * Helper function to format the PHP options array with proper indentation
- */
-function formatOptionsArray(options: Record<string, any>, indent = 0): string {
-  if (Object.keys(options).length === 0) return '[]'
-
-  const spaces = ' '.repeat(4)
-  let result = '[\n'
-
-  for (const [key, value] of Object.entries(options)) {
-    const formattedValue = formatValue(value, indent + 1)
-    result += `${spaces.repeat(indent + 1)}'${key}' => ${formattedValue},\n`
-  }
-
-  result += `${spaces.repeat(indent)}]`
-  return result
-}
-
-/**
- * Helper function to format values in the PHP array
- */
-function formatValue(value: any, indent: number): string {
-  if (value === null) return 'null'
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  if (typeof value === 'string' && value.startsWith('fopen(')) return value
-  if (typeof value === 'string') return `'${value}'`
-  if (typeof value === 'number') return value.toString()
-  if (Array.isArray(value)) {
-    if (value.length === 0) return '[]'
-    const spaces = ' '.repeat(4)
-    let result = '[\n'
-    value.forEach((item) => {
-      const formattedItem = formatValue(item, indent + 1)
-      result += `${spaces.repeat(indent + 1)}${formattedItem},\n`
-    })
-    result += `${spaces.repeat(indent)}]`
-    return result
-  }
-  if (typeof value === 'object') {
-    return formatOptionsArray(value, indent)
-  }
-  return `'${value}'`
 }

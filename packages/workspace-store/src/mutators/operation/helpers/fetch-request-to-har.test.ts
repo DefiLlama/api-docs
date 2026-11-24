@@ -1,0 +1,622 @@
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+
+import { encodeMultipartBody } from '@/request-example/builder/body/encode-multipart-body'
+import type { RequestPayload } from '@/request-example/builder/build-request'
+
+import { fetchRequestToHar } from './fetch-request-to-har'
+
+describe('fetchRequestToHar', () => {
+  it('converts a basic GET request to HAR format', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.method).toBe('GET')
+    expect(result.url).toBe('https://api.example.com/users')
+    expect(result.httpVersion).toBe('HTTP/1.1')
+    expect(result.headers).toEqual([])
+    expect(result.queryString).toEqual([])
+    expect(result.cookies).toEqual([])
+    expect(result.bodySize).toBe(-1)
+  })
+
+  it('extracts query parameters from URL', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users?page=1&limit=10&sort=name', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.queryString).toEqual([
+      { name: 'page', value: '1' },
+      { name: 'limit', value: '10' },
+      { name: 'sort', value: 'name' },
+    ])
+  })
+
+  it('extracts headers from request', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        headers: new Headers({
+          'Authorization': 'Bearer token123',
+          'X-Custom-Header': 'custom-value',
+          'Accept': 'application/json',
+        }),
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.headers).toContainEqual({ name: 'authorization', value: 'Bearer token123' })
+    expect(result.headers).toContainEqual({ name: 'x-custom-header', value: 'custom-value' })
+    expect(result.headers).toContainEqual({ name: 'accept', value: 'application/json' })
+  })
+
+  it('calculates headers size correctly', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        headers: new Headers({ 'X-Test': 'value' }),
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    // Header size = name.length + ': '.length + value.length + '\r\n'.length
+    // 'x-test' (6) + ': ' (2) + 'value' (5) + '\r\n' (2) = 15
+    expect(result.headersSize).toBe(15)
+  })
+
+  it('extracts cookies from Cookie header', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        headers: new Headers({ 'Cookie': 'session_id=abc123; theme=dark; user_id=42' }),
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.cookies).toEqual([
+      { name: 'session_id', value: 'abc123' },
+      { name: 'theme', value: 'dark' },
+      { name: 'user_id', value: '42' },
+    ])
+    // Cookie header is not included in regular headers
+    expect(result.headers.find((h) => h.name === 'cookie')).toBeUndefined()
+  })
+
+  it('handles malformed cookies gracefully', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        headers: new Headers({ 'Cookie': 'validcookie=value; invalidcookie; anothercookie=value2' }),
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.cookies).toEqual([
+      { name: 'validcookie', value: 'value' },
+      { name: 'anothercookie', value: 'value2' },
+    ])
+  })
+
+  it('converts POST request with JSON body to HAR format', async () => {
+    const body = JSON.stringify({ name: 'John Doe', email: 'john@example.com' })
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.method).toBe('POST')
+    expect(result.postData?.mimeType).toBe('application/json')
+    expect(result.postData?.text).toBe(body)
+    expect(result.bodySize).toBe(body.length)
+  })
+
+  it('extracts MIME type without charset', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json; charset=utf-8' }),
+        body: '{}',
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.mimeType).toBe('application/json')
+  })
+
+  it('defaults MIME type to text/plain when not specified', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        body: 'plain text',
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.mimeType).toBe('text/plain')
+  })
+
+  it('converts POST request with form data to HAR params', async () => {
+    const formData = new FormData()
+    formData.append('username', 'johndoe')
+    formData.append('password', 'secret123')
+    formData.append('remember', 'true')
+
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/login',
+      {
+        method: 'POST',
+        body: formData,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.params).toEqual([
+      { name: 'username', value: 'johndoe' },
+      { name: 'password', value: 'secret123' },
+      { name: 'remember', value: 'true' },
+    ])
+  })
+
+  it('converts POST request with URL-encoded form data to HAR params', async () => {
+    const formData = new URLSearchParams()
+    formData.append('email', 'test@example.com')
+    formData.append('message', 'Hello World')
+
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/contact',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/x-www-form-urlencoded' }),
+        body: formData,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.params).toEqual([
+      { name: 'email', value: 'test@example.com' },
+      { name: 'message', value: 'Hello World' },
+    ])
+  })
+
+  it('handles file uploads in form data', async () => {
+    const formData = new FormData()
+    formData.append('username', 'johndoe')
+    formData.append('avatar', new File(['file content'], 'avatar.png', { type: 'image/png' }))
+
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/upload',
+      {
+        method: 'POST',
+        body: formData,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.params).toEqual([
+      { name: 'username', value: 'johndoe' },
+      { name: 'avatar', value: '@avatar.png' },
+    ])
+  })
+
+  it('skips body when includeBody is false', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ name: 'John' }),
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload, includeBody: false })
+
+    expect(result.postData?.text).toBe('')
+    expect(result.bodySize).toBe(-1)
+  })
+
+  it('skips body when request has no body', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users', { method: 'GET' }]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.text).toBe('')
+    expect(result.bodySize).toBe(-1)
+  })
+
+  it('skips binary bodies (application/octet-stream)', async () => {
+    const binaryData = new Uint8Array([0x00, 0x01, 0x02, 0x03])
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/upload',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/octet-stream' }),
+        body: binaryData,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.text).toBe('')
+    expect(result.bodySize).toBe(-1)
+  })
+
+  it('enforces body size limit', async () => {
+    const largeBody = 'x'.repeat(2000)
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'text/plain' }),
+        body: largeBody,
+      },
+    ]
+
+    const result = await fetchRequestToHar({
+      requestPayload,
+      bodySizeLimit: 1000,
+    })
+
+    expect(result.postData?.text).toBe('')
+    expect(result.bodySize).toBe(-1)
+  })
+
+  it('includes body when size is exactly at limit', async () => {
+    const body = 'x'.repeat(1000)
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'text/plain' }),
+        body,
+      },
+    ]
+
+    const result = await fetchRequestToHar({
+      requestPayload,
+      bodySizeLimit: 1000,
+    })
+
+    expect(result.postData?.text).toBe(body)
+    expect(result.bodySize).toBe(1000)
+  })
+
+  it('uses custom HTTP version when provided', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users', {}]
+
+    const result = await fetchRequestToHar({
+      requestPayload,
+      httpVersion: 'HTTP/2',
+    })
+
+    expect(result.httpVersion).toBe('HTTP/2')
+  })
+
+  it('handles requests with multiple headers of same name', async () => {
+    const headers = new Headers()
+    headers.append('X-Custom', 'value1')
+    headers.append('X-Custom', 'value2')
+
+    const requestPayload: RequestPayload = ['https://api.example.com/users', { headers }]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    // Headers.entries() will combine multiple values with comma
+    const customHeader = result.headers.find((h) => h.name === 'x-custom')
+    expect(customHeader?.value).toBe('value1, value2')
+  })
+
+  it('handles empty query string', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users?', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.queryString).toEqual([])
+  })
+
+  it('handles URL with fragment', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users#section', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    // Fragments are not included in URL.searchParams
+    expect(result.url).toBe('https://api.example.com/users#section')
+    expect(result.queryString).toEqual([])
+  })
+
+  it('handles PUT request with body', async () => {
+    const body = JSON.stringify({ status: 'active' })
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users/123',
+      {
+        method: 'PUT',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.method).toBe('PUT')
+    expect(result.postData?.text).toBe(body)
+  })
+
+  it('handles DELETE request', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users/123', { method: 'DELETE' }]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.method).toBe('DELETE')
+    expect(result.bodySize).toBe(-1)
+  })
+
+  it('handles PATCH request with body', async () => {
+    const body = JSON.stringify({ name: 'Updated Name' })
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users/123',
+      {
+        method: 'PATCH',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.method).toBe('PATCH')
+    expect(result.postData?.text).toBe(body)
+  })
+
+  it('handles request with XML body', async () => {
+    const xmlBody = '<?xml version="1.0"?><user><name>John</name></user>'
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/xml' }),
+        body: xmlBody,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.mimeType).toBe('application/xml')
+    expect(result.postData?.text).toBe(xmlBody)
+  })
+
+  it('handles empty body for POST request', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        body: '',
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.text).toBe('')
+    expect(result.bodySize).toBe(0)
+  })
+
+  it('handles cookies with spaces in values', async () => {
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        headers: new Headers({ 'Cookie': 'user_name=John Doe; session=abc 123' }),
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.cookies).toEqual([
+      { name: 'user_name', value: 'John Doe' },
+      { name: 'session', value: 'abc 123' },
+    ])
+  })
+
+  it('handles URL with port number', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com:8080/users?id=1', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.url).toBe('https://api.example.com:8080/users?id=1')
+    expect(result.queryString).toEqual([{ name: 'id', value: '1' }])
+  })
+
+  it('handles request with no headers', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.headers).toEqual([])
+    expect(result.headersSize).toBe(0)
+  })
+
+  it('handles UTF-8 encoded body correctly', async () => {
+    const body = JSON.stringify({ message: '你好世界' })
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/messages',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json; charset=utf-8' }),
+        body,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.text).toBe(body)
+    expect(result.bodySize).toBe(new TextEncoder().encode(body).length)
+  })
+
+  it('can be called multiple times with the same requestPayload', async () => {
+    const body = JSON.stringify({ test: 'data' })
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body,
+      },
+    ]
+
+    // First conversion
+    await fetchRequestToHar({ requestPayload })
+
+    // Second conversion with the same requestPayload - works because body is BodyInit, not a stream
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.postData?.text).toBe(body)
+  })
+
+  it('handles query parameters with special characters', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/search?q=hello%20world&filter=type%3Duser', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.queryString).toEqual([
+      { name: 'q', value: 'hello world' },
+      { name: 'filter', value: 'type=user' },
+    ])
+  })
+
+  it('handles query parameters with empty values', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users?active=&premium=', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.queryString).toEqual([
+      { name: 'active', value: '' },
+      { name: 'premium', value: '' },
+    ])
+  })
+
+  it('handles duplicate query parameters', async () => {
+    const requestPayload: RequestPayload = ['https://api.example.com/users?tag=javascript&tag=typescript&tag=vue', {}]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    // URL.searchParams.entries() handles duplicates
+    expect(result.queryString.filter((q) => q.name === 'tag')).toHaveLength(3)
+  })
+
+  it('uses default body size limit of 1MB', async () => {
+    const smallBody = 'test'
+    const requestPayload: RequestPayload = [
+      'https://api.example.com/users',
+      {
+        method: 'POST',
+        body: smallBody,
+      },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    // Should include body since it's under 1MB default limit
+    expect(result.postData?.text).toBe(smallBody)
+    expect(result.bodySize).toBe(smallBody.length)
+  })
+
+  it('handles relative URLs, e.g. a relative proxy URL', async () => {
+    vi.stubGlobal('location', { origin: 'https://portal.example.com' })
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+
+    const requestPayload: RequestPayload = [
+      '/api/scalar-proxy?scalar_url=https%3A%2F%2Fapi.example.com%2Fusers',
+      { method: 'GET' },
+    ]
+
+    const result = await fetchRequestToHar({ requestPayload })
+
+    expect(result.url).toBe('/api/scalar-proxy?scalar_url=https%3A%2F%2Fapi.example.com%2Fusers')
+    expect(result.queryString).toEqual([{ name: 'scalar_url', value: 'https://api.example.com/users' }])
+  })
+
+  it('handles relative URLs when there is no usable origin (non-browser or opaque origin)', async () => {
+    // Sandboxed iframes and about:blank report an opaque origin as the string "null",
+    // which is not a valid URL base. A missing location behaves the same way.
+    for (const origin of [undefined, 'null']) {
+      vi.stubGlobal('location', origin === undefined ? undefined : { origin })
+      onTestFinished(() => {
+        vi.unstubAllGlobals()
+      })
+
+      const requestPayload: RequestPayload = [
+        '/api/scalar-proxy?scalar_url=https%3A%2F%2Fapi.example.com%2Fusers',
+        { method: 'GET' },
+      ]
+
+      const result = await fetchRequestToHar({ requestPayload })
+
+      expect(result.url).toBe('/api/scalar-proxy?scalar_url=https%3A%2F%2Fapi.example.com%2Fusers')
+      expect(result.queryString).toEqual([{ name: 'scalar_url', value: 'https://api.example.com/users' }])
+    }
+  })
+  it('captures encoded multipart fields and files without raw binary text', async () => {
+    const body = encodeMultipartBody([
+      { type: 'text', key: 'data', value: '{"id":1}', contentType: 'application/json' },
+      { type: 'text', key: 'data', value: '{"id":2}', contentType: 'application/json' },
+      { type: 'file', key: 'upload', value: new File([new Uint8Array([0, 255])], 'data.bin') },
+    ])
+    const requestPayload: [string, RequestInit] = [
+      'https://example.com',
+      {
+        method: 'POST',
+        body,
+        headers: { 'content-type': body.type },
+      },
+    ]
+    const har = await fetchRequestToHar({ requestPayload })
+    expect(har.postData).toEqual({
+      mimeType: 'multipart/form-data',
+      params: [
+        { name: 'data', value: '{"id":1}' },
+        { name: 'data', value: '{"id":2}' },
+        { name: 'upload', value: '@data.bin' },
+      ],
+    })
+    expect(har.bodySize).toBe(body.size)
+    const omitted = await fetchRequestToHar({ requestPayload, bodySizeLimit: body.size - 1 })
+    expect(omitted.postData).toEqual({ mimeType: 'multipart/form-data', text: '' })
+    expect(omitted.bodySize).toBe(-1)
+    expect(await fetchRequestToHar({ requestPayload })).toEqual(har)
+  })
+  it.each([new Blob(['malformed multipart']), new File(['malformed multipart'], 'raw.multipart')])(
+    'records requests with malformed raw multipart bodies without failing',
+    async (body) => {
+      const har = await fetchRequestToHar({
+        requestPayload: [
+          'https://example.com',
+          {
+            method: 'POST',
+            body,
+            headers: { 'content-type': 'multipart/form-data; boundary=missing' },
+          },
+        ],
+      })
+      expect(har.url).toBe('https://example.com')
+      expect(har.method).toBe('POST')
+      expect(har.postData).toEqual({ mimeType: 'multipart/form-data', text: '' })
+      expect(har.bodySize).toBe(-1)
+    },
+  )
+})

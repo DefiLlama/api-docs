@@ -1,5 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/vue3'
+import type { Meta, StoryObj } from '@storybook/vue3-vite'
 
+import { ScalarCard, ScalarCardHeader, ScalarCardSection } from '../ScalarCard'
 import ScalarCodeBlock from './ScalarCodeBlock.vue'
 
 const contentJs = `import { ApiClientReact } from '@scalar/api-client-react'
@@ -54,6 +55,11 @@ const contentJson = JSON.stringify([
   },
 ])
 
+const contentCurl = String.raw`curl --request PUT \
+  --url https://galaxy.scalar.com/planets \
+  --header 'Authorization: Bearer 123234324'
+`
+
 /**
  * Syntax highlighting in a light weight component
  */
@@ -61,6 +67,11 @@ const meta = {
   component: ScalarCodeBlock,
   argTypes: {
     class: { control: 'text' },
+    lang: { control: 'text' },
+    copy: { control: 'select', options: ['always', 'hover', false] },
+  },
+  parameters: {
+    layout: 'fullscreen',
   },
   tags: ['autodocs'],
   render: (args) => ({
@@ -68,28 +79,139 @@ const meta = {
     setup() {
       return { args }
     },
-    template: `<ScalarCodeBlock v-bind="args" />`,
+    template: `
+<div class="grid h-dvh w-dvw">
+  <ScalarCodeBlock class="min-h-0 min-w-0" v-bind="args" />
+</div>
+    `,
   }),
 } satisfies Meta<typeof ScalarCodeBlock>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Base: Story = { args: { content: contentJs } }
+export const Base: Story = { args: { content: contentJs, lang: 'javascript' } }
 
 export const LineNumbers: Story = {
-  args: { content: contentJs, lineNumbers: true },
+  args: { content: contentJs, lineNumbers: true, lang: 'javascript' },
 }
 
 export const JSONString: Story = {
   args: { content: contentJson, lineNumbers: true, lang: 'json' },
 }
 
+export const Bordered: Story = {
+  args: {
+    content: contentJs,
+    lineNumbers: true,
+    lang: 'javascript',
+    class: 'border rounded',
+  },
+  render: (args) => ({
+    components: { ScalarCodeBlock },
+    setup() {
+      return { args }
+    },
+    template: `
+<div class="flex h-dvh w-dvw p-2">
+  <ScalarCodeBlock v-bind="args" />
+</div>
+    `,
+  }),
+}
+
+/**
+ * A one-liner wider than the block. The copy button floats over the end of the line, so the line
+ * reserves room to scroll clear of it.
+ */
+export const SingleLine: Story = {
+  args: {
+    content: 'curl --request PUT --url https://galaxy.scalar.com/planets --header "Authorization: Bearer 123234324"',
+    lang: 'curl',
+    class: 'border rounded',
+    copy: 'always',
+  },
+  render: (args) => ({
+    components: { ScalarCodeBlock },
+    setup() {
+      return { args }
+    },
+    template: `
+<div class="flex flex-col h-dvh w-dvw p-2">
+  <ScalarCodeBlock v-bind="args" />
+</div>
+    `,
+  }),
+}
+
+/**
+ * A long response body inside a card, laid out like the example responses in the API reference.
+ * The card section is a grid, so the wrapper needs `min-w-0` and `min-h-0` to let the code block
+ * scroll itself. Without them the card scrolls instead and carries the copy button out of view.
+ */
+export const InCard: Story = {
+  args: {
+    content: {
+      data: [
+        {
+          id: 'parallel/fast',
+          provider: 'parallel',
+          description: 'Parallel fast, under one second, with a description long enough to scroll',
+          pricing: { per_1k_requests_usd: 1, included_results: 10, per_1k_extra_result_usd: 1 },
+        },
+        {
+          id: 'parallel/slow',
+          provider: 'parallel',
+          description: 'Parallel slow, a few seconds, with a description long enough to scroll',
+          pricing: { per_1k_requests_usd: 2, included_results: 10, per_1k_extra_result_usd: 2 },
+        },
+      ],
+    },
+    lang: 'json',
+    // Transparent, so the card section's surface shows through as it does in the API reference
+    class: 'bg-transparent',
+  },
+  render: (args) => ({
+    components: { ScalarCard, ScalarCardHeader, ScalarCardSection, ScalarCodeBlock },
+    setup() {
+      return { args }
+    },
+    template: `
+<div class="p-2">
+  <ScalarCard class="h-60 w-120">
+    <ScalarCardHeader>200</ScalarCardHeader>
+    <ScalarCardSection class="grid flex-1">
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <ScalarCodeBlock v-bind="args" />
+      </div>
+    </ScalarCardSection>
+  </ScalarCard>
+</div>
+    `,
+  }),
+}
+
+/**
+ * Code with character sequences that ligature fonts (like JetBrains Mono) would
+ * normally combine into a single glyph. Ligatures are disabled so each character
+ * renders literally.
+ */
+export const Ligatures: Story = {
+  args: {
+    content: `const compare = (a, b) => a !== b && a >= 0 && b <= 10
+const arrow = a -> b
+const pipe = value |> transform
+const equal = x === y
+const notEqual = x != y
+const fatArrow = () => {}`,
+    lang: 'javascript',
+  },
+}
+
 export const HideCredentials: Story = {
   args: {
-    content: `curl --request PUT \
-  --url https://galaxy.scalar.com/planets \
-  --header 'Authorization: Bearer 123234324'`,
+    content: contentCurl,
+    lang: 'curl',
     hideCredentials: ['123234324'],
   },
 }

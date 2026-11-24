@@ -1,6 +1,5 @@
-import { z } from 'zod'
-
 import { type ENTITY_BRANDS, nanoidSchema } from '../utils/nanoid'
+import { z } from '../zod'
 
 // ---------------------------------------------------------------------------
 // COMMON PROPS FOR ALL SECURITY SCHEMES
@@ -9,6 +8,8 @@ import { type ENTITY_BRANDS, nanoidSchema } from '../utils/nanoid'
 const commonProps = z.object({
   /* A description for security scheme. CommonMark syntax MAY be used for rich text representation. */
   description: z.string().optional(),
+  /** When true, the whole scheme is hidden from the auth UI. See documentation/openapi.md. */
+  'x-scalar-ignore': z.boolean().optional(),
 })
 
 const extendedSecuritySchema = z.object({
@@ -20,7 +21,7 @@ const extendedSecuritySchema = z.object({
 // ---------------------------------------------------------------------------
 // API KEY
 
-export const securitySchemeApiKeyIn = ['query', 'header', 'cookie'] as const
+const securitySchemeApiKeyIn = ['query', 'header', 'cookie'] as const
 
 const oasSecuritySchemeApiKey = commonProps.extend({
   type: z.literal('apiKey'),
@@ -31,6 +32,8 @@ const oasSecuritySchemeApiKey = commonProps.extend({
 })
 
 const apiKeyValueSchema = z.object({
+  /** Prefix added to header API keys only; enter credentials without this prefix. */
+  'x-scalar-token-prefix': z.string().optional(),
   value: z.string().default(''),
 })
 
@@ -73,18 +76,17 @@ export const securityHttpSchema = oasSecuritySchemeHttp.merge(extendedSecuritySc
 export type SecuritySchemaHttp = z.infer<typeof securityHttpSchema>
 
 // ---------------------------------------------------------------------------
-// OPENID CONNECT
-const oasSecuritySchemeOpenId = commonProps.extend({
-  type: z.literal('openIdConnect'),
-  /**
-   * REQUIRED. OpenId Connect URL to discover OAuth2 configuration values. This MUST be in the
-   * form of a URL. The OpenID Connect standard requires the use of TLS.
-   */
-  openIdConnectUrl: z.string().optional().default(''),
+// MUTUAL TLS
+
+// Mutual TLS presents a client certificate at the TLS layer, so there is no name/value pair or
+// token for the user to enter. The scheme is modeled so its type survives coercion and the auth UI
+// can react to it instead of falling back to the generic apiKey form.
+const oasSecuritySchemeMutualTls = commonProps.extend({
+  type: z.literal('mutualTLS'),
 })
 
-export const securityOpenIdSchema = oasSecuritySchemeOpenId.merge(extendedSecuritySchema)
-export type SecuritySchemaOpenId = z.infer<typeof securityOpenIdSchema>
+export const securityMutualTlsSchema = oasSecuritySchemeMutualTls.merge(extendedSecuritySchema)
+export type SecuritySchemeMutualTls = z.infer<typeof securityMutualTlsSchema>
 
 // ---------------------------------------------------------------------------
 
@@ -123,6 +125,10 @@ const flowsCommon = z.object({
   'x-scalar-security-body': z.record(z.string(), z.string()).optional(),
   /** Extension to specify custom token name in the response (defaults to 'access_token') */
   'x-tokenName': z.string().optional(),
+  /** Display order of this flow's tab in the auth UI (ascending). See documentation/openapi.md. */
+  'x-order': z.number().optional(),
+  /** When true, this flow's tab is hidden from the auth UI. See documentation/openapi.md. */
+  'x-scalar-ignore': z.boolean().optional(),
 })
 
 /** Setup a default redirect uri if we can */
@@ -131,15 +137,24 @@ const defaultRedirectUri = typeof window !== 'undefined' ? window.location.origi
 /** Options for the x-usePkce extension */
 export const pkceOptions = ['SHA-256', 'plain', 'no'] as const
 
+const credentialsLocationExtension = z.enum(['header', 'body']).optional()
+
 /** Oauth2 security scheme */
 const oasSecuritySchemeOauth2 = commonProps.extend({
   type: z.literal('oauth2'),
   /** The default scopes for the oauth flow */
-  'x-default-scopes': z.string().or(z.array(z.string())).optional(),
+  'x-default-scopes': z.array(z.string()).optional(),
   /** REQUIRED. An object containing configuration information for the flow types supported. */
   flows: z
     .object({
       /** Configuration for the OAuth Implicit flow */
+      deviceAuthorization: flowsCommon.extend({
+        type: z.literal('deviceAuthorization').default('deviceAuthorization'),
+        deviceAuthorizationUrl: z.string().default(''),
+        tokenUrl,
+        clientSecret: z.string().default(''),
+        'x-scalar-credentials-location': credentialsLocationExtension,
+      }),
       implicit: flowsCommon.extend({
         'type': z.literal('implicit').default('implicit'),
         authorizationUrl,
@@ -152,12 +167,14 @@ const oasSecuritySchemeOauth2 = commonProps.extend({
         clientSecret: z.string().default(''),
         username: z.string().default(''),
         password: z.string().default(''),
+        'x-scalar-credentials-location': credentialsLocationExtension,
       }),
       /** Configuration for the OAuth Client Credentials flow. Previously called application in OpenAPI 2.0. */
       clientCredentials: flowsCommon.extend({
         type: z.literal('clientCredentials').default('clientCredentials'),
         tokenUrl,
         clientSecret: z.string().default(''),
+        'x-scalar-credentials-location': credentialsLocationExtension,
       }),
       /** Configuration for the OAuth Authorization Code flow. Previously called accessCode in OpenAPI 2.0.*/
       authorizationCode: flowsCommon.extend({
@@ -166,24 +183,58 @@ const oasSecuritySchemeOauth2 = commonProps.extend({
         'x-usePkce': z.enum(pkceOptions).optional().default('no'),
         'x-scalar-redirect-uri': z.string().optional().default(defaultRedirectUri),
         tokenUrl,
-        'clientSecret': z.string().default(''),
+        clientSecret: z.string().default(''),
+        'x-scalar-credentials-location': credentialsLocationExtension,
       }),
     })
     .partial()
     .default({
-      implicit: { type: 'implicit', authorizationUrl: 'http://localhost:8080' },
+      implicit: {
+        selectedScopes: [],
+        scopes: {},
+        'x-scalar-client-id': '',
+        refreshUrl: '',
+        token: '',
+        type: 'implicit',
+        authorizationUrl: 'http://localhost:8080',
+        'x-scalar-redirect-uri': defaultRedirectUri,
+      },
     }),
 })
+
+// ---------------------------------------------------------------------------
+// OPENID CONNECT
+const oasSecuritySchemeOpenId = commonProps.extend({
+  type: z.literal('openIdConnect'),
+  /**
+   * REQUIRED. OpenId Connect URL to discover OAuth2 configuration values. This MUST be in the
+   * form of a URL. The OpenID Connect standard requires the use of TLS.
+   */
+  openIdConnectUrl: z.string().optional().default(''),
+  /** Defaults for discovered OAuth flows; these do not bypass discovery. */
+  flows: oasSecuritySchemeOauth2.shape.flows.unwrap().optional(),
+  /** Default scopes to select after discovery. */
+  'x-default-scopes': oasSecuritySchemeOauth2.shape['x-default-scopes'],
+})
+
+export const securityOpenIdSchema = oasSecuritySchemeOpenId.merge(extendedSecuritySchema)
+export type SecuritySchemaOpenId = z.infer<typeof securityOpenIdSchema>
 
 export const securityOauthSchema = oasSecuritySchemeOauth2.merge(extendedSecuritySchema)
 
 export type SecuritySchemeOauth2 = z.infer<typeof securityOauthSchema>
 export type SecuritySchemeOauth2Payload = z.input<typeof securityOauthSchema>
 export type Oauth2Flow = NonNullable<
-  SecuritySchemeOauth2['flows']['authorizationCode' | 'clientCredentials' | 'implicit' | 'password']
+  SecuritySchemeOauth2['flows'][
+    | 'authorizationCode'
+    | 'clientCredentials'
+    | 'implicit'
+    | 'password'
+    | 'deviceAuthorization']
 >
 /** Payload for the oauth 2 flows + extensions */
 export type Oauth2FlowPayload = NonNullable<SecuritySchemeOauth2Payload['flows']>[
+  | 'deviceAuthorization'
   | 'authorizationCode'
   | 'clientCredentials'
   | 'implicit'
@@ -209,13 +260,20 @@ export const oasSecurityRequirementSchema = z.record(z.string(), z.array(z.strin
 export const oasSecuritySchemeSchema = z.union([
   oasSecuritySchemeApiKey,
   oasSecuritySchemeHttp,
+  oasSecuritySchemeMutualTls,
   oasSecuritySchemeOauth2,
   oasSecuritySchemeOpenId,
 ])
 
 /** Extended security schemes for workspace usage */
 export const securitySchemeSchema = z
-  .discriminatedUnion('type', [securityApiKeySchema, securityHttpSchema, securityOpenIdSchema, securityOauthSchema])
+  .discriminatedUnion('type', [
+    securityApiKeySchema,
+    securityHttpSchema,
+    securityMutualTlsSchema,
+    securityOpenIdSchema,
+    securityOauthSchema,
+  ])
   .transform((data) => {
     // Set selected scopes from x-default-scopes
     if (data.type === 'oauth2' && data['x-default-scopes']?.length) {

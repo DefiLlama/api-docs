@@ -1,20 +1,42 @@
-import { alias, createViteBuildOptions, findEntryPoints } from '@scalar/build-tooling'
+import { resolve } from 'node:path'
+
+import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
+import {
+  createExternalsFromPackageJson,
+  createLibEntry,
+  findEntryPoints,
+} from '../../tooling/scripts/vite-lib-config.ts'
+
+const external = createExternalsFromPackageJson()
+const entryPaths = await findEntryPoints()
+const entry = createLibEntry(entryPaths, import.meta.dirname)
+
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), tailwindcss()],
   resolve: {
-    alias: alias(import.meta.url),
+    alias: { '@': resolve(import.meta.dirname, './src') },
     dedupe: ['vue'],
   },
   server: {
     port: 5064,
   },
-  build: createViteBuildOptions({
-    entry: await findEntryPoints({ allowCss: true }),
-    options: {
-      ssr: false,
+  build: {
+    outDir: './dist',
+    minify: false,
+    sourcemap: true,
+    lib: {
+      formats: ['es'],
+      cssFileName: 'style',
+      entry,
     },
-  }),
+    rolldownOptions: {
+      treeshake: {
+        moduleSideEffects: (id) => id.includes('.css'),
+      },
+      external,
+    },
+  },
 })

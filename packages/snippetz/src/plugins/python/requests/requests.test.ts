@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
+
 import { pythonRequests } from './requests'
 
 describe('pythonRequests', () => {
+  it.each(['customMethod', 'COPY', 'Get'])('uses a generic request for %s', (method) => {
+    expect(pythonRequests.generate({ url: 'https://example.com', method })).toBe(
+      `requests.request("${method}", "https://example.com")`,
+    )
+  })
+
   it('returns a basic request', () => {
     const result = pythonRequests.generate({
       url: 'https://example.com',
@@ -93,6 +100,31 @@ describe('pythonRequests', () => {
     params={
       "foo": "bar",
       "bar": "foo"
+    }
+)`)
+  })
+
+  it('preserves repeated query parameters as arrays', () => {
+    const result = pythonRequests.generate({
+      url: 'https://example.com',
+      queryString: [
+        {
+          name: 'statuses',
+          value: 'active',
+        },
+        {
+          name: 'statuses',
+          value: 'inactive',
+        },
+      ],
+    })
+
+    expect(result).toBe(`requests.get("https://example.com",
+    params={
+      "statuses": [
+        "active",
+        "inactive"
+      ]
     }
 )`)
   })
@@ -199,6 +231,62 @@ describe('pythonRequests', () => {
     files=[
       ("file", open("test.txt", "rb")),
       ("file", open("another.txt", "rb"))
+    ]
+)`)
+  })
+
+  it('preserves duplicate multipart field names when values are inline', () => {
+    const result = pythonRequests.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            value: '@first.png',
+          },
+          {
+            name: 'file',
+            value: '@second.png',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`requests.post("https://example.com",
+    files=[
+      ("file", (None, "@first.png")),
+      ("file", (None, "@second.png"))
+    ]
+)`)
+  })
+
+  it('handles multipart form data with per-part content types', () => {
+    const result = pythonRequests.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            fileName: 'test.txt',
+            contentType: 'text/plain',
+          },
+          {
+            name: 'metadata',
+            value: '{"foo":"bar"}',
+            contentType: 'application/json',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`requests.post("https://example.com",
+    files=[
+      ("file", ("test.txt", open("test.txt", "rb"), "text/plain")),
+      ("metadata", (None, "{\\"foo\\":\\"bar\\"}", "application/json"))
     ]
 )`)
   })
@@ -544,5 +632,47 @@ describe('pythonRequests', () => {
       ]
     }
 )`)
+  })
+  it('sends a JSON body when the media type has parameters', () => {
+    const result = pythonRequests.generate({
+      url: 'https://example.com/a',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'application/json; charset=utf-8' }],
+      postData: { mimeType: 'application/json; charset=utf-8', text: '{"a":1}' },
+    })
+
+    expect(result).toContain('json={')
+    expect(result).toContain('"a": 1')
+  })
+
+  it('sends a JSON body for a +json media type', () => {
+    const result = pythonRequests.generate({
+      url: 'https://example.com/a',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'application/vnd.api+json' }],
+      postData: { mimeType: 'application/vnd.api+json', text: '{"a":1}' },
+    })
+
+    expect(result).toContain('json={')
+    expect(result).toContain('"a": 1')
+  })
+
+  it('sends a plain text body', () => {
+    const result = pythonRequests.generate({
+      url: 'https://example.com/a',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'text/plain' }],
+      postData: { mimeType: 'text/plain', text: "it's plain" },
+    })
+
+    expect(result).toContain('data="it\'s plain"')
+  })
+
+  it.each([
+    ['https://example.com/a"b', 'requests.get("https://example.com/a\\"b")'],
+    ['https://example.com/files/a\\b', 'requests.get("https://example.com/files/a\\\\b")'],
+    ["https://example.com/Customers('ALFKI')", 'requests.get("https://example.com/Customers(\'ALFKI\')")'],
+  ])('escapes the request URL %s', (url, expected) => {
+    expect(pythonRequests.generate({ url })).toBe(expected)
   })
 })

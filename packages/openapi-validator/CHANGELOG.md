@@ -1,0 +1,98 @@
+# @scalar/openapi-validator
+
+## 0.1.25
+
+No changes in this release.
+
+## 0.1.24
+
+No changes in this release.
+
+## 0.1.23
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.1.22
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.1.21
+
+### Patch Changes
+
+- [#11008](https://github.com/scalar/scalar/pull/11008): Report duplicate operation IDs in active paths, webhooks and callbacks, including local references.
+
+  Reusing a callback or Path Item component in multiple locations now reports duplicate operation IDs when the component's operations declare an `operationId`. Each reference is checked as a separate occurrence in the API. Give those operations unique IDs at each location, or omit their optional `operationId` fields when sharing the component.
+- [#11009](https://github.com/scalar/scalar/pull/11009): Reject duplicate parameter names and locations within each parameter list while preserving operation-level overrides.
+- [#11010](https://github.com/scalar/scalar/pull/11010): Reject server variable defaults outside their enum values in OpenAPI 3.1 and 3.2, while preserving OpenAPI 3.0 behavior.
+
+## 0.1.20
+
+No changes in this release.
+
+## 0.1.19
+
+## 0.1.18
+
+## 0.1.17
+
+## 0.1.16
+
+## 0.1.15
+
+## 0.1.14
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.1.13
+
+## 0.1.12
+
+## 0.1.11
+
+### Patch Changes
+
+- [#10489](https://github.com/scalar/scalar/pull/10489): Report invalid non-exploded structured cookies in OpenAPI 3.2 documents and prevent invalid request and code sample generation. Recommend `style: cookie` with `explode: true`.
+- [#10485](https://github.com/scalar/scalar/pull/10485): Validate missing and mismatched path parameters for QUERY and methods under additionalOperations, including inherited path-level parameters.
+
+## 0.1.10
+
+## 0.1.9
+
+## 0.1.8
+
+## 0.1.7
+
+## 0.1.6
+
+## 0.1.5
+
+## 0.1.4
+
+## 0.1.3
+
+## 0.1.2
+
+### Patch Changes
+
+- [#10202](https://github.com/scalar/scalar/pull/10202): Explain invalid URI references and OpenAPI component names, and return parser errors for malformed reference escapes.
+- [#10158](https://github.com/scalar/scalar/pull/10158): Add regression coverage for duplicate required property names.
+- [#10136](https://github.com/scalar/scalar/pull/10136): Restore modal and single-file reference tests, update layout selectors, and remove stale comments. Named-resource resolution remains unsupported and is tested explicitly.
+
+## 0.1.1
+
+## 0.1.0
+
+### Minor Changes
+
+- [#9967](https://github.com/scalar/scalar/pull/9967): Add a new `@scalar/openapi-validator` package that validates OpenAPI documents on its own. `@scalar/openapi-parser` now uses it under the hood.
+
+  Two type-level changes in `@scalar/openapi-parser` are worth noting:
+  - `ErrorObject.path` is now `string | string[]` instead of `string[]`. Schema errors carry a JSON Pointer string, semantic errors carry path segments — both shapes were already produced at runtime, the type just says so now. Narrow with `Array.isArray` before treating it as a list.
+  - The unused `ValidationOutcome` type and the internal `OpenApiDocument` alias are no longer exported.

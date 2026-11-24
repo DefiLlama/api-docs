@@ -1,4 +1,4 @@
-# Scalar API Reference for AdonisJS
+# API Reference for AdonisJS
 
 AdonisJS is a TypeScript-first web framework for building web apps and API servers. It comes with support for testing, modern tooling, an ecosystem of official packages, and more.
 
@@ -28,7 +28,7 @@ Do you want us to install dependencies using "npm"?
 ❯ Yes
 ```
 
-Wow, you're half way there already. Jump into the directory and start the devlopment server:
+Wow, you're half way there already. Jump into the directory and start the development server:
 
 ```bash
 cd my-awesome-app
@@ -47,7 +47,7 @@ npm add adonis-autoswagger
 
 We'll also need to add a configuration file:
 
-```ts
+```typescript
 // config/openapi.ts
 import path from 'node:path'
 import url from 'node:url'
@@ -76,7 +76,7 @@ export default {
 
 To actually serve an OpenAPI file and render the reference with Scalar you can extend your routes file:
 
-```ts
+```typescript
 // start/routes.ts
 import router from '@adonisjs/core/services/router'
 import openapi from '#config/openapi'

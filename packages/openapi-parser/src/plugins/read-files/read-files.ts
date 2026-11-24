@@ -1,7 +1,7 @@
 import fs from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import { ERRORS } from '@/configuration'
-import { dirname, join } from '@/polyfills/path'
 import { isJson } from '@/utils/is-json'
 import { isYaml } from '@/utils/is-yaml'
 import type { LoadPlugin } from '@/utils/load/load'
@@ -36,7 +36,7 @@ export const readFiles: () => LoadPlugin = () => {
 
       return true
     },
-    async get(value?: any) {
+    get(value?: any) {
       if (!fs.existsSync(value)) {
         throw new Error(ERRORS.FILE_DOES_NOT_EXIST.replace('%s', value))
       }

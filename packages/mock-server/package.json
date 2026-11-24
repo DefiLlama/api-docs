@@ -1,6 +1,6 @@
 {
   "name": "@scalar/mock-server",
-  "description": "OpenAPI mock server server",
+  "description": "A powerful Node.js mock server that automatically generates realistic API responses from your OpenAPI/Swagger documents",
   "license": "MIT",
   "author": "Scalar (https://github.com/scalar)",
   "homepage": "https://github.com/scalar/scalar",
@@ -16,21 +16,18 @@
     "swagger",
     "cli"
   ],
-  "version": "0.5.17",
+  "version": "0.21.7",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
-    "dev": "nodemon --exec \"vite-node playground/src/index.ts\" --ext ts --quiet",
-    "lint:check": "scalar-lint-check",
-    "lint:fix": "scalar-lint-fix",
-    "test": "vitest",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
@@ -43,19 +40,42 @@
     "./dist",
     "CHANGELOG.md"
   ],
-  "module": "dist/index.js",
+  "scalarReadme": {
+    "title": "Scalar Mock Server",
+    "badges": [
+      {
+        "type": "npm-version"
+      },
+      {
+        "type": "npm-downloads"
+      },
+      {
+        "type": "npm-license"
+      }
+    ],
+    "documentation": "https://scalar.com/tools/mock-server/getting-started"
+  },
   "dependencies": {
-    "@scalar/oas-utils": "workspace:*",
-    "@scalar/openapi-parser": "workspace:*",
+    "@faker-js/faker": "catalog:*",
+    "@scalar/helpers": "workspace:*",
+    "@scalar/json-magic": "workspace:*",
+    "@scalar/json-schema-validator": "workspace:*",
     "@scalar/openapi-types": "workspace:*",
-    "hono": "^4.6.5",
-    "object-to-xml": "^2.0.0"
+    "@scalar/openapi-upgrader": "workspace:*",
+    "@scalar/types": "workspace:*",
+    "@scalar/workspace-store": "workspace:*",
+    "ajv": "catalog:*",
+    "ajv-formats": "catalog:*",
+    "hono": "catalog:*",
+    "quickjs-emscripten": "catalog:*",
+    "yaml": "catalog:*"
   },
   "devDependencies": {
-    "@hono/node-server": "^1.11.0",
-    "@scalar/build-tooling": "workspace:*",
-    "@scalar/hono-api-reference": "workspace:*",
+    "@hono/node-server": "catalog:*",
     "@types/node": "catalog:*",
-    "vite": "catalog:*"
+    "@types/ws": "catalog:*",
+    "undici": "catalog:*",
+    "vite": "catalog:*",
+    "ws": "catalog:*"
   }
 }

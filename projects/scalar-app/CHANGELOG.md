@@ -1,5 +1,878 @@
 # scalar-app
 
+## 1.1.55
+
+### Patch Changes
+
+- [#11146](https://github.com/scalar/scalar/pull/11146): Update compatible npm dependencies for AI chat, encoding, analytics, date handling, HTTP serving, and application query caching.
+- [#11136](https://github.com/scalar/scalar/pull/11136): Update the Scalar SDK to version 0.8 while preserving authenticated registry requests.
+- [#11142](https://github.com/scalar/scalar/pull/11142): Update the desktop runtime to Electron 45.
+- [#10829](https://github.com/scalar/scalar/pull/10829): Complete desktop login and registration through a state-checked browser redirect with PKCE, avoiding Safari's mixed-content block on the local callback. Requires the companion dashboard and auth-service update.
+
+  Allow 15 minutes to finish desktop registration so new users have time to verify their email before returning to the app.
+
+## 1.1.54
+
+No changes in this release.
+
+## 1.1.53
+
+### Patch Changes
+
+- [#11153](https://github.com/scalar/scalar/pull/11153): Invite API client users to the API Hosting beta with a one-time popup as the app starts. Sign-ups join the same waitlist as the other Hosting sign-ups and set the contact's `client` property.
+
+## 1.1.52
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+- [#11091](https://github.com/scalar/scalar/pull/11091): Import cURL data flags as the request body and default the method to POST, as curl does, so Chrome's copy as cURL for a POST is no longer a GET and a body before the URL is no longer a query parameter. Only `-G` or `--get`, also inside a bundle such as `-sG`, puts the data in the query string, repeated data flags are joined with an ampersand, `--data-urlencode` percent-encodes its content, `--json` sends JSON with its headers, attached flags such as `-XPOST` or `--request=PUT` are read, a Content-Type header of the command is kept in any case, `-d ''` no longer swallows the URL, commands copied from Chrome or Firefox for cmd.exe are read with their carets and quote escapes removed, and `-F`, `--form` and `--form-string` send a multipart form body with a POST method even with `-G`, unless the command sets a method or a Content-Type.
+
+  Consume ignored cURL options and their values, including bundled flags, without reading the values as methods or URLs, preserve separators for empty repeated data arguments, and keep empty form fields and mocked file fields in the imported request body.
+- [#11099](https://github.com/scalar/scalar/pull/11099): Validate Postman dynamic variables against patched Faker, align Django Ninja test dependencies with its runtime, and compare large desktop request bodies without expensive deep assertions.
+
+  The Postman Faker override and compatibility patch apply only inside this workspace. Published packages keep `postman-collection` external, so separately installed npm consumers still receive its Faker 5 dependency. Prebuilt vendor code is also unaffected. Workspace development uses Node.js 24, which supports loading Faker 10 ES modules from Postman’s CommonJS code.
+
+## 1.1.51
+
+### Patch Changes
+
+- [#10911](https://github.com/scalar/scalar/pull/10911): Render the active theme as a style element with escaped text content instead of injected HTML.
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 1.1.50
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+- [#10999](https://github.com/scalar/scalar/pull/10999): Upgrade the Scalar SDK to 0.7.0 and adapt registry requests to its updated method parameters.
+- [#11015](https://github.com/scalar/scalar/pull/11015): Update Undici to address CVE-2026-116592 and allow compatible Undici 8 updates without requiring a new Scalar release.
+- [#10998](https://github.com/scalar/scalar/pull/10998): Reuse the discovery response when importing extensionless API description URLs, avoiding a duplicate download while preserving URL metadata and subsequent fetches.
+
+## 1.1.49
+
+### Patch Changes
+
+- [#10988](https://github.com/scalar/scalar/pull/10988): Use the shared theme reset for link text decoration.
+- [#10967](https://github.com/scalar/scalar/pull/10967): Use the shared YAML alias limit when parsing YAML in the collection editor.
+
+## 1.1.48
+
+### Patch Changes
+
+- [#10903](https://github.com/scalar/scalar/pull/10903): Upgrade Monaco Editor and YAML support, migrate language APIs, and use Vite-managed workers in web and desktop editors.
+
+## 1.1.47
+
+## 1.1.46
+
+## 1.1.45
+
+## 1.1.44
+
+## 1.1.43
+
+### Patch Changes
+
+- [#10714](https://github.com/scalar/scalar/pull/10714): Make CmdOrCtrl+W in the desktop app close the active tab, and close the window when only one tab is left.
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+- [#10696](https://github.com/scalar/scalar/pull/10696): Upgrade Undici to 8.12.3. JSON Magic, Mock Server, Workspace Store, OpenAPI to Markdown, and Scalar App now require Node.js 22.19.0 or later; Node.js 22.0 through 22.18 are no longer supported. Undici 8 enables HTTP/2 by default.
+
+## 1.1.42
+
+## 1.1.41
+
+### Patch Changes
+
+- [#10626](https://github.com/scalar/scalar/pull/10626): Restrict OAuth authorization and desktop external links to HTTPS or HTTP for local development URLs before opening them.
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 1.1.40
+
+### Patch Changes
+
+- [#10526](https://github.com/scalar/scalar/pull/10526): Make document watcher tests independent of HTTP socket timers and cover polling backoff and cleanup.
+- [#10521](https://github.com/scalar/scalar/pull/10521): Wait for initial operation focusing before replacing the document in Monaco validation tests.
+- [#10506](https://github.com/scalar/scalar/pull/10506): Organize imports consistently with the checks enforced in CI.
+- [#10555](https://github.com/scalar/scalar/pull/10555): Make the document watcher unmount regression test independent of response-stream scheduling.
+
+## 1.1.39
+
+### Patch Changes
+
+- [#10493](https://github.com/scalar/scalar/pull/10493): Floating surfaces now paint their own background, border, and shadow instead of using an absolutely positioned backdrop layer. The `#backdrop` slot on `ScalarDropdown`, `ScalarPopover`, `ScalarListbox`, and `ScalarCombobox` is removed; style the floating element with `class` instead. `ScalarFloatingBackdrop`, `--scalar-lifted-brightness`, and the `brightness-lifted` utility are deprecated in favor of `bg-b-1 dark:bg-b-1.5`. `ScalarFloatingBackdrop` itself now uses the same surface styles, so it no longer clips its slot or draws a real border. A new `inset-shadow-border` utility draws the hairline border so it can stack with `shadow-*` without taking up layout space; Tailwind's default `inset-shadow-*` sizes are reset, matching the other theme namespaces.
+
+## 1.1.38
+
+### Patch Changes
+
+- [#10453](https://github.com/scalar/scalar/pull/10453): Update Electron to 44.5.1. The desktop app now requires macOS 13 or later.
+
+## 1.1.37
+
+### Patch Changes
+
+- [#10412](https://github.com/scalar/scalar/pull/10412): Update the shared Undici dependency to 7.29.1 to fix security advisories while preserving Node 22 compatibility, and update Scalar App’s separate Undici pin to 8.11.2.
+- [#10411](https://github.com/scalar/scalar/pull/10411): Import API descriptions from reference page URLs, including Hono pages, and retain discovered document URLs for watch mode.
+
+  Ignore JSON-LD website metadata during URL discovery and preserve link and escaped-JSON fallbacks for URLs with unsupported JavaScript escapes.
+
+## 1.1.36
+
+## 1.1.35
+
+## 1.1.34
+
+### Patch Changes
+
+- [#10352](https://github.com/scalar/scalar/pull/10352): Fix desktop login callback port allocation and allow the dashboard to confirm successful login.
+
+## 1.1.33
+
+### Patch Changes
+
+- [#10186](https://github.com/scalar/scalar/pull/10186): Accept custom HTTP methods in operation events and collection runner types.
+
+## 1.1.32
+
+### Patch Changes
+
+- [#10177](https://github.com/scalar/scalar/pull/10177): Use OpenAPI 3.2 schemas throughout workspace-store consumers, stories, tests, and type generation. Update the app editor to offer OpenAPI 3.2 validation and completion while continuing to accept existing 3.1 documents.
+
+  Preserve OpenAPI 3.2 fields in the loose workspace schema, including tag hierarchy, streaming media types, nested encoding, additional operations, and OAuth device authorization.
+
+  The editor intentionally offers the 3.2 field set to documents declaring 3.1 as well; it does not flag 3.2-only fields solely because the declared version is 3.1. This does not certify conformance to the declared version or automatically update it. Before using 3.2-only fields, migrate and explicitly declare OpenAPI 3.2, and verify support in other validators and generators. Remove the unused 3.1 loose-schema generator to prevent schema drift.
+
+  Migration: the OpenAPI 3.1 loose-schema generator (`@scalar/workspace-store/schemas/v3.1/openapi`, published through the wildcard as `@scalar/workspace-store/schemas/v3.1/openapi/index`) and its `@scalar/workspace-store/schemas/v3.1/openapi/reference` helpers have been removed. Import the generator from `@scalar/workspace-store/schemas/v3.2/openapi/index` and the reference helpers from `@scalar/workspace-store/schemas/v3.2/openapi/reference` instead. The `./schemas/*` wildcard and the 3.1 strict-schema exports remain available; the explicit 3.2 strict-schema exports are additive. Locally generated types now use the `OpenAPIV3_2` namespace instead of `OpenAPIV3_1`.
+
+  Inline the editor path-extension reference so Monaco retains the leading-slash path pattern and does not report valid paths as unknown properties.
+
+  Document ingestion continues to upgrade only to OpenAPI 3.1, so existing inline XML bodies without `xml.name` remain loadable. This schema migration does not opt consumers into the stricter OpenAPI 3.2 XML upgrade.
+
+## 1.1.31
+
+## 1.1.30
+
+## 1.1.29
+
+## 1.1.28
+
+### Patch Changes
+
+- [#10166](https://github.com/scalar/scalar/pull/10166): Fix the workspace settings options turning into an unreadable dark row while being clicked, give the selected option a visible highlight and make light theme swatches visible against the background
+
+## 1.1.27
+
+## 1.1.26
+
+### Patch Changes
+
+- [#10025](https://github.com/scalar/scalar/pull/10025): Compose the app header from `ScalarHeaderColumn` children, fixing the header overflowing the viewport on mobile
+
+## 1.1.25
+
+## 1.1.24
+
+## 1.1.23
+
+## 1.1.22
+
+## 1.1.21
+
+## 1.1.20
+
+## 1.1.19
+
+## 1.1.18
+
+## 1.1.17
+
+## 1.1.16
+
+## 1.1.15
+
+## 1.1.14
+
+## 1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- [#9614](https://github.com/scalar/scalar/pull/9614): Fix importing OpenAPI documents from a URL in the desktop app. The temporary draft store used during import now reuses the IPC-backed fetch, so URL imports no longer get blocked by the Content Security Policy.
+
+## 1.1.11
+
+## 1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- [#9533](https://github.com/scalar/scalar/pull/9533): Make the Watch Mode source URL editable in document settings, so you can re-point a document at a different source without deleting and re-importing it
+
+## 1.1.8
+
+### Patch Changes
+
+- [#9342](https://github.com/scalar/scalar/pull/9342): fix: resolve operations when OpenAPI path items use `$ref`
+
+  Path entries and webhooks can reference `components.pathItems` instead of inlining operations. Navigation, mutators, search, and markdown export now resolve path-item references before reading HTTP methods and path-level parameters.
+
+## 1.1.7
+
+## 1.1.6
+
+## 1.1.5
+
+## 1.1.4
+
+## 1.1.3
+
+### Patch Changes
+
+- [#9332](https://github.com/scalar/scalar/pull/9332): fix: running scripts on electron
+- [#9315](https://github.com/scalar/scalar/pull/9315): fix: fail Vite and electron-vite builds when required VITE\_\* environment variables are missing
+
+## 1.1.2
+
+### Patch Changes
+
+- [#9314](https://github.com/scalar/scalar/pull/9314): fix(scalar-app): redirect to the correct HTML file on logout in Electron
+
+  On Electron the app loads from a `file://` URL and uses hash-based routing, so the previous `window.location.href = '/'` resolved to the filesystem root and broke the app. Logout now resets the hash on the current HTML file and reloads on Electron, while the web build still hard routes to `/`.
+
+- [#9316](https://github.com/scalar/scalar/pull/9316): chore: load env vars correctly
+
+## 1.1.1
+
+### Patch Changes
+
+- [#9248](https://github.com/scalar/scalar/pull/9248): feat: open the API client on the selected operation when launching from API Reference. The modal "Open API Client" link now includes `operation_path` and `operation_method` query params; scalar-app reads them after import and navigates to that request. Also fixes address bar blur replay when focus moves programmatically on first navigation into a draft operation.
+- [#9260](https://github.com/scalar/scalar/pull/9260): chore: remove `'unsafe-eval'` from the desktop/web app CSP
+
+  Pre-request and post-response scripts run through `postman-sandbox`, which relies on `eval`. Instead of allowing `'unsafe-eval'` in the main application CSP, script execution now happens inside an isolated sandbox iframe (`sandbox.html`) that is loaded from a real same-origin URL and carries its own permissive CSP. The host talks to it over `postMessage`, so the main `script-src` no longer needs `'unsafe-eval'`.
+
+- [#9263](https://github.com/scalar/scalar/pull/9263): chore: explicitly enable `contextIsolation` and `nodeIntegration: false` on the desktop app's BrowserWindow to satisfy the toDesktop static analysis check (these were already the secure Electron defaults at runtime)
+- [#9271](https://github.com/scalar/scalar/pull/9271): fix: apply layout-aware CORS proxy defaults when creating workspaces and loading imported documents, so the web client uses proxy.scalar.com and the desktop client skips the proxy unless configured in settings.
+
+## 1.1.0
+
+### Minor Changes
+
+- [#9229](https://github.com/scalar/scalar/pull/9229): feat: sidebar document filters and registry namespace UX
+  - Rework `AppSidebar` (and related UI) so document lists respect title + namespace filtering together, with clearer controls and layout/markup cleanup.
+  - Fix sidebar navigation scrolling, a small `PublishDocumentModal` issue, and a minor tweak to `ScalarSidebarSearchInput`.
+
+### Patch Changes
+
+- [#9232](https://github.com/scalar/scalar/pull/9232): fix: allow images from any HTTPS source in CSP
+- [#9235](https://github.com/scalar/scalar/pull/9235): fix: align team picker with dashboard
+- [#9221](https://github.com/scalar/scalar/pull/9221): fix: csp issue
+- [#9236](https://github.com/scalar/scalar/pull/9236): fix: some analytics events not firing
+
+## 1.0.13
+
+### Patch Changes
+
+- [#9063](https://github.com/scalar/scalar/pull/9063): feat(scalar-app): add a "What's new" modal accessible from the Get Started page so users can browse curated release notes inside the client. A small accent dot appears on the trigger when there are unseen releases. Release notes are bundled with the package via `RELEASE_NOTES.json` (the source of truth, imported directly so no runtime markdown parsing is needed) and filtered to the version the user has actually installed. The release-notes generator updates the JSON file during `pnpm changeset version` and regenerates a derived `RELEASE_NOTES.md` view alongside it.
+- [#9180](https://github.com/scalar/scalar/pull/9180): feat: added team switching and fixed up team redirection and workspace routing
+- [#9109](https://github.com/scalar/scalar/pull/9109): fix: monaco editor vite plugin
+- [#9199](https://github.com/scalar/scalar/pull/9199): feat: some polish for the scalar-app
+- [#9167](https://github.com/scalar/scalar/pull/9167): feat: support media attachments for the changelog modal
+- [#9203](https://github.com/scalar/scalar/pull/9203): chore: added scalar domain to csp; allow localhost img/media sources during Vite dev only
+- [#9152](https://github.com/scalar/scalar/pull/9152): feat: add team switching to the scalar app
+- [#9147](https://github.com/scalar/scalar/pull/9147): fix: rename default workspace labels to Local workspace and Team workspace
+- [#9125](https://github.com/scalar/scalar/pull/9125): feat: add more analytics events
+- [#9081](https://github.com/scalar/scalar/pull/9081): feat: integrate the new registry adapter
+- [#9118](https://github.com/scalar/scalar/pull/9118): fix: remove shortcuts label from the editor page
+- [#9195](https://github.com/scalar/scalar/pull/9195): feat: handle workspace uid and slug reconciliation
+
+  App is updated to treat workspaceUid / teamUid as canonical, to reconcile server-driven team slug changes against persisted records (and clear stale tab metadata where needed), and to route workspace resume flows through a clearer resumeOrGetStarted API. migrate-to-indexdb (localStorage → IndexedDB) writes new records using the same UID + local team model.
+
+- [#9135](https://github.com/scalar/scalar/pull/9135): feat: optimize layout for mobile
+  - Hide the document breadcrumb on small screens and surface workspace
+    switching from the menu instead, so the top bar stays uncluttered.
+  - Convert the document save / discard / pull / push / publish buttons to
+    header-button styling and only render the trailing divider when there
+    are actual cluster buttons next to it.
+  - Stack the address bar onto two rows on small screens so the URL and
+    the action cluster (copy / history / send) each get a full row.
+  - Hide the "Log in" affordance from the small-screen top bar (the menu
+    still owns it) and keep only the primary "Register" CTA there.
+  - Give the pre-request and post-response script editors proper vertical
+    padding so the help text no longer clips when it wraps.
+
+- [#9149](https://github.com/scalar/scalar/pull/9149): fix: keep splash until team loads so team workspace reloads stick
+- [#9179](https://github.com/scalar/scalar/pull/9179): fix: enable transparent Electron window to reduce resize flash
+
+  The desktop shell uses a dark-themed surface; Electron’s default backing color can show through briefly while the webview repaints during aggressive window resizing. A transparent window lets the renderer’s own background (CSS / theme) own what users see in those gaps.
+
+- [#9110](https://github.com/scalar/scalar/pull/9110): build: switch Monaco Vite plugin to ESM and align workers
+- [#9113](https://github.com/scalar/scalar/pull/9113): chore: move app files from client to scalar-app
+
+## 1.0.9
+
+### Patch Changes
+
+- [#9105](https://github.com/scalar/scalar/pull/9105): fix: api url
+- [#9100](https://github.com/scalar/scalar/pull/9100): chore: use both services URL AND api URL in the scalar-app
+
+## 1.0.8
+
+### Patch Changes
+
+- [#9093](https://github.com/scalar/scalar/pull/9093): fix: login on electron app
+- [#9059](https://github.com/scalar/scalar/pull/9059): feat: added the scalar-app back to open source
+
+## 0.1.261
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.18.1**
+  - [#7744](https://github.com/scalar/scalar/pull/7744): fix: pass hideClientButton config into client modal
+  - [#7743](https://github.com/scalar/scalar/pull/7743): fix: complex auth
+  - [#7740](https://github.com/scalar/scalar/pull/7740): fix: filter out readonly properties from requestBody
+  - [#7742](https://github.com/scalar/scalar/pull/7742): feat: export auth component + proxy fix
+
+- **@scalar/components@0.16.20**
+
+## 0.1.260
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.18.0**
+  - [#7686](https://github.com/scalar/scalar/pull/7686): feat: add array + object functionality to code input
+  - [#7585](https://github.com/scalar/scalar/pull/7585): feat: add copy url button on the addressbar
+  - [#7713](https://github.com/scalar/scalar/pull/7713): fix: grab deprecated schema.example value
+  - [#7723](https://github.com/scalar/scalar/pull/7723): fix: remove use-color-mode hook from modal
+  - [#7730](https://github.com/scalar/scalar/pull/7730): fix: ensure path params work on the client
+
+- **@scalar/components@0.16.19**
+  - [#7725](https://github.com/scalar/scalar/pull/7725): fix(components): support slot for nested items icon
+  - [#7693](https://github.com/scalar/scalar/pull/7693): feat: markdown default line height
+
+- **@scalar/import@0.4.44**
+
+## 0.1.259
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.17.8**
+  - [#7699](https://github.com/scalar/scalar/pull/7699): feat: added ui for oauth2 credentials location
+  - [#7715](https://github.com/scalar/scalar/pull/7715): fix: remove scrollbar from buttons
+
+- **@scalar/components@0.16.18**
+
+## 0.1.258
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.17**
+  - [#7680](https://github.com/scalar/scalar/pull/7680): feat(components): simplify nested sidebar items styles
+
+- **@scalar/api-client@2.17.7**
+  - [#7675](https://github.com/scalar/scalar/pull/7675): fix: ensure patch is uppercased
+
+## 0.1.257
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.17.6**
+  - [#7630](https://github.com/scalar/scalar/pull/7630): feat: add clear button to password field
+  - [#7673](https://github.com/scalar/scalar/pull/7673): fix: pass in reactive auth config to client
+  - [#7664](https://github.com/scalar/scalar/pull/7664): fix: example resolution in request body
+
+## 0.1.256
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.17.5**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/components@0.16.16**
+
+- **@scalar/import@0.4.43**
+
+## 0.1.255
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.17.4**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/components@0.16.15**
+
+- **@scalar/import@0.4.42**
+
+## 0.1.254
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.14**
+  - [#7654](https://github.com/scalar/scalar/pull/7654): fix(components): explicitly set line height for buttons and sections
+
+- **@scalar/api-client@2.17.3**
+
+- **@scalar/import@0.4.41**
+
+- **@scalar/themes@0.13.26**
+
+## 0.1.253
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.13**
+  - [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove internal unused export
+    - `CARD_Heading_SYMBOL`
+    - `FORM_GROUP_SYMBOL`
+    - `formatHotKey#isDefault`
+    - `LoadingCompletionOptions`
+    - `MaybeElement`
+    - `ScalarComboBox#isGroup`
+
+  - [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove unused `@scalar/use-toasts` dependency
+  - [#7604](https://github.com/scalar/scalar/pull/7604): fix(components): improve sidebar groups
+  - [#7589](https://github.com/scalar/scalar/pull/7589): chore(components): upgrade to Storybook 10
+
+- **@scalar/api-client@2.17.2**
+
+## 0.1.252
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.17.1**
+  - [#7562](https://github.com/scalar/scalar/pull/7562): feat(components): remove headless ui from dropdown component
+
+- **@scalar/components@0.16.12**
+  - [#7562](https://github.com/scalar/scalar/pull/7562): feat(components): remove headless ui from dropdown component
+
+## 0.1.251
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.17.0**
+  - [#7580](https://github.com/scalar/scalar/pull/7580): feat: added default auth on client v2
+  - [#7578](https://github.com/scalar/scalar/pull/7578): fix: ensure get schema examples are cached via options
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+  - [#7565](https://github.com/scalar/scalar/pull/7565): feat: support markdown on parameter tooltip
+
+- **@scalar/components@0.16.11**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/import@0.4.41**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+## 0.1.250
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/api-client@2.16.0**
+  - [#7564](https://github.com/scalar/scalar/pull/7564): feat: restore cursor position after path/method update
+  - [#7528](https://github.com/scalar/scalar/pull/7528): feat: empty sidebar folders state
+  - [#7561](https://github.com/scalar/scalar/pull/7561): feat: add accept header by default on the operation paramters
+  - [#7549](https://github.com/scalar/scalar/pull/7549): feat: send request animation
+  - [#7573](https://github.com/scalar/scalar/pull/7573): fix: ensure paths always start with a leading slash
+  - [#7563](https://github.com/scalar/scalar/pull/7563): fix: propagate client plugins to operation view
+  - [#7535](https://github.com/scalar/scalar/pull/7535): fix: display the parameter description on the tooltip
+  - [#7572](https://github.com/scalar/scalar/pull/7572): feat: clear request and response state when switching operations or examples
+
+- **@scalar/components@0.16.10**
+  - [#7531](https://github.com/scalar/scalar/pull/7531): feat(components): add discrete sidebar group buttons
+
+- **@scalar/import@0.4.40**
+
+## 0.1.249
+
+### Patch Changes
+
+- Updated dependencies [[`099237a`](https://github.com/scalar/scalar/commit/099237ad9cba4d29dcc5e742e39c3e42429a5817), [`2658415`](https://github.com/scalar/scalar/commit/2658415511787dd4554f6d6b47342bdf76d2cca8), [`2f3a5bf`](https://github.com/scalar/scalar/commit/2f3a5bf26a16bf0733a9eb8bf0f47e2db161414f), [`a06c824`](https://github.com/scalar/scalar/commit/a06c824653af58839d897e9495f7489d6b5d12b9)]:
+  - @scalar/api-client@2.15.1
+  - @scalar/components@0.16.9
+  - @scalar/import@0.4.39
+  - @scalar/themes@0.13.26
+
+## 0.1.248
+
+### Patch Changes
+
+- Updated dependencies [[`f7c24e4`](https://github.com/scalar/scalar/commit/f7c24e4995580649dbc3cb87007a683f5dd91f7c), [`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf), [`10318b6`](https://github.com/scalar/scalar/commit/10318b6a59df49905225bdbd9e19044521cd4581), [`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf), [`3f797b6`](https://github.com/scalar/scalar/commit/3f797b67489e07c4f3bf34a39b2175ed2d6f1465)]:
+  - @scalar/api-client@2.15.0
+  - @scalar/themes@0.13.26
+  - @scalar/components@0.16.8
+  - @scalar/import@0.4.39
+
+## 0.1.247
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a), [`21aa62e`](https://github.com/scalar/scalar/commit/21aa62e2ebdd262cb5aa53658c3b659736660722), [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/api-client@2.14.1
+  - @scalar/import@0.4.38
+  - @scalar/components@0.16.7
+
+## 0.1.246
+
+### Patch Changes
+
+- Updated dependencies [[`9ec8adf`](https://github.com/scalar/scalar/commit/9ec8adfea017333dee5bc3949104232f7dc57f4a), [`f446bbc`](https://github.com/scalar/scalar/commit/f446bbc0b8aec7fa7314603fd48471f06c1318d5)]:
+  - @scalar/api-client@2.14.0
+  - @scalar/components@0.16.6
+  - @scalar/import@0.4.37
+
+## 0.1.245
+
+### Patch Changes
+
+- Updated dependencies [[`5aa0380`](https://github.com/scalar/scalar/commit/5aa0380adfcd173e58659fb5dd57df363d985583), [`61c980c`](https://github.com/scalar/scalar/commit/61c980cebef219685a05f3a4cb1e379984922cd4), [`1bc2b45`](https://github.com/scalar/scalar/commit/1bc2b45b6eabd5c5045e77d67f59d202ab04d3fb), [`9342adc`](https://github.com/scalar/scalar/commit/9342adcd76e26a8e5eff75c1a2abee2c207b1487), [`62b5210`](https://github.com/scalar/scalar/commit/62b521092bafeb8e83e79222e13378c4a19defc8), [`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03), [`612eb05`](https://github.com/scalar/scalar/commit/612eb05f61ad97272206f1b7ff85a725131ca917), [`1eafcbe`](https://github.com/scalar/scalar/commit/1eafcbeeaad3e611b9c8f365ce2961772b8e9494), [`35af6bf`](https://github.com/scalar/scalar/commit/35af6bfce4bc4ae3d0fc5783ea36e0165e964361), [`86f028d`](https://github.com/scalar/scalar/commit/86f028deb0b456f923edd261f5f4b0fa9b616b7d)]:
+  - @scalar/components@0.16.5
+  - @scalar/api-client@2.13.0
+  - @scalar/import@0.4.36
+  - @scalar/themes@0.13.25
+
+## 0.1.244
+
+### Patch Changes
+
+- Updated dependencies [[`6e1cb89`](https://github.com/scalar/scalar/commit/6e1cb89f71770601a5059449d68b409ffc87d332), [`1fbd809`](https://github.com/scalar/scalar/commit/1fbd809197bfaef77d7d3cb8cf7b657f397232a7), [`5a108fc`](https://github.com/scalar/scalar/commit/5a108fcbc52ae7957731c23689896ba353b83d3b), [`4cda566`](https://github.com/scalar/scalar/commit/4cda566c2dc2cf306e4e3597e292ae1c2dadd78c), [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74), [`a35f5cf`](https://github.com/scalar/scalar/commit/a35f5cf3bce49b0ffda758e95bd31c77109e3c5b), [`3ebff92`](https://github.com/scalar/scalar/commit/3ebff92f29d8d03d626d4000e8323528e794e755), [`4059e68`](https://github.com/scalar/scalar/commit/4059e68375d31ec0142a8019b385bc3ac82055fc), [`0486728`](https://github.com/scalar/scalar/commit/04867286af9156c4d8ffb688c2d200f1b5a7d752), [`cc9d90b`](https://github.com/scalar/scalar/commit/cc9d90b1a268a6c294adcb32f7ae8559c1dcc77e)]:
+  - @scalar/api-client@2.12.0
+  - @scalar/components@0.16.4
+  - @scalar/themes@0.13.24
+  - @scalar/import@0.4.35
+
+## 0.1.243
+
+### Patch Changes
+
+- Updated dependencies [[`c7a4690`](https://github.com/scalar/scalar/commit/c7a4690cec484ee16cee8dcba7ef5cb0fbb98133), [`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74), [`7859105`](https://github.com/scalar/scalar/commit/7859105f857633c8f3c945d67a21f7225844ed12), [`7ccd035`](https://github.com/scalar/scalar/commit/7ccd0351de104f78ef9c6e16538753d302c50d47)]:
+  - @scalar/api-client@2.11.0
+  - @scalar/components@0.16.3
+  - @scalar/import@0.4.34
+
+## 0.1.242
+
+### Patch Changes
+
+- Updated dependencies [[`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d), [`d6154a2`](https://github.com/scalar/scalar/commit/d6154a24d97fc28977def486f99b2eeee52d268c), [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d)]:
+  - @scalar/api-client@2.10.0
+  - @scalar/components@0.16.2
+  - @scalar/import@0.4.33
+
+## 0.1.241
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/api-client@2.9.1
+  - @scalar/components@0.16.1
+
+## 0.1.240
+
+### Patch Changes
+
+- [#7094](https://github.com/scalar/scalar/pull/7094) [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461) Thanks [@geoffgscott](https://github.com/geoffgscott)! - Migrate to workspace store as primary source of truth.
+
+- Updated dependencies [[`0319b8a`](https://github.com/scalar/scalar/commit/0319b8a8652a50667776b2e9fd27c3e15b34f765), [`729ad06`](https://github.com/scalar/scalar/commit/729ad06027c91abcc39866f39319f053d286b995), [`348f8f6`](https://github.com/scalar/scalar/commit/348f8f6292ef41844fda1fdd3089a55d97adbc0e), [`c22fc4e`](https://github.com/scalar/scalar/commit/c22fc4e5acb49d648014a6100c724a5b33c59cde), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`d34f31e`](https://github.com/scalar/scalar/commit/d34f31ee9e3ff360869c52f383b14431af520201), [`c162bb6`](https://github.com/scalar/scalar/commit/c162bb64b86e698427c1fce36f6d8a2b789e094a), [`6ca835e`](https://github.com/scalar/scalar/commit/6ca835e5afd3e8c603e073e7c83f2cdd961a0f69), [`7cda4c5`](https://github.com/scalar/scalar/commit/7cda4c5ecf237e17193391e223f9503c9f37f574), [`8a5a6a0`](https://github.com/scalar/scalar/commit/8a5a6a052cc05b0902b05052c80cc429ebc5a730), [`704fa30`](https://github.com/scalar/scalar/commit/704fa302b2cdbb17b19ca2d742537ca163d58c1c), [`573c5a6`](https://github.com/scalar/scalar/commit/573c5a6c5d71ecfda262532aa32dad382f9f71e4), [`a26ced6`](https://github.com/scalar/scalar/commit/a26ced6f2897074f0c102d5ccbff55c6fd520e12), [`6a090a2`](https://github.com/scalar/scalar/commit/6a090a2e07ef961c56041c85ee9786180437593a), [`0865e66`](https://github.com/scalar/scalar/commit/0865e662092f8521bf69b69d82486ec0cc6030dd), [`592533f`](https://github.com/scalar/scalar/commit/592533faf60b6a5ba27909a4ca0847ca9f04a96d), [`7c1e09e`](https://github.com/scalar/scalar/commit/7c1e09e86ce128adeefd209284a2ba49917adf2c), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461), [`c72a2c5`](https://github.com/scalar/scalar/commit/c72a2c59eb80e1f5e216c687229ff90bea88f554), [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0), [`f612140`](https://github.com/scalar/scalar/commit/f612140491d4e5088757ea5a3fef65ccd2785f08), [`d386ae2`](https://github.com/scalar/scalar/commit/d386ae2a7c9288c8e5c4750ab57920ab955cae06)]:
+  - @scalar/api-client@2.9.0
+  - @scalar/components@0.16.0
+  - @scalar/themes@0.13.23
+  - @scalar/import@0.4.32
+
+## 0.1.239
+
+### Patch Changes
+
+- Updated dependencies [f8efecd]
+- Updated dependencies [577150c]
+- Updated dependencies [f3e17d8]
+- Updated dependencies [8e4c8c0]
+- Updated dependencies [f8efecd]
+  - @scalar/components@0.15.1
+  - @scalar/api-client@2.8.1
+  - @scalar/import@0.4.31
+  - @scalar/themes@0.13.22
+
+## 0.1.238
+
+### Patch Changes
+
+- 49baa78: fix: do not use catalog versions for todesktop build
+- Updated dependencies [debdcf6]
+- Updated dependencies [13dcd89]
+- Updated dependencies [63ff417]
+- Updated dependencies [5d99cad]
+- Updated dependencies [a747da6]
+- Updated dependencies [1e01464]
+- Updated dependencies [c69cb71]
+- Updated dependencies [90d54b6]
+- Updated dependencies [b998d57]
+  - @scalar/api-client@2.8.0
+  - @scalar/themes@0.13.21
+  - @scalar/components@0.15.0
+  - @scalar/import@0.4.30
+
+## 0.1.237
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+- Updated dependencies [f833196]
+- Updated dependencies [a9f8d56]
+  - @scalar/api-client@2.7.0
+  - @scalar/components@0.14.40
+  - @scalar/themes@0.13.20
+  - @scalar/import@0.4.29
+
+## 0.1.236
+
+### Patch Changes
+
+- 4cdcfe4: fix: missing dependency breaks todesktop build
+- Updated dependencies [8ad6af0]
+- Updated dependencies [a46a700]
+  - @scalar/api-client@2.6.2
+  - @scalar/import@0.4.28
+  - @scalar/components@0.14.39
+
+## 0.1.235
+
+### Patch Changes
+
+- Updated dependencies [0b3c6fa]
+- Updated dependencies [bbceb27]
+- Updated dependencies [eadd229]
+  - @scalar/components@0.14.38
+  - @scalar/themes@0.13.19
+  - @scalar/api-client@2.6.1
+
+## 0.1.234
+
+### Patch Changes
+
+- Updated dependencies [b858566]
+- Updated dependencies [170b890]
+- Updated dependencies [db5b649]
+  - @scalar/api-client@2.6.0
+  - @scalar/components@0.14.37
+  - @scalar/import@0.4.27
+
+## 0.1.233
+
+### Patch Changes
+
+- @scalar/api-client@2.5.35
+- @scalar/import@0.4.26
+- @scalar/components@0.14.36
+
+## 0.1.232
+
+### Patch Changes
+
+- @scalar/api-client@2.5.34
+- @scalar/themes@0.13.18
+- @scalar/components@0.14.35
+- @scalar/import@0.4.25
+
+## 0.1.231
+
+### Patch Changes
+
+- 8f2a2f2: Bump some dependencies to latest
+- Updated dependencies [498f771]
+- Updated dependencies [8f2a2f2]
+  - @scalar/components@0.14.34
+  - @scalar/api-client@2.5.33
+  - @scalar/themes@0.13.17
+  - @scalar/import@0.4.24
+
+## 0.1.230
+
+### Patch Changes
+
+- @scalar/api-client@2.5.32
+- @scalar/import@0.4.23
+- @scalar/components@0.14.33
+
+## 0.1.229
+
+### Patch Changes
+
+- Updated dependencies [f8fc81c]
+  - @scalar/api-client@2.5.31
+  - @scalar/components@0.14.32
+
+## 0.1.228
+
+### Patch Changes
+
+- Updated dependencies [c173063]
+- Updated dependencies [c173063]
+- Updated dependencies [2249fe3]
+  - @scalar/api-client@2.5.30
+  - @scalar/components@0.14.31
+  - @scalar/import@0.4.22
+
+## 0.1.227
+
+### Patch Changes
+
+- Updated dependencies [5eedb97]
+  - @scalar/api-client@2.5.29
+  - @scalar/import@0.4.21
+  - @scalar/components@0.14.30
+
+## 0.1.226
+
+### Patch Changes
+
+- Updated dependencies [c470c60]
+- Updated dependencies [abe3842]
+- Updated dependencies [5a7d388]
+  - @scalar/api-client@2.5.28
+  - @scalar/components@0.14.29
+  - @scalar/themes@0.13.16
+
+## 0.1.225
+
+### Patch Changes
+
+- Updated dependencies [714b197]
+- Updated dependencies [f918582]
+- Updated dependencies [422cb2b]
+- Updated dependencies [ee605d8]
+- Updated dependencies [2b22eab]
+  - @scalar/api-client@2.5.27
+  - @scalar/components@0.14.28
+  - @scalar/themes@0.13.15
+  - @scalar/import@0.4.20
+
+## 0.1.224
+
+### Patch Changes
+
+- @scalar/api-client@2.5.26
+- @scalar/themes@0.13.14
+- @scalar/components@0.14.27
+- @scalar/import@0.4.19
+
+## 0.1.223
+
+### Patch Changes
+
+- @scalar/api-client@2.5.25
+- @scalar/components@0.14.26
+
+## 0.1.222
+
+### Patch Changes
+
+- Updated dependencies [172e397]
+- Updated dependencies [5f022b5]
+- Updated dependencies [d8b8a5b]
+- Updated dependencies [6c24be9]
+- Updated dependencies [638120c]
+- Updated dependencies [0804cfc]
+  - @scalar/api-client@2.5.24
+  - @scalar/components@0.14.25
+  - @scalar/themes@0.13.13
+  - @scalar/import@0.4.18
+
+## 0.1.221
+
+### Patch Changes
+
+- Updated dependencies [b235392]
+- Updated dependencies [58b9321]
+- Updated dependencies [68e4631]
+- Updated dependencies [fbafeab]
+- Updated dependencies [376739d]
+  - @scalar/api-client@2.5.23
+  - @scalar/components@0.14.24
+  - @scalar/import@0.4.17
+  - @scalar/themes@0.13.12
+
+## 0.1.220
+
+### Patch Changes
+
+- @scalar/api-client@2.5.22
+- @scalar/components@0.14.23
+
+## 0.1.219
+
+### Patch Changes
+
+- Updated dependencies [c02c1c8]
+- Updated dependencies [b551707]
+- Updated dependencies [dd00357]
+  - @scalar/api-client@2.5.21
+  - @scalar/components@0.14.22
+  - @scalar/import@0.4.16
+
+## 0.1.218
+
+### Patch Changes
+
+- Updated dependencies [ccf875a]
+- Updated dependencies [fbef7e1]
+- Updated dependencies [f913898]
+- Updated dependencies [cf5d6a2]
+- Updated dependencies [94d6d0c]
+- Updated dependencies [8c731b9]
+- Updated dependencies [952f471]
+- Updated dependencies [1af32c0]
+- Updated dependencies [8c731b9]
+- Updated dependencies [c0d6793]
+- Updated dependencies [77e700b]
+- Updated dependencies [3c1e3e3]
+- Updated dependencies [f3d0216]
+- Updated dependencies [af22451]
+  - @scalar/api-client@2.5.20
+  - @scalar/components@0.14.21
+  - @scalar/themes@0.13.12
+  - @scalar/import@0.4.15
+
+## 0.1.217
+
+### Patch Changes
+
+- Updated dependencies [60c7bef]
+- Updated dependencies [e895f86]
+- Updated dependencies [cac47ea]
+- Updated dependencies [fb62e1b]
+- Updated dependencies [cac47ea]
+  - @scalar/api-client@2.5.19
+  - @scalar/components@0.14.20
+  - @scalar/themes@0.13.11
+  - @scalar/import@0.4.14
+
 ## 0.1.216
 
 ### Patch Changes

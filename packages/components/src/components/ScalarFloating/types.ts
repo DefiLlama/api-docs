@@ -1,4 +1,5 @@
-import type { Middleware, OffsetOptions, Placement } from '@floating-ui/vue'
+import type { AlignedPlacement, Middleware, OffsetOptions, Side } from '@floating-ui/vue'
+import type { MaybeRefOrGetter } from 'vue'
 
 /** The props for the ScalarFloating component */
 export type FloatingOptions = {
@@ -8,7 +9,7 @@ export type FloatingOptions = {
    *
    * @see https://floating-ui.com/docs/computePosition#placement
    */
-  placement?: Placement
+  placement?: Side | AlignedPlacement
   /**
    * The offset of the floating element relative to its reference element.
    * @default 5 (5px)
@@ -19,15 +20,18 @@ export type FloatingOptions = {
   /**
    * Whether or not track the reference element's width
    * If enabled it will set `width` slot prop of the floating slot
+   *
+   * To match the width / height or the content try adding the `w-fit` to the class
    */
   resize?: boolean
   /**
    * Override the target, useful if we are not passing a button
    * into the slot but is controlled from an external button
    *
-   * Can be a string id or a reference to an element
+   * Can be a string id or a reference to an element.
+   * Keep string explicit so Vue includes it in production prop validation.
    */
-  target?: string | HTMLElement
+  target?: string | MaybeRefOrGetter<HTMLElement | string>
   /**
    * Floating UI Middleware to be passed to Floating UI
    *

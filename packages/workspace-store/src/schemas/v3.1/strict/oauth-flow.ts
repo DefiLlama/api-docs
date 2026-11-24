@@ -1,14 +1,61 @@
+import { Type } from '@scalar/typebox'
+
 import { compose } from '@/schemas/compose'
-import { ExtensionsSchema } from '@/schemas/v3.1/strict/extensions'
-import { Type, type Static } from '@sinclair/typebox'
+import { type XScalarIgnore, XScalarIgnoreSchema } from '@/schemas/extensions/document/x-scalar-ignore'
+import { type XOrder, XOrderSchema } from '@/schemas/extensions/schema/x-order'
+import {
+  type XScalarCredentialsLocation,
+  XScalarCredentialsLocationSchema,
+} from '@/schemas/extensions/security/x-scalar-credentials-location'
+import {
+  type XScalarSecurityBody,
+  XScalarSecurityBodySchema,
+} from '@/schemas/extensions/security/x-scalar-security-body'
+import {
+  type XScalarSecurityQuery,
+  XScalarSecurityQuerySchema,
+} from '@/schemas/extensions/security/x-scalar-security-query'
+import {
+  type XScalarAuthUrl,
+  XScalarAuthUrlSchema,
+  type XScalarTokenUrl,
+  XScalarTokenUrlSchema,
+} from '@/schemas/extensions/security/x-scalar-security-secrets'
+import { type XTokenName, XTokenNameSchema } from '@/schemas/extensions/security/x-tokenName'
+import { type XusePkce, XusePkceSchema } from '@/schemas/extensions/security/x-use-pkce'
 
 /** Common properties used across all OAuth flows */
-const OAuthFlowCommonSchema = Type.Object({
+const OAuthFlowCommonSchema = compose(
+  Type.Object({
+    /** The URL to be used for obtaining refresh tokens. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
+    refreshUrl: Type.String(),
+    /** REQUIRED. The available scopes for the OAuth2 security scheme. A map between the scope name and a short description for it. The map MAY be empty. */
+    scopes: Type.Record(Type.String(), Type.String()),
+  }),
+  XScalarSecurityQuerySchema,
+  XScalarSecurityBodySchema,
+  XTokenNameSchema,
+  XScalarAuthUrlSchema,
+  XScalarTokenUrlSchema,
+  // Reuse the shared display-order and ignore extensions so authors can reorder and hide
+  // individual OAuth2 flow tabs in the auth UI. See documentation/openapi.md.
+  XOrderSchema,
+  XScalarIgnoreSchema,
+)
+
+/** Common properties used across all OAuth flows */
+type OAuthFlowCommon = {
   /** The URL to be used for obtaining refresh tokens. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
-  refreshUrl: Type.Optional(Type.String()),
+  refreshUrl: string
   /** REQUIRED. The available scopes for the OAuth2 security scheme. A map between the scope name and a short description for it. The map MAY be empty. */
-  scopes: Type.Record(Type.String(), Type.String()),
-})
+  scopes: Record<string, string>
+} & XScalarSecurityQuery &
+  XScalarSecurityBody &
+  XTokenName &
+  XScalarTokenUrl &
+  XScalarAuthUrl &
+  XOrder &
+  XScalarIgnore
 
 /** Configuration for the OAuth Implicit flow */
 export const OAuthFlowImplicitSchema = compose(
@@ -17,8 +64,13 @@ export const OAuthFlowImplicitSchema = compose(
     /** REQUIRED. The authorization URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
     authorizationUrl: Type.String(),
   }),
-  ExtensionsSchema,
 )
+
+/** Configuration for the OAuth Implicit flow */
+export type OAuthFlowImplicit = OAuthFlowCommon & {
+  /** REQUIRED. The authorization URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
+  authorizationUrl: string
+}
 
 /** Configuration for the OAuth Resource Owner Password flow */
 export const OAuthFlowPasswordSchema = compose(
@@ -27,8 +79,14 @@ export const OAuthFlowPasswordSchema = compose(
     /** REQUIRED. The token URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
     tokenUrl: Type.String(),
   }),
-  ExtensionsSchema,
+  XScalarCredentialsLocationSchema,
 )
+
+/** Configuration for the OAuth Resource Owner Password flow */
+export type OAuthFlowPassword = OAuthFlowCommon & {
+  /** REQUIRED. The token URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
+  tokenUrl: string
+} & XScalarCredentialsLocation
 
 /** Configuration for the OAuth Client Credentials flow. Previously called application in OpenAPI 2.0. */
 export const OAuthFlowClientCredentialsSchema = compose(
@@ -37,8 +95,14 @@ export const OAuthFlowClientCredentialsSchema = compose(
     /** REQUIRED. The token URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
     tokenUrl: Type.String(),
   }),
-  ExtensionsSchema,
+  XScalarCredentialsLocationSchema,
 )
+
+/** Configuration for the OAuth Client Credentials flow. Previously called application in OpenAPI 2.0. */
+export type OAuthFlowClientCredentials = OAuthFlowCommon & {
+  /** REQUIRED. The token URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
+  tokenUrl: string
+} & XScalarCredentialsLocation
 
 /** Configuration for the OAuth Authorization Code flow. Previously called accessCode in OpenAPI 2.0. */
 export const OAuthFlowAuthorizationCodeSchema = compose(
@@ -49,19 +113,17 @@ export const OAuthFlowAuthorizationCodeSchema = compose(
     /** REQUIRED. The token URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
     tokenUrl: Type.String(),
   }),
-  ExtensionsSchema,
+  XusePkceSchema,
+  XScalarCredentialsLocationSchema,
 )
 
-/** Union of all OAuth flow schemas */
-export const OAuthFlowObjectSchema = Type.Union([
-  OAuthFlowImplicitSchema,
-  OAuthFlowPasswordSchema,
-  OAuthFlowClientCredentialsSchema,
-  OAuthFlowAuthorizationCodeSchema,
-])
+/** Configuration for the OAuth Authorization Code flow. Previously called accessCode in OpenAPI 2.0. */
+export type OAuthFlowAuthorizationCode = OAuthFlowCommon & {
+  /** REQUIRED. The authorization URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
+  authorizationUrl: string
+  /** REQUIRED. The token URL to be used for this flow. This MUST be in the form of a URL. The OAuth2 standard requires the use of TLS. */
+  tokenUrl: string
+} & XusePkce &
+  XScalarCredentialsLocation
 
-export type OAuthFlowObject = Static<typeof OAuthFlowObjectSchema>
-export type OAuthFlowImplicit = Static<typeof OAuthFlowImplicitSchema>
-export type OAuthFlowPassword = Static<typeof OAuthFlowPasswordSchema>
-export type OAuthFlowClientCredentials = Static<typeof OAuthFlowClientCredentialsSchema>
-export type OAuthFlowAuthorizationCode = Static<typeof OAuthFlowAuthorizationCodeSchema>
+export type OAuthFlow = OAuthFlowImplicit | OAuthFlowPassword | OAuthFlowClientCredentials | OAuthFlowAuthorizationCode

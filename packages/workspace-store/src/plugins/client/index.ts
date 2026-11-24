@@ -1,0 +1,1 @@
+export { persistencePlugin } from './persistence'

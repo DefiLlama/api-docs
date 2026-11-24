@@ -1,0 +1,164 @@
+import type { OpenAPIV3_2 } from '@scalar/openapi-types'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+
+import type { MockServerLogger } from '@/types'
+
+import { getPathFromUrl } from './get-open-auth-token-urls'
+
+/**
+ * Log authentication instructions for different security schemes.
+ *
+ * Only the informational lines go through the provided `log` sink. Warnings and errors about
+ * security schemes the mock server cannot handle are printed unconditionally, so a silenced startup
+ * still surfaces schemes that will not work.
+ */
+export function logAuthenticationInstructions(
+  securitySchemes: Record<string, OpenAPIV3_2.SecuritySchemeObject | { type: 'mutualTLS' }>,
+  log: MockServerLogger = (line) => console.log(line),
+) {
+  if (!securitySchemes || Object.keys(securitySchemes).length === 0) {
+    return
+  }
+
+  log('Authentication:')
+  log('')
+
+  Object.entries(securitySchemes).forEach(([_, rawScheme]) => {
+    const scheme = getResolvedRef(rawScheme)
+
+    // Skip schemes that could not be resolved (e.g. a `$ref` to a missing component)
+    if (!scheme) {
+      return
+    }
+
+    switch (scheme.type) {
+      case 'apiKey':
+        if (scheme.in === 'header') {
+          log('✅ API Key Authentication')
+          log(`   Use any API key in the ${scheme.name} header`)
+          log('')
+          log(`   ${scheme.name}: YOUR_API_KEY_HERE`)
+          log('')
+        } else if (scheme.in === 'query') {
+          log('✅ API Key Authentication')
+          log(`   Use any API key in the ${scheme.name} query parameter:`)
+          log('')
+          log(`   ?${scheme.name}=YOUR_API_KEY_HERE`)
+          log('')
+        } else if (scheme.in === 'cookie') {
+          log('✅ API Key Authentication')
+          log(`   Use any API key in the ${scheme.name} cookie:`)
+          log('')
+          log(`   Cookie: ${scheme.name}=YOUR_API_KEY_HERE`)
+          log('')
+        } else {
+          console.error(`❌ Unsupported API Key Location: ${scheme.in}`)
+        }
+        break
+      case 'http':
+        if (scheme.scheme?.toLowerCase() === 'basic') {
+          log('✅ HTTP Basic Authentication')
+          log('   Use an Authorization header with any credentials ("username:password" in base64):')
+          log('')
+          log('   Authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=')
+          log('')
+        } else if (scheme.scheme?.toLowerCase() === 'bearer') {
+          log('✅ Bearer Token Authentication')
+          log('   Use an Authorization header with any bearer token')
+          log('')
+          log('   Authorization: Bearer YOUR_TOKEN_HERE')
+          log('')
+        } else if (scheme.scheme?.toLowerCase() === 'digest') {
+          log('✅ HTTP Digest Authentication')
+          log('   Answer the MD5/qop=auth challenge with any username and password; the mock checks credential shape.')
+        } else {
+          console.error('❌ Unknown Security Scheme:', scheme)
+        }
+
+        break
+      case 'mutualTLS':
+        log('✅ Mutual TLS Authentication')
+        log('   Use a trusted client certificate with a Node HTTPS server configured with requestCert and ca.')
+        break
+      case 'oauth2':
+        if (
+          'oauth2MetadataUrl' in scheme &&
+          typeof scheme.oauth2MetadataUrl === 'string' &&
+          scheme.oauth2MetadataUrl.trim()
+        ) {
+          log('✅ OAuth 2.0 Authorization Server Metadata')
+          log(`   GET ${getPathFromUrl(scheme.oauth2MetadataUrl, { preserveTrailingSlash: true })}`)
+          log('')
+        }
+        if (scheme.flows) {
+          Object.keys(scheme.flows).forEach((flow) => {
+            switch (flow) {
+              case 'deviceAuthorization':
+                log('✅ OAuth 2.0 Device Authorization Flow')
+                log(
+                  `   POST ${getPathFromUrl(scheme.flows?.deviceAuthorization?.deviceAuthorizationUrl || '/oauth/device')}`,
+                )
+                log('   Send client_id and scope as form data, open verification_uri, and enter user_code.')
+                log(
+                  `   Poll ${getPathFromUrl(scheme.flows?.deviceAuthorization?.tokenUrl || '/oauth/token')} with grant_type=urn:ietf:params:oauth:grant-type:device_code and device_code.`,
+                )
+                log('')
+                break
+              case 'implicit':
+                log('✅ OAuth 2.0 Implicit Flow')
+                log('   Use the following URL to initiate the OAuth 2.0 Implicit Flow:')
+                log('')
+                log(
+                  `   GET ${scheme?.flows?.implicit?.authorizationUrl || '/oauth/authorize'}?response_type=token&client_id=YOUR_CLIENT_ID&redirect_uri=YOUR_REDIRECT_URI&scope=YOUR_SCOPES`,
+                )
+                log('')
+                break
+              case 'password':
+                log('✅ OAuth 2.0 Password Flow')
+                log('   Use the following URL to obtain an access token:')
+                log('')
+                log(`   POST ${getPathFromUrl(scheme?.flows?.password?.tokenUrl || '/oauth/token')}`)
+                log('   Content-Type: application/x-www-form-urlencoded')
+                log('')
+                log(
+                  '   grant_type=password&username=YOUR_USERNAME&password=YOUR_PASSWORD&client_id=YOUR_CLIENT_ID&client_secret=YOUR_CLIENT_SECRET',
+                )
+                log('')
+                break
+              case 'clientCredentials':
+                log('✅ OAuth 2.0 Client Credentials Flow')
+                log('   Use the following URL to obtain an access token:')
+                log('')
+                log(`   POST ${getPathFromUrl(scheme?.flows?.clientCredentials?.tokenUrl || '/oauth/token')}`)
+                log('   Content-Type: application/x-www-form-urlencoded')
+                log('')
+                log('   grant_type=client_credentials&client_id=YOUR_CLIENT_ID&client_secret=YOUR_CLIENT_SECRET')
+                log('')
+                break
+              case 'authorizationCode':
+                log('✅ OAuth 2.0 Authorization Code Flow')
+                log('   Use the following URL to initiate the OAuth 2.0 Authorization Code Flow:')
+                log('')
+                log(
+                  `   GET ${getPathFromUrl(scheme?.flows?.authorizationCode?.authorizationUrl || '/oauth/authorize')}?redirect_uri=https://YOUR_REDIRECT_URI_HERE`,
+                )
+                log('')
+                break
+              default:
+                console.warn(`Unsupported OAuth 2.0 flow: ${flow}`)
+            }
+          })
+        }
+        break
+      case 'openIdConnect':
+        log('✅ OpenID Connect Authentication')
+        log('   Use the following OpenID Connect discovery URL:')
+        log('')
+        log(`   ${getPathFromUrl(scheme.openIdConnectUrl || '/.well-known/openid-configuration')}`)
+        log('')
+        break
+      default:
+        console.warn(`Unsupported security scheme type: ${scheme.type}`)
+    }
+  })
+}

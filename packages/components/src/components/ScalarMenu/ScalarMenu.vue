@@ -1,3 +1,18 @@
+<script lang="ts">
+/**
+ * Scalar Menu component
+ *
+ * A dropdown menu triggered by a logo button, containing product links,
+ * team/workspace pickers, and resource sections.
+ *
+ * @example
+ * <ScalarMenu>
+ *   <template #products="{ close }">Custom products</template>
+ * </ScalarMenu>
+ */
+export default {}
+</script>
+
 <script setup lang="ts">
 import { DropdownMenu } from 'radix-vue/namespaced'
 import { ref } from 'vue'
@@ -49,6 +64,11 @@ function close() {
             v-if="$slots.logo"
             #logo>
             <slot name="logo" />
+          </template>
+          <template
+            v-if="$slots.title"
+            #title>
+            <slot name="title" />
           </template>
           <template
             v-if="$slots.label"

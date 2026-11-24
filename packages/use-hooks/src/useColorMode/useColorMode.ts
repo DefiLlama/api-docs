@@ -1,16 +1,39 @@
+import { type DarkLightMode, applyColorMode, getSystemColorMode } from '@scalar/helpers/theme/color-mode'
+import { literal, union, validate } from '@scalar/validation'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { z } from 'zod'
-
-import type { ColorMode, DarkLightMode, UseColorModeOptions } from './types'
 
 const colorMode = ref<ColorMode>('dark')
 
-const colorModeSchema = z.enum(['dark', 'light', 'system']).optional().catch(undefined)
+/**
+ * Reactive snapshot of the system preference, shared across every `useColorMode` instance.
+ *
+ * It defaults to `'light'` so the first client render matches the server, where
+ * `window`/`matchMedia` do not exist. We resolve the real value in `onMounted` to avoid a
+ * hydration mismatch in anything bound to the color mode (for example the dark-mode toggle).
+ *
+ * It lives at module scope (like `colorMode`) so all instances agree on a single value instead
+ * of each holding its own copy that resolves at a different mount time.
+ */
+const systemPreference = ref<DarkLightMode>('light')
+
+const colorModeSchema = union([literal('system'), literal('dark'), literal('light')])
+
+/** Possible color modes */
+export type ColorMode = 'light' | 'dark' | 'system'
+
+export type { DarkLightMode }
 
 /**
  * A composable hook that provides color mode (dark/light) functionality.
  */
-export function useColorMode(opts: UseColorModeOptions = {}) {
+export function useColorMode(
+  opts: {
+    /** The initial color mode to use */
+    initialColorMode?: ColorMode
+    /** Override the color mode */
+    overrideColorMode?: ColorMode
+  } = {},
+) {
   const { initialColorMode = 'system', overrideColorMode } = opts
 
   /** Toggles the color mode between light and dark. */
@@ -36,19 +59,12 @@ export function useColorMode(opts: UseColorModeOptions = {}) {
 
   /** Gets the system mode preference. */
   function getSystemModePreference(): DarkLightMode {
-    if (typeof window === 'undefined') {
-      return 'light'
-    }
-    if (typeof window?.matchMedia !== 'function') {
-      return 'dark'
-    }
-
-    return window?.matchMedia('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light'
+    return getSystemColorMode()
   }
 
   /** Writable computed ref for dark/light mode with system preference applied */
   const darkLightMode = computed<DarkLightMode>({
-    get: () => (colorMode.value === 'system' ? getSystemModePreference() : colorMode.value),
+    get: () => (colorMode.value === 'system' ? systemPreference.value : colorMode.value),
     set: setColorMode,
   })
 
@@ -59,43 +75,50 @@ export function useColorMode(opts: UseColorModeOptions = {}) {
   })
 
   /** Applies the appropriate color mode class to the body. */
-  function applyColorMode(mode: ColorMode): void {
+  function applyBodyColorMode(): void {
     if (typeof document === 'undefined' || typeof window === 'undefined') {
       return
     }
 
-    const classMode = overrideColorMode ?? (mode === 'system' ? getSystemModePreference() : mode)
+    // Read from the deferred `systemPreference` ref (not `getSystemModePreference()` directly) so
+    // the body class agrees with `darkLightMode`/the toggle before `onMounted` resolves the real value.
+    const classMode = overrideColorMode ?? (colorMode.value === 'system' ? systemPreference.value : colorMode.value)
 
-    if (classMode === 'dark') {
-      document.body.classList.add('dark-mode')
-      document.body.classList.remove('light-mode')
-    } else {
-      document.body.classList.add('light-mode')
-      document.body.classList.remove('dark-mode')
-    }
+    // An `overrideColorMode` of `system` reaches here unresolved, and has always rendered as light.
+    applyColorMode(classMode === 'dark' ? 'dark' : 'light')
   }
 
-  // Priority of initial values is: LocalStorage -> App Config -> initial / Fallback
-  const savedColorMode = colorModeSchema.parse(
-    typeof window !== 'undefined' ? window?.localStorage?.getItem('colorMode') : 'system',
-  )
-  colorMode.value = savedColorMode ?? initialColorMode
+  // Priority: overrideColorMode -> localStorage -> initialColorMode
+  // Without `window` (SSR/SSG), there is no storage — treat preference as `system` so we do not
+  // fall through to `initialColorMode` and diverge from client hydration (see useColorMode tests).
+  const storedValue = typeof window === 'undefined' ? 'system' : window?.localStorage?.getItem('colorMode')
+  const savedColorMode = validate(colorModeSchema, storedValue) ? (storedValue as ColorMode) : null
 
-  // Watch for colorMode changes and update the body class
-  watch(colorMode, applyColorMode, { immediate: true })
+  colorMode.value = overrideColorMode ?? savedColorMode ?? initialColorMode
 
+  // Watch for color mode or system preference changes and update the body class. Watching
+  // `systemPreference` means resolving it in `onMounted` (or an OS theme change) re-applies the class.
+  watch([colorMode, systemPreference], applyBodyColorMode, { immediate: true })
+
+  const handleChange = () => {
+    systemPreference.value = getSystemModePreference()
+  }
+
+  const mediaQuery = ref<MediaQueryList | null>(null)
   // Listen to system preference changes
   onMounted(() => {
+    // Now that we are on the client, resolve the real system preference so the
+    // color mode updates after hydration instead of mismatching the server.
+    systemPreference.value = getSystemModePreference()
+
     if (typeof window !== 'undefined' && typeof window?.matchMedia === 'function') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      const handleChange = () => colorMode.value === 'system' && applyColorMode('system')
-
-      mediaQuery.addEventListener('change', handleChange)
-
-      onUnmounted(() => {
-        mediaQuery.removeEventListener('change', handleChange)
-      })
+      mediaQuery.value = window.matchMedia('(prefers-color-scheme: dark)')
+      mediaQuery.value?.addEventListener('change', handleChange)
     }
+  })
+
+  onUnmounted(() => {
+    mediaQuery.value?.removeEventListener('change', handleChange)
   })
 
   return {

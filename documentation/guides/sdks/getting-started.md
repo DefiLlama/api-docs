@@ -1,33 +1,52 @@
 # Getting Started
-This guide will help you get started with generating world-class SDKs on scalar.com in several languages: TypeScript, Python, Golang & more powered by [Speakeasy](https://speakeasy.com).
 
-:::scalar-callout{ type=info }
-SDK generation is part of our paid plans and costs $100 per month per language. Keep this in mind when selecting which languages you'd like to generate SDKs for.
-:::
+Generate your first type-safe SDK or CLI from an OpenAPI document in minutes, straight from the Scalar dashboard.
 
-Make sure you have created a Scalar Account & are logged in ([see create account guide](/scalar/scalar-registry/getting-started#create-your-scalar-account))
+Make sure you have created a Scalar account and are logged in. If you are new to Scalar, start with the [create account guide](../registry/getting-started.md#create-your-scalar-account).
 
-## Generating your first SDK
-From the [dashboard](https://dashboard.scalar.com) left-most sidebar under Products > SDKs, then click Create new SDK.
+## Generate your first target
 
-![Create new SDK Page](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/_-IfCKbkQuZevciAtViRX.png "Create new SDK Page")
+<scalar-steps>
+  <scalar-step id="step-1" title="Upload OpenAPI Document">
 
-#### Import OpenAPI Document (Optional) 
-If you don't already have an OpenAPI document on our registry, you can import it right in the modal.
+From the [dashboard](https://dashboard.scalar.com), click "Create new SDK".
 
-![Import OpenAPI Document (Optional)](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/WnMVG8hrR_f-6t-lOtDYb.png "Import OpenAPI Document (Optional)")
+If you do not already have an OpenAPI document in the registry, import it directly from the modal.
 
-Select as many SDKs as you would like, or just one language to start. Once you click "Continue" we will begin generating your SDKs.
+  </scalar-step>
 
-![Create TypeScript SDK](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/lH3Grvx1nPikw7-0sTE4Y.png "Create TypeScript SDK")
+  <scalar-step id="step-2" title="Select Desired Targets">
 
+Select as many SDKs or CLIs as you need, or choose one target to start. Once you click "Continue", Scalar begins generating your targets.
 
-Once created, you will get redirected to the SDK Overview page where you can:
-- Configure your SDK settings
-- Add our GitHub Integration
-- Downlad the SDK Client
+  </scalar-step>
 
-![SDK Overview Page](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/1TbvZqmSD170GGOw9O_iP.png "SDK Overview Page")
+  <scalar-step id="step-3" title="Manage your new SDKs">
 
-## Link with GitHub
+Once created, you will be redirected to the SDK overview page. From there you can:
 
+- [Build, version, and download](managing.md) your SDK
+- [Configure](configuration.md) each target
+- [Link a GitHub repository](publishing/github.md) and [publish to a registry](publishing/overview.md)
+- [Customize the generated code](custom-code/overview.md) without losing future updates
+
+  </scalar-step>
+</scalar-steps>
+
+<scalar-image
+  src="/sdk-dashboard-static.svg"
+  src-dark="/sdk-dashboard-static-dark.svg"
+  alt="Scalar SDK dashboard"
+  size="full">
+</scalar-image>
+
+## Next steps
+
+- [Try the interactive demo](index.md) at the top of the SDK Generator overview to walk the flow again without the dashboard
+- [Build, version, and download](managing.md) your targets
+- [Configure](configuration.md) each SDK or CLI
+- [Add pagination helpers](pagination.md) to your list endpoints
+- [Add webhook helpers](webhooks.md) that verify and decode the events your API sends
+- [Publish to a package registry](publishing/overview.md)
+- [Add custom code](custom-code/overview.md) that survives regeneration
+- [Read the diagnostics](diagnostics.md) each build reports about your API description

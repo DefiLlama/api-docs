@@ -1,9 +1,6 @@
-import type { ApiReferenceConfiguration } from '@scalar/types/api-reference'
+import type { ApiReferenceConfiguration, ApiReferenceConfigurationWithSource } from '@scalar/types/api-reference'
 
-export type Configuration = Omit<
-  Partial<ApiReferenceConfiguration>,
-  'layout' | 'isEditable' | 'onSpecUpdate' | 'theme'
-> & {
+export type Configuration = Omit<Partial<ApiReferenceConfigurationWithSource>, 'layout' | 'isEditable' | 'theme'> & {
   /**
    * Whether to show scalar in Nuxt DevTools
    *

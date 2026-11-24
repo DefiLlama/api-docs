@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { rustReqwest } from './reqwest'
 
 describe('rustReqwest', () => {
+  it.each(['customMethod', 'COPY', 'Get'])('uses a generic request for %s', (method) => {
+    expect(rustReqwest.generate({ url: 'https://example.com', method })).toBe(`let client = reqwest::Client::new();
+
+let request = client.request(reqwest::Method::from_bytes("${method}".as_bytes())?, "https://example.com");
+
+let response = request.send().await?;`)
+  })
+
   it('returns a basic request', () => {
     const result = rustReqwest.generate({
       url: 'https://example.com',
@@ -288,10 +296,52 @@ let request = client
     .post("https://example.com")
     .multipart({
         let mut form = reqwest::multipart::Form::new();
-        let part = reqwest::multipart::Part::text("")
+        let part = reqwest::multipart::Part::bytes(std::fs::read("test.txt")?)
             .file_name("test.txt");
         form = form.part("file", part);
         form = form.text("field", "value");
+            form
+        });
+
+let response = request.send().await?;`)
+  })
+
+  it('handles multipart form data with per-part content types', () => {
+    const result = rustReqwest.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            fileName: 'test.txt',
+            contentType: 'text/plain',
+          },
+          {
+            name: 'metadata',
+            value: '{"foo":"bar"}',
+            contentType: 'application/json',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`let client = reqwest::Client::new();
+
+let request = client
+    .post("https://example.com")
+    .multipart({
+        let mut form = reqwest::multipart::Form::new();
+        let part = reqwest::multipart::Part::bytes(std::fs::read("test.txt")?)
+            .file_name("test.txt")
+            .mime_str("text/plain")
+            .unwrap();
+        form = form.part("file", part);
+        let part = reqwest::multipart::Part::text("{\\"foo\\":\\"bar\\"}")
+            .mime_str("application/json")
+            .unwrap();
+        form = form.part("metadata", part);
             form
         });
 
@@ -471,7 +521,9 @@ let request = client
     .post("https://example.com")
     .multipart({
         let mut form = reqwest::multipart::Form::new();
-        form = form.text("file", "");
+        let part = reqwest::multipart::Part::bytes(std::fs::read("")?)
+            .file_name("");
+        form = form.part("file", part);
             form
         });
 

@@ -1,6 +1,5 @@
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
-import { indentWithTab, insertNewline } from '@codemirror/commands'
-import { history, historyKeymap } from '@codemirror/commands'
+import { history, historyKeymap, indentWithTab, insertNewline } from '@codemirror/commands'
 import { css } from '@codemirror/lang-css'
 import { html } from '@codemirror/lang-html'
 import { json } from '@codemirror/lang-json'
@@ -25,12 +24,28 @@ import {
   lineNumbers as lineNumbersExtension,
   placeholder as placeholderExtension,
 } from '@codemirror/view'
-import { ScalarIcon } from '@scalar/components'
-import { type MaybeRefOrGetter, type Ref, computed, h, onBeforeUnmount, ref, render, toValue, watch } from 'vue'
+import { type MaybeRefOrGetter, type Ref, computed, onBeforeUnmount, ref, toValue, watch } from 'vue'
+
+const CHEVRON_DOWN =
+  '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m18 10-6 6-6-6" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+const CHEVRON_RIGHT =
+  '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
 import { customTheme } from '../themes'
 import type { CodeMirrorLanguage } from '../types'
 import { variables } from './variables'
+
+/**
+ * This was an insane bug that only exists in chrome
+ *
+ * Found these issues which may be related, it says che chrome one is fixed, they possibly had a regression?
+ *
+ * @see https://issues.chromium.org/issues/375711382
+ * @see https://discuss.codemirror.net/t/experimental-support-for-editcontext/8144
+ * @see https://github.com/codemirror/dev/issues/1458
+ */
+// @ts-expect-error this is the workaround suggested by codemirror
+EditorView.EDIT_CONTEXT = false
 
 type BaseParameters = {
   /** Element Ref to mount codemirror to */
@@ -55,8 +70,8 @@ type BaseParameters = {
   disableCloseBrackets?: MaybeRefOrGetter<boolean | undefined>
   /** Option to lint and show error in the editor */
   lint?: MaybeRefOrGetter<boolean | undefined>
-  onBlur?: (v: string) => void
-  onFocus?: (v: string) => void
+  onBlur?: (v: string, event: FocusEvent) => void
+  onFocus?: (v: string, event: FocusEvent) => void
   placeholder?: MaybeRefOrGetter<string | undefined>
 }
 
@@ -281,8 +296,8 @@ function getCodeMirrorExtensions({
   disableEnter?: boolean
   forceFoldGutter?: boolean
   onChange?: (val: string) => void
-  onFocus?: (val: string) => void
-  onBlur?: (val: string) => void
+  onFocus?: (val: string, event: FocusEvent) => void
+  onBlur?: (val: string, event: FocusEvent) => void
   withoutTheme?: boolean
   provider: Extension | null
   lint?: boolean
@@ -296,18 +311,66 @@ function getCodeMirrorExtensions({
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     EditorView.theme({
       '.cm-line': {
-        lineHeight: '20px',
+        lineHeight: '22px',
         padding: '0 2px 0 4px',
       },
       '.cm-gutterElement': {
-        lineHeight: '20px',
+        lineHeight: '22px',
+      },
+      // Center the fold chevron within the line and give it a muted, interactive look
+      '.cm-foldGutter .cm-gutterElement': {
+        display: 'flex',
+        alignItems: 'center',
+        // Nudge the chevron off the line numbers so it sits between them and the code
+        paddingLeft: '4px',
+      },
+      '.cm-foldMarker': {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '22px',
+        color: 'var(--scalar-color-3)',
+        cursor: 'pointer',
+      },
+      '.cm-foldMarker:hover': {
+        color: 'var(--scalar-color-1)',
+      },
+      '.cm-foldMarker svg': {
+        width: '16px',
+        height: '16px',
       },
       '.cm-tooltip': {
-        border: '1px solid #f5c6cb',
+        background: 'var(--scalar-background-1)',
+        border: '1px solid var(--scalar-border-color)',
+        borderRadius: 'var(--scalar-radius)',
+        boxShadow: 'var(--scalar-shadow-2)',
         fontSize: '12px',
+        overflow: 'hidden',
+      },
+      '.cm-tooltip-autocomplete ul': {
+        padding: '6px',
+      },
+      '.cm-tooltip-autocomplete ul li': {
+        padding: '3px 6px',
+        color: 'var(--scalar-color-1)',
+        borderRadius: '3px',
+      },
+      '.cm-tooltip-autocomplete ul li[aria-selected]': {
+        background: 'var(--scalar-background-2)',
+        color: 'var(--scalar-color-1)',
+      },
+      '.cm-tooltip-autocomplete ul li:hover': {
+        background: 'var(--scalar-background-3)',
+        color: 'var(--scalar-color-1)',
+      },
+      '.cm-completionLabel': {
+        color: 'var(--scalar-color-1)',
+      },
+      '.cm-completionDetail': {
+        color: 'var(--scalar-color-3)',
       },
       '.cm-tooltip-lint': {
-        backgroundColor: '#ffffff',
+        backgroundColor: 'var(--scalar-background-1)',
       },
       '.cm-diagnostic-error': {
         borderLeft: '0',
@@ -327,11 +390,11 @@ function getCodeMirrorExtensions({
       onChange?.(v.state.doc.toString())
     }),
     EditorView.domEventHandlers({
-      blur: (_event, view) => {
-        onBlur?.(view.state.doc.toString())
+      blur: (event, view) => {
+        onBlur?.(view.state.doc.toString(), event)
       },
-      focus: (_event, view) => {
-        onFocus?.(view.state.doc.toString())
+      focus: (event, view) => {
+        onFocus?.(view.state.doc.toString(), event)
       },
     }),
     // Add Classes
@@ -396,11 +459,7 @@ function getCodeMirrorExtensions({
         markerDOM: (open) => {
           const icon = document.createElement('div')
           icon.classList.add('cm-foldMarker')
-          const vnode = h(ScalarIcon, {
-            icon: open ? 'ChevronDown' : 'ChevronRight',
-            size: 'md',
-          })
-          render(vnode, icon)
+          icon.innerHTML = open ? CHEVRON_DOWN : CHEVRON_RIGHT
           return icon
         },
       }),
@@ -416,11 +475,7 @@ function getCodeMirrorExtensions({
           markerDOM: (open) => {
             const icon = document.createElement('div')
             icon.classList.add('cm-foldMarker')
-            const vnode = h(ScalarIcon, {
-              icon: open ? 'ChevronDown' : 'ChevronRight',
-              size: 'md',
-            })
-            render(vnode, icon)
+            icon.innerHTML = open ? CHEVRON_DOWN : CHEVRON_RIGHT
             return icon
           },
         }),

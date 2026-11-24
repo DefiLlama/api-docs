@@ -1,0 +1,27 @@
+import type { ApiReferenceBuiltInLocale, ApiReferenceTranslations } from '@scalar/types/api-reference'
+
+import { ar } from './locales/ar'
+import { de } from './locales/de'
+import { en } from './locales/en'
+import { es } from './locales/es'
+import { fr } from './locales/fr'
+import { pt } from './locales/pt'
+import { ru } from './locales/ru'
+import { zhCn } from './locales/zh-cn'
+import { zhTw } from './locales/zh-tw'
+
+export const localeTranslations = {
+  en,
+  ru,
+  es,
+  fr,
+  de,
+  'zh-CN': zhCn,
+  'zh-TW': zhTw,
+  ar,
+  pt,
+} satisfies Record<ApiReferenceBuiltInLocale, ApiReferenceTranslations>
+
+export const DEFAULT_LOCALE: ApiReferenceBuiltInLocale = 'en'
+
+export const RTL_LOCALES = new Set(['ar', 'fa', 'he', 'ur'])

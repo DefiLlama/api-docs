@@ -1,18 +1,76 @@
-# Scalar API Reference Docker Image
+# API Reference Docker Image
+
+<div class="flex gap-2">
+<a href="https://hub.docker.com/r/scalarapi/api-reference" aria-label="View API Reference on Docker Hub"><img alt="Docker Image Version" src="https://img.shields.io/docker/v/scalarapi/api-reference?label=Docker%20image"></a>
+<a href="https://hub.docker.com/r/scalarapi/api-reference" aria-label="View Docker pulls for API Reference"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/scalarapi/api-reference?label=Docker%20pulls"></a>
+<a href="https://discord.gg/scalar" aria-label="Join Scalar community on Discord"><img alt="Discord" src="https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2"></a>
+</div>
 
 ## Quick Start
 
 Run the Docker container with your OpenAPI configuration:
 
 ```bash
-docker run -p 8080:8080 -e API_REFERENCE_CONFIG='{"sources":[{"url": "https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json"}],"theme": "purple"}' scalarapi/api-reference:latest
+docker run \
+  -p 8080:8080 \
+  -e API_REFERENCE_CONFIG='{"sources":[{"url": "https://registry.scalar.com/@scalar/apis/galaxy?format=json"}],"theme": "purple"}' \
+  scalarapi/api-reference:latest
 ```
 
 Visit `http://localhost:8080` to see your API reference.
 
-## Using Docker Compose
+## Configuration
 
-Create a `docker-compose.yml` file:
+The Docker image supports two configuration methods:
+
+### 1. Environment Variable
+
+Set the `API_REFERENCE_CONFIG` environment variable with your Scalar configuration:
+
+```bash
+docker run \
+  -p 8080:8080 \
+  -e API_REFERENCE_CONFIG='{"sources":[{"url":"https://api.example.com/openapi.json"}],"theme":"purple"}' \
+  scalarapi/api-reference:latest
+```
+
+### 2. Document Mounting
+
+Mount OpenAPI and AsyncAPI documents directly into the container for automatic discovery:
+
+```bash
+docker run \
+  -p 8080:8080 \
+  -v /path/to/your/openapi-docs:/docs \
+  scalarapi/api-reference:latest
+```
+
+The container automatically:
+- Scans for OpenAPI and AsyncAPI documents (`.json`, `.yaml`, `.yml` files)
+- Serves documents at `/openapi/{filename}` (the path is historical and used for both document types)
+- Generates titles from directory structure
+
+**Directory structure example:**
+```
+/docs/
+├── api-v1.json
+├── internal/admin-api.yaml
+└── external/partner-api.json
+```
+
+### 3. Combined Configuration
+
+You can combine both approaches:
+
+```bash
+docker run \
+  -p 8080:8080 \
+  -v /path/to/your/openapi-docs:/docs \
+  -e API_REFERENCE_CONFIG='{"theme": "purple"}' \
+  scalarapi/api-reference:latest
+```
+
+## Docker Compose
 
 ```yaml
 services:
@@ -20,55 +78,44 @@ services:
     image: scalarapi/api-reference:latest
     ports:
       - "8080:8080"
+    volumes:
+      # Mount your OpenAPI and AsyncAPI documents directory
+      - ./docs:/docs
     environment:
-      API_REFERENCE_CONFIG: |
-        {
-          "sources": [
-            {
-              "url": "https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json"
-            }
-          ]
-          "theme": "purple"
-        }
+      # Optional: Add global configuration like theme
+      # API_REFERENCE_CONFIG: |
+      #   {
+      #     "theme": "purple"
+      #   }
+    restart: unless-stopped
 ```
 
-Run with:
+## Hosting Under a Subpath
+
+When serving the API reference under a subpath (for example, behind a reverse proxy at `/docs`), set the `BASE_PATH` environment variable so the container generates URLs with the correct prefix:
 
 ```bash
-docker-compose up
+docker run \
+  -p 8080:8080 \
+  -e BASE_PATH=/docs \
+  -e API_REFERENCE_CONFIG='{"pathRouting":{"basePath":"/docs"},"sources":[{"url":"https://api.example.com/openapi.json"}]}' \
+  scalarapi/api-reference:latest
 ```
 
-## Configuration
+`BASE_PATH` only changes the URLs the client requests (such as `/docs/configuration.json` and mounted document URLs). It does not change the internal Caddy routes, so your reverse proxy or ingress is still expected to strip the prefix before forwarding requests to the container.
 
-The Docker image is configured via the `API_REFERENCE_CONFIG` environment variable, which should contain a JSON string with your Scalar configuration.
+## Environment Variables
 
-## Available Tags
+| Variable               | Description                                                       | Default     |
+| ---------------------- | ----------------------------------------------------------------- | ----------- |
+| `API_REFERENCE_CONFIG` | JSON configuration for the API Reference                          | -           |
+| `BASE_PATH`            | URL prefix when serving under a subpath (for example, `/docs`)    | -           |
+| `CDN_URL`              | URL for the API Reference CDN                                     | `scalar.js` |
 
-- `latest` - Latest stable release
-- `{version}` - Specific version (e.g., `0.2.0`)
+**Note:** Either `API_REFERENCE_CONFIG` must be set OR documents must be mounted to `/docs`
 
 ## Health Check
 
 The container includes a health check endpoint at `/health` that returns `OK` with a `200` status code.
 
-## Environment Variables
-
-| Variable               | Description                                                    | Required |
-| ---------------------- | -------------------------------------------------------------- | -------- |
-| `API_REFERENCE_CONFIG` | JSON configuration for the Scalar API Reference                | Yes      |
-| `CDN_URL`              | URL for the API Reference CDN (default: local `standalone.js`) | No       |
-
-## Configuration Options
-
-For detailed configuration options, refer to the [main Scalar documentation](https://github.com/scalar/scalar/blob/main/documentation/configuration.md).
-
-## Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/scalar/scalar.git
-cd scalar/integrations/docker
-
-# Build the Docker image
-docker build -t scalarapi/api-reference:latest .
-```
+For detailed configuration options, refer to the [main Scalar documentation](../configuration.md).

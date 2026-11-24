@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { cleanupTooltipElement, useTooltip } from './useTooltip'
-import { ELEMENT_ID } from './constants'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
+
+import { ELEMENT_ID } from './constants'
+import { cleanupTooltipElement, useTooltip } from './useTooltip'
 
 describe('useTooltip', () => {
   let targetElement: HTMLElement
@@ -24,7 +25,7 @@ describe('useTooltip', () => {
     vi.useRealTimers()
   })
 
-  it('should initialize tooltip element on first use', async () => {
+  it('should initialize tooltip element on first use', () => {
     useTooltip({
       content: 'Test tooltip',
       targetRef: targetElement,
@@ -33,6 +34,28 @@ describe('useTooltip', () => {
     const tooltipElement = document.getElementById(ELEMENT_ID)
     expect(tooltipElement).toBeTruthy()
     expect(tooltipElement?.classList.contains('scalar-tooltip')).toBe(true)
+  })
+
+  it('re-attaches the tooltip element when its host has been removed', async () => {
+    useTooltip({
+      content: 'Test tooltip',
+      targetRef: targetElement,
+      delay: 0,
+    })
+
+    const tooltipElement = document.getElementById(ELEMENT_ID)
+    expect(tooltipElement?.isConnected).toBe(true)
+
+    // The tooltip moves into a modal dialog to clear the top layer, so it can be torn
+    // down along with that dialog. Showing it again has to put it back.
+    tooltipElement?.remove()
+    expect(tooltipElement?.isConnected).toBe(false)
+
+    targetElement.dispatchEvent(new MouseEvent('mouseenter'))
+    await nextTick()
+
+    expect(tooltipElement?.isConnected).toBe(true)
+    expect(tooltipElement?.parentElement).toBe(document.body)
   })
 
   it('should show tooltip on mouseenter after delay', async () => {
@@ -76,7 +99,7 @@ describe('useTooltip', () => {
     expect(tooltipElement?.textContent).toBe('Test tooltip')
   })
 
-  it('should hide tooltip on mouseleave', async () => {
+  it('should hide tooltip on mouseleave', () => {
     useTooltip({
       content: 'Test tooltip',
       targetRef: targetElement,
@@ -90,6 +113,30 @@ describe('useTooltip', () => {
     targetElement.dispatchEvent(new MouseEvent('mouseleave'))
 
     const tooltipElement = document.getElementById(ELEMENT_ID)
+    expect(tooltipElement?.style.display).toBe('none')
+  })
+
+  it('stays open when the pointer moves from the tooltip onto a child of the target', async () => {
+    const icon = document.createElement('svg')
+    targetElement.appendChild(icon)
+    useTooltip({
+      content: 'Test tooltip',
+      targetRef: targetElement,
+      delay: 0,
+    })
+    const tooltipElement = document.getElementById(ELEMENT_ID)
+
+    targetElement.dispatchEvent(new MouseEvent('mouseenter'))
+    await nextTick()
+    expect(tooltipElement?.style.display).toBe('block')
+
+    // The tooltip can appear under the pointer for a frame, so the pointer "returns" to the icon
+    tooltipElement?.dispatchEvent(new MouseEvent('mouseleave', { relatedTarget: icon }))
+    await nextTick()
+    expect(tooltipElement?.style.display).toBe('block')
+
+    tooltipElement?.dispatchEvent(new MouseEvent('mouseleave', { relatedTarget: document.body }))
+    await nextTick()
     expect(tooltipElement?.style.display).toBe('none')
   })
 
@@ -197,7 +244,7 @@ describe('useTooltip', () => {
     expect(document.getElementById(ELEMENT_ID)?.textContent).toBe('Updated content')
   })
 
-  it('should set aria-describedby on target element', async () => {
+  it('should set aria-describedby on target element', () => {
     useTooltip({
       content: 'Test tooltip',
       targetRef: targetElement,
@@ -229,5 +276,100 @@ describe('useTooltip', () => {
 
     // New target should have aria-describedby
     expect(newTarget.getAttribute('aria-describedby')).toBe(ELEMENT_ID)
+  })
+
+  it('should escape HTML by default', async () => {
+    const htmlContent = '<script>alert("xss")</script>Safe text'
+    useTooltip({
+      content: htmlContent,
+      targetRef: targetElement,
+    })
+
+    // Show tooltip
+    targetElement.dispatchEvent(new MouseEvent('mouseenter'))
+    vi.runAllTimers()
+    await nextTick()
+
+    const tooltipElement = document.getElementById(ELEMENT_ID)
+    expect(tooltipElement?.textContent).toBe(htmlContent)
+    expect(tooltipElement?.innerHTML).toBe('&lt;script&gt;alert("xss")&lt;/script&gt;Safe text')
+  })
+
+  it('should support html content when contentTarget is set to innerHTML', async () => {
+    const htmlContent = '<strong>Bold</strong> text'
+    useTooltip({
+      content: htmlContent,
+      targetRef: targetElement,
+      contentTarget: 'innerHTML',
+    })
+
+    // Show tooltip
+    targetElement.dispatchEvent(new MouseEvent('mouseenter'))
+    vi.runAllTimers()
+    await nextTick()
+
+    const tooltipElement = document.getElementById(ELEMENT_ID)
+    expect(tooltipElement?.innerHTML).toBe(htmlContent)
+    expect(tooltipElement?.textContent).toBe('Bold text')
+  })
+
+  it('should update contentTarget when it changes', async () => {
+    const contentTarget = ref<'textContent' | 'innerHTML'>('textContent')
+    const htmlContent = '<em>Italic</em> text'
+
+    useTooltip({
+      content: htmlContent,
+      targetRef: targetElement,
+      contentTarget,
+    })
+
+    // Show tooltip with textContent
+    targetElement.dispatchEvent(new MouseEvent('mouseenter'))
+    vi.runAllTimers()
+    await nextTick()
+
+    const tooltipElement = document.getElementById(ELEMENT_ID)
+    expect(tooltipElement?.textContent).toBe(htmlContent)
+
+    // Change to innerHTML
+    contentTarget.value = 'innerHTML'
+    await nextTick()
+
+    expect(tooltipElement?.innerHTML).toBe(htmlContent)
+    expect(tooltipElement?.textContent).toBe('Italic text')
+  })
+
+  it('should work with reactive content and contentTarget', async () => {
+    const content = ref('Initial content')
+    const contentTarget = ref<'textContent' | 'innerHTML'>('textContent')
+
+    useTooltip({
+      content,
+      targetRef: targetElement,
+      contentTarget,
+    })
+
+    // Show tooltip
+    targetElement.dispatchEvent(new MouseEvent('mouseenter'))
+    vi.runAllTimers()
+    await nextTick()
+
+    const tooltipElement = document.getElementById(ELEMENT_ID)
+    expect(tooltipElement?.textContent).toBe('Initial content')
+
+    // Update content to HTML
+    content.value = '<strong>Bold</strong> content'
+    await nextTick()
+
+    // Should still be escaped as textContent
+    expect(tooltipElement?.textContent).toBe('<strong>Bold</strong> content')
+
+    // Switch to innerHTML
+    contentTarget.value = 'innerHTML'
+    await nextTick()
+
+    // Should now render as HTML
+    expect(tooltipElement?.innerHTML).toBe('<strong>Bold</strong> content')
+    expect(tooltipElement?.textContent).toBe('Bold content')
   })
 })

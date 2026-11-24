@@ -1,69 +1,104 @@
-import type { Meta, StoryObj } from '@storybook/vue3'
+import { ScalarIconFileArchive, ScalarIconFileAudio, ScalarIconFileText } from '@scalar/icons'
+import type { Meta, StoryObj } from '@storybook/vue3-vite'
 import { ref } from 'vue'
+
 import ScalarSidebar from './ScalarSidebar.vue'
 import ScalarSidebarFooter from './ScalarSidebarFooter.vue'
 import ScalarSidebarGroup from './ScalarSidebarGroup.vue'
 import ScalarSidebarItem from './ScalarSidebarItem.vue'
 import ScalarSidebarItems from './ScalarSidebarItems.vue'
-import { ScalarIconFileArchive, ScalarIconFileAudio, ScalarIconFileText } from '@scalar/icons'
+import ScalarSidebarNestedItems from './ScalarSidebarNestedItems.vue'
+import ScalarSidebarPlayground from './ScalarSidebarPlayground.vue'
 import ScalarSidebarSearchButton from './ScalarSidebarSearchButton.vue'
 import ScalarSidebarSection from './ScalarSidebarSection.vue'
-import ScalarSidebarPlayground from './ScalarSidebarPlayground.vue'
-import ScalarSidebarNestedItems from './ScalarSidebarNestedItems.vue'
 
-const nestedItemGroups = `
-<ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Item 1'" @click="selected = 'Item 1'">Item 1</ScalarSidebarItem>
-<ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Item 2'" @click="selected = 'Item 2'">Item 2</ScalarSidebarItem>
-<ScalarSidebarGroup>  
+/**
+ * Helper to generate nested item groups for the stories
+ */
+const nestedItemGroups = ({
+  itemAttrs = (label: string) =>
+    `is="button" :icon="args.icon" :selected="selected === '${label}'" @click="selected = '${label}'"`,
+  groupAttrs = () => `:icon="args.icon" :controlled="args.controlled" :open="args.open"`,
+}: {
+  itemAttrs?: (label: string) => string
+  groupAttrs?: (label: string) => string
+} = {}) =>
+  `
+<ScalarSidebarItem ${itemAttrs('Item 1')}>Item 1</ScalarSidebarItem>
+<ScalarSidebarItem ${itemAttrs('Item 2')}>Item 2</ScalarSidebarItem>
+<ScalarSidebarGroup ${groupAttrs('Level 1 Group')}>  
   Level 1 Group 
   <template #items>
-    <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 1'" @click="selected = 'Subitem 1'">Subitem 1</ScalarSidebarItem>
-    <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 2'" @click="selected = 'Subitem 2'">Subitem 2</ScalarSidebarItem>
-      <ScalarSidebarGroup>
+    <ScalarSidebarItem ${itemAttrs('Subitem 1')}>Subitem 1</ScalarSidebarItem>
+    <ScalarSidebarItem ${itemAttrs('Subitem 2')}>Subitem 2</ScalarSidebarItem>
+      <ScalarSidebarGroup ${groupAttrs('Level 2 Group')}>
         Level 2 Group
         <template #items>
-          <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 3'" @click="selected = 'Subitem 3'">Subitem 3</ScalarSidebarItem>
-          <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 4'" @click="selected = 'Subitem 4'">Subitem 4</ScalarSidebarItem>
-            <ScalarSidebarGroup>
+          <ScalarSidebarItem ${itemAttrs('Subitem 3')}>Subitem 3</ScalarSidebarItem>
+          <ScalarSidebarItem ${itemAttrs('Subitem 4')}>Subitem 4</ScalarSidebarItem>
+            <ScalarSidebarGroup ${groupAttrs('Level 3 Group')}>
             Level 3 Group
             <template #items>
-              <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 5'" @click="selected = 'Subitem 5'">Subitem 5</ScalarSidebarItem>
-              <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 6'" @click="selected = 'Subitem 6'">Subitem 6</ScalarSidebarItem>
-                <ScalarSidebarGroup>
+              <ScalarSidebarItem ${itemAttrs('Subitem 5')}>Subitem 5</ScalarSidebarItem>
+              <ScalarSidebarItem ${itemAttrs('Subitem 6')}>Subitem 6</ScalarSidebarItem>
+                <ScalarSidebarGroup ${groupAttrs('Level 4 Group')}>
                   Level 4 Group
                   <template #items>
-                    <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 7'" @click="selected = 'Subitem 7'">Subitem 7</ScalarSidebarItem>
-                    <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 8'" @click="selected = 'Subitem 8'">Subitem 8</ScalarSidebarItem>
-                      <ScalarSidebarGroup>
+                    <ScalarSidebarItem ${itemAttrs('Subitem 7')}>Subitem 7</ScalarSidebarItem>
+                    <ScalarSidebarItem ${itemAttrs('Subitem 8')}>Subitem 8</ScalarSidebarItem>
+                      <ScalarSidebarGroup ${groupAttrs('Level 5 Group')}>
                         Level 5 Group
                         <template #items>
-                          <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 9'" @click="selected = 'Subitem 9'">Subitem 9</ScalarSidebarItem>
-                          <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 10'" @click="selected = 'Subitem 10'">Subitem 10</ScalarSidebarItem>
-                          <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 11'" @click="selected = 'Subitem 11'">Subitem 11</ScalarSidebarItem>
+                          <ScalarSidebarItem ${itemAttrs('Subitem 9')}>Subitem 9</ScalarSidebarItem>
+                          <ScalarSidebarItem ${itemAttrs('Subitem 10')}>Subitem 10</ScalarSidebarItem>
+                          <ScalarSidebarItem ${itemAttrs('Subitem 11')}>Subitem 11</ScalarSidebarItem>
                         </template>
                       </ScalarSidebarGroup>
-                    <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 12'" @click="selected = 'Subitem 12'">Subitem 12</ScalarSidebarItem>
+                    <ScalarSidebarItem ${itemAttrs('Subitem 12')}>Subitem 12</ScalarSidebarItem>
                   </template>
                 </ScalarSidebarGroup>
-              <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 13'" @click="selected = 'Subitem 13'">Subitem 13</ScalarSidebarItem>
+              <ScalarSidebarItem ${itemAttrs('Subitem 13')}>Subitem 13</ScalarSidebarItem>
             </template>
           </ScalarSidebarGroup>
-          <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 14'" @click="selected = 'Subitem 14'">Subitem 14</ScalarSidebarItem>
+          <ScalarSidebarItem ${itemAttrs('Subitem 14')}>Subitem 14</ScalarSidebarItem>
         </template>
       </ScalarSidebarGroup>
-    <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 15'" @click="selected = 'Subitem 15'">Subitem 15</ScalarSidebarItem>
+    <ScalarSidebarItem ${itemAttrs('Subitem 15')}>Subitem 15</ScalarSidebarItem>
   </template>
 </ScalarSidebarGroup>
-<ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Item 3'" @click="selected = 'Item 3'">Item 3</ScalarSidebarItem>
-<ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Item 4'" @click="selected = 'Item 4'">Item 4</ScalarSidebarItem>
+<ScalarSidebarItem ${itemAttrs('Item 3')}>Item 3</ScalarSidebarItem>
+<ScalarSidebarItem ${itemAttrs('Item 4')}>Item 4</ScalarSidebarItem>
 ` as const
 
 const meta: Meta = {
   component: ScalarSidebar,
   tags: ['autodocs'],
   parameters: { layout: 'fullscreen' },
+  args: {
+    indent: 20,
+    padding: 12,
+    width: 288,
+    open: false,
+    backgroundOne: 'var(--scalar-background-1)',
+    colorOne: 'var(--scalar-color-1)',
+    colorTwo: 'var(--scalar-color-2)',
+    borderColor: 'var(--scalar-border-color)',
+    itemHoverBackground: 'var(--scalar-background-2)',
+    itemHoverColor: 'var(--scalar-sidebar-color-2)',
+    itemActiveBackground: 'var(--scalar-background-2)',
+    itemActiveColor: 'var(--scalar-sidebar-color-1)',
+    indentBorder: 'var(--scalar-border-color)',
+    indentBorderHover: 'var(--scalar-border-color)',
+    indentBorderActive: 'var(--scalar-color-accent)',
+    searchBackground: 'transparent',
+    searchColor: 'var(--scalar-color-3)',
+    searchBorderColor: 'var(--scalar-border-color)',
+    searchPlaceholder: 'Search...',
+  },
   argTypes: {
     class: { control: 'text' },
+    open: { control: 'boolean' },
+    controlled: { control: 'boolean' },
     icon: {
       control: 'select',
       options: ['Text', 'Archive', 'Audio'],
@@ -73,14 +108,95 @@ const meta: Meta = {
         Audio: ScalarIconFileAudio,
       },
     },
+    indent: { control: 'number' },
+    padding: { control: 'number' },
+    width: { control: 'number' },
+    backgroundOne: { control: 'color' },
+    colorOne: { control: 'color' },
+    colorTwo: { control: 'color' },
+    borderColor: { control: 'color' },
+    itemHoverBackground: { control: 'color' },
+    itemHoverColor: { control: 'color' },
+    itemActiveBackground: { control: 'color' },
+    itemActiveColor: { control: 'color' },
+    indentBorder: { control: 'color' },
+    indentBorderHover: { control: 'color' },
+    indentBorderActive: { control: 'color' },
+    searchBackground: { control: 'color' },
+    searchColor: { control: 'color' },
+    searchBorderColor: { control: 'color' },
+    searchPlaceholder: { control: 'text' },
   },
   render: (args) => ({
-    components: { ScalarSidebarPlayground },
+    components: {
+      ScalarSidebar,
+      ScalarSidebarItem,
+      ScalarSidebarItems,
+      ScalarSidebarGroup,
+      ScalarSidebarNestedItems,
+      ScalarSidebarSection,
+      ScalarSidebarPlayground,
+    },
     setup() {
-      return { args }
+      const selected = ref('')
+      return { args, selected }
     },
     template: `
-<ScalarSidebarPlayground>
+<ScalarSidebarPlayground v-model:selected="selected" v-bind="args">
+  <ScalarSidebarItems>
+    <ScalarSidebarSection>
+      Navigation
+      <template #items>
+        <ScalarSidebarNestedItems :icon="args.icon" :controlled="args.controlled">
+          Nested Items Level 1
+          <template #back-label>
+            Top Level Sidebar
+          </template>
+          <template #items>
+            <ScalarSidebarNestedItems :icon="args.icon" :controlled="args.controlled">
+              Nested Items Level 2
+              <template #items>
+                <ScalarSidebarNestedItems :icon="args.icon" :controlled="args.controlled">
+                  Nested Items Level 3
+                  <template #items>
+                    ${nestedItemGroups()}
+                  </template>
+                </ScalarSidebarNestedItems>
+                ${nestedItemGroups()}
+              </template>
+            </ScalarSidebarNestedItems>
+            ${nestedItemGroups()}
+          </template>
+        </ScalarSidebarNestedItems>
+        <ScalarSidebarGroup :icon="args.icon" :open="args.open">
+          Group with Nested Sidebar
+          <template #items>
+            <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 1'" @click="selected = 'Subitem 1'">Subitem 1</ScalarSidebarItem>
+            <ScalarSidebarNestedItems :icon="args.icon" :controlled="args.controlled">
+              Nested Items in a Group
+              <template #items>
+                ${nestedItemGroups()}
+              </template>
+            </ScalarSidebarNestedItems>
+            <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 2'" @click="selected = 'Subitem 2'">Subitem 2</ScalarSidebarItem>
+          </template>
+        </ScalarSidebarGroup>
+        ${nestedItemGroups()}
+      </template>
+    </ScalarSidebarSection>
+    <ScalarSidebarSection>
+      Additional Items
+      <template #items>
+        <ScalarSidebarNestedItems :icon="args.icon">
+          More nested items
+          <template #items>
+            ${nestedItemGroups()}
+          </template>
+        </ScalarSidebarNestedItems>
+        <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Standalone Item'" @click="selected = 'Standalone Item'">Standalone Item</ScalarSidebarItem>
+      </template>
+    </ScalarSidebarSection>
+  </ScalarSidebarItems>
 </ScalarSidebarPlayground>
 `,
   }),
@@ -91,7 +207,29 @@ type Story = StoryObj<typeof meta>
 
 export const Base: Story = {}
 
-export const WithNestedGroups: Story = {
+export const Themed: Story = {
+  args: {
+    indent: 32,
+    padding: 20,
+    width: 320,
+    backgroundOne: '#27212e',
+    colorOne: '#fff',
+    colorTwo: '#b8b6ba',
+    borderColor: '#3d3843',
+    itemHoverBackground: '#322c39',
+    itemHoverColor: '#fff',
+    itemActiveBackground: '#322c39',
+    itemActiveColor: '#fff',
+    indentBorder: '#3d3843',
+    indentBorderHover: '#fff',
+    indentBorderActive: '#ed78c2',
+    searchBackground: '#322c39',
+    searchColor: '#706c74',
+    searchBorderColor: '#3d3843',
+  },
+}
+
+export const DiscreteGroups: Story = {
   argTypes: { indent: { control: 'number' } },
   args: { indent: 20 },
   render: (args) => ({
@@ -107,25 +245,26 @@ export const WithNestedGroups: Story = {
       return { args, selected }
     },
     template: `
-<ScalarSidebarPlayground v-model:selected="selected" :indent="args.indent">
+<ScalarSidebarPlayground v-model:selected="selected" v-bind="args">
   <ScalarSidebarItems>
-    ${nestedItemGroups}
+    ${nestedItemGroups({ groupAttrs: (label: string) => `:icon="args.icon" :controlled="args.controlled" discrete :selected="selected === '${label}'" @click="selected = '${label}'"` })}
   </ScalarSidebarItems>
 </ScalarSidebarPlayground>
 `,
   }),
 }
 
-export const WithNestedSidebars: Story = {
+export const LoadingGroups: Story = {
   argTypes: { indent: { control: 'number' } },
-  args: { indent: 20 },
+  args: { indent: 20, open: true },
   render: (args) => ({
     components: {
       ScalarSidebar,
       ScalarSidebarItem,
       ScalarSidebarItems,
-      ScalarSidebarGroup,
+      ScalarSidebarSection,
       ScalarSidebarNestedItems,
+      ScalarSidebarGroup,
       ScalarSidebarPlayground,
     },
     setup() {
@@ -133,65 +272,34 @@ export const WithNestedSidebars: Story = {
       return { args, selected }
     },
     template: `
-<ScalarSidebarPlayground v-model:selected="selected" :indent="args.indent">
+<ScalarSidebarPlayground v-model:selected="selected" v-bind="args">
   <ScalarSidebarItems>
-    <ScalarSidebarNestedItems>
-      Nested Items Level 1
-      <template #back-label>
-        Top Level Sidebar
-      </template>
+    <ScalarSidebarNestedItems loading>
+      Nested Items Loading
       <template #items>
-        <ScalarSidebarNestedItems>
-          Nested Items Level 2
-          <template #items>
-            <ScalarSidebarNestedItems>
-              Nested Items Level 3
-              <template #items>
-                ${nestedItemGroups}
-              </template>
-            </ScalarSidebarNestedItems>
-            ${nestedItemGroups}
-          </template>
-        </ScalarSidebarNestedItems>
-        ${nestedItemGroups}
+        ${nestedItemGroups()}
       </template>
     </ScalarSidebarNestedItems>
-    <ScalarSidebarGroup>
-      Group with Nested Items
-      <template #items>
-        <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 1'" @click="selected = 'Subitem 1'">Subitem 1</ScalarSidebarItem>
-        <ScalarSidebarNestedItems>
-          Nested Items in a Group
-          <template #items>
-            ${nestedItemGroups}
-          </template>
-        </ScalarSidebarNestedItems>
-        <ScalarSidebarItem is="button" :icon="args.icon" :selected="selected === 'Subitem 2'" @click="selected = 'Subitem 2'">Subitem 2</ScalarSidebarItem>
-      </template>
-    </ScalarSidebarGroup>
-    ${nestedItemGroups}
-    <ScalarSidebarNestedItems>
-      More nested items
-      <template #items>
-        ${nestedItemGroups}
-      </template>
-    </ScalarSidebarNestedItems>
+    <ScalarSidebarSection loading>
+      Loading Section
+    </ScalarSidebarSection>
+    ${nestedItemGroups({ groupAttrs: () => `:icon="args.icon" :open="args.open" :controlled="args.controlled" loading` })}
   </ScalarSidebarItems>
 </ScalarSidebarPlayground>
 `,
   }),
 }
 
-export const WithFooterContent: Story = {
+export const Footer: Story = {
   render: (args) => ({
     components: { ScalarSidebarPlayground, ScalarSidebarFooter },
     setup() {
       return { args }
     },
     template: `
-<ScalarSidebarPlayground>
+<ScalarSidebarPlayground v-bind="args">
   <template #footer>
-    <ScalarSidebarFooter v-bind="args">
+    <ScalarSidebarFooter>
       <span class="placeholder">Extra footer content</span>
     </ScalarSidebarFooter>
   </template>
@@ -215,7 +323,7 @@ export const WithSections: Story = {
       return { args, selected }
     },
     template: `
-<ScalarSidebarPlayground v-model:selected="selected">
+<ScalarSidebarPlayground v-model:selected="selected" v-bind="args">
   <ScalarSidebarItems>
     <ScalarSidebarSection>
       Section 1
@@ -262,10 +370,10 @@ export const WithSearchButton: Story = {
       return { args }
     },
     template: `
-<ScalarSidebarPlayground>
+<ScalarSidebarPlayground v-bind="args">
     <template #search>
       <div class="flex flex-col px-3 pt-3 sticky top-0 bg-sidebar-b-1">
-      <ScalarSidebarSearchButton v-bind="args">
+      <ScalarSidebarSearchButton>
         <template #shortcut>
           <span>⌘ K</span>
         </template>

@@ -1,40 +1,35 @@
-import type { OpenAPIV3_1 } from '@scalar/openapi-types'
-
-import type { AnyObject, Filesystem, UpgradeResult } from '@/types/index'
+import { normalize } from '@scalar/json-magic/helpers/normalize'
+import type { Document as OpenApiDocumentV3_1 } from '@scalar/openapi-types/3.1'
+import { upgrade as originalUpgrade } from '@scalar/openapi-upgrader'
 import type { UnknownObject } from '@scalar/types/utils'
+
+import type { Filesystem, UpgradeResult } from '@/types/index'
+
+import { details } from './details'
 import { getEntrypoint } from './get-entrypoint'
 import { isFilesystem } from './is-filesystem'
-import { normalize } from './normalize'
-import { upgradeFromThreeToThreeOne } from './upgrade-from-three-to-three-one'
-import { upgradeFromTwoToThree } from './upgrade-from-two-to-three'
-
-const upgraders = [
-  // Swagger 2.0 -> OpenAPI 3.0
-  upgradeFromTwoToThree,
-  // OpenAPI 3.0 -> OpenAPI 3.1
-  upgradeFromThreeToThreeOne,
-]
 
 /**
- * Upgrade specification to OpenAPI 3.1.0
+ * Upgrade older documents to OpenAPI 3.1 and preserve documents that are already newer.
  */
-export function upgrade(value: string | AnyObject | Filesystem): UpgradeResult<OpenAPIV3_1.Document> {
+export function upgrade(value: string | UnknownObject | Filesystem): UpgradeResult<OpenApiDocumentV3_1> {
   if (!value) {
     return {
       specification: null,
-      version: '3.1',
+      version: undefined,
     }
   }
 
   // TODO: Run upgrade over the whole filesystem
-  const result = upgraders.reduce(
-    (currentSpecification, upgrader) => upgrader(currentSpecification as UnknownObject),
-    isFilesystem(value) ? getEntrypoint(value).specification : normalize(value),
-  ) as OpenAPIV3_1.Document
+  const document = originalUpgrade(
+    isFilesystem(value) ? getEntrypoint(value).specification : (normalize(value) as UnknownObject),
+    '3.1',
+  )
+
+  const { version } = details(document)
 
   return {
-    specification: result,
-    // TODO: Make dynamic
-    version: '3.1',
-  } as UpgradeResult<OpenAPIV3_1.Document>
+    specification: document,
+    version: version === '3.1' || version === '3.2' ? version : undefined,
+  } as UpgradeResult<OpenApiDocumentV3_1>
 }

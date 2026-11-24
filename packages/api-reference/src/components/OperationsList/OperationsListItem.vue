@@ -1,0 +1,160 @@
+<script setup lang="ts">
+import { isPlainLeftClick } from '@scalar/helpers/dom/is-plain-left-click'
+import { getHttpMethodInfo } from '@scalar/helpers/http/http-info'
+import { ScalarIconWebhooksLogo } from '@scalar/icons'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import type {
+  TraversedEntry,
+  TraversedOperation,
+  TraversedWebhook,
+} from '@scalar/workspace-store/schemas/navigation'
+import { computed } from 'vue'
+
+import { HttpMethod } from '@/components/HttpMethod'
+import { SectionHeaderTag } from '@/components/Section'
+import { useDocumentOutline } from '@/features/document-outline'
+import { useNavigationHref } from '@/hooks/use-navigation-href'
+
+const { operation, eventBus } = defineProps<{
+  operation: TraversedOperation | TraversedWebhook
+  isCollapsed?: boolean
+  eventBus: WorkspaceEventBus | null
+}>()
+
+const pathOrTitle = computed(() => {
+  if ('path' in operation) {
+    return operation.path
+  }
+
+  return operation.title
+})
+
+const isWebhook = (
+  _operation: TraversedEntry,
+): _operation is TraversedWebhook => _operation.type === 'webhook'
+
+const { level: headingLevel } = useDocumentOutline('operation')
+
+const href = useNavigationHref()
+
+const navigate = (event: MouseEvent): void => {
+  if (!eventBus || !isPlainLeftClick(event)) {
+    return
+  }
+  event.preventDefault()
+  eventBus.emit('scroll-to:nav-item', { id: operation.id })
+}
+</script>
+
+<template>
+  <li
+    :key="operation.id"
+    class="contents">
+    <!-- If collapsed add hidden headers so they show up for screen readers -->
+    <SectionHeaderTag
+      v-if="isCollapsed"
+      class="sr-only"
+      :level="headingLevel">
+      {{ operation.title }} (Hidden)
+    </SectionHeaderTag>
+    <a
+      class="endpoint"
+      :href="href(operation.id)"
+      @click="navigate">
+      <HttpMethod
+        class="endpoint-method items-center justify-end gap-2"
+        :method="operation.method">
+        <ScalarIconWebhooksLogo
+          v-if="isWebhook(operation)"
+          class="size-3.5"
+          :style="{
+            color: getHttpMethodInfo(operation.method).colorVar,
+          }" />
+      </HttpMethod>
+      <span
+        class="endpoint-path"
+        :class="{ deprecated: operation.isDeprecated }">
+        {{ pathOrTitle }}
+      </span>
+      <!-- DefiLlama: the endpoint list has no badge slot, so show deprecation and x-badges here -->
+      <span
+        v-if="operation.isDeprecated"
+        class="endpoint-badge endpoint-badge-deprecated">
+        Deprecated
+      </span>
+      <span
+        v-for="badge in operation.badges ?? []"
+        :key="badge.name"
+        class="endpoint-badge"
+        :style="badge.color ? { '--badge-color': badge.color } : undefined">
+        {{ badge.name }}
+      </span>
+      <!-- /DefiLlama -->
+    </a>
+  </li>
+</template>
+
+<style scoped>
+.endpoint {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+}
+.endpoint:hover .endpoint-path,
+.endpoint:focus-visible .endpoint-path {
+  text-decoration: underline;
+}
+.endpoint .post,
+.endpoint .get,
+.endpoint .delete,
+.endpoint .put {
+  white-space: nowrap;
+}
+
+.endpoint-method,
+.endpoint-path {
+  color: var(--scalar-color-1);
+  min-width: 62px;
+  display: inline-flex;
+  line-height: 1.55;
+  font-family: var(--scalar-font-code);
+  font-size: var(--scalar-small);
+  cursor: pointer;
+}
+
+.endpoint-method {
+  text-align: right;
+}
+
+.endpoint-path {
+  margin-left: 12px;
+  text-transform: initial;
+}
+
+.deprecated {
+  text-decoration: line-through;
+}
+
+/* DefiLlama: same look as the old API Plan / Beta / Deprecated chips */
+.endpoint:has(.endpoint-badge) > * {
+  /* Long paths scroll the list instead of sliding under the chips */
+  flex-shrink: 0;
+}
+.endpoint-badge {
+  --badge-color: var(--scalar-color-2);
+  margin-left: 8px;
+  padding: 1px 4px;
+  border-radius: 6px;
+  color: var(--badge-color);
+  background: color-mix(in srgb, var(--badge-color), transparent 90%);
+  font-size: var(--scalar-micro);
+  font-weight: var(--scalar-bold);
+}
+.endpoint-badge-deprecated {
+  --badge-color: var(--scalar-color-red);
+}
+/* /DefiLlama */
+</style>

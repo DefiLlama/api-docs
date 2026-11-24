@@ -1,10 +1,19 @@
 <script lang="ts" setup>
-import { ApiReferenceLayout, parse } from '@scalar/api-reference'
+import { ApiReference } from '@scalar/api-reference'
 import type { ApiReferenceConfiguration } from '@scalar/types/api-reference'
 import { useColorMode } from '@scalar/use-hooks/useColorMode'
-import { useFetch, useHead, useRequestURL, useSeoMeta } from '#imports'
-import type { Configuration } from '~/src/types'
-import { onMounted, reactive, ref, toRaw, watch } from 'vue'
+import {
+  useAsyncData,
+  useFetch,
+  useHead,
+  useRequestURL,
+  useRoute,
+  useSeoMeta,
+  useState,
+} from '#imports'
+import { onMounted, ref, watch } from 'vue'
+
+import type { Configuration } from '../../types'
 
 const props = defineProps<{
   configuration: Configuration
@@ -13,37 +22,73 @@ const props = defineProps<{
 const isDark = ref(props.configuration.darkMode)
 const forcedMode = props.configuration.forceDarkModeState
 
-const { colorMode, toggleColorMode } = useColorMode({
+const { colorMode } = useColorMode({
   initialColorMode: props.configuration.darkMode ? 'dark' : 'light',
   overrideColorMode: props.configuration.forceDarkModeState,
 })
 
-// @ts-expect-error support the old syntax for a bit
 const content = props.configuration.spec?.content ?? props.configuration.content
-// @ts-expect-error support the old syntax for a bit
 const url = props.configuration.spec?.url ?? props.configuration.url
 
-// Grab spec if we can
-const document =
-  typeof content === 'function'
-    ? toRaw(content())
-    : content
-      ? toRaw(content)
-      : url
-        ? (await useFetch<string>(url, { responseType: 'text' })).data.value
-        : (await useFetch<string>('/_openapi.json', { responseType: 'text' }))
-            .data.value
+// Get the route to check if OpenAPI is enabled
+const currentRoute = useRoute()
+const meta = currentRoute.meta as { isOpenApiEnabled?: boolean }
 
-// Set the fetched spec to the config content to prevent ApiReferenceLayout from fetching it again on the client side
-props.configuration.content = document
+// Grab spec if we can.
+// The state key is namespaced by the route name so that each configuration keeps
+// its own document. With a shared key, navigating between multiple Scalar routes
+// would reuse the first document instead of fetching each one.
+const document = useState<string | null>(
+  `scalar-document:${String(currentRoute.name)}`,
+  () => null,
+)
 
-// Check for empty spec
-if (!document) {
-  throw new Error('You must provide a document for Scalar API References')
+// If the document is not set, we need to fetch it
+if (!document.value) {
+  // If the content is a function, we need to call it
+  if (typeof content === 'function') {
+    document.value = content()
+  }
+  // Otherwise its a string
+  else if (content) {
+    document.value =
+      typeof content === 'string' ? content : JSON.stringify(content)
+  }
+  // Fetch the url
+  else if (url) {
+    try {
+      const response = await useFetch<string>(url, { responseType: 'text' })
+      document.value = response.data.value || null
+    } catch (error) {
+      console.error('Failed to fetch spec from URL:', error)
+    }
+  }
+  // Or grab from nitro
+  else if (meta.isOpenApiEnabled) {
+    try {
+      // Use useAsyncData for proper server-to-client data flow
+      const { data } = await useAsyncData(
+        `scalar-openapi-spec:${String(currentRoute.name)}`,
+        async () => {
+          const response = await $fetch<string>('/_openapi.json', {
+            responseType: 'text',
+          })
+          return response
+        },
+      )
+      document.value = data.value || null
+    } catch (error) {
+      console.error('Failed to fetch OpenAPI spec from /_openapi.json:', error)
+    }
+  }
 }
 
-const parsedSpec = reactive(await parse(document))
-const rawSpec = JSON.stringify(document)
+// Check for empty spec
+if (!document.value) {
+  throw new Error(
+    'You must provide a document for Scalar API References. Either provide a spec URL/content, or enable experimental openAPI in the Nitro config.',
+  )
+}
 
 // Load up the metadata
 if (props.configuration?.metaData) {
@@ -84,21 +129,22 @@ onMounted(() => {
 // Add baseServerURL and _integration
 const { origin } = useRequestURL()
 
+const route = useRoute()
+
 const config: Partial<ApiReferenceConfiguration> = {
   baseServerURL: origin,
   _integration: 'nuxt',
   layout: 'modern',
   ...props.configuration,
+  // Match the workspace-store name/slug to the route name
+  slug: route.name as string,
+  // Set the fetched spec to the config content to prevent ApiReferenceLayout from fetching it again on the client side
+  content: document.value,
 }
 </script>
 
 <template>
-  <ApiReferenceLayout
-    :configuration="config"
-    :isDark="!!isDark"
-    :parsedSpec="parsedSpec"
-    :rawSpec="rawSpec"
-    @toggleDarkMode="() => toggleColorMode()" />
+  <ApiReference :configuration="config" />
 </template>
 
 <style>

@@ -1,0 +1,132 @@
+import { type VueWrapper, mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+
+import ServerDropdown, { type ServerDropdownProps } from './ServerDropdown.vue'
+
+describe('ServerDropdown', () => {
+  const makeWrapper = (
+    options?: Partial<ServerDropdownProps> & { 'onUpdate:open'?: (open: boolean) => void },
+  ): VueWrapper<InstanceType<typeof ServerDropdown>> => {
+    const servers = options?.servers ?? [
+      { url: 'https://api-1.example.com', variables: {}, description: 'one' },
+      { url: 'https://api-2.example.com/', variables: {} },
+    ]
+
+    return mount(ServerDropdown, {
+      props: {
+        servers,
+        target: 'test-target',
+        layout: 'desktop',
+        meta: {
+          type: 'document',
+        },
+        server: options?.server ?? servers[0] ?? null,
+        ...options,
+      },
+      global: {
+        stubs: {
+          // Render default and named slots so popover content is present in DOM
+          ScalarPopover: {
+            name: 'ScalarPopover',
+            template: '<div data-test="popover"><slot /><slot name="popover" :close="() => {}" :open="true" /></div>',
+          },
+          // Keep button semantics for click handling
+          ScalarButton: {
+            name: 'ScalarButton',
+            template: '<button><slot /></button>',
+          },
+          ScalarIcon: true,
+          // Stub child item to count instances and emit events
+          ServerDropdownItem: {
+            name: 'ServerDropdownItem',
+            props: ['serverOption'],
+            template: '<div class="server-dropdown-item"></div>',
+          },
+        },
+      },
+    })
+  }
+
+  it('labels named servers and preserves URL selection values', async () => {
+    const wrapper = makeWrapper({
+      servers: [
+        { name: 'Production', url: 'https://api.example.com' },
+        { url: 'https://fallback.example.com' },
+        { name: '', url: 'https://empty-name.example.com' },
+      ],
+    })
+    const items = wrapper.findAllComponents({ name: 'ServerDropdownItem' })
+    expect(items.map((item) => item.props('serverOption'))).toStrictEqual([
+      { id: 'https://api.example.com', label: 'Production' },
+      { id: 'https://fallback.example.com', label: 'https://fallback.example.com' },
+      { id: 'https://empty-name.example.com', label: 'https://empty-name.example.com' },
+    ])
+    await items[0]!.vm.$emit('update:selectedServer')
+    expect(wrapper.emitted('update:selectedServer')).toStrictEqual([
+      [{ url: 'https://api.example.com', meta: { type: 'document' } }],
+    ])
+  })
+
+  it('renders selected server label without trailing slash', () => {
+    const wrapper = makeWrapper({ server: { url: 'https://api-2.example.com/' } })
+    const text = wrapper.text()
+    expect(text).toContain('https://api-2.example.com')
+    expect(text).not.toContain('https://api-2.example.com/')
+  })
+
+  it('renders Add Server affordance when no server is selected', () => {
+    const wrapper = makeWrapper({ server: null })
+    // Plus icon button should be rendered (no server URL shown)
+    const button = wrapper.find('button')
+    expect(button.exists()).toBe(true)
+    // Should not show any server URL
+    expect(wrapper.text()).not.toMatch(/https?:\/\//)
+  })
+
+  it('renders a dropdown item for each server option', () => {
+    const servers = [
+      { url: 'https://a.example.com', variables: {} },
+      { url: 'https://b.example.com', variables: {} },
+      { url: 'https://c.example.com', variables: {} },
+    ]
+    const wrapper = makeWrapper({ servers, server: servers[0] })
+    const items = wrapper.findAllComponents({ name: 'ServerDropdownItem' })
+    expect(items.length).toBe(servers.length)
+  })
+
+  it('re-emits update:variable with normalized payload when a child emits update:variable', async () => {
+    const wrapper = makeWrapper()
+    const firstItem = wrapper.findComponent({ name: 'ServerDropdownItem' })
+    // Simulate child emission (key, value)
+    await firstItem.vm.$emit('update:variable', 'version', 'v2')
+    const emitted = wrapper.emitted('update:variable')
+    expect(emitted).toBeTruthy()
+    expect(emitted?.[0]).toEqual([{ index: 0, key: 'version', value: 'v2', meta: { type: 'document' } }])
+  })
+
+  it('emits update:open with the popover open state', () => {
+    const wrapper = makeWrapper()
+    expect(wrapper.emitted('update:open')?.[0]).toEqual([true])
+  })
+
+  it('emits update:open false when the popover content unmounts', () => {
+    const onOpenChange = vi.fn()
+    const wrapper = makeWrapper({ 'onUpdate:open': onOpenChange })
+    wrapper.unmount()
+    expect(onOpenChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('emits update:servers when the Update Servers button is clicked', async () => {
+    const wrapper = makeWrapper()
+    const updateBtn = wrapper.findAll('button').find((b) => b.text().includes('Update Servers'))
+    expect(updateBtn).toBeTruthy()
+    await updateBtn!.trigger('click')
+    expect(wrapper.emitted('update:servers')).toBeTruthy()
+  })
+
+  it('does not render Update Servers button when layout is modal', () => {
+    const wrapper = makeWrapper({ layout: 'modal' })
+    const updateBtn = wrapper.findAll('button').find((b) => b.text().includes('Update Servers'))
+    expect(updateBtn).toBeUndefined()
+  })
+})

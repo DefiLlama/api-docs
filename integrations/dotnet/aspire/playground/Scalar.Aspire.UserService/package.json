@@ -1,0 +1,11 @@
+{
+  "name": "@scalar-internal/scalar-aspire-user-service",
+  "version": "1.0.0",
+  "description": "Simple REST API with Fastify and OpenAPI support",
+  "main": "index.js",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

@@ -1,0 +1,222 @@
+<script lang="ts">
+/**
+  Operation block header: address bar, environment selector, and modal controls.
+
+  Renders the top bar for the API client operation view: URL/method (AddressBar),
+  optional environment selector, optional "Open API Client" button in modal layout,
+  and close button for modal. Layout and visibility depend on `layout` and `source` props.
+ */
+export type HeaderProps = {
+  /** An external example must finish loading before sending. */
+  executionDisabled?: boolean
+  /** Current request path */
+  path: string
+  /** Current request method */
+  method: string
+  /** Whether this request comes from an OpenAPI webhook. */
+  isWebhook?: boolean
+  /** Client layout */
+  layout: ClientLayout
+  /** Hides the client button on the header */
+  hideClientButton?: boolean
+  /** Client integration  */
+  integration?: string | null
+  /** Openapi document slug */
+  documentSlug: string
+  /** Currently selected example key for the current operation */
+  exampleKey: string
+  /** Openapi document url for `modal` mode to open the client app */
+  documentUrl?: string
+  /** Client source */
+  source?: 'gitbook' | 'api-reference'
+  /** Currently selected server */
+  server: ServerObject | null
+  /** Server list available for operation/document */
+  servers: ServerObject[]
+  /** List of request history */
+  history: History[]
+  /** Event bus */
+  eventBus: WorkspaceEventBus
+  /** Environment list */
+  environments?: string[]
+  /** Currently selected environment */
+  activeEnvironment?: string
+  /** Environment variables */
+  environment: XScalarEnvironment
+  /** Meta information for the server */
+  serverMeta: ServerMeta
+}
+</script>
+
+<script setup lang="ts">
+import { ScalarIcon } from '@scalar/components/icon'
+import { ScalarIconButton } from '@scalar/components/icon-button'
+import { ScalarIconGearSix } from '@scalar/icons'
+import type {
+  ServerMeta,
+  WorkspaceEventBus,
+} from '@scalar/workspace-store/events'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type { ServerObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+
+import { AddressBar, type History } from '@/v2/blocks/scalar-address-bar-block'
+import EnvironmentSelector from '@/v2/blocks/scalar-address-bar-block/components/EnvironmentSelector.vue'
+import { useLocalization } from '@/v2/features/localization'
+import type { ClientLayout } from '@/v2/types/layout'
+
+import OpenApiClientButton from './OpenApiClientButton.vue'
+
+const {
+  hideClientButton = false,
+  eventBus,
+  exampleKey,
+  documentSlug,
+} = defineProps<HeaderProps>()
+
+const emit = defineEmits<{
+  /** Open the GET destination using browser navigation. */
+  (e: 'open:browser'): void
+  /** Execute the current operation example */
+  (e: 'execute'): void
+  /** Select a request history item by index */
+  (e: 'select:history:item', payload: { index: number }): void
+  /** Add a new environment */
+  (e: 'add:environment'): void
+  /** Navigate to the settings page for the current entity */
+  (e: 'navigate:settings'): void
+  /** Update the full destination URL used to deliver a webhook. */
+  (e: 'update:webhook-url', url: string): void
+}>()
+
+const { translate } = useLocalization()
+
+const handleSelectEnvironment = (environmentName: string) => {
+  eventBus.emit('workspace:update:active-environment', environmentName)
+}
+
+const handleAddEnvironment = () => {
+  eventBus.emit('ui:navigate', { page: 'document', path: 'environment' })
+}
+</script>
+
+<template>
+  <!--
+    `@container` declares an unnamed container so the AddressBar can
+    adapt to the right column's actual width (which shrinks when the
+    sidebar opens) instead of the viewport. The query is declared here
+    on the parent rather than on the AddressBar itself so the bar's
+    `w-full` mobile state cannot feed back into its own breakpoint.
+  -->
+  <div
+    class="lg:min-h-header t-app__top-container @container flex w-full flex-wrap items-center justify-center p-2">
+    <!-- Left spacer to center bar -->
+    <div class="flex flex-1"></div>
+    <AddressBar
+      :activeEnvironment
+      :documentSlug
+      :environment
+      :environments
+      :eventBus
+      :exampleKey
+      :executionDisabled
+      :history
+      :isWebhook
+      :layout
+      :method
+      :path
+      :server
+      :serverMeta
+      :servers
+      @add:environment="emit('add:environment')"
+      @execute="emit('execute')"
+      @open:browser="emit('open:browser')"
+      @select:history:item="(payload) => emit('select:history:item', payload)"
+      @update:webhookUrl="
+        (value: string) => emit('update:webhook-url', value)
+      " />
+
+    <div class="mb-2 flex flex-1 items-center justify-end gap-2 @3xl:mb-0">
+      <!--
+        Environment Selector
+        Hidden for `modal` layout
+      -->
+      <EnvironmentSelector
+        v-if="layout !== 'modal'"
+        :activeEnvironment="activeEnvironment"
+        :environments="environments"
+        @add:environment="handleAddEnvironment"
+        @select:environment="handleSelectEnvironment" />
+      <!-- Operation settings -->
+      <ScalarIconButton
+        v-if="layout !== 'modal' && !isWebhook"
+        :icon="ScalarIconGearSix"
+        :label="translate('apiClient.header.operationSettings')"
+        size="sm"
+        weight="bold"
+        @click="emit('navigate:settings')" />
+      <!--
+          Open API Client Button
+
+          Only shown in `modal` layout
+      -->
+      <OpenApiClientButton
+        v-if="layout === 'modal' && documentUrl && !hideClientButton"
+        buttonSource="modal"
+        class="!w-fit lg:-mr-1"
+        :integration="integration ?? null"
+        :operationMethod="method"
+        :operationPath="path"
+        :source="source ?? 'api-reference'"
+        :url="documentUrl" />
+
+      <!--
+          Close Button
+
+          Only shown in `modal` layout and hidden for GitBook Integration
+      -->
+      <button
+        v-if="layout === 'modal' && source !== 'gitbook'"
+        class="app-exit-button zoomed:static zoomed:p-1 fixed top-2 right-2 rounded-full p-2"
+        data-modal-initial-focus
+        type="button"
+        @click="eventBus.emit('ui:close:client-modal')">
+        <ScalarIcon
+          icon="Close"
+          size="lg"
+          thickness="2" />
+        <span class="sr-only">{{
+          translate('apiClient.header.closeClient')
+        }}</span>
+      </button>
+
+      <!--
+          Close Button for GitBook Integration
+
+          Hidden by default and visible for GitBook Integration in `modal` layout
+      -->
+      <button
+        v-if="layout === 'modal' && source === 'gitbook'"
+        class="text-c-1 hover:bg-b-2 active:text-c-1 -mr-1.5 rounded p-2"
+        data-modal-initial-focus
+        type="button"
+        @click="eventBus.emit('ui:close:client-modal')">
+        <ScalarIcon
+          icon="Close"
+          size="md"
+          thickness="1.75" />
+        <span class="sr-only">{{
+          translate('apiClient.header.closeClient')
+        }}</span>
+      </button>
+    </div>
+  </div>
+</template>
+<style scoped>
+.app-exit-button {
+  color: white;
+  background: rgba(0, 0, 0, 0.1);
+}
+.app-exit-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+</style>

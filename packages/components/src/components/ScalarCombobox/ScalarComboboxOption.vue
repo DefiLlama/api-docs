@@ -1,22 +1,24 @@
+<script lang="ts">
+/**
+ * Scalar Combobox Option component
+ *
+ * A single selectable option within a combobox list.
+ * Handles active and selected states.
+ *
+ * @example
+ * <ScalarComboboxOption :active="true" :selected="false">
+ *   Option Label
+ * </ScalarComboboxOption>
+ */
+export default {}
+</script>
+
 <script setup lang="ts">
-import { ScalarIconTrash } from '@scalar/icons'
 import { cva, cx } from '@scalar/use-hooks/useBindCx'
 
-import { ScalarIcon } from '../ScalarIcon'
-import {
-  ScalarListboxCheckbox,
-  type ScalarListboxOptionStyle,
-} from '../ScalarListbox'
-
-defineProps<{
+const { active, selected } = defineProps<{
   active?: boolean
   selected?: boolean
-  style?: ScalarListboxOptionStyle
-  isDeletable?: boolean
-}>()
-
-defineEmits<{
-  (e: 'delete'): void
 }>()
 
 const variants = cva({
@@ -24,7 +26,7 @@ const variants = cva({
     // Group
     'group/item',
     // Layout
-    'flex min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left',
+    'flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left',
     // Text / background style
     'truncate bg-transparent text-c-1',
     // Interaction
@@ -42,14 +44,8 @@ const variants = cva({
     :class="cx(variants({ active, selected }))"
     role="option"
     tabindex="-1">
-    <ScalarListboxCheckbox
-      :selected="selected"
-      :style="style" />
-    <span class="inline-block min-w-0 flex-1 truncate text-c-1"><slot /></span>
-    <ScalarIconTrash
-      v-if="isDeletable"
-      aria-label="Delete"
-      class="text-c-2 opacity-0 group-hover/item:opacity-100 size-4"
-      @click.stop="$emit('delete')" />
+    <slot
+      :active
+      :selected />
   </li>
 </template>

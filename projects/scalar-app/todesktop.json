@@ -2,26 +2,41 @@
   "schemaVersion": 1,
   "id": "240718bnjmcfyp4",
   "appFiles": ["./dist/renderer/**/*", "./dist/main/**/*", "./dist/preload/**/*"],
-  "icon": "./build/icon.png",
-  "nodeVersion": "20",
+  "icon": "./assets/icon.png",
+  "nodeVersion": "24",
   "packageManager": "pnpm",
-  "pnpmVersion": "10.5.2",
+  "pnpmVersion": "12.21.0",
+  "uploadSizeLimit": 100,
+  "bundleWorkspacePackages": {
+    "enabled": true
+  },
   "packageJson": {
     "extends": "package.json",
     "productName": "Scalar",
     "author": {
-      "name": "Scalar (https://github.com/scalar)",
+      "name": "Scalar <support@scalar.com> (https://github.com/scalar)",
       "email": "support@scalar.com",
       "url": "https://scalar.com"
     },
     "dependencies": {
       "@scalar/api-client": null,
-      "@scalar/themes": null,
       "@scalar/components": null,
+      "@scalar/helpers": null,
+      "@scalar/icons": null,
       "@scalar/import": null,
-      "@scalar/scripts": null
+      "@scalar/json-magic": null,
+      "@scalar/openapi-parser": null,
+      "@scalar/postman-to-openapi": null,
+      "@scalar/themes": null,
+      "@scalar/types": null,
+      "@scalar/use-toasts": null,
+      "fathom-client": null,
+      "just-diff": null
     },
     "devDependencies": {
+      "@playwright/test": null,
+      "@scalar/workspace-store": null,
+      "@tailwindcss/vite": null,
       "@types/node": null,
       "@vitejs/plugin-vue": null,
       "vite": null,

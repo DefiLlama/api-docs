@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { pythonHttpxSync } from './sync'
 
 describe('pythonHttpxSync', () => {
@@ -176,6 +177,27 @@ describe('pythonHttpxSync', () => {
 )`)
   })
 
+  it('sends multipart form data without files as multipart', () => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          { name: 'name', value: 'Ada' },
+          { name: 'age', value: '36' },
+        ],
+      },
+    })
+
+    expect(result).toBe(`httpx.post("https://example.com",
+    files=[
+      ("name", (None, "Ada")),
+      ("age", (None, "36"))
+    ]
+)`)
+  })
+
   it('handles multipart form data with multiple files', () => {
     const result = pythonHttpxSync.generate({
       url: 'https://example.com',
@@ -199,6 +221,35 @@ describe('pythonHttpxSync', () => {
     files=[
       ("file", open("test.txt", "rb")),
       ("file", open("another.txt", "rb"))
+    ]
+)`)
+  })
+
+  it('handles multipart form data with per-part content types', () => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            fileName: 'test.txt',
+            contentType: 'text/plain',
+          },
+          {
+            name: 'metadata',
+            value: '{"foo":"bar"}',
+            contentType: 'application/json',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`httpx.post("https://example.com",
+    files=[
+      ("file", ("test.txt", open("test.txt", "rb"), "text/plain")),
+      ("metadata", (None, "{\\"foo\\":\\"bar\\"}", "application/json"))
     ]
 )`)
   })
@@ -236,7 +287,7 @@ describe('pythonHttpxSync', () => {
     })
 
     expect(result).toBe(`httpx.post("https://example.com",
-    data=b"binary content"
+    content=b"binary content"
 )`)
   })
 
@@ -542,5 +593,77 @@ describe('pythonHttpxSync', () => {
       ]
     }
 )`)
+  })
+  it('sends a JSON body when the media type has parameters', () => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com/a',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'application/json; charset=utf-8' }],
+      postData: { mimeType: 'application/json; charset=utf-8', text: '{"a":1}' },
+    })
+
+    expect(result).toContain('json={')
+    expect(result).toContain('"a": 1')
+  })
+
+  it('sends a JSON body for a +json media type', () => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com/a',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'application/vnd.api+json' }],
+      postData: { mimeType: 'application/vnd.api+json', text: '{"a":1}' },
+    })
+
+    expect(result).toContain('json={')
+    expect(result).toContain('"a": 1')
+  })
+
+  it('sends a plain text body', () => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com/a',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'text/plain' }],
+      postData: { mimeType: 'text/plain', text: "it's plain" },
+    })
+
+    expect(result).toContain('content="it\'s plain"')
+  })
+  it.each(['GET', 'DELETE', 'HEAD', 'OPTIONS'])('sends text bodies with a %s request', (method) => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com',
+      method,
+      postData: { mimeType: 'text/plain', text: 'hello' },
+    })
+
+    expect(result).toBe(`httpx.request("${method}", "https://example.com", content="hello")`)
+  })
+
+  it('uses content for a raw text body', () => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: { mimeType: 'text/plain', text: 'hello' },
+    })
+
+    expect(result).toBe(`httpx.post("https://example.com",
+    content="hello"
+)`)
+  })
+
+  it.each(['GET', 'DELETE', 'HEAD', 'OPTIONS'])('sends +json bodies with a %s request', (method) => {
+    const result = pythonHttpxSync.generate({
+      url: 'https://example.com',
+      method,
+      postData: { mimeType: 'application/vnd.api+json', text: '"hello"' },
+    })
+
+    expect(result).toBe(`httpx.request("${method}", "https://example.com", json="hello")`)
+  })
+
+  it.each([
+    ['https://example.com/a"b', 'httpx.get("https://example.com/a\\"b")'],
+    ['https://example.com/files/a\\b', 'httpx.get("https://example.com/files/a\\\\b")'],
+  ])('escapes the request URL %s', (url, expected) => {
+    expect(pythonHttpxSync.generate({ url })).toBe(expected)
   })
 })

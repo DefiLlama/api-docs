@@ -1,35 +1,129 @@
-import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { type VueWrapper, flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 
+import ScalarCopyButton from '../ScalarCopy/ScalarCopyButton.vue'
 import ScalarCodeBlock from './ScalarCodeBlock.vue'
 
+const mockWriteText = vi.fn().mockResolvedValue(undefined)
+const mockCopy = vi.fn()
+const mockCopied = ref(false)
+
+vi.mock('@vueuse/core', () => ({
+  useClipboard: vi.fn(() => ({
+    copy: mockCopy,
+    copied: mockCopied,
+  })),
+}))
+
+// Mock navigator.clipboard
+Object.defineProperty(navigator, 'clipboard', {
+  value: {
+    writeText: mockWriteText,
+  },
+  writable: true,
+  configurable: true,
+})
+
+const createWrapper = () => {
+  return mount(ScalarCodeBlock, {
+    props: {
+      content: 'console.log()',
+      lang: 'js',
+    },
+  })
+}
+
+let wrapper: VueWrapper<InstanceType<typeof ScalarCodeBlock>>
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockCopied.value = false
+})
+
 describe('ScalarCodeBlock', () => {
-  it('renders properly', async () => {
-    const wrapper = mount(ScalarCodeBlock, {
-      attrs: {
-        content: 'console.log()',
-        lang: 'js',
-      },
+  it('copies an explicit original value while displaying masked content', async () => {
+    const wrapper = mount(ScalarCodeBlock, { props: { content: 'token = "••••••••"', copyContent: 'token = "ab"' } })
+    expect(wrapper.get('[role="group"]').text()).toBe('token = "••••••••"')
+    await wrapper.get('button').trigger('click')
+    expect(mockCopy).toHaveBeenLastCalledWith('token = "ab"')
+    await wrapper.setProps({ copyContent: '' })
+    await wrapper.get('button').trigger('click')
+    expect(mockCopy).toHaveBeenLastCalledWith('')
+  })
+
+  it('names the code region while keeping it keyboard-scrollable', async () => {
+    const wrapper = createWrapper()
+    const region = wrapper.get('[role="group"]')
+
+    expect(region.attributes('aria-label')).toBe('Code sample')
+    expect(region.attributes('tabindex')).toBe('0')
+    expect(region.text()).toBe('console.log()')
+
+    await wrapper.setProps({ label: 'Request example' })
+    expect(region.attributes('aria-label')).toBe('Request example')
+  })
+
+  it.each([
+    ['console.log()', 'Copy code'],
+    ['console.log()\nconsole.log()', 'Copy js code'],
+  ])('keeps a descriptive copy name for %j', async (content, copyName) => {
+    const wrapper = mount(ScalarCodeBlock, { props: { content, lang: 'js' } })
+    const button = wrapper.get('button')
+
+    expect(button.attributes('aria-label')).toBe(copyName)
+    await button.trigger('click')
+    expect(mockCopy).toHaveBeenCalledWith(content)
+
+    mockCopied.value = true
+    await flushPromises()
+
+    expect(button.attributes('aria-label')).toBe(copyName)
+    expect(wrapper.get('[role="alert"]').text()).toBe('Copied')
+  })
+  describe('keyboard access to the scroller', () => {
+    it('uses the label prop as the accessible name', async () => {
+      const labelled = mount(ScalarCodeBlock, {
+        props: { content: 'console.log()', lang: 'js', label: 'Codebeispiel' },
+      })
+      await flushPromises()
+
+      expect(labelled.get('.custom-scroll').attributes('aria-label')).toBe('Codebeispiel')
     })
+
+    it('keeps the copy button outside the scroll region', async () => {
+      wrapper = createWrapper()
+      await flushPromises()
+
+      // A focusable control inside the scroller could be focused while scrolled out of view
+      const copyButton = wrapper.findComponent(ScalarCopyButton)
+      expect(wrapper.get('.custom-scroll').element.contains(copyButton.element)).toBe(false)
+    })
+  })
+
+  it('renders properly', async () => {
+    wrapper = createWrapper()
 
     await flushPromises()
 
-    // Check the outer elements
-    const pre = wrapper.find('pre.scalar-codeblock-pre')
-    const code = pre.find('code')
-
+    // Check the outer elements - the pre element contains v-html with highlighted code
+    const pre = wrapper.find('pre')
     expect(pre.element.nodeName.toLowerCase()).toBe('pre')
+
+    // The highlighted code is inserted via v-html, so find the code element inside
+    const code = pre.find('code')
+    expect(code.exists()).toBe(true)
     expect(code.element.nodeName.toLowerCase()).toBe('code')
 
     // Confirm the syntax highlighting has been applied
     expect(code.html()).toBe(
-      `<code class="hljs language-javascript"><span class="hljs-variable language_">console</span>.<span class="hljs-title function_">log</span>()</code>`,
+      `<code class="hljs language-javascript"><span class="hljs-variable">console</span><span class="hljs-punctuation">.</span><span class="hljs-title function_">log</span><span class="hljs-punctuation">()</span></code>`,
     )
   })
 
   it('renders a schema', async () => {
     const wrapper = mount(ScalarCodeBlock, {
-      attrs: {
+      props: {
         lang: 'json',
         content: {
           description: 'successful operation',
@@ -54,11 +148,13 @@ describe('ScalarCodeBlock', () => {
 
     await flushPromises()
 
-    // Check the outer elements
-    const pre = wrapper.find('pre.scalar-codeblock-pre')
-    const code = pre.find('code')
-
+    // Check the outer elements - the pre element contains v-html with highlighted code
+    const pre = wrapper.find('pre')
     expect(pre.element.nodeName.toLowerCase()).toBe('pre')
+
+    // The highlighted code is inserted via v-html, so find the code element inside
+    const code = pre.find('code')
+    expect(code.exists()).toBe(true)
     expect(code.element.nodeName.toLowerCase()).toBe('code')
 
     // Confirm the syntax highlighting has been applied
@@ -70,10 +166,10 @@ describe('ScalarCodeBlock', () => {
       <span class="hljs-attr">"code"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
         <span class="hljs-attr">"type"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"integer"</span><span class="hljs-punctuation">,</span>
         <span class="hljs-attr">"format"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"int32"</span>
-      <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+      <span class="hljs-punctuation">},</span>
       <span class="hljs-attr">"type"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
         <span class="hljs-attr">"type"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"string"</span>
-      <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+      <span class="hljs-punctuation">},</span>
       <span class="hljs-attr">"message"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
         <span class="hljs-attr">"type"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"string"</span>
       <span class="hljs-punctuation">}</span>
@@ -82,33 +178,60 @@ describe('ScalarCodeBlock', () => {
 <span class="hljs-punctuation">}</span></code>`)
   })
 
-  it('does not render the copy button when content is null', async () => {
-    const wrapper = mount(ScalarCodeBlock, {
-      attrs: {
-        content: null,
-        lang: 'js',
-      },
+  describe('ScalarCodeBlockCopy', () => {
+    it('copies content when copy button is clicked', async () => {
+      wrapper = createWrapper()
+
+      await flushPromises()
+
+      // Find the ScalarCopyButton component
+      const copyButton = wrapper.findComponent(ScalarCopyButton)
+      expect(copyButton.exists()).toBe(true)
+
+      await copyButton.trigger('click')
+      await flushPromises()
+
+      // The copy function from useClipboard should be called with the formatted content
+      // prettyPrintJson doesn't modify regular strings, so 'console.log()' stays as 'console.log()'
+      expect(mockCopy).toHaveBeenCalledWith('console.log()')
     })
 
-    await flushPromises()
+    it('does not render the copy button when content is null', async () => {
+      wrapper = createWrapper()
 
-    // Check that the button is not rendered
-    const button = wrapper.find('button.copy-button')
-    expect(button.exists()).toBe(false)
-  })
+      await flushPromises()
 
-  it('does not render the copy button when content is "null"', async () => {
-    const wrapper = mount(ScalarCodeBlock, {
-      attrs: {
-        content: 'null',
-        lang: 'js',
-      },
+      // Check that the button is not rendered
+      const button = wrapper.find('button.copy-button')
+      expect(button.exists()).toBe(false)
     })
 
-    await flushPromises()
+    it('names the copy button after the language it copies', async () => {
+      wrapper = mount(ScalarCodeBlock, {
+        props: { content: 'line one\nline two', lang: 'javascript' },
+      })
+      await flushPromises()
 
-    // Check that the button is not rendered
-    const button = wrapper.find('button.copy-button')
-    expect(button.exists()).toBe(false)
+      const button = wrapper.findComponent(ScalarCopyButton).get('button')
+      expect(button.attributes('aria-label')).toBe('Copy JavaScript code')
+      // The visible word stays part of the name (WCAG 2.5.3)
+      expect(button.text()).toContain('Copy')
+    })
+
+    it('uses a plain name for a one-line block that shows no language', async () => {
+      wrapper = createWrapper()
+      await flushPromises()
+
+      expect(wrapper.findComponent(ScalarCopyButton).get('button').attributes('aria-label')).toBe('Copy code')
+    })
+
+    it('forwards a localized copy label', async () => {
+      wrapper = mount(ScalarCodeBlock, {
+        props: { content: 'console.log()', lang: 'js', copyLabel: 'Code kopieren' },
+      })
+      await flushPromises()
+
+      expect(wrapper.findComponent(ScalarCopyButton).get('button').attributes('aria-label')).toBe('Code kopieren')
+    })
   })
 })

@@ -1,0 +1,554 @@
+import { type WorkspaceEventBus, createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import { mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
+
+import AuthSelector from './AuthSelector.vue'
+
+describe('AuthSelector', () => {
+  const baseEnvironment = {
+    uid: 'env-1' as any,
+    name: 'Default',
+    color: '#FFFFFF',
+    value: '',
+    isDefault: true,
+  }
+
+  const baseServer = {
+    url: 'https://api.example.com',
+    description: 'Test server',
+  }
+
+  const baseSecuritySchemes = {
+    BearerAuth: {
+      type: 'http',
+      scheme: 'bearer',
+    },
+    ApiKeyAuth: {
+      type: 'apiKey',
+      in: 'header',
+      name: 'X-API-Key',
+    },
+    OAuth2Auth: {
+      type: 'oauth2',
+      flows: {
+        authorizationCode: {
+          authorizationUrl: 'https://example.com/oauth/authorize',
+          tokenUrl: 'https://example.com/oauth/token',
+          scopes: {
+            read: 'Read access',
+            write: 'Write access',
+          },
+        },
+      },
+    },
+  }
+
+  const mountWithProps = (
+    custom: Partial<{
+      eventBus: WorkspaceEventBus
+      environment: any
+      envVariables: any[]
+      heading: boolean
+      hideSingleRequiredScheme: boolean
+      createAnySecurityScheme: boolean
+      allowedSecuritySchemes: string[]
+      isStatic: boolean
+      canDeleteSchemes: boolean
+      securityRequirements: any
+      selectedSecurity: any
+      securitySchemes: any
+      server: any
+      title: string
+    }> = {},
+  ) => {
+    const environment = custom.environment ?? baseEnvironment
+    const isStatic = custom.isStatic ?? true
+    const securityRequirements = custom.securityRequirements ?? [{ BearerAuth: [] }]
+    const selectedSecurity = custom.selectedSecurity ?? { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }] }
+    const securitySchemes = custom.securitySchemes ?? baseSecuritySchemes
+    const server = custom.server ?? baseServer
+    const title = custom.title ?? 'Authentication'
+
+    return mount(AuthSelector, {
+      props: {
+        environment,
+        isStatic,
+        securityRequirements,
+        selectedSecurity,
+        securitySchemes,
+        proxyUrl: '',
+        server,
+        title,
+        eventBus: createWorkspaceEventBus(),
+        meta: {
+          type: 'document',
+        },
+        ...custom,
+      },
+    })
+  }
+
+  it('hides OAuth acquisition forms when only the bearer scheme is allowed', async () => {
+    const wrapper = mountWithProps({ allowedSecuritySchemes: ['BearerAuth'] })
+    expect(wrapper.text()).not.toContain('Authorize via')
+    await wrapper.setProps({ allowedSecuritySchemes: undefined })
+    expect(wrapper.text()).toContain('Authorize via')
+    wrapper.unmount()
+  })
+
+  it('keeps the original store indexes when filtering saved authentication tabs', async () => {
+    const eventBus = createWorkspaceEventBus()
+    const listener = vi.fn()
+    eventBus.on('auth:update:active-index', listener)
+    const wrapper = mountWithProps({
+      eventBus,
+      allowedSecuritySchemes: ['BearerAuth', 'OAuth2Auth'],
+      selectedSecurity: {
+        selectedIndex: 2,
+        selectedSchemes: [{ ApiKeyAuth: [] }, { BearerAuth: [] }, { OAuth2Auth: [] }],
+      },
+    })
+    const table = wrapper.getComponent({ name: 'RequestAuthDataTable' })
+    expect(table.props('activeAuthIndex')).toBe(1)
+    expect(table.props('selectedSchemeIndexes')).toStrictEqual([1, 2])
+    await table.get('[data-testid="auth-tabs"] button').trigger('click')
+    expect(listener).toHaveBeenCalledWith({ index: 1, meta: { type: 'document' } })
+    wrapper.unmount()
+  })
+
+  it('hides saved authentication forms outside the allowlist and restores them when allowed', async () => {
+    const wrapper = mountWithProps({ allowedSecuritySchemes: ['ApiKeyAuth'] })
+    expect(wrapper.find('input').exists()).toBe(false)
+    await wrapper.setProps({ allowedSecuritySchemes: ['BearerAuth'] })
+    expect(wrapper.find('input').exists()).toBe(true)
+    expect(wrapper.props('selectedSecurity')).toStrictEqual({ selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }] })
+    wrapper.unmount()
+  })
+
+  it('hides a sole required reference choice while retaining its credential input', async () => {
+    const wrapper = mountWithProps({
+      hideSingleRequiredScheme: true,
+      canDeleteSchemes: false,
+      securitySchemes: { BearerAuth: baseSecuritySchemes.BearerAuth },
+    })
+
+    expect(wrapper.findComponent({ name: 'ScalarComboboxMultiselect' }).exists()).toBe(false)
+    expect(wrapper.find('input').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="auth-indicator"]').text()).toBe('Required')
+    await wrapper.get('[data-testid="auth-indicator"]').trigger('click')
+    expect(wrapper.findComponent({ name: 'ScalarComboboxMultiselect' }).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the sole required client choice selectable by default', () => {
+    const wrapper = mountWithProps({ securitySchemes: { BearerAuth: baseSecuritySchemes.BearerAuth } })
+
+    expect(wrapper.findComponent({ name: 'ScalarComboboxMultiselect' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it.each([
+    { name: 'optional authentication', securityRequirements: [{ BearerAuth: [] }, {}] },
+    { name: 'no security requirements', securityRequirements: [] },
+    { name: 'additional available schemes', securitySchemes: baseSecuritySchemes },
+    { name: 'new authentication actions', createAnySecurityScheme: true },
+    { name: 'an empty saved selection', selectedSecurity: { selectedIndex: -1, selectedSchemes: [] } },
+    {
+      name: 'multiple required alternatives',
+      securityRequirements: [{ BearerAuth: [] }, { ApiKeyAuth: [] }],
+      securitySchemes: baseSecuritySchemes,
+    },
+    {
+      name: 'an optional combined requirement',
+      securityRequirements: [{ BearerAuth: [], ApiKeyAuth: [] }, {}],
+      securitySchemes: baseSecuritySchemes,
+      selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [], ApiKeyAuth: [] }] },
+    },
+  ])('keeps the reference selector for $name', ({ name: _name, ...props }) => {
+    const wrapper = mountWithProps({
+      hideSingleRequiredScheme: true,
+      canDeleteSchemes: false,
+      securitySchemes: { BearerAuth: baseSecuritySchemes.BearerAuth },
+      ...props,
+    })
+
+    expect(wrapper.findComponent({ name: 'ScalarComboboxMultiselect' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('hides a sole combined requirement without hiding either credential input', () => {
+    const wrapper = mountWithProps({
+      hideSingleRequiredScheme: true,
+      canDeleteSchemes: false,
+      securityRequirements: [{ BearerAuth: [], ApiKeyAuth: [] }],
+      securitySchemes: { BearerAuth: baseSecuritySchemes.BearerAuth, ApiKeyAuth: baseSecuritySchemes.ApiKeyAuth },
+      selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [], ApiKeyAuth: [] }] },
+    })
+
+    expect(wrapper.findComponent({ name: 'ScalarComboboxMultiselect' }).exists()).toBe(false)
+    expect(wrapper.text()).toContain('Bearer Token')
+    expect(wrapper.text()).toContain('X-API-Key')
+    wrapper.unmount()
+  })
+
+  it('shows the selector again when the saved selection is cleared', async () => {
+    const wrapper = mountWithProps({
+      hideSingleRequiredScheme: true,
+      securitySchemes: { BearerAuth: baseSecuritySchemes.BearerAuth },
+    })
+
+    expect(wrapper.findComponent({ name: 'ScalarComboboxMultiselect' }).exists()).toBe(false)
+    await wrapper.setProps({ selectedSecurity: { selectedIndex: -1, selectedSchemes: [] } })
+    expect(wrapper.findComponent({ name: 'ScalarComboboxMultiselect' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  describe('rendering', () => {
+    it('renders with custom title', () => {
+      const wrapper = mountWithProps({ title: 'Custom Auth Title' })
+
+      expect(wrapper.text()).toContain('Custom Auth Title')
+    })
+
+    it('renders combobox for auth selection', () => {
+      const wrapper = mountWithProps()
+
+      const combobox = wrapper.findComponent({ name: 'ScalarComboboxMultiselect' })
+      expect(combobox.exists()).toBe(true)
+    })
+
+    it('renders RequestAuthDataTable component', () => {
+      const wrapper = mountWithProps()
+
+      const dataTable = wrapper.findComponent({ name: 'RequestAuthDataTable' })
+      expect(dataTable.exists()).toBe(true)
+    })
+
+    it('renders the title as a heading by default', () => {
+      const wrapper = mountWithProps()
+
+      expect(wrapper.find('h2').text()).toContain('Authentication')
+    })
+
+    it('names the card as a group instead of a heading when the heading is turned off', () => {
+      const wrapper = mountWithProps({ heading: false })
+
+      expect(wrapper.find('h1, h2, h3, h4, h5, h6').exists()).toBe(false)
+
+      const section = wrapper.get('section')
+      expect(section.attributes('role')).toBe('group')
+      expect(wrapper.get(`[id="${section.attributes('aria-labelledby')}"]`).text()).toContain('Authentication')
+    })
+  })
+
+  describe('authentication indicator', () => {
+    it('shows required indicator for required auth', () => {
+      const wrapper = mountWithProps({
+        securityRequirements: [{ BearerAuth: [] }],
+      })
+
+      const vm = wrapper.vm
+      expect(vm.authIndicator).toEqual({
+        icon: 'Lock',
+        text: 'Required',
+      })
+    })
+
+    it('shows optional indicator for optional auth', () => {
+      const wrapper = mountWithProps({
+        securityRequirements: [{ BearerAuth: [] }, {}],
+      })
+
+      const vm = wrapper.vm
+      expect(vm.authIndicator).toEqual({
+        icon: 'Unlock',
+        text: 'Optional',
+      })
+    })
+
+    it('shows required indicator for complex auth requirements', () => {
+      const wrapper = mountWithProps({
+        securityRequirements: [{ BearerAuth: [], ApiKeyAuth: [] }],
+      })
+
+      const vm = wrapper.vm
+      expect(vm.authIndicator).toEqual({
+        icon: 'Lock',
+        text: 'Required',
+      })
+    })
+
+    it('returns null when no security requirements', () => {
+      const wrapper = mountWithProps({
+        securityRequirements: [],
+      })
+
+      const vm = wrapper.vm
+      expect(vm.authIndicator).toBeNull()
+    })
+
+    it('displays auth indicator in template when present', () => {
+      const wrapper = mountWithProps({
+        securityRequirements: [{ BearerAuth: [] }],
+      })
+
+      const indicator = wrapper.find('[data-testid="auth-indicator"]')
+      expect(indicator.exists()).toBe(true)
+      expect(indicator.text()).toBe('Required')
+    })
+  })
+
+  describe('selected scheme options computation', () => {
+    it('computes selected scheme options from selectedSecurity', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }] },
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const vm = wrapper.vm
+      expect(vm.selectedSchemeOptions).toHaveLength(1)
+      expect(vm.selectedSchemeOptions[0]).toMatchObject({
+        label: expect.any(String),
+        value: { BearerAuth: [] },
+      })
+    })
+
+    it('handles multiple selected schemes', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }, { ApiKeyAuth: [] }] },
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const vm = wrapper.vm
+      expect(vm.selectedSchemeOptions).toHaveLength(2)
+    })
+
+    it('handles complex auth schemes', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [], ApiKeyAuth: [] }] },
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const vm = wrapper.vm
+      expect(vm.selectedSchemeOptions).toHaveLength(1) // Complex scheme is formatted as one option
+      expect(vm.selectedSchemeOptions[0]?.label).toContain('BearerAuth & ApiKeyAuth')
+    })
+
+    it('returns empty array when no selected security', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [] },
+      })
+
+      const vm = wrapper.vm
+      expect(vm.selectedSchemeOptions).toEqual([])
+    })
+
+    it('filters out undefined schemes', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }, { NonExistentAuth: [] }] },
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const vm = wrapper.vm
+      expect(vm.selectedSchemeOptions).toHaveLength(1)
+    })
+  })
+
+  describe('scheme options computation', () => {
+    it('computes scheme options from security and securitySchemes', () => {
+      const wrapper = mountWithProps({
+        securityRequirements: [{ BearerAuth: [] }],
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const vm = wrapper.vm
+      expect(vm.schemeOptions).toBeDefined()
+      expect(Array.isArray(vm.schemeOptions)).toBe(true)
+    })
+
+    it('handles empty security array', () => {
+      const wrapper = mountWithProps({
+        securityRequirements: [],
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const vm = wrapper.vm
+      expect(vm.schemeOptions).toBeDefined()
+    })
+  })
+
+  describe('combobox interactions', () => {
+    it('updates selected auth when combobox selection changes', async () => {
+      const eventBus = createWorkspaceEventBus()
+      const fn = vi.fn()
+      eventBus.on('auth:update:selected-security-schemes', fn)
+      const wrapper = mountWithProps({
+        eventBus,
+      })
+
+      const combobox = wrapper.findComponent({ name: 'ScalarComboboxMultiselect' })
+      const newSelection = [
+        {
+          label: 'Bearer Auth',
+          value: { BearerAuth: [] },
+          payload: baseSecuritySchemes.BearerAuth,
+        },
+      ]
+
+      await combobox.vm?.$emit('update:modelValue', newSelection)
+      await nextTick()
+
+      expect(fn).toHaveBeenCalledTimes(1)
+      expect(fn).toHaveBeenCalledWith({
+        selectedRequirements: [],
+        newSchemes: [
+          {
+            name: 'Bearer Auth',
+            scheme: baseSecuritySchemes.BearerAuth,
+          },
+        ],
+        meta: { type: 'document' },
+      })
+    })
+  })
+
+  describe('scheme deletion', () => {
+    // The combobox options render in a teleported popover that calls `scrollIntoView`, which jsdom
+    // does not implement. Polyfill it so opening the dropdown does not throw.
+    if (!HTMLElement.prototype.scrollIntoView) {
+      HTMLElement.prototype.scrollIntoView = () => undefined
+    }
+
+    /** Mounts attached to the DOM (so the teleported popover mounts) and opens the auth combobox. */
+    const mountAndOpen = async (canDeleteSchemes: boolean, eventBus = createWorkspaceEventBus()) => {
+      const wrapper = mount(AuthSelector, {
+        attachTo: document.body,
+        props: {
+          environment: baseEnvironment as any,
+          isStatic: true,
+          canDeleteSchemes,
+          securityRequirements: [{ BearerAuth: [] }, { ApiKeyAuth: [] }],
+          selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }] },
+          securitySchemes: baseSecuritySchemes as any,
+          proxyUrl: '',
+          server: baseServer as any,
+          title: 'Authentication',
+          eventBus,
+          meta: { type: 'document' },
+        },
+      })
+
+      await wrapper.findComponent({ name: 'ScalarButton' }).trigger('click')
+      await nextTick()
+      await nextTick()
+
+      return wrapper
+    }
+
+    // The delete control is a ScalarIconButton whose label renders as an `sr-only` span
+    // ("Delete <scheme>"), so we match on the button text rather than an aria attribute.
+    const deleteControlCount = () =>
+      Array.from(document.body.querySelectorAll('button')).filter((button) => button.textContent?.includes('Delete '))
+        .length
+
+    it('renders a delete control per scheme by default', async () => {
+      const wrapper = await mountAndOpen(true)
+
+      // Sanity-check the dropdown actually opened before asserting on its contents.
+      expect(document.body.textContent).toContain('BearerAuth')
+      expect(deleteControlCount()).toBeGreaterThan(0)
+
+      wrapper.unmount()
+    })
+
+    it('hides the delete control when canDeleteSchemes is false', async () => {
+      const wrapper = await mountAndOpen(false)
+
+      // The dropdown is open (schemes are listed) but no delete affordance is offered.
+      expect(document.body.textContent).toContain('BearerAuth')
+      expect(deleteControlCount()).toBe(0)
+
+      wrapper.unmount()
+    })
+
+    it('toggles the active scheme with Space while the search is empty', async () => {
+      const eventBus = createWorkspaceEventBus()
+      const fn = vi.fn()
+      eventBus.on('auth:update:selected-security-schemes', fn)
+      const wrapper = await mountAndOpen(false, eventBus)
+
+      // The selected scheme is active when the dropdown opens, so Space deselects it
+      const input = document.body.querySelector('input[role="combobox"]')
+      expect(input).not.toBeNull()
+      input?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }))
+      await nextTick()
+
+      expect(fn).toHaveBeenCalledOnce()
+      expect(fn.mock.calls[0]?.[0]?.selectedRequirements).not.toContainEqual({ BearerAuth: [] })
+
+      wrapper.unmount()
+    })
+  })
+
+  describe('props passing', () => {
+    it('passes all required props to RequestAuthDataTable', () => {
+      const wrapper = mountWithProps({
+        isStatic: true,
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }] },
+      })
+
+      const dataTable = wrapper.findComponent({ name: 'RequestAuthDataTable' })
+      const props = dataTable.props()
+
+      expect(props.environment).toEqual(baseEnvironment)
+      expect(props.isStatic).toBe(true)
+      expect(props.securitySchemes).toEqual(baseSecuritySchemes)
+      expect(props.server).toEqual(baseServer)
+      expect(props.selectedSchemeOptions).toBeDefined()
+    })
+
+    it('passes selectedSchemeOptions to RequestAuthDataTable', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }] },
+      })
+
+      const dataTable = wrapper.findComponent({ name: 'RequestAuthDataTable' })
+      const props = dataTable.props()
+
+      expect(props.selectedSchemeOptions).toBeDefined()
+      expect(Array.isArray(props.selectedSchemeOptions)).toBe(true)
+    })
+  })
+
+  describe('combobox button display', () => {
+    it('shows single auth type when one scheme selected', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }] },
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const button = wrapper.findComponent({ name: 'ScalarButton' })
+      expect(button.text()).toContain('BearerAuth')
+    })
+
+    it('shows "Multiple" when multiple schemes selected', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [{ BearerAuth: [] }, { ApiKeyAuth: [] }] },
+        securitySchemes: baseSecuritySchemes,
+      })
+
+      const button = wrapper.findComponent({ name: 'ScalarButton' })
+      expect(button.text()).toContain('Multiple')
+    })
+
+    it('shows "Auth Type" when no schemes selected', () => {
+      const wrapper = mountWithProps({
+        selectedSecurity: { selectedIndex: 0, selectedSchemes: [] },
+      })
+
+      const button = wrapper.findComponent({ name: 'ScalarButton' })
+      expect(button.text()).toContain('Auth Type')
+    })
+  })
+})

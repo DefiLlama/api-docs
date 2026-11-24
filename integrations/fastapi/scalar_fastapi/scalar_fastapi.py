@@ -2,8 +2,19 @@ from __future__ import annotations
 
 import json
 from enum import Enum
-from typing_extensions import Annotated, Doc
+from html import escape as escape_html
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing_extensions import Annotated, Doc, Literal
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
+
+def _inline_script_json(value: object) -> str:
+    """Serialize JSON without allowing HTML tokens to change the script context."""
+    return json.dumps(value).replace("<", r"\u003c")
 
 
 class Layout(Enum):
@@ -55,10 +66,73 @@ class Theme(Enum):
     NONE = "none"
 
 
+class DocumentDownloadType(Enum):
+    JSON = "json"
+    YAML = "yaml"
+    BOTH = "both"
+    NONE = "none"
+
+
+class AgentScalarConfig(BaseModel):
+    """
+    Agent Scalar configuration: AI chat in the API reference.
+    Use key for production; use disabled=True to turn off Agent entirely.
+    See: https://scalar.com/products/api-references/configuration#agent-scalar
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: Optional[str] = Field(
+        default=None,
+        description="Agent Scalar key for production. Required for Agent beyond localhost.",
+    )
+
+    disabled: Optional[bool] = Field(
+        default=None,
+        description="Set to True to disable Agent Scalar entirely.",
+    )
+
+
+class OpenAPISource(BaseModel):
+    """Configuration for a single OpenAPI source"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(
+        default=None,
+        description="Display name for the API. If not provided, will fallback to 'API #1', 'API #2', etc.",
+    )
+
+    slug: Optional[str] = Field(
+        default=None,
+        description="URL identifier for the API. If not provided, will be auto-generated from the title or index.",
+    )
+
+    url: Optional[str] = Field(
+        default=None,
+        description="URL to the OpenAPI document (JSON or YAML). Mutually exclusive with content.",
+    )
+
+    content: Optional[Union[str, Dict[str, Any]]] = Field(
+        default=None,
+        description="Direct OpenAPI content as string (JSON/YAML) or dictionary. Mutually exclusive with url.",
+    )
+
+    default: bool = Field(
+        default=False,
+        description="Whether this source should be the default when multiple sources are provided.",
+    )
+
+    agent: Optional[AgentScalarConfig] = Field(
+        default=None,
+        description="Optional Agent Scalar config for this source (key, disabled). See configuration docs.",
+    )
+
+
 scalar_theme = """
 /* basic theme */
 .light-mode {
-  --scalar-color-1: #2a2f45;
+  --scalar-color-1: #1b1b1b;
   --scalar-color-2: #757575;
   --scalar-color-3: #8e8e8e;
   --scalar-color-accent: #009485;
@@ -147,37 +221,56 @@ scalar_theme = """
   --scalar-radius: 3px;
   --scalar-radius-lg: 6px;
   --scalar-radius-xl: 8px;
-}
-.scalar-card:nth-of-type(3) {
-  display: none;
 }"""
+
 
 def get_scalar_api_reference(
     *,
     openapi_url: Annotated[
-        str,
+        str | None,
         Doc(
             """
             The OpenAPI URL that Scalar should load and use.
             This is normally done automatically by FastAPI using the default URL
-            `/openapi.json`.
+            `/openapi.json`. If content or sources are provided, this parameter is ignored.
             """
         ),
-    ],
+    ] = None,
     title: Annotated[
-        str,
+        str | None,
         Doc(
             """
             The HTML `<title>` content, normally shown in the browser tab.
+            Defaults to "Scalar" if not provided.
             """
         ),
-    ],
+    ] = None,
+    content: Annotated[
+        str | dict | None,
+        Doc(
+            """
+            Directly pass an OpenAPI/Swagger document as a string (JSON or YAML) or as a dictionary.
+            If provided, this takes precedence over openapi_url. If sources are provided, this parameter is ignored.
+            """
+        ),
+    ] = None,
+    sources: Annotated[
+        List[OpenAPISource] | None,
+        Doc(
+            """
+            Add multiple OpenAPI documents to render all of them.
+            Each source can have a title, slug, url, content, and default flag.
+            If provided, this takes precedence over content and openapi_url.
+            """
+        ),
+    ] = None,
     scalar_js_url: Annotated[
         str,
         Doc(
             """
             The URL to use to load the Scalar JavaScript.
             It is normally set to a CDN URL.
+            Only use trusted URLs, as the loaded JavaScript runs in the page.
             """
         ),
     ] = "https://cdn.jsdelivr.net/npm/@scalar/api-reference",
@@ -195,22 +288,16 @@ def get_scalar_api_reference(
         Doc(
             """
             The URL of the favicon to use. It is normally shown in the browser tab.
+            Use a trusted URL for this resource.
             """
         ),
     ] = "https://fastapi.tiangolo.com/img/favicon.png",
-    scalar_theme: Annotated[
-        str,
-        Doc(
-            """
-            Custom CSS theme for Scalar.
-            """
-        ),
-    ] = scalar_theme,
     layout: Annotated[
-        Layout,
+        Layout | str,
         Doc(
             """
             The layout to use for Scalar.
+            Accepts a Layout member or its plain string value (e.g. "classic").
             Default is "modern".
             """
         ),
@@ -224,12 +311,41 @@ def get_scalar_api_reference(
             """
         ),
     ] = True,
+    show_badges_in_sidebar: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to show x-badges in the sidebar.
+            Default is False.
+            """
+        ),
+    ] = False,
     hide_download_button: Annotated[
         bool,
         Doc(
             """
             A boolean to hide the download button.
             Default is False which means the download button is shown.
+            @deprecated Use document_download_type instead
+            """
+        ),
+    ] = False,
+    document_download_type: Annotated[
+        DocumentDownloadType | str,
+        Doc(
+            """
+            Sets the file type of the document to download, set to 'none' to hide the download button.
+            Accepts a DocumentDownloadType member or its plain string value (e.g. "json").
+            Default is 'both'.
+            """
+        ),
+    ] = DocumentDownloadType.BOTH,
+    hide_test_request_button: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to show the "Test Request" button.
+            Default is False which means the test request button is shown.
             """
         ),
     ] = False,
@@ -242,26 +358,54 @@ def get_scalar_api_reference(
             """
         ),
     ] = False,
-    dark_mode: Annotated[
+    hide_search: Annotated[
         bool,
         Doc(
             """
-            Whether dark mode is on or off initially (light mode).
-            Default is True which means dark mode is used.
+            Whether to show the sidebar search bar.
+            Default is False which means the search bar is shown.
             """
         ),
-    ] = True,
+    ] = False,
+    dark_mode: Annotated[
+        bool | None,
+        Doc(
+            """
+            Whether dark mode is on or off initially (light mode).
+            Default is None which means the dark mode is not set.
+            """
+        ),
+    ] = None,
+    force_dark_mode_state: Annotated[
+        Literal["dark", "light"] | None,
+        Doc(
+            """
+            Force dark mode state to always be this state no matter what.
+            Can be 'dark' or 'light'. Default is None.
+            """
+        ),
+    ] = None,
+    hide_dark_mode_toggle: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to show the dark mode toggle.
+            Default is False which means the dark mode toggle is shown.
+            """
+        ),
+    ] = False,
     search_hot_key: Annotated[
-        SearchHotKey,
+        SearchHotKey | str,
         Doc(
             """
             The hotkey to use for search.
+            Accepts a SearchHotKey member or a plain single-letter string (e.g. "s").
             Default is "k" (e.g. CMD+k).
             """
         ),
     ] = SearchHotKey.K,
     hidden_clients: Annotated[
-        bool | dict[str, bool | list[str]] | list[str],
+        bool | dict[str, bool | list[str]] | list[str] | None,
         Doc(
             """
             A dictionary with the keys being the target names and the values being a boolean to hide all clients of the target or a list clients.
@@ -270,16 +414,38 @@ def get_scalar_api_reference(
             Default is [] which means no clients are hidden.
             """
         ),
-    ] = [],
-    servers: Annotated[
-        list[dict[str, str]],
+    ] = None,
+    base_server_url: Annotated[
+        str,
         Doc(
             """
-            A list of dictionaries with the keys being the server name and the value being the server URL.
+            If you want to prefix all relative servers with a base URL, you can do so here.
+            Default is empty string.
+            """
+        ),
+    ] = "",
+    servers: Annotated[
+        list[dict[str, Any]] | None,
+        Doc(
+            """
+            List of OpenAPI Server Objects. Each item must have a required 'url' (string) and may have
+            optional 'description' (string) and 'variables' (map). Example:
+            [{"url": "https://api.example.com", "description": "Production"}].
             Default is [] which means no servers are provided.
             """
         ),
-    ] = [],
+    ] = None,
+    plugin_urls: Annotated[
+        list[str] | None,
+        Doc(
+            """
+            URLs of ESM modules that provide additional API Reference plugins.
+            Each module is imported in the browser before the API Reference mounts,
+            and its default export is registered as a plugin.
+            Default is [] which means no plugin URLs are provided.
+            """
+        ),
+    ] = None,
     default_open_all_tags: Annotated[
         bool,
         Doc(
@@ -289,24 +455,106 @@ def get_scalar_api_reference(
             """
         ),
     ] = False,
+    expand_all_model_sections: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to expand all model sections by default.
+            Default is False which means model sections are closed by default.
+            """
+        ),
+    ] = False,
+    expand_all_responses: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to expand all response sections by default.
+            Default is False which means response sections are closed by default.
+            """
+        ),
+    ] = False,
+    order_required_properties_first: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to order required properties first in schema objects.
+            Default is True which means required properties are shown first.
+            """
+        ),
+    ] = True,
+    order_schema_properties_by: Annotated[
+        Literal["alpha", "preserve"],
+        Doc(
+            """
+            The order to use for schema properties.
+            Use 'alpha' to sort alphabetically, or 'preserve' to keep the original order.
+            Default is 'alpha'.
+            """
+        ),
+    ] = "alpha",
     authentication: Annotated[
-        dict,
+        dict | None,
         Doc(
             """
             A dictionary of additional authentication information.
             Default is {} which means no authentication information is provided.
             """
         ),
-    ] = {},
+    ] = None,
+    show_default_clients_with_sdk_installation: Annotated[
+        bool,
+        Doc(
+            """
+            Show built-in HTTP clients alongside SDK installation tabs in the introduction.
+            Default is False, which shows only SDK tabs when installation instructions are available.
+            """
+        ),
+    ] = False,
     hide_client_button: Annotated[
         bool,
         Doc(
             """
-            Whether to show the client button from the reference sidebar and modal
+            Whether to show the client button from the reference sidebar and modal.
             Default is False which means the client button is shown.
             """
         ),
     ] = False,
+    persist_selected_client: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to save and restore the selected code sample client in local storage.
+            Default is True. Set to False to keep client selection on the current page only.
+            """
+        ),
+    ] = True,
+    persist_auth: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to persist authentication credentials in local storage.
+            Default is False which means authentication is not persisted.
+            """
+        ),
+    ] = False,
+    with_default_fonts: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to use default fonts (Inter and JetBrains Mono).
+            Default is True which means default fonts are used.
+            """
+        ),
+    ] = True,
+    custom_css: Annotated[
+        str,
+        Doc(
+            """
+            Custom CSS string to apply to the API reference.
+            Default is empty string.
+            """
+        ),
+    ] = "",
     integration: Annotated[
         str | None,
         Doc(
@@ -315,66 +563,272 @@ def get_scalar_api_reference(
             Set to None or a different value to override.
             """
         ),
-    ] = 'fastapi',
+    ] = "fastapi",
     theme: Annotated[
-        Theme,
+        Theme | str,
         Doc(
             """
             The theme to use for Scalar.
+            Accepts a Theme member or its plain string value (e.g. "moon").
             Default is "default".
             """
         ),
     ] = Theme.DEFAULT,
+    show_developer_tools: Annotated[
+        Literal["always", "localhost", "never"],
+        Doc(
+            """
+            Control the visibility of developer tools.
+            Options are 'always', 'localhost', or 'never'.
+            Default is 'localhost'.
+            """
+        )
+    ] = "localhost",
+    telemetry: Annotated[
+        bool,
+        Doc(
+            """
+            Whether to enable telemetry. 
+            Only tracks whether a request was sent through the API client.
+            Default is True which means telemetry is enabled.
+
+            See: https://scalar.com/products/api-references/configuration#configuration__configuration-options__properties__telemetry
+            """
+        ),
+    ] = True,
+    agent: Annotated[
+        AgentScalarConfig | None,
+        Doc(
+            """
+            Agent Scalar config: set to AgentScalarConfig(disabled=True) to disable Agent entirely,
+            or use per-source agent on OpenAPISource for keys.
+            See: https://scalar.com/products/api-references/configuration#agent-scalar
+            """
+        ),
+    ] = None,
+    overrides: Annotated[
+        Dict[str, Any] | None,
+        Doc(
+            """
+            A dictionary of additional configuration overrides to pass to Scalar.
+            Default is {} which means no overrides are provided.
+            """
+        ),
+    ] = None,
+    multipart_naming: Annotated[
+        Literal["indexed-dot"] | None,
+        Doc("Use indexed dotted names for nested multipart form fields."),
+    ] = None,
 ) -> HTMLResponse:
+    # Accept either the enum members or their plain string values, so callers
+    # can pass, for example, theme="moon" instead of theme=Theme.MOON.
+    layout = layout.value if isinstance(layout, Enum) else layout
+    theme = theme.value if isinstance(theme, Enum) else theme
+    search_hot_key = search_hot_key.value if isinstance(search_hot_key, Enum) else search_hot_key
+    document_download_type = (
+        document_download_type.value
+        if isinstance(document_download_type, Enum)
+        else document_download_type
+    )
+
+    # Build configuration object with only non-default values
+    config = {}
+
+    # Handle sources vs content vs URL - sources takes highest precedence
+    if sources is not None:
+        # Convert Pydantic models to dictionaries, filtering out None values
+        sources_dict = []
+        for source in sources:
+            source_dict = source.model_dump(exclude_none=True)
+            sources_dict.append(source_dict)
+        config["sources"] = sources_dict
+    elif content is not None:
+        config["content"] = content
+    elif openapi_url is not None:
+        config["url"] = openapi_url
+    else:
+        # Default to the standard FastAPI openapi URL
+        config["url"] = "/openapi.json"
+
+    # Only add options that differ from defaults
+    if scalar_proxy_url:
+        config["proxyUrl"] = scalar_proxy_url
+
+    if agent is not None:
+        config["agent"] = agent.model_dump(exclude_none=True)
+
+    if layout != Layout.MODERN.value:
+        config["layout"] = layout
+
+    if not show_sidebar:  # Default is True
+        config["showSidebar"] = show_sidebar
+
+    if show_badges_in_sidebar:  # Default is False
+        config["showBadgesInSidebar"] = show_badges_in_sidebar
+
+    # Handle download button configuration
+    if (
+        hide_download_button
+    ):  # Deprecated, but still supported for backwards compatibility
+        config["hideDownloadButton"] = hide_download_button
+    elif document_download_type != DocumentDownloadType.BOTH.value:  # Default is BOTH
+        config["documentDownloadType"] = document_download_type
+
+    if hide_test_request_button:  # Default is False
+        config["hideTestRequestButton"] = hide_test_request_button
+
+    if hide_models:  # Default is False
+        config["hideModels"] = hide_models
+
+    if hide_search:  # Default is False
+        config["hideSearch"] = hide_search
+
+    if dark_mode is not None:  # Default is None
+        config["darkMode"] = dark_mode
+
+    if force_dark_mode_state:  # Default is None
+        config["forceDarkModeState"] = force_dark_mode_state
+
+    if hide_dark_mode_toggle:  # Default is False
+        config["hideDarkModeToggle"] = hide_dark_mode_toggle
+
+    if search_hot_key != SearchHotKey.K.value:  # Default is K
+        config["searchHotKey"] = search_hot_key
+
+    if hidden_clients:  # Default is []
+        config["hiddenClients"] = hidden_clients
+
+    if base_server_url:  # Default is empty string
+        config["baseServerURL"] = base_server_url
+
+    if servers:  # Default is []
+        config["servers"] = servers
+
+    if plugin_urls:  # Default is []
+        config["pluginUrls"] = plugin_urls
+
+    if default_open_all_tags:  # Default is False
+        config["defaultOpenAllTags"] = default_open_all_tags
+
+    if expand_all_model_sections:  # Default is False
+        config["expandAllModelSections"] = expand_all_model_sections
+
+    if expand_all_responses:  # Default is False
+        config["expandAllResponses"] = expand_all_responses
+
+    if not order_required_properties_first:  # Default is True
+        config["orderRequiredPropertiesFirst"] = order_required_properties_first
+
+    if order_schema_properties_by != "alpha":  # Default is alpha
+        config["orderSchemaPropertiesBy"] = order_schema_properties_by
+
+    if authentication:  # Default is {}
+        config["authentication"] = authentication
+
+    if show_default_clients_with_sdk_installation:
+        config["showDefaultClientsWithSdkInstallation"] = (
+            show_default_clients_with_sdk_installation
+        )
+
+    if multipart_naming is not None:
+        config["multipartNaming"] = multipart_naming
+
+    if hide_client_button:  # Default is False
+        config["hideClientButton"] = hide_client_button
+
+    if not persist_selected_client:  # Default is True
+        config["persistSelectedClient"] = persist_selected_client
+
+    if persist_auth:  # Default is False
+        config["persistAuth"] = persist_auth
+
+    if not with_default_fonts:  # Default is True
+        config["withDefaultFonts"] = with_default_fonts
+
+    if custom_css:  # Default is empty string
+        config["customCss"] = custom_css
+
+    if integration:
+        config["_integration"] = integration
+
+    if theme != Theme.DEFAULT.value:  # Default is DEFAULT
+        config["theme"] = theme
+
+    if show_developer_tools != "localhost":  # Default is 'localhost'
+        config["showDeveloperTools"] = show_developer_tools
+
+    if not telemetry:  # Default is True
+        config["telemetry"] = telemetry
+
+    if overrides:  # Default is {}
+        config.update(overrides)
+
+    page_title = escape_html(title) if title else "Scalar"
+    config_json = _inline_script_json(config)
+
     html = f"""
-    <!DOCTYPE html>
-    <html>
+<!doctype html>
+<html>
     <head>
-    <title>{title}</title>
-    <!-- needed for adaptive design -->
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="shortcut icon" href="{scalar_favicon_url}">
-    <style>
-      body {{
-        margin: 0;
-        padding: 0;
-      }}
-    </style>
-    <style>
-    {scalar_theme}
-    </style>
+        <title>{page_title}</title>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="shortcut icon" href="{escape_html(scalar_favicon_url, quote=True)}">
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+            }}
+
+            {scalar_theme if theme == Theme.DEFAULT.value else ""}
+        </style>
     </head>
     <body>
-    <noscript>
-        Scalar requires Javascript to function. Please enable it to browse the documentation.
-    </noscript>
-    <script
-      id="api-reference"
-      data-url="{openapi_url}"
-      data-proxy-url="{scalar_proxy_url}"></script>
-    <script>
-      var configuration = {{
-        layout: "{layout.value}",
-        showSidebar: {json.dumps(show_sidebar)},
-        hideDownloadButton: {json.dumps(hide_download_button)},
-        hideModels: {json.dumps(hide_models)},
-        darkMode: {json.dumps(dark_mode)},
-        searchHotKey: "{search_hot_key.value}",
-        hiddenClients: {json.dumps(hidden_clients)},
-        servers: {json.dumps(servers)},
-        defaultOpenAllTags: {json.dumps(default_open_all_tags)},
-        authentication: {json.dumps(authentication)},
-        hideClientButton: {json.dumps(hide_client_button)},
-        _integration: {json.dumps(integration)},
-        theme: "{theme.value}",
-      }}
+        <div id="app"></div>
 
-      document.getElementById('api-reference').dataset.configuration =
-        JSON.stringify(configuration)
-    </script>
-    <script src="{scalar_js_url}"></script>
+        <!-- Load the Script -->
+        <script src="{escape_html(scalar_js_url, quote=True)}"></script>
+
+        <!-- Initialize the Scalar API Reference -->
+        <script>
+            Scalar.createApiReference("#app", {config_json})
+        </script>
     </body>
     </html>
     """
     return HTMLResponse(html)
+
+
+def add_scalar_reference(
+    app: FastAPI,
+    *,
+    route: str = "/scalar",
+    include_in_schema: bool = False,
+    **kwargs: Any,
+) -> FastAPI:
+    """
+    Register a Scalar API Reference route on a FastAPI application.
+
+    This is the one-line way to add Scalar to a FastAPI app. It wires up the
+    route and fills in ``openapi_url`` and ``title`` from the app, so the common
+    case is simply::
+
+        from fastapi import FastAPI
+        from scalar_fastapi import add_scalar_reference
+
+        app = FastAPI()
+        add_scalar_reference(app)
+
+    Any keyword argument accepted by :func:`get_scalar_api_reference` can be
+    passed through, for example ``add_scalar_reference(app, theme=Theme.KEPLER)``
+    or a custom ``route="/docs/scalar"``.
+    """
+    # Fall back to the app's own values, but let callers override either one.
+    kwargs.setdefault("openapi_url", app.openapi_url)
+    kwargs.setdefault("title", app.title)
+
+    @app.get(route, include_in_schema=include_in_schema)
+    async def scalar_html() -> HTMLResponse:
+        return get_scalar_api_reference(**kwargs)
+
+    return app

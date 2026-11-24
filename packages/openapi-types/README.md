@@ -1,11 +1,24 @@
 # Scalar OpenAPI Types
 
-[![CI](https://github.com/scalar/scalar/actions/workflows/ci.yml/badge.svg)](https://github.com/scalar/scalar/actions/workflows/ci.yml)
-[![Contributors](https://img.shields.io/github/contributors/scalar/scalar)](https://github.com/scalar/scalar/graphs/contributors)
-[![GitHub License](https://img.shields.io/github/license/scalar/scalar)](https://github.com/scalar/scalar/blob/main/LICENSE)
+[![Version](https://img.shields.io/npm/v/@scalar/openapi-types)](https://www.npmjs.com/package/@scalar/openapi-types)
+[![Downloads](https://img.shields.io/npm/dm/@scalar/openapi-types)](https://www.npmjs.com/package/@scalar/openapi-types)
+[![License](https://img.shields.io/npm/l/@scalar/openapi-types)](https://www.npmjs.com/package/@scalar/openapi-types)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
-Modern OpenAPI parser written in TypeScript, with support for Swagger 2.0, OpenAPI 3.0 and OpenAPI 3.1
+Strict, well-documented OpenAPI TypeScript types based on official JSON Schemas, with specification links in comments.
+
+---
+
+Scalar is an open-source API platform for teams who want beautiful developer interfaces without vendor lock-in.
+
+- **[API References](https://scalar.com/products/api-references/getting-started)** — Interactive API documentation from OpenAPI and AsyncAPI specs.
+- **[Developer Docs](https://scalar.com/products/docs/getting-started)** — Write in Markdown/MDX, generate API references, sync with two-way Git.
+- **[SDK Generator](https://scalar.com/products/sdk-generator/getting-started)** — Type-safe SDKs and CLIs in TypeScript, Python, Go, PHP, Java, and Ruby.
+- **[API Client](https://scalar.com/products/api-client/getting-started)** — Open-source, offline-first Postman alternative built on OpenAPI.
+
+20M+ monthly npm installs · 15,500+ GitHub stars · MIT licensed · [scalar.com](https://scalar.com)
+
+---
 
 ## Installation
 
@@ -13,13 +26,20 @@ Modern OpenAPI parser written in TypeScript, with support for Swagger 2.0, OpenA
 npm add @scalar/openapi-types
 ```
 
+## Versions
+
+* OpenAPI 3.2
+* OpenAPI 3.1
+* OpenAPI 3.0
+* Swagger 2.0
+
 ## Usage
 
 ```ts
-import type { OpenAPI } from '@scalar/openapi-types'
+import type { Document } from '@scalar/openapi-types/3.2'
 
-const file: OpenAPI.Document = {
-  openapi: '3.1.0',
+const file: Document = {
+  openapi: '3.2.0',
   info: {
     title: 'Hello World',
     version: '1.0.0',
@@ -28,81 +48,89 @@ const file: OpenAPI.Document = {
 }
 ```
 
-### Zod Schemas
+### Individual Exports
 
-Experimental: This package exposes OpenAPI-compliant Zod schemas for all OpenAPI object types. You can use them to parse user input safely with Zod.
+If your bundler doesn't work with barrel files, you can explicitly import objects, too:
 
 ```ts
-import { OpenApiObjectSchema } from '@scalar/openapi-types/schemas/3.1/unprocessed'
+import type { Document } from '@scalar/openapi-types/3.2/document'
 
-OpenApiObjectSchema.parse({
-  // This will be omitted:
-  invalidAttribute: 123,
-  // Those will pass:
-  openapi: '3.1.1',
+const file: Document = {
+  openapi: '3.2.0',
   info: {
-    title: 'Example API',
-    version: '1.0'
+    title: 'Hello World',
+    version: '1.0.0',
   },
-  paths: {
-    '/example': {
-      get: {
-        description: 'My example operation',
-      }
-    }
-  },
-})
+  paths: {},
+}
 ```
 
-What's “unprocessed”? It's for the content of a “raw” OpenAPI document, that might still contain `$ref`s (references).
+## Helpers
 
-We also provide Zod schemas for processed OpenAPI documents, where the `$ref`s are resolved already:
+`@scalar/openapi-types/helpers` ships a small set of runtime helpers for working
+with the type definitions above. They are written to work with `SchemaObject`
+across all supported OpenAPI versions (2.0, 3.0, 3.1, and 3.2).
+
+### `isDereferenced(value)`
+
+Type guard that returns `true` when `value` is not a `ReferenceObject` (i.e. it
+does not have a string `$ref` property). Useful when walking a document that may
+mix references and inline objects. Like the schema discriminators, it narrows
+the reference members out of a `SchemaObject | ReferenceObject` union from any
+supported OpenAPI version.
 
 ```ts
-// Impport the Zod Schema without the $ref property:
-import { OpenApiObjectSchema } from '@scalar/openapi-types/schemas/3.1/processed'
+import { isDereferenced } from '@scalar/openapi-types/helpers'
 
-OpenApiObjectSchema.parse({
-  // …
-})
+const schema = components.schemas?.Pet
+
+if (isDereferenced(schema)) {
+  // `schema` is narrowed to the inline SchemaObject and `$ref` is ruled out
+  schema.type
+}
 ```
 
-#### Extend the Zod schemas
+### Schema discriminators
 
-While you can absolutely use the Zod schemas directly, you can also extend and compose them.
+Schema discriminators narrow a `SchemaObject` union to the variant whose `type`
+matches the guard, so type-specific properties (such as `properties`, `items`,
+or `minLength`) become accessible without a manual cast.
 
-Here is a basic example to add an extension on the top level:
+| Helper                | Matches when…                                          |
+| --------------------- | ------------------------------------------------------ |
+| `isObjectSchema`      | `type === 'object'`                                    |
+| `isArraySchema`       | `type === 'array'`                                     |
+| `isStringSchema`      | `type === 'string'`                                    |
+| `isNumberSchema`      | `type === 'number'`                                    |
+| `isIntegerSchema`     | `type === 'integer'`                                   |
+| `isNumericSchema`     | `type === 'number'` or `type === 'integer'`            |
+| `isBooleanSchema`     | `type === 'boolean'`                                   |
+| `isNullSchema`        | `type === 'null'` (OpenAPI 3.1+)                       |
+| `isMultiTypeSchema`   | `type` is an array of primitive types (OpenAPI 3.1+)   |
+| `isUntypedSchema`     | `type` is not set                                      |
+| `isBooleanJsonSchema` | the schema itself is the literal `true` or `false`     |
 
 ```ts
-import { OpenApiObjectSchema } from '@scalar/openapi-types/schemas/3.1/unprocessed'
-import { XScalarIconSchema } from '@scalar/openapi-types/schemas/extensions'
+import { isArraySchema, isObjectSchema } from '@scalar/openapi-types/helpers'
+import type { SchemaObject } from '@scalar/openapi-types/3.1'
 
-const MyCustomSchema = OpenApiObjectSchema
-  // Add the `x-scalar-icon` OpenAPI extension
-  .merge(
-    XScalarIconSchema
-  )
-  // Add a custom property
-  .extend({
-    'x-customProperty': z.boolean().optional(),
-  })
+function describe(schema: SchemaObject) {
+  if (isObjectSchema(schema)) {
+    return Object.keys(schema.properties ?? {})
+  }
+
+  if (isArraySchema(schema)) {
+    return schema.items
+  }
+
+  return null
+}
 ```
 
-This will get a little bit more complex when you want to add a property to something that's deeply nested:
-
-```ts
-import { OpenApiObjectSchema } from '@scalar/openapi-types/schemas/3.1/unprocessed'
-import { XScalarIconSchema } from '@scalar/openapi-types/schemas/extensions'
-
-const MyCustomSchema = OpenApiObjectSchema
-  .extend({
-    // Overwrite the Schema
-    'info': InfoObjectSchema.extend({
-      // Add a custom property
-      'x-customProperty': z.boolean().optional(),
-    }),
-  })
-```
+> `isBooleanSchema` matches an OpenAPI schema with `type: 'boolean'`.
+> `isBooleanJsonSchema` matches the JSON Schema shorthand where the schema
+> itself is `true` (allow any value) or `false` (allow no value). Use the one
+> that fits your check.
 
 ## Community
 

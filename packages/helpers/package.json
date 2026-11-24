@@ -14,36 +14,49 @@
     "helpers",
     "js"
   ],
-  "version": "0.0.6",
+  "version": "0.19.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
-    "lint:check": "biome lint --diagnostic-level=error",
-    "lint:fix": "biome lint --write",
-    "test": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "exports": {
     "./array/*": {
       "import": "./dist/array/*.js",
       "types": "./dist/array/*.d.ts",
       "default": "./dist/array/*.js"
     },
+    "./crypto/*": {
+      "import": "./dist/crypto/*.js",
+      "types": "./dist/crypto/*.d.ts",
+      "default": "./dist/crypto/*.js"
+    },
     "./dom/*": {
       "import": "./dist/dom/*.js",
       "types": "./dist/dom/*.d.ts",
       "default": "./dist/dom/*.js"
     },
+    "./errors/*": {
+      "import": "./dist/errors/*.js",
+      "types": "./dist/errors/*.d.ts",
+      "default": "./dist/errors/*.js"
+    },
     "./file/*": {
       "import": "./dist/file/*.js",
       "types": "./dist/file/*.d.ts",
       "default": "./dist/file/*.js"
+    },
+    "./formatters/*": {
+      "import": "./dist/formatters/*.js",
+      "types": "./dist/formatters/*.d.ts",
+      "default": "./dist/formatters/*.js"
     },
     "./general/*": {
       "import": "./dist/general/*.js",
@@ -55,15 +68,45 @@
       "types": "./dist/http/*.d.ts",
       "default": "./dist/http/*.js"
     },
+    "./json/*": {
+      "import": "./dist/json/*.js",
+      "types": "./dist/json/*.d.ts",
+      "default": "./dist/json/*.js"
+    },
+    "./markdown/*": {
+      "import": "./dist/markdown/*.js",
+      "types": "./dist/markdown/*.d.ts",
+      "default": "./dist/markdown/*.js"
+    },
+    "./node/*": {
+      "import": "./dist/node/*.js",
+      "types": "./dist/node/*.d.ts",
+      "default": "./dist/node/*.js"
+    },
     "./object/*": {
       "import": "./dist/object/*.js",
       "types": "./dist/object/*.d.ts",
       "default": "./dist/object/*.js"
     },
+    "./openapi/*": {
+      "import": "./dist/openapi/*.js",
+      "types": "./dist/openapi/*.d.ts",
+      "default": "./dist/openapi/*.js"
+    },
+    "./playwright/*": {
+      "import": "./dist/playwright/*.js",
+      "types": "./dist/playwright/*.d.ts",
+      "default": "./dist/playwright/*.js"
+    },
     "./regex/*": {
       "import": "./dist/regex/*.js",
       "types": "./dist/regex/*.d.ts",
       "default": "./dist/regex/*.js"
+    },
+    "./storybook/*": {
+      "import": "./dist/storybook/*.js",
+      "types": "./dist/storybook/*.d.ts",
+      "default": "./dist/storybook/*.js"
     },
     "./string/*": {
       "import": "./dist/string/*.js",
@@ -75,6 +118,16 @@
       "types": "./dist/testing/*.d.ts",
       "default": "./dist/testing/*.js"
     },
+    "./theme/*": {
+      "import": "./dist/theme/*.js",
+      "types": "./dist/theme/*.d.ts",
+      "default": "./dist/theme/*.js"
+    },
+    "./types/*": {
+      "import": "./dist/types/*.js",
+      "types": "./dist/types/*.d.ts",
+      "default": "./dist/types/*.js"
+    },
     "./url/*": {
       "import": "./dist/url/*.js",
       "types": "./dist/url/*.d.ts",
@@ -85,10 +138,11 @@
     "dist",
     "CHANGELOG.md"
   ],
-  "module": "dist/index.js",
+  "sideEffects": false,
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
-    "vite": "catalog:*",
+    "@playwright/test": "catalog:*",
+    "@scalar/themes": "workspace:*",
+    "jsdom": "catalog:*",
     "vitest": "catalog:*"
   }
 }

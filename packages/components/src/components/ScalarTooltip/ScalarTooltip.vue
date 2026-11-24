@@ -12,10 +12,10 @@
 export default {}
 </script>
 <script setup lang="ts">
-import { type Ref, computed, ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 
 import { DEFAULT_DELAY, DEFAULT_OFFSET } from './constants'
-import type { ScalarTooltipPlacement } from './types'
+import type { ScalarTooltipProps } from './types'
 import { useTooltip } from './useTooltip'
 
 const {
@@ -23,12 +23,7 @@ const {
   content = '',
   placement = 'top',
   offset = DEFAULT_OFFSET,
-} = defineProps<{
-  content?: string
-  delay?: number
-  placement?: ScalarTooltipPlacement
-  offset?: number
-}>()
+} = defineProps<ScalarTooltipProps>()
 
 const wrapperRef: Ref<HTMLElement | null> = ref(null)
 
@@ -52,17 +47,73 @@ useTooltip({
 <style>
 @reference "../../style.css";
 
-/** Global styles for the tooltip */
-:where(body) > .scalar-tooltip {
-  --scalar-tooltip-padding: 8px;
+/**
+ * Global styles for the tooltip
+ *
+ * The tooltip element normally sits directly on the body, but it moves into a <dialog>
+ * opened with showModal() so it can paint above the top layer. Both parents have to be
+ * matched here or the tooltip loses every one of these styles the moment it is
+ * reparented, and renders as unstyled text on a transparent background.
+ */
+:where(body, dialog) > .scalar-tooltip {
+  --scalar-tooltip-padding-x: 8px;
+  --scalar-tooltip-padding-y: 6px;
 
-  padding: calc(var(--scalar-tooltip-padding) + var(--scalar-tooltip-offset));
+  padding: var(--scalar-tooltip-padding-y) var(--scalar-tooltip-padding-x);
 
-  @apply z-tooltip text-c-tooltip text-xs font-medium break-words max-w-xs leading-5;
+  @apply z-tooltip text-c-tooltip max-w-xs text-xs/4 font-normal break-words;
 }
-:where(body) > .scalar-tooltip:before {
+
+/**
+ * The offset is the gap between the target and the tooltip, so it only belongs
+ * on the side facing the target (opposite the placement side). Applying it to
+ * every side shifts the visible box inward on `-start` / `-end` placements,
+ * where Floating UI aligns the floating element's edge with the target's edge.
+ */
+:where(body, dialog) > .scalar-tooltip[data-side='top'] {
+  padding-bottom: calc(
+    var(--scalar-tooltip-padding-y) + var(--scalar-tooltip-offset)
+  );
+}
+:where(body, dialog) > .scalar-tooltip[data-side='bottom'] {
+  padding-top: calc(
+    var(--scalar-tooltip-padding-y) + var(--scalar-tooltip-offset)
+  );
+}
+:where(body, dialog) > .scalar-tooltip[data-side='left'] {
+  padding-right: calc(
+    var(--scalar-tooltip-padding-x) + var(--scalar-tooltip-offset)
+  );
+}
+:where(body, dialog) > .scalar-tooltip[data-side='right'] {
+  padding-left: calc(
+    var(--scalar-tooltip-padding-x) + var(--scalar-tooltip-offset)
+  );
+}
+
+/*
+ * The hairline is spelled out: the preflight that gives `border` its theme colour only reaches
+ * descendants of `.scalar-app`, and this element is the `.scalar-app` root itself, so the
+ * utility alone would fall back to currentColor (black on light, white on dark).
+ */
+:where(body, dialog) > .scalar-tooltip:before {
   content: '';
-  inset: var(--scalar-tooltip-offset);
-  @apply absolute rounded bg-b-tooltip -z-1 backdrop-blur dark:shadow-border;
+  inset: 0;
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+  @apply bg-b-tooltip absolute -z-1 rounded-lg shadow backdrop-blur;
+}
+
+/* Leave the gap on the target-facing side so the other edges stay flush */
+:where(body, dialog) > .scalar-tooltip[data-side='top']:before {
+  bottom: var(--scalar-tooltip-offset);
+}
+:where(body, dialog) > .scalar-tooltip[data-side='bottom']:before {
+  top: var(--scalar-tooltip-offset);
+}
+:where(body, dialog) > .scalar-tooltip[data-side='left']:before {
+  right: var(--scalar-tooltip-offset);
+}
+:where(body, dialog) > .scalar-tooltip[data-side='right']:before {
+  left: var(--scalar-tooltip-offset);
 }
 </style>

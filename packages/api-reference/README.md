@@ -8,6 +8,19 @@
 
 Interactive API Reference from OpenAPI/Swagger Documents [Try our Demo](https://docs.scalar.com/swagger-editor)
 
+---
+
+Scalar is an open-source API platform for teams who want beautiful developer interfaces without vendor lock-in.
+
+- **[API References](https://scalar.com/products/api-references/getting-started)** — Interactive API documentation from OpenAPI and AsyncAPI specs.
+- **[Developer Docs](https://scalar.com/products/docs/getting-started)** — Write in Markdown/MDX, generate API references, sync with two-way Git.
+- **[SDK Generator](https://scalar.com/products/sdk-generator/getting-started)** — Type-safe SDKs and CLIs in TypeScript, Python, Go, PHP, Java, and Ruby.
+- **[API Client](https://scalar.com/products/api-client/getting-started)** — Open-source, offline-first Postman alternative built on OpenAPI.
+
+20M+ monthly npm installs · 15,500+ GitHub stars · MIT licensed · [scalar.com](https://scalar.com)
+
+---
+
 [![Screenshot of an API Reference](https://github.com/scalar/scalar/assets/6201407/d8beb5e1-bf64-4589-8cb0-992ba79215a8)](https://docs.scalar.com/swagger-editor)
 
 ### CDN
@@ -33,7 +46,7 @@ Interactive API Reference from OpenAPI/Swagger Documents [Try our Demo](https://
     <script>
       Scalar.createApiReference('#app', {
         // The URL of the OpenAPI/Swagger document
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
         // Avoid CORS issues
         proxyUrl: 'https://proxy.scalar.com',
       })
@@ -42,9 +55,29 @@ Interactive API Reference from OpenAPI/Swagger Documents [Try our Demo](https://
 </html>
 ```
 
+## AsyncAPI Markdown actions
+
+AsyncAPI channels and operations include a **Copy as Markdown** button in both layouts. Copies contain the selected section and its relevant context, using `@scalar/asyncapi-to-markdown`. Tags and introduction support custom actions but do not show a copy button by default.
+
+When embedding Vue sections, use the `actions` slot to replace the default button, or supply an empty slot to hide it:
+
+```vue
+<AsyncApiChannel v-bind="channelProps">
+  <template #actions>
+    <button @click="copyPage">Copy page</button>
+  </template>
+</AsyncApiChannel>
+
+<AsyncApiOperation v-bind="operationProps">
+  <template #actions />
+</AsyncApiOperation>
+```
+
+`AsyncApiChannel` and `AsyncApiOperation` are exported from `@scalar/api-reference/components` and receive the resolved AsyncAPI `document`. Embedded `Tag` (from `@scalar/api-reference/components`) and `InfoBlock` (from `@scalar/api-reference/blocks`) expose the same `actions` slot without a default button. Pass the resolved document as `asyncApiDocument` to `Tag` to preserve real AsyncAPI tag headings. These are section component slots, not configuration options on the full API reference.
+
 ## Documentation
 
-[Read the documentation here](https://guides.scalar.com/scalar/scalar-api-references/integrations/htmljs)
+[Read the documentation here](https://scalar.com/products/api-references/integrations/html-js)
 
 ## Community
 

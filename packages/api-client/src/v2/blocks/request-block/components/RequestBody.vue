@@ -1,0 +1,747 @@
+<script setup lang="ts">
+import { Schema } from '@scalar/blocks/schema'
+import { ScalarButton } from '@scalar/components/button'
+import { ScalarCodeBlockCopy } from '@scalar/components/code-block'
+import { ScalarCopyBackdrop } from '@scalar/components/copy'
+import { ScalarIcon } from '@scalar/components/icon'
+import { ScalarIconButton } from '@scalar/components/icon-button'
+import { ScalarListbox } from '@scalar/components/listbox'
+import { CONTENT_TYPES } from '@scalar/helpers/http/content-types'
+import { isXmlMediaType } from '@scalar/helpers/http/is-xml-media-type'
+import { parseMimeType } from '@scalar/helpers/http/mime-type'
+import { isObject } from '@scalar/helpers/object/is-object'
+import { objectEntries } from '@scalar/helpers/object/object-entries'
+import {
+  ScalarIconArrowCounterClockwise,
+  ScalarIconMagicWand,
+} from '@scalar/icons'
+import type { ApiReferenceEvents } from '@scalar/workspace-store/events'
+import {
+  getExampleValue,
+  getExplicitExampleText,
+} from '@scalar/workspace-store/helpers/get-example-value'
+import type { MultipartNaming } from '@scalar/types/api-reference'
+import { unpackProxyObject } from '@scalar/workspace-store/helpers/unpack-proxy'
+import {
+  getExampleFromBody,
+  getSchemaExampleFromBody,
+  getSelectedBodyContentType,
+  usesAspNetFormNaming,
+} from '@scalar/workspace-store/request-example'
+import { resolve } from '@scalar/workspace-store/resolve'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type {
+  MediaTypeObject,
+  RequestBodyObject,
+  SchemaObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { isObjectSchema } from '@scalar/workspace-store/schemas/v3.2/strict/type-guards'
+import { computed, ref, watch } from 'vue'
+
+import { useFileDialog } from '@/hooks/use-file-dialog'
+import RequestBodyForm from '@/v2/blocks/request-block/components/RequestBodyForm.vue'
+import RequestBodyMultipart from '@/v2/blocks/request-block/components/RequestBodyMultipart.vue'
+import RequestBodyStructured from '@/v2/blocks/request-block/components/RequestBodyStructured.vue'
+import RequestBodyViewToggle from '@/v2/blocks/request-block/components/RequestBodyViewToggle.vue'
+import { getFileName } from '@/v2/blocks/request-block/helpers/files'
+import {
+  getFormBodyRows,
+  getFormBodyValue,
+} from '@/v2/blocks/request-block/helpers/get-form-body-rows'
+import {
+  parseMultipartBody,
+  type MultipartBodyValue,
+} from '@/v2/blocks/request-block/helpers/multipart-body'
+import { getStructuredBodyCodec } from '@/v2/blocks/request-block/helpers/structured-body-codec'
+import { CodeInput } from '@/v2/components/code-input'
+import {
+  DataTable,
+  DataTableHeader,
+  DataTableRow,
+} from '@/v2/components/data-table'
+import { CollapsibleSection } from '@/v2/components/layout'
+import { useLocalization } from '@/v2/features/localization'
+
+const {
+  requestBody,
+  exampleKey,
+  environment,
+  multipartNaming,
+  requestBodyCompositionSelection,
+  openapiVersion,
+  jsonSchemaDialect,
+  title,
+  defaultView = 'raw',
+} = defineProps<{
+  /** Request body */
+  requestBody?: RequestBodyObject
+  /** Currently selected example key for the current operation */
+  exampleKey: string
+  /** Display title */
+  title: string
+  /** Selected environment */
+  environment: XScalarEnvironment
+  /** Originating OpenAPI version, used for XML mapping rules. */
+  openapiVersion?: string
+  /** Document-level JSON Schema dialect used when generating array `contains` examples. */
+  jsonSchemaDialect?: string
+  multipartNaming?: MultipartNaming
+  /** Selected anyOf/oneOf request-body variants keyed by schema path */
+  requestBodyCompositionSelection?: Record<string, number>
+  /**
+   * Initial view for structured (JSON/YAML) bodies. Comes from the
+   * `x-scalar-default-request-body-view` document extension and falls back to `raw`
+   * whenever the body cannot be shown as a form.
+   */
+  defaultView?: 'form' | 'raw'
+}>()
+
+const emits = defineEmits<{
+  (e: 'reset', payload: { contentType: string }): void
+  (e: 'update:contentType', payload: { value: string }): void
+  /** We use this event to update raw values */
+  (
+    e: 'update:value',
+    payload: Pick<
+      ApiReferenceEvents['operation:update:requestBody:value'],
+      'payload' | 'contentType'
+    >,
+  ): void
+  /** We use this event when updating form data only */
+  (
+    e: 'update:formValue',
+    payload: Pick<
+      ApiReferenceEvents['operation:update:requestBody:formValue'],
+      'payload' | 'contentType'
+    >,
+  ): void
+  /**
+   * Create a new example seeded with values generated from the request body schema.
+   *
+   * The block itself owns the document and operation identity needed to create an example, so we
+   * only report the content type the user is currently looking at.
+   */
+  (e: 'generate:example', payload: { contentType: string }): void
+}>()
+
+const { translate } = useLocalization()
+
+// Map a content type to a language for the code editor
+const contentTypeToLanguageMap = {
+  'application/json': 'json',
+  'application/xml': 'xml',
+  'application/yaml': 'yaml',
+} as const
+
+/** Selected content type with default */
+const selectedContentType = computed(
+  () => getSelectedBodyContentType(requestBody, exampleKey) ?? 'none',
+)
+
+/** Keep the editor and copy label aligned with the selected content type. */
+const selectedLanguage = computed(() =>
+  isXmlMediaType(selectedContentType.value)
+    ? 'xml'
+    : (contentTypeToLanguageMap[
+        selectedContentType.value as keyof typeof contentTypeToLanguageMap
+      ] ?? 'plaintext'),
+)
+
+/**
+ * Strips MIME parameters (such as `charset=utf-8`) for dropdown labels, aligned with how we treat
+ * media types elsewhere (see api-reference `normalizeMimeType` / WHATWG essence).
+ */
+const contentTypeLabel = (raw: string): string => parseMimeType(raw).essence
+
+/**
+ * Build the dropdown options for the content type selector.
+ *
+ * The list is composed of two groups:
+ *   1. The built-in content types we ship friendly labels for (JSON, XML, Multipart Form, etc.).
+ *   2. Any additional content types defined on the OpenAPI request body that are not in the built-in list
+ *      (for example `text/csv`, `application/pdf`, vendor types like `application/vnd.api+json`, ...).
+ *
+ * The OpenAPI-defined extras are appended at the bottom so the well-known options stay on top, and
+ * users can always pick the exact content type the operation actually accepts.
+ */
+/** MIME values remain stable while their human-readable labels follow the locale. */
+const localizedContentTypes = computed(() => ({
+  ...CONTENT_TYPES,
+  'multipart/form-data': translate('apiClient.requestBody.multipartForm'),
+  'application/x-www-form-urlencoded': translate(
+    'apiClient.requestBody.formUrlEncoded',
+  ),
+  'application/octet-stream': translate('apiClient.requestBody.binaryFile'),
+  'other': translate('apiClient.requestBody.other'),
+  'none': translate('apiClient.requestBody.none'),
+}))
+
+const contentTypeOptions = computed<{ id: string; label: string }[]>(() => {
+  const builtIn = objectEntries(localizedContentTypes.value).map(
+    ([id, label]) => ({
+      id,
+      label,
+    }),
+  )
+
+  const extras = Object.keys(requestBody?.content ?? {})
+    .filter((type) => {
+      if (type in CONTENT_TYPES) {
+        return false
+      }
+      // Same essence as a built-in (e.g. `application/json; charset=utf-8`) — do not duplicate the row.
+      return !(contentTypeLabel(type) in CONTENT_TYPES)
+    })
+    .map((type) => ({ id: type, label: contentTypeLabel(type) }))
+
+  return [...builtIn, ...extras]
+})
+
+const selectedContentTypeModel = computed<{ id: string; label: string }>({
+  get: () => {
+    const found = contentTypeOptions.value.find(
+      (it) => it.id === selectedContentType.value,
+    )
+    if (found) {
+      return found
+    }
+
+    const essence = contentTypeLabel(selectedContentType.value)
+    const friendly =
+      localizedContentTypes.value[essence as keyof typeof CONTENT_TYPES] ??
+      essence
+
+    return {
+      id: selectedContentType.value,
+      label: friendly,
+    }
+  },
+  set: (v) => {
+    emits('update:contentType', { value: v.id })
+  },
+})
+
+function handleFileUpload(callback: (file: File) => void) {
+  const { open } = useFileDialog({
+    onChange: (files) => {
+      const file = files?.[0]
+      if (file) {
+        callback(file)
+      }
+    },
+    multiple: false,
+    accept: '*/*',
+  })
+  void open()
+}
+
+/** Dereferenced example */
+const example = computed(
+  () =>
+    requestBody &&
+    getExampleFromBody(
+      requestBody,
+      selectedContentType.value,
+      exampleKey,
+      requestBodyCompositionSelection,
+      openapiVersion,
+      jsonSchemaDialect,
+    ),
+)
+
+/** Convert the example value to a string for the code editor */
+const bodyValue = computed(() => {
+  if (!example.value) {
+    return ''
+  }
+
+  const selected = getExampleValue(example.value)
+  const explicitText = getExplicitExampleText(
+    selected,
+    selectedContentType.value,
+    2,
+  )
+  if (explicitText !== undefined) {
+    return explicitText
+  }
+  const value = selected?.value
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return JSON.stringify(value, null, 2)
+})
+
+/** Resolved schema for the request body */
+const bodySchema = computed<SchemaObject | undefined>(() => {
+  return resolve.schema(
+    requestBody?.content?.[selectedContentType.value]?.schema ??
+      requestBody?.content?.[selectedContentType.value]?.itemSchema,
+  )
+})
+
+const aspNetFormNaming = computed<boolean>(() =>
+  usesAspNetFormNaming(
+    selectedContentType.value,
+    requestBody?.content?.[selectedContentType.value],
+    multipartNaming,
+  ),
+)
+
+/** Mixed and related bodies keep their ordered parts instead of named form-data rows. */
+const multipartBody = computed<
+  { media: MediaTypeObject; value: MultipartBodyValue } | undefined
+>(() => {
+  const essence = parseMimeType(selectedContentType.value).essence
+  if (essence !== 'multipart/mixed' && essence !== 'multipart/related') {
+    return undefined
+  }
+  const media = requestBody?.content?.[selectedContentType.value]
+  const value = parseMultipartBody(example.value)
+  return media && value !== undefined ? { media, value } : undefined
+})
+
+/** Codec for structured (JSON/YAML) bodies, undefined for everything else */
+const structuredCodec = computed(() =>
+  selectedContentType.value === 'none'
+    ? undefined
+    : getStructuredBodyCodec(selectedContentType.value),
+)
+
+/** Parsed body value for the form view — `ok: false` when the raw text is not parseable */
+const parsedBody = computed<{ ok: boolean; value?: unknown }>(() => {
+  const codec = structuredCodec.value
+  if (!codec) {
+    return { ok: false }
+  }
+
+  const selected = getExampleValue(example.value ?? undefined)
+  // Structured data is already parsed; parsing strings again changes the payload type.
+  if (example.value?.dataValue !== undefined) {
+    return { ok: true, value: example.value.dataValue }
+  }
+  const raw = selected?.value
+  // An empty body is still form-editable: rows come from the schema.
+  if (raw === undefined || raw === null || raw === '') {
+    return { ok: true, value: {} }
+  }
+  if (typeof raw === 'string') {
+    try {
+      return { ok: true, value: codec.parse(raw) }
+    } catch {
+      return { ok: false }
+    }
+  }
+  // Spec-provided examples can be stored as objects directly.
+  return { ok: true, value: raw }
+})
+
+/**
+ * An edited example normally takes precedence over schema-generated data. When a different
+ * composition branch is selected, however, keeping that example leaves the editor showing the
+ * previous branch. Track the selection itself instead of inspecting discriminator fields so this
+ * also works for compositions whose members are distinguished only by their shape.
+ */
+const compositionSelectionKey = computed(() =>
+  JSON.stringify(requestBodyCompositionSelection ?? {}),
+)
+
+// Switching operations changes the body (and often the selection) at once, which is not a branch
+// change, so we only regenerate the body when the selection changes while the operation and example
+// stay the same. Watching all three together and comparing against the watcher's own previous values
+// keeps this correct regardless of the order in which props update or watchers flush.
+watch(
+  [() => requestBody, () => exampleKey, compositionSelectionKey],
+  (
+    [, , selection],
+    [previousRequestBody, previousExampleKey, previousSelection],
+  ) => {
+    const operationChanged =
+      requestBody !== previousRequestBody || exampleKey !== previousExampleKey
+    const selectionChanged = selection !== previousSelection
+
+    // Going from no selection to a populated one is the modal applying the reference's selection as
+    // the panel opens, not the user switching branches. Resetting here would discard the body's named
+    // example on the very first open (issue #10075), so only a change between two populated selections
+    // counts as a real branch switch.
+    const hadNoPreviousSelection = previousSelection === '{}'
+
+    // Only a genuine branch switch within the same operation should reset the edited body. An empty
+    // selection means there is no composition to switch between (or the selection was cleared on an
+    // operation change), so there is nothing to reset.
+    if (
+      operationChanged ||
+      !selectionChanged ||
+      hadNoPreviousSelection ||
+      Object.keys(requestBodyCompositionSelection ?? {}).length === 0
+    ) {
+      return
+    }
+
+    const codec = structuredCodec.value
+    const isXml = isXmlMediaType(selectedContentType.value)
+    const isForm =
+      selectedContentType.value === 'multipart/form-data' ||
+      selectedContentType.value === 'application/x-www-form-urlencoded'
+    const isMultipart = ['multipart/mixed', 'multipart/related'].includes(
+      parseMimeType(selectedContentType.value).essence,
+    )
+    if (!requestBody || (!codec && !isXml && !isForm && !isMultipart)) {
+      return
+    }
+
+    // Regenerate through the same helper the initial example uses so a reset produces exactly the
+    // value a fresh render of this branch would, rather than a hand-copied second code path.
+    const selectedValue = getSchemaExampleFromBody(
+      requestBody,
+      selectedContentType.value,
+      requestBodyCompositionSelection,
+      openapiVersion,
+      jsonSchemaDialect,
+    )
+
+    if (isForm) {
+      const rows = getFormBodyRows(
+        { value: selectedValue },
+        selectedContentType.value,
+        bodySchema.value,
+        requestBodyCompositionSelection,
+        requestBody.content?.[selectedContentType.value]?.encoding,
+        aspNetFormNaming.value,
+      )
+      emits('update:formValue', {
+        contentType: selectedContentType.value,
+        payload: rows.map((row) => ({
+          name: row.name,
+          value:
+            selectedContentType.value === 'multipart/form-data'
+              ? getFormBodyValue(row)
+              : (row.value ?? undefined),
+          isDisabled: row.isDisabled ?? false,
+          ...(row.isDisabledByDefault ? { isDisabledByDefault: true } : {}),
+          ...(row.isArray ? { isArray: true } : {}),
+        })),
+      })
+      return
+    }
+
+    if (isMultipart) {
+      emits('update:value', {
+        payload:
+          Array.isArray(selectedValue) || isObject(selectedValue)
+            ? selectedValue
+            : '',
+        contentType: selectedContentType.value,
+      })
+      return
+    }
+
+    // A branch with no writable content clears the editor instead of writing null.
+    let payload = ''
+    if (selectedValue != null) {
+      payload = isXml ? String(selectedValue) : codec!.stringify(selectedValue)
+    }
+    emits('update:value', {
+      payload,
+      contentType: selectedContentType.value,
+    })
+  },
+)
+
+/** The form view only works on an object-shaped body root */
+const isFormViewAvailable = computed(
+  () => parsedBody.value.ok && isObject(parsedBody.value.value),
+)
+
+/**
+ * Show the Form/Raw toggle for structured bodies that are (or per schema should be)
+ * an object at the root. Non-object roots (arrays, primitives) stay raw-only.
+ */
+const showBodyViewToggle = computed(
+  () =>
+    Boolean(structuredCodec.value) &&
+    (isFormViewAvailable.value ||
+      Boolean(bodySchema.value && isObjectSchema(bodySchema.value))),
+)
+
+/** Selected body view, seeded from the document default (raw unless configured) */
+const bodyView = ref<'form' | 'raw' | 'schema'>(defaultView)
+
+/** Schema inspection is available for every media type with a schema, independently of its example. */
+const isSchemaViewAvailable = computed(
+  () => selectedContentType.value !== 'none' && bodySchema.value !== undefined,
+)
+
+// A different operation must start a fresh tree, including its expansion and composition state.
+watch(
+  () => requestBody,
+  () => {
+    if (bodyView.value === 'schema') {
+      bodyView.value = isFormViewAvailable.value ? defaultView : 'raw'
+    }
+  },
+)
+
+watch(isSchemaViewAvailable, (available) => {
+  if (!available && bodyView.value === 'schema') {
+    bodyView.value = 'raw'
+  }
+})
+
+// Fall back to raw when the form view stops being available (e.g. the content type
+// changed to a non-structured one, or an external edit made the body unparseable).
+watch(
+  isFormViewAvailable,
+  (ok) => {
+    if (!ok && bodyView.value === 'form') {
+      bodyView.value = 'raw'
+    }
+  },
+  { immediate: true },
+)
+
+/**
+ * Whether we can offer to generate a fresh example from the schema.
+ *
+ * Only structured (JSON/YAML) bodies qualify: they have a schema to generate from and a text
+ * representation we can seed the new example with. Binary and form bodies have their own editors,
+ * so the button would have nothing meaningful to write.
+ */
+const canGenerateExample = computed(() =>
+  Boolean(structuredCodec.value && bodySchema.value),
+)
+</script>
+<template>
+  <CollapsibleSection>
+    <template #title>{{ title }}</template>
+    <DataTable
+      :columns="['']"
+      presentational>
+      <DataTableHeader
+        class="relative col-span-full flex h-8 cursor-pointer items-center justify-between border-r-0 !p-0">
+        <ScalarListbox
+          v-model="selectedContentTypeModel"
+          :options="contentTypeOptions"
+          teleport>
+          <ScalarButton
+            class="text-c-2 hover:text-c-1 flex h-full w-fit gap-1.5 px-3 font-normal"
+            fullWidth
+            variant="ghost">
+            <span>{{ selectedContentTypeModel.label }}</span>
+            <ScalarIcon
+              icon="ChevronDown"
+              size="md" />
+          </ScalarButton>
+        </ScalarListbox>
+        <div class="flex items-center gap-1">
+          <ScalarIconButton
+            v-if="selectedContentType !== 'none'"
+            :aria-label="translate('apiClient.requestBody.restoreOriginalBody')"
+            :icon="ScalarIconArrowCounterClockwise"
+            :label="translate('apiClient.requestBody.restoreOriginalBody')"
+            size="sm"
+            tooltip
+            @click.stop="
+              emits('reset', { contentType: selectedContentType })
+            " />
+          <!--
+            Generates a new example from the schema so the auto-generated fields stay reachable
+            even once the document ships custom examples.
+          -->
+          <ScalarIconButton
+            v-if="canGenerateExample"
+            :aria-label="
+              translate('apiClient.requestBody.createExampleFromSchema')
+            "
+            :icon="ScalarIconMagicWand"
+            :label="translate('apiClient.requestBody.createExampleFromSchema')"
+            size="sm"
+            tooltip
+            @click.stop="
+              emits('generate:example', { contentType: selectedContentType })
+            " />
+          <RequestBodyViewToggle
+            v-if="showBodyViewToggle || isSchemaViewAvailable"
+            :disabled="!isFormViewAvailable"
+            :modelValue="bodyView"
+            :rawLabel="
+              structuredCodec
+                ? undefined
+                : translate('apiClient.requestBodyStructured.body')
+            "
+            :showForm="showBodyViewToggle"
+            :showSchema="isSchemaViewAvailable"
+            @update:modelValue="(v) => (bodyView = v)" />
+        </div>
+      </DataTableHeader>
+      <DataTableRow>
+        <!-- Inspecting the schema never changes the selected example or request payload. -->
+        <div
+          v-if="bodyView === 'schema' && isSchemaViewAvailable"
+          class="min-w-0 border-t py-3 ps-10 pe-6">
+          <Schema
+            :key="selectedContentType"
+            :eventBus="null"
+            :options="{
+              hideReadOnly: true,
+              hideModels: true,
+              schemaKeyboardNav: true,
+            }"
+            :schema="bodySchema" />
+        </div>
+
+        <!-- No Body -->
+        <template v-else-if="selectedContentType === 'none'">
+          <div
+            class="text-c-3 flex min-h-10 w-full items-center justify-center border-t p-2 text-sm">
+            <span>{{ translate('apiClient.requestBody.noBody') }}</span>
+          </div>
+        </template>
+
+        <!-- Binary File -->
+        <template
+          v-else-if="selectedContentType === 'application/octet-stream'">
+          <div
+            class="flex items-center justify-center overflow-hidden border-t p-1.5">
+            <template
+              v-if="
+                getFileName(unpackProxyObject(example?.value)) !== undefined
+              ">
+              <span
+                class="text-c-2 w-full max-w-full overflow-hidden rounded border px-1.5 py-1 text-xs whitespace-nowrap">
+                {{ getFileName(unpackProxyObject(example?.value)) }}
+              </span>
+              <ScalarButton
+                class="bg-b-2 hover:bg-b-3 text-c-2 ml-1 border-0 shadow-none"
+                size="sm"
+                variant="outlined"
+                @click="
+                  emits('update:value', {
+                    payload: undefined,
+                    contentType: selectedContentType,
+                  })
+                ">
+                {{ translate('apiClient.requestBody.delete') }}
+              </ScalarButton>
+            </template>
+            <template v-else>
+              <ScalarButton
+                class="bg-b-2 hover:bg-b-3 text-c-2 border-0 shadow-none"
+                size="sm"
+                variant="outlined"
+                @click="
+                  () =>
+                    handleFileUpload((file) =>
+                      emits('update:value', {
+                        payload: file,
+                        contentType: selectedContentType,
+                      }),
+                    )
+                ">
+                <span>{{ translate('apiClient.requestBody.selectFile') }}</span>
+                <ScalarIcon
+                  class="ml-1"
+                  icon="Upload"
+                  size="xs"
+                  thickness="2.5" />
+              </ScalarButton>
+            </template>
+          </div>
+        </template>
+
+        <!-- Form Data / URL Encoded -->
+        <template
+          v-else-if="
+            selectedContentType === 'multipart/form-data' ||
+            selectedContentType === 'application/x-www-form-urlencoded'
+          ">
+          <RequestBodyForm
+            :aspNetFormNaming
+            :bodySchema
+            :compositionSelection="requestBodyCompositionSelection"
+            :encoding="requestBody?.content?.[selectedContentType]?.encoding"
+            :environment
+            :example
+            :selectedContentType
+            @update:formValue="
+              (payload) =>
+                emits('update:formValue', {
+                  payload,
+                  contentType: selectedContentType,
+                })
+            " />
+        </template>
+
+        <RequestBodyMultipart
+          v-else-if="multipartBody"
+          :key="selectedContentType"
+          :compositionSelection="requestBodyCompositionSelection"
+          :jsonSchemaDialect
+          :media="multipartBody.media"
+          :openapiVersion
+          :value="multipartBody.value"
+          @update:value="
+            (payload) =>
+              emits('update:value', {
+                payload,
+                contentType: selectedContentType,
+              })
+          " />
+
+        <!-- Code/Other -->
+        <template v-else>
+          <!-- Schema-driven form view for structured (JSON/YAML) bodies -->
+          <RequestBodyStructured
+            v-if="bodyView === 'form' && isFormViewAvailable"
+            :bodySchema
+            :contentType="selectedContentType"
+            :environment
+            :parsedValue="parsedBody.value"
+            @update:value="
+              (value) =>
+                emits('update:value', {
+                  payload: value,
+                  contentType: selectedContentType,
+                })
+            " />
+          <!-- Editable raw body with a copy button revealed on hover/focus -->
+          <div
+            v-else
+            class="group/code-block relative min-w-0 border-t">
+            <CodeInput
+              class="px-3"
+              content=""
+              :environment="environment"
+              :language="selectedLanguage"
+              lineNumbers
+              lint
+              :modelValue="bodyValue"
+              withFakeData
+              @update:modelValue="
+                (value) =>
+                  emits('update:value', {
+                    payload: value,
+                    contentType: selectedContentType,
+                  })
+              " />
+            <ScalarCodeBlockCopy
+              v-if="bodyValue"
+              class="absolute top-1.5 right-1.5"
+              :content="bodyValue"
+              :lang="selectedLanguage"
+              showLang>
+              <template #backdrop>
+                <ScalarCopyBackdrop class="-top-1 -right-1.5" />
+              </template>
+            </ScalarCodeBlockCopy>
+          </div>
+        </template>
+      </DataTableRow>
+    </DataTable>
+  </CollapsibleSection>
+</template>
+<style scoped>
+:deep(.cm-content) {
+  font-size: var(--scalar-small);
+}
+</style>

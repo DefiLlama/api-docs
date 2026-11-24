@@ -1,9 +1,10 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+
+import { ELEMENT_ID } from './constants'
 import ScalarTooltip from './ScalarTooltip.vue'
 import { cleanupTooltipElement } from './useTooltip'
-import { ELEMENT_ID } from './constants'
 
 describe('ScalarTooltip', () => {
   beforeEach(() => {
@@ -20,7 +21,7 @@ describe('ScalarTooltip', () => {
     vi.useRealTimers()
   })
 
-  it('renders trigger element and tooltip content', async () => {
+  it('renders trigger element and tooltip content', () => {
     const wrapper = mount(ScalarTooltip, {
       props: {
         content: 'Tooltip Content',
@@ -93,6 +94,30 @@ describe('ScalarTooltip', () => {
     expect(tooltip?.style.getPropertyValue('--scalar-tooltip-offset')).toBe('10px')
   })
 
+  it('reflects the placement side via the data-side attribute', async () => {
+    const wrapper = mount(ScalarTooltip, {
+      props: {
+        content: 'Tooltip Content',
+        placement: 'bottom-start',
+      },
+      slots: {
+        default: '<button>Hover me</button>',
+      },
+    })
+
+    // Wait for the event listeners to be added
+    await nextTick()
+
+    // Show tooltip
+    await wrapper.find('button').trigger('mouseenter')
+    await vi.runAllTimers()
+    await nextTick()
+
+    // The data-side should be the side the tooltip sits on (without the alignment suffix)
+    const tooltip = document.getElementById(ELEMENT_ID)
+    expect(tooltip?.dataset.side).toBe('bottom')
+  })
+
   it('updates tooltip content when content prop changes', async () => {
     const wrapper = mount(ScalarTooltip, {
       props: {
@@ -148,5 +173,35 @@ describe('ScalarTooltip', () => {
     const tooltip = document.getElementById(ELEMENT_ID)
     expect(tooltip?.style.display).toBe('block')
     expect(tooltip?.textContent).toBe('Tooltip Content')
+  })
+
+  it('hides the tooltip when the component unmounts while the tooltip is open', async () => {
+    const wrapper = mount(ScalarTooltip, {
+      props: {
+        content: 'Tooltip Content',
+        delay: 0,
+      },
+      slots: {
+        default: '<button type="button">Hover me</button>',
+      },
+    })
+
+    await nextTick()
+
+    await wrapper.find('button').trigger('mouseenter')
+    await vi.runAllTimers()
+    await nextTick()
+
+    const tooltip = document.getElementById(ELEMENT_ID)
+    expect(tooltip?.style.display).toBe('block')
+
+    wrapper.unmount()
+    await nextTick()
+
+    const tooltipAfterUnmount = document.getElementById(ELEMENT_ID)
+    expect(
+      tooltipAfterUnmount?.style.display,
+      'global tooltip portal must be hidden when the ScalarTooltip instance is torn down',
+    ).toBe('none')
   })
 })

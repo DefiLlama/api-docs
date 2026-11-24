@@ -1,4 +1,4 @@
-import { getHtmlDocument } from '@scalar/core/libs/html-rendering'
+import { renderApiReference } from '@scalar/client-side-rendering'
 
 import { customTheme } from './custom-theme.js'
 import type { ApiReferenceConfiguration } from './types.js'
@@ -15,19 +15,19 @@ const DEFAULT_CONFIGURATION: Partial<ApiReferenceConfiguration> = {
  *
  * {@link https://github.com/scalar/scalar/tree/main/documentation/configuration.md Configuration}
  */
-export const ScalarApiReference = (givenConfiguration: Partial<ApiReferenceConfiguration>) => {
+export const ScalarApiReference = (givenConfiguration: Partial<ApiReferenceConfiguration>): (() => Response) => {
   // Merge the defaults
-  const configuration = {
+  const configuration: Partial<ApiReferenceConfiguration> = {
     ...DEFAULT_CONFIGURATION,
     ...givenConfiguration,
-  } satisfies Partial<ApiReferenceConfiguration>
+  }
 
-  return async () => {
-    return new Response(getHtmlDocument(configuration, customTheme), {
+  return () => {
+    const { cdn, pageTitle, nonce, ...config } = configuration
+    const referenceDocument = renderApiReference({ config, pageTitle, cdn, nonce }, customTheme)
+    return new Response(referenceDocument, {
       status: 200,
-      headers: {
-        'Content-Type': 'text/html',
-      },
+      headers: { 'Content-Type': 'text/html' },
     })
   }
 }

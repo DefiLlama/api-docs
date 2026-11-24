@@ -1,0 +1,909 @@
+# Site Config
+
+The site configuration defines global settings for your documentation site: branding, custom head elements, an announcement banner, footer content, and routing rules. These settings apply across your entire documentation site.
+
+All site settings are configured within the `siteConfig` object in your `scalar.config.json` file.
+
+**Example**
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "logo": "https://example.com/logo.svg",
+    "theme": "default"
+  }
+}
+```
+
+## Logo
+
+The `logo` property defines your site's logo. You can provide a single URL for all modes, or separate logos for light and dark themes.
+
+### Where the Logo Appears
+
+Your logo renders on the first of these surfaces your site has:
+
+1. The **header**, if you declare `navigation.header` or set `layout.header` to `true`
+2. The **tabs**, if you have `navigation.tabs` but no header
+3. The **sidebar**, if you have neither
+
+To force the logo to go in the header, set `layout.header` to `true`. If a page hides all three surfaces through its [layout options](navigation.md#layout-options), the logo does not render on that page.
+
+If you do not set a `logo`, your project title from `info.title` renders in the same place instead.
+
+### Single Logo
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "logo": "https://example.com/logo.svg"
+  }
+}
+```
+
+### Light and Dark Mode
+
+For better visibility across themes, provide different logos for light and dark modes:
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "logo": {
+      "darkMode": "https://example.com/logo-dark.svg",
+      "lightMode": "https://example.com/logo-light.svg"
+    }
+  }
+}
+```
+
+### Properties
+
+| Property         | Type     | Required | Description                             |
+| ---------------- | -------- | -------- | --------------------------------------- |
+| `logo`           | `string` | No       | URL to a single logo for all themes     |
+| `logo.darkMode`  | `string` | No       | URL to the logo displayed in dark mode  |
+| `logo.lightMode` | `string` | No       | URL to the logo displayed in light mode |
+
+## Theme
+
+The `theme` property sets a platform-defined theme for your documentation site.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "theme": "purple"
+  }
+}
+```
+
+### Properties
+
+| Property | Type     | Required | Description                       |
+| -------- | -------- | -------- | --------------------------------- |
+| `theme`  | `string` | No       | Slug for a platform-defined theme |
+
+## Color Scheme
+
+The `colorScheme` property sets the light/dark mode your site loads in. To move or hide the toggle, see [Where the Toggle Appears](#where-the-toggle-appears).
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "colorScheme": {
+      "default": "system"
+    }
+  }
+}
+```
+
+### Properties
+
+| Property     | Type                             | Default    | Description                                |
+| ------------ | -------------------------------- | ---------- | ------------------------------------------ |
+| `default`    | `"light" \| "dark" \| "system"` | `"system"` | Default color scheme on page load          |
+| `showToggle` | `boolean`                        | `true`     | **Deprecated.** Use [`layout.colorSchemeToggle`](#where-the-toggle-appears). `false` still hides the toggle everywhere |
+
+### Where the Toggle Appears
+
+Set `layout.colorSchemeToggle` to `"sidebar"` (the default), `"header"`, `"tabs"`, or `false` to hide it. The sidebar shows a switch; the header and tabs show a sun/moon icon.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "layout": {
+      "colorSchemeToggle": "header"
+    }
+  }
+}
+```
+
+If a page does not have that surface, the toggle falls back to the sidebar, then the header, then the tabs, and does not render if the page has none of them. On mobile, pages without a sidebar show it in the header. You can override the location per page in its [layout options](navigation.md#layout-options).
+
+### Examples
+
+#### Force Light Mode
+
+Force your documentation to always display in light mode without a toggle:
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "colorScheme": {
+      "default": "light"
+    },
+    "layout": {
+      "colorSchemeToggle": false
+    }
+  }
+}
+```
+
+#### Force Dark Mode
+
+Force your documentation to always display in dark mode without a toggle:
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "colorScheme": {
+      "default": "dark"
+    },
+    "layout": {
+      "colorSchemeToggle": false
+    }
+  }
+}
+```
+
+#### System Preference with Toggle
+
+Respect the user's system preference while allowing them to override it:
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "colorScheme": {
+      "default": "system"
+    }
+  }
+}
+```
+
+## Social Cards
+
+The `og` property points at your own template for the social card shown when a page is shared. Without it, Scalar draws a card from your theme, logo and page title.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "og": {
+      "imageTemplate": "./og/card.tsx"
+    }
+  }
+}
+```
+
+### Properties
+
+| Property        | Type     | Required | Description                                                                       |
+| --------------- | -------- | -------- | --------------------------------------------------------------------------------- |
+| `imageTemplate` | `string` | No       | Path to a TSX or JSX template, relative to `scalar.config.json` and inside the project |
+
+See [Social Cards](social-cards.md) for how to write one.
+
+## Ask AI
+
+The `agent` property controls the appearance of [Ask AI](ask-ai.md) on your documentation site: the Ask AI button, its placement in the sidebar, the position of the floating chat widget, and the suggested questions shown in the chat.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "agent": {
+      "position": "right",
+      "suggestions": ["How do I authenticate?", "What are the rate limits?"]
+    }
+  }
+}
+```
+
+### Properties
+
+| Property          | Type                          | Default    | Description                                                                                                    |
+| ----------------- | ----------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------- |
+| `enabled`         | `boolean`                     | —          | Whether the Ask AI button is shown on the site                                                                 |
+| `buttonText`      | `string`                      | `"Ask AI"` | Label shown on the Ask AI button                                                                               |
+| `sidebarPosition` | `"below-search" \| "default"` | —          | Placement of the Ask AI button in the sidebar. `"default"` renders it next to the search bar; `"below-search"` renders it on its own row beneath the search bar |
+| `position`        | `"center" \| "right"`         | `"center"` | Where the floating chat widget anchors at the bottom of the viewport                                           |
+| `suggestions`     | `string[]`                    | —          | Suggested questions shown as pills above the chat input when it is focused. Two or three short questions work best |
+| `mcp`             | `object`                      | —          | References an MCP server and installation by slug (`serverSlug`, `installationSlug`), resolved on publish      |
+
+## Layout
+
+The `layout` property controls global layout options that apply to all pages unless overridden by a page's own [layout options](navigation.md#layout-options).
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "layout": {
+      "toc": true,
+      "header": true,
+      "pageTitle": true,
+      "pageActions": true,
+      "pageNav": true,
+      "lastUpdated": false,
+      "feedback": false,
+      "search": {
+        "enabled": true,
+        "position": "header"
+      }
+    }
+  }
+}
+```
+
+### Properties
+
+| Property      | Type      | Default  | Description                                    |
+| ------------- | --------- | -------- | ---------------------------------------------- |
+| `toc`         | `boolean` | `true`   | Whether to show the table of contents globally |
+| `tocLayout`   | `"default" \| "condensed"` | `"default"` | How the table of contents is laid out. See [Table of contents layout](#table-of-contents-layout) |
+| `header`      | `boolean` | —        | Whether to show the header globally. Falls back to whether or not [`navigation.header`](navigation.md#header) is declared |
+| `pageTitle`   | `boolean` | `true`   | Whether to show page titles globally           |
+| `pageActions` | `boolean` | `true`   | Whether to show page actions globally          |
+| `pageNav`     | `boolean` | `true`   | Whether to show previous and next page links at the bottom of each page |
+| `lastUpdated` | `boolean` | `false`  | Whether to show the date each page last changed, above the previous and next links. See [Last updated date](#last-updated-date) |
+| `feedback`    | `boolean` | `false`  | Whether to ask readers if each page was helpful, between the last updated date and the previous and next links. See [Page feedback](#page-feedback) |
+| `search`      | `object`  | —        | Search bar configuration                       |
+| `colorSchemeToggle` | `"sidebar" \| "header" \| "tabs" \| false` | `"sidebar"` | Where to show the light/dark toggle. See [Where the Toggle Appears](#where-the-toggle-appears) |
+
+### Table of contents layout
+
+By default the table of contents is a column of headings beside the page. Set `tocLayout` to `"condensed"` to swap the column for a small stack of lines at the right edge of the page, one line per heading. The reading column keeps the full width of the page.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "layout": {
+      "tocLayout": "condensed"
+    }
+  }
+}
+```
+
+- Deeper headings draw shorter lines, all lined up on the right, so headings at the same level line up and nested headings sit under their parent. The line of the section the reader is in is highlighted.
+- The stack stays in view as the page scrolls. Hover over it to open the list of headings beside it; on a touch screen tap it, and from the keyboard focus it and press Enter. Choosing a heading scrolls to it and closes the list, as do moving the pointer away, Escape, and a click anywhere else.
+- Like the column, it is hidden on screens 1000px wide and narrower.
+
+`tocLayout` has no effect where `toc` is `false`. To condense a single page, or keep the column on one page of a condensed site, set it in that page's [layout options](navigation.md#layout-options).
+
+### Last updated date
+
+Scalar records the date for you, so there is no field to set it by hand. Each time you publish, Scalar compares every page's content with the previous publish, and the date moves forward only for pages whose content changed. Your first publish dates every page to that day.
+
+Previews do not have a publish history, so they show the current date.
+
+### Page feedback
+
+Page feedback is off unless you turn it on, because it puts a question at the foot of every page it covers. Readers answer with a thumbs up or down, then can pick a reason from a short list.
+
+Set `feedback` here to ask on every page, or on a single page with its own [layout options](navigation.md#layout-options). A page's own value wins in either direction, so you can turn it on site-wide and off for one page, or the other way around.
+
+Votes appear in the editor under **Settings → Analytics**, in a **Page feedback** panel that shows once `feedback` is on for any page. The widget never appears in a preview, or while [analytics is turned off](../privacy.md#turn-off-analytics) for the project, since there is nowhere to record the vote.
+
+### Search Configuration
+
+The `search` object within `layout` controls the global search behavior.
+
+Search finds guide content and API content, including parameter names, request and response fields, models, webhooks, and AsyncAPI content. You do not need to enable Ask AI to search these fields. Exact names rank above incidental mentions in descriptions, and results link to their API reference destinations.
+
+Models appear after you type a query. They are excluded from the initial suggestions so guide pages and API overviews remain easy to find. The search index is generated during the site build; publish a new build to index updated API content.
+
+| Property   | Type                        | Default    | Description                           |
+| ---------- | --------------------------- | ---------- | ------------------------------------- |
+| `enabled`  | `boolean`                   | `true`     | Enable or disable search globally     |
+| `position` | `"header" \| "sidebar"`    | `"header"` | Where to display the search bar       |
+
+#### Disable Search
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "layout": {
+      "search": {
+        "enabled": false
+      }
+    }
+  }
+}
+```
+
+#### Move Search to Sidebar
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "layout": {
+      "search": {
+        "position": "sidebar"
+      }
+    }
+  }
+}
+```
+
+## Head
+
+The `head` property allows you to inject custom elements into the HTML `<head>` of your documentation pages. This is useful for adding custom styles, scripts, meta tags, and favicon links.
+
+An `og:image` set here applies to every page and replaces the [social card](social-cards.md) Scalar generates, including one from your own template.
+
+### Example
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "head": {
+      "title": "My Documentation",
+      "meta": [
+        {
+          "name": "description",
+          "content": "Documentation for my API"
+        },
+        {
+          "property": "og:image",
+          "content": "https://example.com/og-image.png"
+        }
+      ],
+      "styles": [
+        {
+          "path": "assets/custom-styles.css"
+        }
+      ],
+      "scripts": [
+        {
+          "path": "assets/analytics.js"
+        }
+      ],
+      "links": [
+        {
+          "rel": "icon",
+          "href": "/favicon.png"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Properties
+
+| Property  | Type              | Required | Description                            |
+| --------- | ----------------- | -------- | -------------------------------------- |
+| `title`   | `string`          | No       | The page title                         |
+| `meta`    | `array \| object` | No       | Meta tags for SEO and social sharing   |
+| `styles`  | `array`           | No       | CSS files to include                   |
+| `scripts` | `array`           | No       | JavaScript files to include            |
+| `links`   | `array`           | No       | Link elements (favicon, preload, etc.) |
+
+### Meta Tags
+
+Meta tags can be provided as an array of objects or as a key-value object:
+
+**Array Format**
+
+```json
+"meta": [
+  {
+    "name": "description",
+    "content": "My API documentation"
+  },
+  {
+    "property": "og:title",
+    "content": "My API"
+  }
+]
+```
+
+**Object Format**
+
+```json
+"meta": {
+  "description": "My API documentation",
+  "og:title": "My API"
+}
+```
+
+### Styles
+
+Include custom CSS files in your documentation. Each entry loads from either a local `path` or a remote `url`:
+
+```json
+"styles": [
+  {
+    "path": "assets/custom-styles.css",
+    "tagPosition": "head"
+  },
+  {
+    "url": "https://example.com/theme.css"
+  }
+]
+```
+
+| Property      | Type                                    | Required | Description                                  |
+| ------------- | --------------------------------------- | -------- | -------------------------------------------- |
+| `path`        | `string`                                | Yes\*    | Relative path to the CSS file                |
+| `url`         | `string`                                | Yes\*    | Remote URL to the CSS file                   |
+| `tagPosition` | `"head" \| "bodyOpen" \| "bodyClose"`   | No       | Where to inject the style tag                |
+
+\* Provide either `path` or `url`.
+
+### Scripts
+
+Include custom JavaScript files. Each entry loads from either a local `path` or a remote `url`:
+
+```json
+"scripts": [
+  {
+    "path": "assets/analytics.js",
+    "tagPosition": "bodyClose"
+  }
+]
+```
+
+| Property      | Type                                    | Required | Description                                                                       |
+| ------------- | --------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| `path`        | `string`                                | Yes\*    | Relative path to the JavaScript file                                              |
+| `url`         | `string`                                | Yes\*    | Remote URL to the JavaScript file                                                 |
+| `tagPosition` | `"head" \| "bodyOpen" \| "bodyClose"`   | No       | Where to inject the script tag                                                    |
+| `async`       | `boolean`                               | No       | Load the script without blocking the parser, running it as soon as it arrives     |
+| `defer`       | `boolean`                               | No       | Load the script without blocking the parser, running it after parsing in document order |
+| `type`        | `string`                                | No       | The script type attribute, for example `"module"`                                 |
+
+\* Provide either `path` or `url`.
+
+By default a configured script loads synchronously in the `<head>` and blocks first render until it has downloaded and run. Set `async` or `defer` so non-critical scripts (analytics, consent banners, chat widgets) load without blocking:
+
+```json
+"scripts": [
+  { "path": "assets/analytics.js" },
+  { "url": "https://example.com/widget.js", "defer": true }
+]
+```
+
+### Links
+
+Add link elements for favicons, preloading resources, or other purposes:
+
+```json
+"links": [
+  {
+    "rel": "icon",
+    "type": "image/png",
+    "href": "/favicon.png"
+  },
+  {
+    "rel": "preconnect",
+    "href": "https://fonts.googleapis.com"
+  }
+]
+```
+
+| Property | Type     | Description                           |
+| -------- | -------- | ------------------------------------- |
+| `rel`    | `string` | The relationship type (icon, preload) |
+| `href`   | `string` | The URL or path to the resource       |
+| `type`   | `string` | The MIME type of the resource         |
+
+## Banner
+
+The `banner` property shows an announcement above the header on every page, such as a launch or a scheduled maintenance.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "banner": {
+      "content": "Version 2 is here. [See what changed](pages/changelog.md)",
+      "type": "info",
+      "dismissible": true
+    }
+  }
+}
+```
+
+### Properties
+
+| Property      | Type                                             | Default  | Description                                                                                                 |
+| ------------- | ------------------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `content`     | `string`                                         | —        | Banner text as inline Markdown (bold, italic, code, links). An empty string hides the banner                |
+| `type`        | `"neutral" \| "info" \| "warning" \| "critical"` | `"info"` | Color of the banner                                                                                         |
+| `dismissible` | `boolean`                                        | `false`  | Show a close button. A dismissed banner reappears when `content` changes                                    |
+| `icon`        | `string \| false`                                | —        | An [icon key or URL](../components/icons.mdx). Defaults to an icon for the `type`; `false` hides it         |
+
+Link to your own pages by their file path, relative to the project root, as you would inside a page. Links to other sites open in a new tab.
+
+### Styling
+
+To change the colors, set these variables in your [theme](themes.md):
+
+```css
+:root {
+  --scalar-banner-background: #6e56cf;
+  --scalar-banner-color: #ffffff;
+  --scalar-banner-icon-color: #ffffff;
+  --scalar-banner-border-color: transparent;
+}
+```
+
+To style one type, target `.scalar-banner[data-type="warning"]`.
+
+## Footer
+
+The `footer` property allows you to add a custom footer to your documentation site.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "footer": {
+      "filepath": "docs/footer.html"
+    }
+  }
+}
+```
+
+### Properties
+
+| Property   | Type     | Description                                |
+| ---------- | -------- | ------------------------------------------ |
+| `filepath` | `string` | Relative path to a custom HTML footer file |
+
+## RSS
+
+The `rss` property publishes an RSS feed for your changelog, so readers can subscribe to your releases in a feed reader.
+
+Point `path` at the route your changelog lives on. The feed is written to `rss.xml` under that route — a changelog at `/changelog` publishes its feed at `/changelog/rss.xml`.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "rss": {
+      "path": "/changelog",
+      "title": "Scalar Changelog",
+      "description": "Every Scalar release, as a feed"
+    }
+  }
+}
+```
+
+### Properties
+
+| Property      | Type     | Required | Description                                                                         |
+| ------------- | -------- | -------- | ----------------------------------------------------------------------------------- |
+| `path`        | `string` | Yes      | Route of your changelog, for example `/changelog`. Must be a plain site route with no `..` segments |
+| `title`       | `string` | No       | Title of the feed, shown in feed readers. Defaults to your site title plus `Changelog` |
+| `description` | `string` | No       | Description of the feed, shown in feed readers                                      |
+| `entries`     | `string` | No       | How items are found. `headings` (default) turns each dated heading into an item; `pages` turns each page under `path` with a `date` in its frontmatter into an item |
+
+### Multiple Feeds
+
+To publish more than one feed, set `rss` to a list. Each entry is a feed with its own `path`, and each is written to `rss.xml` under that path — so `/changelog` and `/blog` publish `/changelog/rss.xml` and `/blog/rss.xml` side by side:
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "rss": [
+      {
+        "path": "/changelog",
+        "title": "Scalar Changelog",
+        "description": "Every Scalar release, as a feed"
+      },
+      {
+        "path": "/blog",
+        "title": "Scalar Blog"
+      }
+    ]
+  }
+}
+```
+
+Every feed takes the same properties as a single one, and each path must be unique. A single feed still works exactly as shown above — the list is only needed when you want more than one.
+
+When a page sits under more than one feed, its header shows a subscribe button for each, with the nearest feed first.
+
+### Writing Entries
+
+Each entry in the feed comes from a heading that carries a date in `YYYY-MM-DD` form:
+
+```markdown
+## 1.2.0 (2026-07-24)
+
+Added a dark mode toggle to the header.
+
+## 1.1.0 (2026-07-10)
+
+Introduced page actions: copy as Markdown, open in editor, and report an issue.
+```
+
+The heading becomes the item title, and the content below it becomes the item description. Only the top-most heading level that carries dates starts entries; any deeper heading folds into the release above it — even one that happens to contain a date — so you can nest subheadings like `### Fixes` inside a release without splitting it apart.
+
+If a heading looks dated but the date is not real (`## 2.0.0 (2026-13-01)`), that release is left out of the feed and the build warns you, since a typo is the only way to get there.
+
+### Multiple Products
+
+A changelog split across several pages works too. Every page at `path` or beneath it contributes its entries, and the feed merges them newest-first:
+
+```
+/changelog                 <- index page, lists the products
+/changelog/api-client      <- entries
+/changelog/api-reference   <- entries
+```
+
+An index page with no dated headings contributes nothing of its own, which is what you want when it only links to the products.
+
+Hidden pages are skipped. A page kept out of the sidebar and the sitemap stays out of the feed as well.
+
+### One Item per Page
+
+For a blog, where each post is its own page rather than a heading on a shared page, set `entries` to `pages`:
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "rss": {
+      "path": "/blog",
+      "title": "Scalar Blog",
+      "entries": "pages"
+    }
+  }
+}
+```
+
+Now every page under `path` that carries a `date` in its frontmatter becomes one feed item, newest first:
+
+```markdown
+---
+date: 2026-07-24
+---
+
+# Our new dark mode
+
+A short introduction to the post.
+```
+
+The page title becomes the item title, its description becomes the item description, and the frontmatter `date` sets the publish date. Pages without a `date` — an index page, a draft — are left out, so nothing is syndicated by accident.
+
+### Discovery
+
+Every page on your site advertises the feed in its `<head>`, so feed readers and browser extensions can find it from any URL:
+
+```html
+<link rel="alternate" type="application/rss+xml" href="https://example.com/changelog/rss.xml">
+```
+
+Pages at `path` and beneath it also show a subscribe button in the page header, next to Copy Page — one per feed the page belongs to.
+
+## Access Control
+
+Set `isPrivate` to require visitors to sign in before they can view your documentation. Members of your workspace always have access. To let anyone else in, list the [access groups](private-docs.md) allowed to view the site.
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "isPrivate": true,
+    "accessGroups": ["partners", "internal-team"],
+    "loginPortal": "acme-portal"
+  }
+}
+```
+
+### Properties
+
+| Property       | Type       | Default | Description |
+| -------------- | ---------- | ------- | ----------- |
+| `isPrivate`    | `boolean`  | `false` | Require visitors to sign in. |
+| `accessGroups` | `string[]` | —       | Slugs of the access groups allowed to view the site when `isPrivate` is `true`. Up to 50. |
+| `loginPortal`  | `string`   | —       | Slug of a custom login portal. Without one, visitors sign in on the default page. |
+
+Access groups and login portals are created in the [Scalar Dashboard](https://dashboard.scalar.com), and the config refers to them by slug. You can also manage these settings in your documentation project's **Settings → Privacy**, which reads and writes the same properties.
+
+To show some pages only to certain access groups, see [Show pages to specific access groups](private-docs.md#show-pages-to-specific-access-groups).
+
+## Personalization
+
+Set `userInfoHook` to your HTTPS endpoint to personalize published documentation for signed-in visitors:
+
+```json
+{
+  "siteConfig": {
+    "userInfoHook": "https://api.example.com/docs/user-info"
+  }
+}
+```
+
+Publish the configuration, then generate the project's signing secret in **Settings → Personalization**. Your endpoint verifies Scalar's signed request and returns visitor groups, content values, and optional API playground inputs. See [Personalization](personalization.md) for the complete hook contract and a working example.
+
+Personalization changes visibility. Use [Access Control](#access-control) to restrict access to the site.
+
+## Content Signals
+
+The `contentSignals` property declares how search and AI crawlers may use your published documentation. Scalar writes these preferences as a `Content-Signal` line in the generated `robots.txt`.
+
+Content Signals are enabled by default. If you omit `contentSignals`, or omit an individual signal, all unspecified signals default to `"yes"`:
+
+```text
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+```
+
+### Properties
+
+Set `contentSignals` to `false` to omit the directive, or use an object with these optional properties:
+
+| Property  | Type              | Default | Description |
+| --------- | ----------------- | ------- | ----------- |
+| `enabled` | `boolean`         | `true`  | Whether to emit the directive. Set to `false` to retain your preferences without publishing them. |
+| `search`  | `"yes"` or `"no"` | `"yes"` | Building a search index and showing links and short excerpts. |
+| `aiInput` | `"yes"` or `"no"` | `"yes"` | Using content as input for AI answers, including retrieval and grounding. |
+| `aiTrain` | `"yes"` or `"no"` | `"yes"` | Training or fine-tuning AI models. |
+
+### Allow Search and AI Answers, Decline AI Training
+
+Add the following to your `scalar.config.json`:
+
+```json
+{
+  "siteConfig": {
+    "contentSignals": {
+      "search": "yes",
+      "aiInput": "yes",
+      "aiTrain": "no"
+    }
+  }
+}
+```
+
+After publishing, the generated `robots.txt` includes:
+
+```text
+User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+Allow: /
+```
+
+### Disable the Directive
+
+Set `contentSignals` to `false` to omit the `Content-Signal` line entirely:
+
+```json
+{
+  "siteConfig": {
+    "contentSignals": false
+  }
+}
+```
+
+Alternatively, set `contentSignals.enabled` to `false` to keep your per-signal preferences for later. Disabling the directive does not declare `no` for any use. To decline a use explicitly, keep Content Signals enabled and set that signal to `"no"`.
+
+You can also manage these settings in your documentation project's **Settings → Content Signals**. Publish changes to update the generated file. If your project's assets include a custom `robots.txt`, Scalar preserves that file instead of generating one; edit its Content Signals directly.
+
+Content Signals are advisory preferences that crawlers may honor. They do not block access or replace authentication. See [Privacy](../privacy.md#content-signals) for more context.
+
+## Routing
+
+The `routing` property configures URL redirects and path patterns for your documentation.
+
+### Redirects
+
+Set up redirects to handle URL changes or aliases:
+
+```json
+// scalar.config.json
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "siteConfig": {
+    "routing": {
+      "redirects": [
+        {
+          "from": "/old-path",
+          "to": "/new-path"
+        },
+        {
+          "from": "/docs/v1",
+          "to": "/docs/latest"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Properties
+
+| Property               | Type     | Description                         |
+| ---------------------- | -------- | ----------------------------------- |
+| `redirects`            | `array`  | Array of redirect rules             |
+| `guidePathPattern`     | `string` | URL pattern for guide pages         |
+| `referencePathPattern` | `string` | URL pattern for API reference pages |
+
+### Redirect Object
+
+| Property | Type     | Required | Description              |
+| -------- | -------- | -------- | ------------------------ |
+| `from`   | `string` | Yes      | The source path to match |
+| `to`     | `string` | Yes      | The destination path     |
+
+### Path Patterns
+
+Customize the URL structure for guides and API references:
+
+```json
+"routing": {
+  "guidePathPattern": "/docs/:slug",
+  "referencePathPattern": "/api/:slug"
+}
+```

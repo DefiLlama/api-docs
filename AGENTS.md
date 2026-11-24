@@ -1,0 +1,585 @@
+# AGENTS.md - AI Agent Guide for Scalar
+
+This file helps AI coding agents (Cursor, Claude Code, GitHub Copilot, etc.) work effectively in the Scalar codebase. It is the canonical agent guide for this repository.
+
+## Project Overview
+
+Scalar is a Vue 3 + TypeScript monorepo for API documentation and testing.
+
+- It produces `@scalar/api-reference` (renders OpenAPI docs) and `@scalar/api-client` (API testing client)
+- It includes 40+ supporting packages and 16 framework integrations (Express, Fastify, Hono, NestJS, Next.js, Nuxt, etc.)
+- It uses pnpm workspaces, Turbo for build orchestration, Vite for Vue packages, and `tsc` for pure TypeScript packages
+
+- **Frontend**: Vue 3, Composition API, TypeScript
+- **Styling**: Tailwind CSS
+- **Testing**: Vitest (unit), Playwright (E2E)
+- **Linting**: ESLint (Vue) + Biome (TS)
+
+## Prerequisites
+
+- **Node.js**: v24.15.0 or later in the Node 24 release line (see `.nvmrc`)
+- **Package manager**: pnpm (use the version pinned in `packageManager` in the root `package.json`)
+
+## First-Time Setup
+
+```bash
+pnpm install
+pnpm build:packages
+```
+
+## Commands
+
+```bash
+pnpm install                    # Install dependencies
+pnpm build:packages             # Build all packages (required before first dev)
+pnpm clean:build                # Clean everything, reinstall, rebuild
+```
+
+## Key Commands
+
+| Task | Command |
+|------|---------|
+| Build all packages | `pnpm build:packages` |
+| Build integrations | `pnpm build:integrations` |
+| Clean build | `pnpm clean:build` |
+| Run unit tests | `pnpm test` |
+| Run tests (single package, single run) | `pnpm vitest packages/helpers --run` |
+| Run tests (single package, watch mode) | `pnpm vitest packages/api-client --watch` |
+| Run tests filtered by name | `pnpm vitest packages/helpers --run -t 'your-test-name'` |
+| Lint check | `pnpm lint:check` |
+| Lint fix | `pnpm lint:fix` |
+| Format | `pnpm format` |
+| Type check | `pnpm types:check` |
+
+## Development Servers
+
+There is no single root `pnpm dev`. Run per package:
+
+```bash
+pnpm --filter @scalar/api-client dev --port 5065 --strictPort
+pnpm --filter @scalar/api-reference dev --port 5173 --strictPort
+pnpm --filter @scalar/components dev
+```
+
+| Package | Purpose |
+|---------|---------|
+| `api-client` | API testing client modal playground (port 5065) |
+| `api-reference` | Main API reference playground |
+| `components` | Storybook (port 5100) |
+| `void-server` | HTTP mirror server (port 5052) |
+
+Before starting a server, check for one already serving the current worktree and reuse it when possible. For Vite, always choose an explicit port and pass `--strictPort`. If an unrelated process owns that port, choose another port without stopping it.
+
+Track the session or PID, command, working directory, and port of every long-running development or test process you start. Before finishing, stop only the processes you started for this task and their owned children, verify their identity before terminating them, and verify that they have exited and released their ports. Leave user-started processes alone, and keep a preview running only when the user requests it.
+
+## Test Servers
+
+Some tests need `@scalar/void-server` (5052) and `proxy-scalar-com` (5051):
+
+```bash
+pnpm script run test-servers
+pnpm script wait -p 5051 5052
+```
+
+## Architecture
+
+### Workspace Layout
+
+- `packages/` - Core libraries published under `@scalar/`. Consult the package manifests for the current inventory.
+- `integrations/` - Framework-specific wrappers (Express, Fastify, Next.js, Nuxt, etc.)
+- `projects/` - Deployable apps (`scalar-app`, `proxy-scalar-com`, `galaxy-scalar-com`). `scalar-app` builds both the Electron desktop app and client.scalar.com.
+- `examples/` - Usage examples for various frameworks
+- `tooling/` - Internal build scripts and changelog generator
+
+## Directory Structure
+
+```text
+packages/      # Core packages (@scalar/*)
+integrations/  # Framework integrations (Express, FastAPI, etc.)
+examples/      # Example apps
+projects/      # Supporting projects (e.g. proxy-scalar-com)
+tooling/       # Internal scripts and build helpers
+```
+
+### Build System
+
+Two build strategies use standard tools directly (no custom build CLI):
+
+1. **`tsc` + `tsc-alias`**
+   - For pure TypeScript packages (helpers, types, openapi-parser, integrations)
+   - Uses `tsconfig.build.json` per package
+2. **`vite build`**
+   - For Vue component packages (`components`, `api-reference`, `api-client`)
+   - Uses Vite 8 + Rolldown, extracts CSS, preserves modules
+   - Shared build helpers live in `tooling/scripts/vite-lib-config.ts`
+
+Library builds generally externalize dependencies; check each package's build configuration for exceptions. `api-reference` also has standalone builds (`vite.standalone.config.ts` and `vite.standalone.esm.config.ts`) that bundle dependencies for CDN usage.
+
+Type checking uses `tsgo --noEmit` in many pure TypeScript packages, `tsc --noEmit` in others, and `vue-tsc --noEmit` in Vue packages. Run the package's `types:check` script rather than choosing a compiler yourself.
+
+### Key Package Relationships
+
+- `@scalar/core` - HTML rendering helpers for embedding the API reference, used by integrations and playgrounds
+- `@scalar/themes` - CSS variables and design tokens used across UI packages
+- `@scalar/components` - Vue component library (with Storybook)
+- `@scalar/oas-utils` - OpenAPI utilities shared across `api-reference` and `api-client`
+- `@scalar/types` - Shared TypeScript types; import from specific entry points (`@scalar/types/api-reference`, etc.), not the root
+
+### API Reference configuration parity
+
+When adding, changing, renaming, or removing configuration options for `@scalar/api-reference`, update them across all integrations in the same change. Start with the shared configuration types in `packages/types/src/api-reference/` and schemas in `packages/schemas/src/api-reference/`, then check every integration under `integrations/` for explicit option lists, defaults, validation, and serialization or mapping code. Integrations that use the shared types still need to be checked for wrapper-specific handling; non-TypeScript integrations may maintain their own configuration models.
+
+Keep integration tests, examples, and configuration documentation in sync, including `documentation/configuration.md`. Regenerate generated files through their source scripts rather than editing them by hand (see [CONTRIBUTING.md](./CONTRIBUTING.md#auto-generated-files)). If an option cannot be supported by an integration, document the limitation explicitly rather than silently omitting it.
+
+### Dependency Versioning
+
+All workspace packages use `workspace:*` for internal dependencies. Shared third-party versions are defined in `pnpm-workspace.yaml` under `catalogs:` and referenced as `catalog:*` in `package.json` files.
+
+### Tooling Split
+
+- **Biome**: Linting and formatting for JS/TS, JSON/JSONC, and CSS, subject to `biome.json` exclusions
+- **ESLint**: Linting for `.vue` files
+- **Prettier**: Formatting for Vue, HTML, YAML, and `package.json`; `.prettierignore` currently excludes Markdown, other JSON, JS/TS, and CSS
+- **Lefthook**: Pre-commit hooks running Prettier, Biome, and ESLint on matching staged files, plus targeted generation hooks
+
+## Code Standards
+
+### Reuse helpers before writing new ones
+
+Before writing a new utility function, check `@scalar/helpers` (`packages/helpers/src/`) first. It already covers a wide range of common needs, organized by category:
+
+| Category | Examples |
+|----------|---------|
+| `array` | array manipulation utilities |
+| `dom` | DOM helpers |
+| `errors` | error handling utilities |
+| `file` | file utilities |
+| `formatters` | value formatting |
+| `general` | miscellaneous general utilities |
+| `http` | HTTP methods, headers, status codes, MIME types |
+| `json` | JSON pointer helpers, pretty-print |
+| `markdown` | heading extraction |
+| `node` | Node-only path helpers |
+| `object` | deep equality, key helpers, path access, local storage |
+| `playwright` | Playwright/Docker test helpers |
+| `queue` | async queue |
+| `regex` | variable finding/replacing |
+| `storybook` | shared Storybook themes and toolbar globals |
+| `string` | capitalize, hash, truncate, camel-to-title |
+| `testing` | sleep, measure, console spies |
+| `theme` | color mode classes, CSS variable loading |
+| `types` | result, assertion, and safe-run helpers |
+| `url` | URL validation, merging, proxy helpers |
+
+If the helper you need already exists there, import it from `@scalar/helpers`. Only add a new helper to `@scalar/helpers` (or another package) if nothing suitable already exists.
+
+### Workspace document formats
+
+- A `WorkspaceDocument` may be OpenAPI, AsyncAPI, or plugin-defined. Use `isOpenApiDocument` or `isAsyncApiDocument` before format-specific processing.
+- Do not infer OpenAPI from the absence of AsyncAPI, or classify workspace documents through field existence alone. Plugin documents may carry fields named `openapi`, `asyncapi`, `paths`, or `servers` with different semantics.
+- Shared metadata such as `info.title` does not require format-specific narrowing. Helpers restricted to a built-in format should accept that narrowed type.
+- The workspace store owns `x-scalar-document-type`: registered detectors claim raw documents and ingestion assigns the marker. Document authors must not supply it. `loadWorkspace` restores already-processed snapshots (including their markers); raw documents must go through `addDocument` or `replaceDocument`.
+- Unsupported consumers must explicitly skip or reject plugin documents. Cover mixed-format workspaces and misleading built-in fields when changing document handling.
+
+### TypeScript
+
+- Prefer `type` over `interface`
+- Use explicit return types for functions
+- Avoid `any`; use `unknown` when the type is unclear
+- Avoid enums; use string literal unions
+- Use `const` instead of `let` whenever possible
+- Use `type` keyword for type-only imports (`import type { Foo }`)
+- Prefer arrow functions over function declarations
+- Use single quotes, trailing commas, and semicolons only as needed
+
+### Vue Components
+
+- Use Composition API with `<script setup lang="ts">`
+- Use Tailwind CSS utility classes for styling
+- Destructure props: `const { prop1, prop2 = 'default' } = defineProps<Props>()`
+- Explicitly type `defineProps` and `defineEmits`
+- Keep templates clean; use computed properties over inline logic
+- Recommended `<script setup>` order: imports, props/emits, state/computed/methods, lifecycle hooks
+
+### Comments and Docs
+
+- Explain **why**, not what
+- Use a friendly, human tone
+- Avoid contractions (use "do not" instead of "don't")
+- Add JSDoc for exported types and functions
+- Leave TODO comments for temporary solutions
+
+### Accessibility
+
+Apply these rules when changing UI in shared components, API reference, or API client. Reuse accessible primitives from `@scalar/components` and verify them in the consuming layout. Consult the [WAI-ARIA Authoring Practices](https://www.w3.org/WAI/ARIA/apg/practices/read-me-first/) for widget behavior and [WCAG 2.2](https://www.w3.org/WAI/WCAG22/quickref/) for applicable criteria and exceptions.
+
+- **Names and labels:** Give every interactive control a descriptive accessible name before hover or focus. Include its visible label in that name. Name icon-only actions by purpose, such as "Copy code sample", and distinguish actions such as JSON and YAML downloads. Associate field labels with the actual editable element, including masked and revealed inputs; a placeholder or tooltip alone is not a label.
+- **Roles and state:** Prefer native HTML. Custom widgets must implement the keyboard behavior promised by their role. Bind `aria-selected`, `aria-pressed`, `aria-current`, and `aria-expanded` to the actual state of the relevant control. A dropdown inside an open dialog is not necessarily expanded. Decorative checkmarks inside listbox options are not separate checkboxes or Tab stops.
+- **Keyboard and focus:** Preserve logical Tab order, visible focus rings, and focus visibility within scrolling containers. Avoid positive `tabindex`. Remove accidental focus stops on plain text, but preserve keyboard access to scrollable code and tab panels that need it. Give focusable code scrolling surfaces suitable semantics and a concise accessible name. Modal dialogs need an accessible name, intentional initial focus, contained keyboard focus, Escape handling, and focus restoration on close.
+- **Structure and announcements:** Choose heading levels from the surrounding document hierarchy, not visual size; an operation under a tag differs from a standalone operation or dialog. Preserve meaningful list items and counts without counting layout wrappers. Avoid redundant named landmarks and duplicate controls. Announce action feedback such as "Copied" without repeating whole panels or moving focus. Do not remove required ARIA relationships solely to suppress speech without reproducing the issue and checking the widget pattern.
+- **Contrast and layout:** Check text, syntax colors, controls, and focus indicators against their actual backgrounds in affected light and dark themes and states. Theme tokens alone do not establish contrast. Check 200% zoom and reflow at 320 CSS pixels, including long headings, code, and modal headers. Keep necessary code scrolling local so it does not force page-wide horizontal scrolling. Measure the interactive hit area, not its decorative SVG, when assessing target size and spacing.
+
+For UI accessibility changes, verify the affected behavior before and after:
+
+1. Exercise the relevant keyboard path, including opening, selection, scrolling, and closing. Inspect accessible names, roles, and states before focus and after state changes; check copy feedback and selected states where applicable.
+2. Add focused regression coverage for the behavior being fixed, using role/name queries and user interactions where supported. Include shared-component consumers when the issue depends on their layout or attribute forwarding.
+3. Reproduce speech-specific reports with the reported browser and screen reader when available. An accessibility-tree inspection or automated check does not prove what NVDA announces. Record unavailable combinations and unverified acceptance checks explicitly.
+4. When working from an audit, confirm the deployed version, customer theme, content, and embedding layout where relevant. Treat suggested fixes as hypotheses: do not flatten valid headings, remove useful keyboard access, or change widget roles just to match a report. Distinguish verified fixes, unreproduced findings, and product-specific requests.
+
+## Testing
+
+- **Unit tests**: Vitest, `*.test.ts` next to source
+- **E2E**: Playwright in `packages/api-reference` and `packages/components`
+- **JavaScript/TypeScript integration tests**: `pnpm vitest integrations/<integration-name> --run`; use each integration's own tooling for other languages
+
+### Running Tests
+
+**Always scope test runs to the package you modified.** Do not run `pnpm test` from the repo root when working on a single package — it runs the entire monorepo test suite, which is slow, noisy, and can surface unrelated pre-existing failures that obscure real problems.
+
+**Preferred: run from repo root with a path filter (single run)**
+
+```bash
+# Run all tests for a specific package once and exit
+pnpm vitest packages/<name> --run
+
+# Examples
+pnpm vitest packages/helpers --run
+pnpm vitest packages/oas-utils --run
+pnpm vitest integrations/fastify --run
+```
+
+**Alternative: run from inside the package directory**
+
+```bash
+cd packages/<name>
+pnpm test --run   # or: pnpm vitest --run
+```
+
+**Watch mode (only when requested)**
+
+```bash
+pnpm vitest packages/<name> --watch  # from repo root
+# or
+cd packages/<name> && pnpm vitest --watch
+```
+
+Only use the root `pnpm test` (no path argument) when you intentionally want to verify the full monorepo — for example, as a final pre-merge sanity check.
+
+### Testing Standards
+
+- Always import `describe`, `it`, and `expect` explicitly from `vitest` (no globals)
+- Place test files as `name.test.ts` alongside source
+- Keep top-level `describe()` matching the file name
+- Do not start test descriptions with "should" (`it('generates a slug')`, not `it('should generate a slug')`)
+- Minimize mocking; prefer pure functions
+- For Vue component tests, verify behavior, not DOM structure or Tailwind class details
+
+### Biome Lint Rules to Know
+
+- `noBarrelFile: error` - No barrel files (except `index.ts` entry points)
+- `noReExportAll: warn` - Avoid `export * from` (error in `api-reference` and `openapi-parser`)
+- `noTsIgnore: error` - No `@ts-ignore` (use `@ts-expect-error` with explanation if needed)
+- `useAwait: error` - Async functions must use `await`
+- `noExportsInTest: error` - Do not export from test files
+- `noFloatingPromises: warn` - Handle all promises
+
+## Git Workflow
+
+### Branch Naming
+
+- `claude/feature-description` - New features
+- `claude/fix-description` - Bug fixes
+- `claude/chore-description` - Maintenance
+
+### Commit Messages
+
+- Use conventional commits, for example: `feat(api-client): add new endpoint`
+- Use present tense ("add" instead of "added")
+- Prefer scope when relevant
+
+## PR Requirements
+
+### PR descriptions
+
+- Explain the problem and resulting behavior with concrete examples. For OpenAPI-related changes, include the smallest complete, copy-pasteable OpenAPI document that demonstrates the change and describe the expected before/after behavior. Add screenshots when they help illustrate the result; UI changes require visual artifacts as described below.
+- Upload or attach screenshots used in PR descriptions as PR assets. Do not commit them or include them in the PR diff.
+- Do not mention tests, type checks, lint, formatting, or Knip checks you ran in the PR description; CI shows these results. Continue to run all required checks before opening or updating a PR.
+
+### Semantic PR titles
+
+PR titles must follow `type(scope): subject`:
+
+```text
+fix(api-client): crashes when API returns null
+^   ^            ^
+|   |            subject
+|   package scope
+type (feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert)
+```
+
+### Ticket and issue linking
+
+When a **Linear ticket** ID (e.g. `DOC-5102`, `ENG-123`) or a **GitHub issue** number/URL is provided in the prompt, instructions, or related Slack thread, link it in the PR so project-management integrations can track progress automatically.
+
+If a GitHub issue number is available, include it in the PR description using `See #123` (non-closing) or `Fixes #123` (auto-closing on merge).
+
+#### Linear tickets
+
+Include the Linear issue ID in the branch name or PR description using a magic word. Do **not** put the issue ID in the PR title.
+
+**Closing magic words**:
+`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`
+
+**Non-closing magic words**:
+`ref`, `refs`, `references`, `part of`, `related to`, `contributes to`, `toward`, `towards`
+
+Examples:
+
+```text
+Fixes DOC-5102
+Part of ENG-123
+Resolves DOC-5102, ENG-456
+```
+
+You can also use full Linear URLs, for example:
+`Fixes https://linear.app/scalar/issue/DOC-5102/title`.
+
+To link multiple issues:
+`Fixes ENG-123, DES-5, ENG-256`.
+
+#### GitHub issues
+
+Use GitHub closing keywords in the PR description to link and auto-close issues on merge:
+`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`
+
+| Scenario | Syntax | Example |
+|----------|--------|---------|
+| Same repository | `KEYWORD #ISSUE` | `Closes #42` |
+| Different repository | `KEYWORD OWNER/REPO#ISSUE` | `Fixes scalar/scalar#100` |
+| Multiple issues | Repeat full syntax | `Resolves #10, resolves #42` |
+
+#### Where to place the link
+
+Add a `## Ticket` section at the bottom of the PR description:
+
+```markdown
+## Ticket
+
+Fixes DOC-5102
+Closes #42
+```
+
+If both a Linear ticket and a GitHub issue are provided, include both.
+
+> Tip: Magic words must appear in the PR description (not PR comments) for Linear detection. For GitHub issues, keywords work in both PR descriptions and commit messages.
+
+### Changesets
+
+For code changes in `packages/*`, `integrations/*`, and `projects/*`, include a changeset using `patch` or `minor` (do not use `major`).
+
+Before opening or updating a PR, run:
+
+```bash
+pnpm changeset status
+```
+
+If a package version should bump, add a changeset:
+
+```bash
+pnpm changeset
+```
+
+Do not add a changeset for an **ignored package**. The `ignore` list in `.changeset/config.json` currently covers `proxy-scalar-com`, `@scalar-examples/*`, and `@scalar-internal/*`. These are private or deployed separately, so they are never published to npm.
+
+A changeset that targets only an ignored package is never consumed by `changeset version`, so it stays in `.changeset/` indefinitely. That pins the release workflow to the "version" path: it keeps opening a `chore: release` PR and never runs `publish`, silently blocking every other package from being released. If `pnpm changeset status` reports a bump for one of these packages, delete that changeset rather than merging it.
+
+### After-change checklist
+
+After making **any** code changes, run lint, format, and type-check scoped to only the files and packages you touched. Do not run whole-repo checks.
+
+**1. Lint and format only the changed files:**
+
+```bash
+# Collect the files you changed (adjust the revision as needed)
+CHANGED=$(git diff --name-only HEAD)
+
+# Biome: lint + format TypeScript/JS files
+pnpm biome check --write --diagnostic-level=error --no-errors-on-unmatched --files-ignore-unknown=true $CHANGED
+
+# Prettier: format supported files not excluded by .prettierignore
+pnpm prettier --write $CHANGED
+
+# ESLint: lint changed Vue files (replace with the actual changed paths)
+pnpm eslint --config eslint.config.mjs path/to/changed-component.vue
+```
+
+**2. Run tests only for the affected package(s):**
+
+```bash
+# Replace <package-name> with the actual package directory name (e.g. helpers, oas-utils, api-client)
+pnpm vitest packages/<package-name> --run
+
+# For integrations
+pnpm vitest integrations/<integration-name> --run
+```
+
+Do not run `pnpm test` from the repo root — scope it to the package you changed.
+
+**3. Type-check only the affected package(s):**
+
+```bash
+# Replace <package-name> with the actual package (e.g. api-client, helpers, oas-utils)
+pnpm --filter @scalar/<package-name> types:check
+```
+
+Then, before opening or updating a PR, also run:
+
+```bash
+# In a fresh worktree, build the packages loaded by tooling configurations.
+# Turbo also builds @scalar/themes; no integration build is needed.
+pnpm turbo --filter @scalar/helpers --filter @scalar/validation build
+# Nuxt configs extend generated .nuxt/tsconfig.json files, including the Playwright config.
+pnpm --filter @scalar/nuxt exec nuxi prepare
+# The example loads the local Nuxt module, so generate its entry point without a full build.
+pnpm --filter @scalar/nuxt exec nuxt-module-build build --stub
+pnpm --filter @scalar-examples/nuxt-playground exec nuxi prepare
+pnpm lint:knip     # Detect unused exports, files, and dependencies
+```
+
+> All checks must pass cleanly. Do not commit code that has lint errors, type errors, or unused exports.
+
+## Visual Testing
+
+When making UI changes, PRs must include visual artifacts (screenshots and/or demo videos) demonstrating impact. Most package dependencies trickle up into three main visual surfaces: `api-reference`, `api-client`, and `components`.
+
+### Prerequisites
+
+Build all packages before running any playground:
+
+```bash
+pnpm install
+pnpm build:packages
+```
+
+Alternatively, `pnpm turbo dev` or `pnpm turbo build` in a package directory can auto-build upstream dependencies.
+
+### Playgrounds
+
+Each playground can be started with `pnpm dev` inside its package directory, or from repo root with Turbo:
+
+| Package | Quick start | Turbo | Details |
+|---------|-------------|-------|---------|
+| `api-reference` | `cd packages/api-reference && pnpm dev --port 5173 --strictPort` | `pnpm turbo --filter @scalar/api-reference dev -- --port 5173 --strictPort` | [`AGENTS.md`](./packages/api-reference/AGENTS.md) |
+| `api-client` | `cd packages/api-client && pnpm dev --port 5065 --strictPort` | `pnpm turbo --filter @scalar/api-client dev -- --port 5065 --strictPort` | [`AGENTS.md`](./packages/api-client/AGENTS.md) |
+| `components` | `cd packages/components && pnpm dev` | `pnpm turbo --filter @scalar/components dev` | [`AGENTS.md`](./packages/components/AGENTS.md) |
+
+The `api-client` package's `dev` script opens the modal playground. For the full web or desktop app, use `projects/scalar-app` (`dev:web` or `dev:app`); see the [API client guide](./packages/api-client/AGENTS.md).
+
+### Which playground to use
+
+| Change area | Primary playground | Secondary |
+|-------------|--------------------|-----------|
+| Base components (buttons, inputs, modals) | `components` Storybook | `api-reference`, `api-client` |
+| Themes, CSS variables, design tokens | `api-reference` | `api-client`, `components` |
+| Sidebar, search, OpenAPI rendering | `api-reference` | `api-client` |
+| Request editor, response viewer, auth | `api-client` modal + `projects/scalar-app` | `api-reference` (modal via "Test Request") |
+| Code highlighting, snippets | `api-reference` | `api-client` |
+| Icons | `components` Storybook | `api-reference` |
+
+### Artifact guidelines for PRs
+
+When making UI changes, embed artifacts directly in the PR description. Cursor Cloud Agents can upload these when referenced as absolute paths.
+
+Keep screenshots for PR descriptions outside the tracked source tree and upload or attach them as PR assets. Do not stage or commit these screenshots; they must not appear in the PR diff.
+
+#### How it works
+
+1. Save artifacts to `/opt/cursor/artifacts/` using descriptive snake_case names.
+2. Reference artifacts in PR descriptions with absolute HTML paths.
+3. Use the `ManagePullRequest` tool to create/update PR descriptions.
+
+Example:
+
+```html
+<img src="/opt/cursor/artifacts/screenshot_before.png" alt="Before change" />
+<img src="/opt/cursor/artifacts/screenshot_after.png" alt="After change" />
+<video src="/opt/cursor/artifacts/demo_feature.mp4" controls></video>
+```
+
+#### What to capture
+
+- Before and after screenshots for modified UI
+- In-context screenshots for new features
+- Artifacts from the most relevant playground
+- Artifacts from multiple playgrounds if the change spans surfaces
+- Demo videos for interactive behavior
+
+#### PR description format
+
+Add a `## Visual` section:
+
+```markdown
+## Visual
+
+<img src="/opt/cursor/artifacts/screenshot_before.png" alt="Before" />
+<img src="/opt/cursor/artifacts/screenshot_after.png" alt="After" />
+<video src="/opt/cursor/artifacts/demo_feature.mp4" controls></video>
+```
+
+## AsyncAPI Rendering
+
+- When working on AsyncAPI features, check how similar features are rendered for OpenAPI first.
+- Reuse existing OpenAPI rendering components and logic where possible. When reuse is not practical, match the styling of the existing OpenAPI UI to keep the experience consistent.
+
+## OpenAPI Specification
+
+Before making any OpenAPI-related code changes, always read the [OpenAPI Specification 3.2.1](https://raw.githubusercontent.com/OAI/OpenAPI-Specification/refs/heads/main/versions/3.2.1.md) first. Use its relevant requirements to guide implementation and tests, rather than relying on memory or existing code alone. When changing behavior for an earlier OpenAPI version, also consult that version's specification for differences.
+
+- [OpenAPI 3.1.2](https://raw.githubusercontent.com/OAI/OpenAPI-Specification/refs/heads/main/versions/3.1.2.md)
+- [OpenAPI 3.0.4](https://raw.githubusercontent.com/OAI/OpenAPI-Specification/refs/heads/main/versions/3.0.4.md)
+- [OpenAPI 2.0](https://raw.githubusercontent.com/OAI/OpenAPI-Specification/refs/heads/main/versions/2.0.md)
+
+Respect the version declared by the API description (`openapi` or `swagger`). Do not apply newer-version behavior to older documents unless that version's specification supports it.
+
+## OpenAPI Terminology
+
+Use consistent terminology:
+
+- **OpenAPI** (not "Swagger") - specification format
+- **API description** (not "API spec" or "API definition") - metadata document
+- **Schema** - data model for request/response shapes
+- **Dereference** - replace all `$ref` with their values
+- **Bundle** - pull external `$ref` values into a single file
+- **Resolve** - look up value at a `$ref` without modifying the document
+
+## Cursor Cloud specific instructions
+
+### Environment
+
+- **Node.js v24** is managed via nvm. The update script handles installation automatically.
+- Use Corepack with the pnpm version pinned in `package.json`. No global pnpm install is needed.
+- Dependency build approvals are configured in `pnpm-workspace.yaml` under `allowBuilds`. Investigate install failures for unapproved build scripts rather than assuming they are harmless warnings.
+
+### Running dev servers
+
+- There is no single root `pnpm dev`. Start the specific package you need (see the Key Commands table above).
+- `pnpm --filter @scalar/api-reference dev --port 5173 --strictPort` starts on **port 5173**.
+- `pnpm --filter @scalar/api-client dev --port 5065 --strictPort` starts the modal playground on **port 5065**.
+- All packages must be built first (`pnpm build:packages`) before running any dev server.
+
+### Testing caveats
+
+- If a root Vitest run fails to resolve a package's `@/` aliases, inspect its Vitest configuration and rerun from that package directory before classifying the failure as pre-existing.
+- Tests that require network services need test servers running first: `pnpm script run test-servers` (starts void-server on port 5052 and proxy on port 5051).
+- For a quick validation that the test framework works, run: `pnpm vitest packages/oas-utils --run`
+
+### Lint and format
+
+- `pnpm lint:check` checks Biome lint and import organization, then checks Vue ESLint errors. Warnings remain advisory.
+- For Vue files: `pnpm lint:vue` (ESLint).
+- For formatting: `pnpm format:check` (Prettier + Biome format).
+
+## Further Reading
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md) - PR requirements, changesets, auto-generated files
+- [.agents/skills/cloud-agents-starter/SKILL.md](./.agents/skills/cloud-agents-starter/SKILL.md) - Runbook for CI parity and test servers

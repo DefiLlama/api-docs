@@ -1,2 +1,2 @@
-export { default as Models } from './Models.vue'
-export { default as ModelsAccordion } from './ModelsAccordion.vue'
+export { default as Model } from './Model.vue'
+export { default as Models } from './ModelTag.vue'

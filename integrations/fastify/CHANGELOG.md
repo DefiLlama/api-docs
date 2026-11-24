@@ -1,5 +1,938 @@
 # @scalar/fastify-api-reference
 
+## 1.83.0
+
+No changes in this release.
+
+## 1.82.1
+
+No changes in this release.
+
+## 1.82.0
+
+No changes in this release.
+
+## 1.81.0
+
+No changes in this release.
+
+## 1.80.0
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Support TypeScript 6 builds and compiler API consumers while preserving runtime output and public handler types. Keep Nuxt build tooling on its supported TypeScript 5 compiler.
+
+## 1.79.0
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+
+## 1.78.1
+
+### Patch Changes
+
+- [#10977](https://github.com/scalar/scalar/pull/10977): Use the API title for JSON and YAML download filenames, encoding Unicode titles safely in the response headers.
+
+## 1.78.0
+
+## 1.77.0
+
+## 1.76.4
+
+## 1.76.3
+
+## 1.76.2
+
+## 1.76.1
+
+## 1.76.0
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update declaration tooling while preserving bundled integration types.
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 1.75.1
+
+## 1.75.0
+
+## 1.74.0
+
+## 1.73.1
+
+### Patch Changes
+
+- [#10490](https://github.com/scalar/scalar/pull/10490): Replace the OpenAPI parser dependency with JSON Magic and YAML helpers for serving API descriptions.
+
+  Require Node.js 22 or newer to match the runtime requirement of JSON Magic.
+
+## 1.73.0
+
+## 1.72.4
+
+## 1.72.3
+
+## 1.72.2
+
+## 1.72.1
+
+## 1.72.0
+
+## 1.71.0
+
+## 1.70.0
+
+## 1.69.2
+
+## 1.69.1
+
+## 1.69.0
+
+## 1.68.0
+
+## 1.67.0
+
+### Patch Changes
+
+- [#10020](https://github.com/scalar/scalar/pull/10020): Fix the OpenAPI document endpoints for `url` sources. When the specification was provided via `configuration.url`, the plugin still registered `${routePrefix}/openapi.json` and `${routePrefix}/openapi.yaml`, but they returned a broken response (a 500 for JSON, an empty body for YAML) because the URL string was normalized as if it were the document itself. The reference already loads the URL directly in the browser, so these endpoints are no longer registered for `url` sources — matching the existing behavior for `sources`.
+- [#10018](https://github.com/scalar/scalar/pull/10018): Declare support for Fastify v4, v5, and v6 via the plugin's `fastify` version range, so Fastify validates compatibility at registration and fails fast on an unsupported host. The test suite now runs against Fastify v5, and the plugin was verified against the Fastify v6 pre-release (it behaves identically). The runtime stays compatible with Fastify v4. Also lowers the minimum Node.js version to 20 to match Fastify v5.
+
+## 1.66.1
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 1.66.0
+
+## 1.65.1
+
+## 1.65.0
+
+## 1.64.1
+
+### Patch Changes
+
+- [#9835](https://github.com/scalar/scalar/pull/9835): Fix the published type declarations so they resolve under `moduleResolution: node16`/`nodenext` again. Since `1.62.1` the `.d.ts` files re-exported relative modules without a file extension (`export { default } from './fastifyApiReference'`), which ESM resolution rejects with TS2834 — so the plugin's types silently degraded to `any` for those consumers. The declarations are now emitted as a single self-contained `index.d.ts` (matching the Next.js integration), which resolves under every module resolution setting.
+
+## 1.64.0
+
+## 1.63.0
+
+## 1.62.9
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 1.62.8
+
+## 1.62.7
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 1.62.6
+
+## 1.62.5
+
+## 1.62.4
+
+## 1.62.3
+
+## 1.62.2
+
+## 1.62.1
+
+### Patch Changes
+
+- [#9539](https://github.com/scalar/scalar/pull/9539): Bundle the plugin with Vite and inline the standalone script at build time. The script used to be read from disk at runtime, which broke when the Fastify app was bundled (for example into a Docker image). The output is now self-contained and bundler-safe.
+
+## 1.62.0
+
+## 1.61.0
+
+## 1.60.0
+
+## 1.59.3
+
+## 1.59.2
+
+## 1.59.1
+
+## 1.59.0
+
+### Minor Changes
+
+- [#9422](https://github.com/scalar/scalar/pull/9422): Add a `nonce` option for Content Security Policy support.
+
+  When you pass a `nonce`, the rendered HTML stamps it onto the inline `<script>` and the CDN `<script>` tag (and Scalar's own `<style>` tags, plus a matching `<meta property="csp-nonce">`). This lets the API Reference run under a strict `script-src` with no `unsafe-inline` and no `unsafe-eval`.
+
+  ```ts
+  ApiReference({
+    url: '/openapi.json',
+    // Match this value in your `script-src` CSP directive.
+    nonce: 'r4nd0m',
+  })
+  ```
+
+  Note: `style-src` still needs `'unsafe-inline'`. The reference renders inline `style="…"` attributes, which a CSP nonce can never authorize (nonces only apply to `<script>`, `<style>` and `<link>` elements), so a nonce-only `style-src` is not possible. The win is a fully strict `script-src`.
+
+## 1.58.0
+
+### Patch Changes
+
+- [#9209](https://github.com/scalar/scalar/pull/9209): Fix intermittent TypeScript error when hook handlers are spread into route options. Annotating the internal `schemaToHideRoute` constant as `FastifySchema` prevents TypeScript from narrowing its type to `{ hide: boolean }`, which caused incompatible hook-handler types with Fastify 5's `NoInfer<SchemaCompiler>`-based route definitions.
+
+## 1.57.5
+
+## 1.57.4
+
+## 1.57.3
+
+## 1.57.2
+
+## 1.57.1
+
+## 1.57.0
+
+## 1.56.0
+
+## 1.55.3
+
+## 1.55.2
+
+## 1.55.1
+
+## 1.55.0
+
+### Patch Changes
+
+- [#9043](https://github.com/scalar/scalar/pull/9043): chore: move test documents to cdn
+
+## 1.54.0
+
+## 1.53.1
+
+## 1.53.0
+
+## 1.52.6
+
+## 1.52.5
+
+## 1.52.4
+
+## 1.52.3
+
+### Patch Changes
+
+- [#8873](https://github.com/scalar/scalar/pull/8873): refactor: migrate integrations to client-side rendering package
+
+## 1.52.2
+
+## 1.52.1
+
+## 1.52.0
+
+## 1.51.0
+
+## 1.50.0
+
+### Patch Changes
+
+- [#8664](https://github.com/scalar/scalar/pull/8664): refactor: replace wildcard export barrels with explicit named re-exports
+
+## 1.49.8
+
+## 1.49.7
+
+## 1.49.6
+
+## 1.49.5
+
+## 1.49.4
+
+## 1.49.3
+
+## 1.49.2
+
+## 1.49.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 1.49.0
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.25.4**
+  - [#8448](https://github.com/scalar/scalar/pull/8448): fix parser validation for unused path parameters
+
+## 1.48.8
+
+## 1.48.7
+
+## 1.48.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.25.3**
+
+- **@scalar/core@0.4.3**
+
+## 1.48.5
+
+## 1.48.4
+
+## 1.48.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.25.2**
+  - [#8359](https://github.com/scalar/scalar/pull/8359): fix(openapi-parser): replace $dynamicRef with $ref in v3.2 schema for AJV compatibility
+
+- **@scalar/core@0.4.2**
+
+## 1.48.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.1**
+
+- **@scalar/openapi-parser@0.25.1**
+
+## 1.48.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.25.1**
+
+## 1.48.0
+
+## 1.47.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.25.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/openapi-types@0.6.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/core@0.4.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 1.46.4
+
+## 1.46.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-types@0.5.4**
+  - [#8275](https://github.com/scalar/scalar/pull/8275): fix(openapi-types): make the `$ref` property in the `ReferenceObject` type required
+
+- **@scalar/openapi-parser@0.24.17**
+
+- **@scalar/core@0.3.45**
+
+## 1.46.2
+
+## 1.46.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.16**
+
+- **@scalar/core@0.3.44**
+
+## 1.46.0
+
+## 1.45.0
+
+## 1.44.27
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.43**
+
+- **@scalar/openapi-parser@0.24.15**
+
+## 1.44.26
+
+### Patch Changes
+
+- [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.14**
+
+- **@scalar/core@0.3.42**
+
+## 1.44.25
+
+## 1.44.24
+
+## 1.44.23
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.13**
+
+- **@scalar/core@0.3.41**
+
+## 1.44.22
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.12**
+
+- **@scalar/core@0.3.40**
+
+## 1.44.21
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.11**
+
+- **@scalar/core@0.3.39**
+
+## 1.44.20
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.10**
+
+- **@scalar/core@0.3.38**
+
+## 1.44.19
+
+## 1.44.18
+
+## 1.44.17
+
+## 1.44.16
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.9**
+
+## 1.44.15
+
+## 1.44.14
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.8**
+
+## 1.44.13
+
+## 1.44.12
+
+## 1.44.11
+
+## 1.44.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.7**
+
+- **@scalar/core@0.3.37**
+
+## 1.44.9
+
+## 1.44.8
+
+## 1.44.7
+
+## 1.44.6
+
+## 1.44.5
+
+## 1.44.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.6**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/core@0.3.36**
+
+## 1.44.3
+
+## 1.44.2
+
+## 1.44.1
+
+## 1.44.0
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.35**
+
+- **@scalar/openapi-parser@0.24.5**
+
+## 1.43.17
+
+## 1.43.16
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.5**
+
+## 1.43.15
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.4**
+
+- **@scalar/core@0.3.34**
+
+## 1.43.14
+
+## 1.43.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.33**
+
+- **@scalar/openapi-parser@0.24.3**
+
+## 1.43.12
+
+## 1.43.11
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.3**
+
+## 1.43.10
+
+## 1.43.9
+
+### Patch Changes
+
+- [#7810](https://github.com/scalar/scalar/pull/7810): docs: update documentation domain
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.2**
+
+## 1.43.8
+
+## 1.43.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.1**
+
+- **@scalar/core@0.3.32**
+
+## 1.43.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.0**
+  - [#7171](https://github.com/scalar/scalar/pull/7171): refactor: new validator class
+
+## 1.43.5
+
+## 1.43.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.23.13**
+
+- **@scalar/core@0.3.31**
+
+## 1.43.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.23.12**
+  - [#7719](https://github.com/scalar/scalar/pull/7719): fix: self-referencing causes infinite loop in `dereference`
+
+## 1.43.2
+
+## 1.43.1
+
+## 1.43.0
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.30**
+
+- **@scalar/openapi-parser@0.23.11**
+
+## 1.42.0
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.29**
+
+- **@scalar/openapi-parser@0.23.10**
+
+## 1.41.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.28**
+
+- **@scalar/openapi-parser@0.23.9**
+
+- **@scalar/openapi-types@0.5.3**
+
+## 1.41.0
+
+## 1.40.9
+
+## 1.40.8
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.23.9**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/core@0.3.28**
+
+## 1.40.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.23.8**
+
+## 1.40.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.27
+  - @scalar/openapi-parser@0.23.7
+  - @scalar/openapi-types@0.5.3
+
+## 1.40.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/openapi-parser@0.23.7
+
+## 1.40.4
+
+## 1.40.3
+
+### Patch Changes
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `yaml`
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a), [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/openapi-parser@0.23.6
+  - @scalar/openapi-types@0.5.3
+  - @scalar/core@0.3.26
+
+## 1.40.2
+
+### Patch Changes
+
+- Updated dependencies [[`daa5df4`](https://github.com/scalar/scalar/commit/daa5df45386fa2305275fbf0a7bbcede6bcf9edc)]:
+  - @scalar/core@0.3.25
+  - @scalar/openapi-parser@0.23.5
+
+## 1.40.1
+
+### Patch Changes
+
+- Updated dependencies [[`a164d76`](https://github.com/scalar/scalar/commit/a164d76f21437b3a35210d62a996b6c9d483e5a4)]:
+  - @scalar/openapi-types@0.5.2
+  - @scalar/core@0.3.24
+  - @scalar/openapi-parser@0.23.4
+
+## 1.40.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/openapi-parser@0.23.3
+  - @scalar/core@0.3.23
+  - @scalar/openapi-types@0.5.1
+
+## 1.39.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/openapi-parser@0.23.2
+
+## 1.39.2
+
+### Patch Changes
+
+- [#7233](https://github.com/scalar/scalar/pull/7233) [`d7f9845`](https://github.com/scalar/scalar/commit/d7f98454b54b92a497ea9e2addaa4fa42b25d452) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(fastify): remove empty customTheme
+
+- Updated dependencies [[`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d)]:
+  - @scalar/openapi-parser@0.23.1
+  - @scalar/core@0.3.22
+
+## 1.39.1
+
+## 1.39.0
+
+### Patch Changes
+
+- [#7148](https://github.com/scalar/scalar/pull/7148) [`155bb60`](https://github.com/scalar/scalar/commit/155bb60c2e6f45ec185efa1f7898f5a1fce5778b) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(fastify-api-reference): remove uneeded async in plugin function
+
+- [#7127](https://github.com/scalar/scalar/pull/7127) [`68aec7d`](https://github.com/scalar/scalar/commit/68aec7d4ba85826181fa42a86a8c6b99da732c81) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(fastify-api-reference): account from plugin prefix in redirect without trailing slash
+
+- [#7222](https://github.com/scalar/scalar/pull/7222) [`2902396`](https://github.com/scalar/scalar/commit/290239693e6ab8ace83bc9ce24b65dccf2419e17) Thanks [@inyourtime](https://github.com/inyourtime)! - fix(fastify): correct plugin callback signature
+
+- [#7151](https://github.com/scalar/scalar/pull/7151) [`aa217db`](https://github.com/scalar/scalar/commit/aa217db09c6449c987c70e3f31ad76e61deaceb3) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(fastify-api-reference): use `currentUrl.pathname` instead of deprecated `request.routerPath`
+
+- [#7225](https://github.com/scalar/scalar/pull/7225) [`9530d16`](https://github.com/scalar/scalar/commit/9530d16986bbcb30b892618979c62997b015389c) Thanks [@inyourtime](https://github.com/inyourtime)! - fix(fastify): register Scalar UI route when only sources option is provided
+
+- Updated dependencies [[`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce), [`9661e81`](https://github.com/scalar/scalar/commit/9661e81907d1a9b74ba30f270f2d6c8e49834cd5), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`c84b7c5`](https://github.com/scalar/scalar/commit/c84b7c5e81be83dacbdfcbf9cb1e558dfdc3faa1), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461), [`a821986`](https://github.com/scalar/scalar/commit/a821986332141e69d26885b2d2b32eb0c49f416c), [`e23229d`](https://github.com/scalar/scalar/commit/e23229dfbd9613b5047b28b57901f2fc5a6e33e6)]:
+  - @scalar/openapi-parser@0.23.0
+  - @scalar/openapi-types@0.5.1
+  - @scalar/core@0.3.21
+
+## 1.38.1
+
+### Patch Changes
+
+- Updated dependencies [f69e7cc]
+  - @scalar/openapi-types@0.5.0
+  - @scalar/openapi-parser@0.22.3
+  - @scalar/core@0.3.20
+
+## 1.38.0
+
+### Patch Changes
+
+- Updated dependencies [15c4240]
+- Updated dependencies [1e01464]
+  - @scalar/openapi-types@0.4.1
+  - @scalar/core@0.3.19
+  - @scalar/openapi-parser@0.22.2
+
+## 1.37.0
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/openapi-types@0.4.0
+  - @scalar/openapi-parser@0.22.1
+  - @scalar/core@0.3.18
+
+## 1.36.3
+
+### Patch Changes
+
+- Updated dependencies [4951456]
+  - @scalar/openapi-parser@0.22.0
+
+## 1.36.2
+
+## 1.36.1
+
+### Patch Changes
+
+- @scalar/openapi-parser@0.21.2
+
+## 1.36.0
+
+### Patch Changes
+
+- Updated dependencies [e1cdd00]
+  - @scalar/openapi-parser@0.21.1
+
+## 1.35.7
+
+### Patch Changes
+
+- 40ea201: fix: does not check for the new routerOptions.ignoreTrailingSlash
+- Updated dependencies [fd2c4ba]
+- Updated dependencies [a1f865c]
+- Updated dependencies [a1f865c]
+- Updated dependencies [dcf50ef]
+  - @scalar/core@0.3.17
+  - @scalar/openapi-parser@0.21.0
+
+## 1.35.6
+
+### Patch Changes
+
+- 8f2a2f2: Bump some dependencies to latest
+  - @scalar/openapi-parser@0.20.6
+
+## 1.35.5
+
+### Patch Changes
+
+- Updated dependencies [39bbc0e]
+  - @scalar/openapi-parser@0.20.5
+
+## 1.35.4
+
+## 1.35.3
+
+### Patch Changes
+
+- @scalar/openapi-parser@0.20.4
+
+## 1.35.2
+
+### Patch Changes
+
+- Updated dependencies [b8c4b61]
+  - @scalar/openapi-parser@0.20.3
+
+## 1.35.1
+
+### Patch Changes
+
+- @scalar/core@0.3.16
+- @scalar/openapi-parser@0.20.2
+
+## 1.35.0
+
+### Patch Changes
+
+- 3999fb1: fix: does not work with @fastify/swagger decorator option
+  - @scalar/openapi-parser@0.20.2
+  - @scalar/core@0.3.15
+
+## 1.34.6
+
+### Patch Changes
+
+- @scalar/openapi-parser@0.20.1
+- @scalar/core@0.3.14
+
+## 1.34.5
+
+## 1.34.4
+
+### Patch Changes
+
+- Updated dependencies [d4adeba]
+- Updated dependencies [66b18fc]
+- Updated dependencies [5f022b5]
+- Updated dependencies [c418e92]
+  - @scalar/openapi-parser@0.20.0
+  - @scalar/core@0.3.13
+  - @scalar/openapi-types@0.3.7
+
+## 1.34.3
+
+### Patch Changes
+
+- Updated dependencies [e203e90]
+- Updated dependencies [7dfbe9e]
+  - @scalar/openapi-parser@0.19.1
+  - @scalar/core@0.3.12
+  - @scalar/openapi-types@0.3.7
+
+## 1.34.2
+
+## 1.34.1
+
+## 1.34.0
+
+### Patch Changes
+
+- Updated dependencies [952bde2]
+- Updated dependencies [2888e18]
+  - @scalar/openapi-parser@0.19.0
+
+## 1.33.0
+
+### Patch Changes
+
+- 7031d9c: fix(api-reference): reference theme and style fixes
+- Updated dependencies [ccf875a]
+- Updated dependencies [c345d2c]
+  - @scalar/openapi-types@0.3.7
+  - @scalar/openapi-parser@0.18.3
+  - @scalar/core@0.3.11
+
+## 1.32.10
+
+### Patch Changes
+
+- Updated dependencies [1c2b9f3]
+  - @scalar/openapi-parser@0.18.2
+  - @scalar/core@0.3.10
+
 ## 1.32.9
 
 ## 1.32.8

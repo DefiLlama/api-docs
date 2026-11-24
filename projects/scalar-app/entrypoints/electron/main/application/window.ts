@@ -1,0 +1,79 @@
+import { join } from 'node:path'
+
+import { isAllowedOAuthUrl } from '@scalar/helpers/url/is-allowed-oauth-url'
+import { shell } from 'electron/common'
+import { BrowserWindow } from 'electron/main'
+import windowStateKeeper from 'electron-window-state'
+
+/**
+ * Per-platform window chrome. macOS uses a hidden title bar plus transparency; Linux uses
+ * transparency only (`titleBarStyle` is macOS-only). Windows is omitted so maximize and Aero Snap work.
+ */
+const PLATFORM_WINDOW_CHROME: Partial<Record<NodeJS.Platform, Partial<Electron.BrowserWindowConstructorOptions>>> = {
+  // macOS
+  darwin: { titleBarStyle: 'hidden', transparent: true },
+  // Linux
+  linux: { transparent: true },
+}
+
+export function createWindow({ isDev }: { isDev?: boolean }): BrowserWindow {
+  // Load the previous state with fallback to defaults
+  const mainWindowState = windowStateKeeper({
+    defaultWidth: 1280,
+    defaultHeight: 720,
+  })
+
+  // Create the browser window
+  const mainWindow = new BrowserWindow({
+    x: mainWindowState.x,
+    y: mainWindowState.y,
+    width: mainWindowState.width,
+    height: mainWindowState.height,
+    show: false,
+    title: 'Scalar',
+    trafficLightPosition: { x: 9.5, y: 12 },
+    // Add platform-specific window chrome
+    ...(PLATFORM_WINDOW_CHROME[process.platform] ?? {}),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(import.meta.dirname, '../preload/index.mjs'),
+      // Explicitly enable context isolation (the Electron default) so the renderer and preload
+      // run in separate JavaScript contexts. We already bridge APIs via contextBridge in the
+      // preload, so this is purely making the secure default visible to static analyzers.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  })
+
+  // Register listeners to save the window size and position
+  mainWindowState.manage(mainWindow)
+
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show()
+  })
+
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    // Renderer links must not invoke arbitrary OS protocol handlers.
+    const url = URL.parse(details.url)
+    if (url && isAllowedOAuthUrl(url)) {
+      void shell.openExternal(url.href)
+    }
+    return { action: 'deny' }
+  })
+
+  // DevTools
+  if (isDev) {
+    mainWindow.webContents.openDevTools()
+  }
+
+  // HMR for renderer base on electron-vite cli.
+  // Load the remote URL for development or the local html file for production.
+  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    mainWindow.loadFile(join(import.meta.dirname, '../renderer/index.html'))
+  }
+
+  return mainWindow
+}

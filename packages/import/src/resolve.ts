@@ -1,3 +1,4 @@
+import { YAML_MAX_ALIAS_COUNT } from '@scalar/helpers/general/yaml-max-alias-count'
 import { makeUrlAbsolute } from '@scalar/helpers/url/make-url-absolute'
 import { parse } from 'yaml'
 
@@ -69,7 +70,7 @@ export async function resolve(
         } catch {
           // Try parsing as YAML
           try {
-            const yamlContent = parse(content)
+            const yamlContent = parse(content, { maxAliasCount: YAML_MAX_ALIAS_COUNT })
             if (yamlContent?.openapi || yamlContent?.swagger) {
               return value
             }
@@ -89,7 +90,7 @@ export async function resolve(
             // No JSON
             try {
               // YAML?
-              const yaml = parse(urlOrPathOrDocument)
+              const yaml = parse(urlOrPathOrDocument, { maxAliasCount: YAML_MAX_ALIAS_COUNT })
 
               if (typeof yaml === 'object') {
                 return yaml
@@ -107,13 +108,17 @@ export async function resolve(
 
         // Relative or absolute URL
         if (urlOrPathOrDocument) {
-          return makeUrlAbsolute(urlOrPathOrDocument, forwardedHost || value)
+          return makeUrlAbsolute(urlOrPathOrDocument, {
+            baseUrl: forwardedHost || value,
+          })
         }
 
         // Check for configuration attribute URL
         const configUrl = getConfigurationAttributeUrl(content)
         if (configUrl) {
-          return makeUrlAbsolute(configUrl, forwardedHost || value)
+          return makeUrlAbsolute(configUrl, {
+            baseUrl: forwardedHost || value,
+          })
         }
 
         // Check for embedded OpenAPI document
@@ -125,7 +130,7 @@ export async function resolve(
         console.warn(`[@scalar/import] Failed to fetch ${value}`)
       }
     } catch (error) {
-      console.error(`[@scalar/import] Failed to fetch ${value}`, error)
+      console.error('[@scalar/import] Failed to fetch %s', value, error)
     }
   }
 
@@ -183,11 +188,23 @@ function parseHtml(html?: string) {
     return scriptContent
   }
 
+  // SEO metadata describes the website rather than its API description.
+  // Preserve a separator so excluding metadata cannot join surrounding text into a new match.
+  const htmlWithoutMetadata = html.replace(
+    /<script\b[^>]*\btype\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json(?=[\s>]))[^>]*>[\s\S]*?<\/script\s*>/gi,
+    ' ',
+  )
+
   // Check for configuration in script tag
-  const scriptConfigMatch = html.match(/url:\s*["']([^"']+)["']/i)
+  const scriptConfigMatch = htmlWithoutMetadata.match(/(?:["']url["']|\burl)\s*:\s*("(?:\\.|[^"\\])*"|'[^']*')/i)
 
   if (scriptConfigMatch?.[1]) {
-    return scriptConfigMatch?.[1]
+    try {
+      // JSON serialization escapes characters in quoted URLs, including inline-script escapes.
+      return scriptConfigMatch[1].startsWith('"') ? JSON.parse(scriptConfigMatch[1]) : scriptConfigMatch[1].slice(1, -1)
+    } catch {
+      // JS-only escapes are not JSON; keep trying the remaining discovery methods.
+    }
   }
 
   // Check for OpenAPI URLs in the HTML
@@ -250,7 +267,7 @@ function parseScriptContent(html: string): Record<string, any> | undefined {
           return JSON.parse(sanitizedContent)
         } catch {
           // YAML
-          return parse(content)
+          return parse(content, { maxAliasCount: YAML_MAX_ALIAS_COUNT })
         }
       }
     }
@@ -290,7 +307,7 @@ export function getConfigurationAttribute(html: string): string | undefined {
 }
 
 /** Grab the URL from the configuration data attribute */
-export const getConfigurationAttributeUrl = (html: string): string | undefined => {
+const getConfigurationAttributeUrl = (html: string): string | undefined => {
   const configString = getConfigurationAttribute(html)
   if (!configString) {
     return undefined
@@ -319,7 +336,7 @@ function parseEmbeddedOpenApi(html: string): object | undefined {
     if (content) {
       // If content is a string, assume it's YAML
       if (typeof content === 'string') {
-        return parse(content)
+        return parse(content, { maxAliasCount: YAML_MAX_ALIAS_COUNT })
       }
       // If content is an object, return it directly
       return content

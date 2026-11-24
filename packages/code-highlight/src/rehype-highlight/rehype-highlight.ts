@@ -21,6 +21,8 @@ type HighlightOptions = {
   subset?: ReadonlyArray<string> | null | undefined
   /** Option to autodetect languages */
   detect?: boolean
+  /** Extra class name(s) to add to highlighted `<code>` elements (optional) */
+  className?: ReadonlyArray<string> | string | null | undefined
 }
 
 const emptyOptions: HighlightOptions = {}
@@ -38,6 +40,7 @@ export function rehypeHighlight(options?: Readonly<HighlightOptions> | null | un
   const plainText = settings.plainText
   const prefix = settings.prefix
   const subset = settings.subset
+  const extraClassNames = typeof settings.className === 'string' ? [settings.className] : (settings.className ?? [])
   let name = 'hljs'
 
   // Create a lowlight instance if not provided
@@ -73,6 +76,13 @@ export function rehypeHighlight(options?: Readonly<HighlightOptions> | null | un
         node.properties.className.unshift(name)
       }
 
+      // Add any extra class names (e.g. Scalar's `custom-scroll` styling)
+      for (const extraClassName of extraClassNames) {
+        if (!node.properties.className.includes(extraClassName)) {
+          node.properties.className.push(extraClassName)
+        }
+      }
+
       let result: Root | undefined
 
       try {
@@ -91,11 +101,23 @@ export function rehypeHighlight(options?: Readonly<HighlightOptions> | null | un
             source: 'rehype-highlight',
           })
 
-          /* c8 ignore next 5 -- throw arbitrary hljs errors */
           return
         }
 
-        throw cause
+        // Highlighting is best-effort, so any other failure must not take down the
+        // whole Markdown render. Some grammars build regexes that throw at runtime
+        // in certain environments (for example a Unicode property escape that a
+        // production minifier mangles), which would otherwise blank out the entire
+        // section. Fall back to the un-highlighted code block instead.
+        file.message('Could not highlight code block', {
+          ancestors: [parent, node],
+          cause,
+          place: node.position,
+          ruleId: 'highlight-error',
+          source: 'rehype-highlight',
+        })
+
+        return
       }
 
       if (!lang && result.data?.language) {

@@ -1,26 +1,141 @@
-import type { OpenAPI } from '@scalar/openapi-types'
+import { isObject } from '@scalar/helpers/object/is-object'
+import {
+  validateCookieParameters,
+  validate as validateDocument,
+  validatePathParameters,
+} from '@scalar/openapi-validator'
+import type { UnknownObject } from '@scalar/types/utils'
 
-import { Validator } from '@/lib/Validator/Validator'
-import type { AnyObject, Filesystem, ThrowOnErrorOption, ValidateResult } from '@/types/index'
+import { ERRORS, type OpenApiVersion } from '@/configuration'
+import type { ErrorObject, Filesystem, StrictOpenApiDocument, ThrowOnErrorOption, ValidateResult } from '@/types/index'
+
+import { getEntrypoint } from './get-entrypoint'
 import { makeFilesystem } from './make-filesystem'
+import { resolveReferences } from './resolve-references'
 
 export type ValidateOptions = ThrowOnErrorOption
 
+const withStrictSpecification = (
+  specification: UnknownObject,
+  version: OpenApiVersion,
+): StrictOpenApiDocument | undefined => {
+  if (!specification || typeof specification !== 'object') {
+    return undefined
+  }
+
+  if (version === '2.0' && specification.swagger === '2.0') {
+    return specification as StrictOpenApiDocument
+  }
+
+  if ((version === '3.0' || version === '3.1' || version === '3.2') && typeof specification.openapi === 'string') {
+    return specification as StrictOpenApiDocument
+  }
+
+  return undefined
+}
+
 /**
- * Validates an OpenAPI document
+ * Validates an OpenAPI document.
+ *
+ * Schema and semantic validation are delegated to `@scalar/openapi-validator`.
+ * Reference resolution stays in the parser: references are resolved here and any
+ * resolution errors are merged into the result, so the behaviour matches the
+ * previous, self-contained validator.
  */
-export async function validate(
-  value: string | AnyObject | Filesystem,
+export function validate(
+  value: string | UnknownObject | Filesystem,
   options?: ValidateOptions,
 ): Promise<ValidateResult> {
-  const filesystem = makeFilesystem(value)
+  try {
+    const filesystem = makeFilesystem(value)
+    const entrypoint = getEntrypoint(filesystem)
 
-  const validator = new Validator()
-  const result = await validator.validate(filesystem, options)
+    // A filesystem without an entrypoint (for example a top-level array) has no
+    // document to validate.
+    if (!entrypoint || entrypoint.specification === undefined || entrypoint.specification === null) {
+      if (options?.throwOnError) {
+        throw new Error(ERRORS.EMPTY_OR_INVALID)
+      }
 
-  return {
-    ...result,
-    specification: validator.specification as OpenAPI.Document,
-    version: validator.version,
+      return Promise.resolve({ valid: false, errors: [{ message: ERRORS.EMPTY_OR_INVALID }] })
+    }
+
+    const specification: UnknownObject = entrypoint.specification
+
+    // Be lenient about a missing `info.version`: default it before validation so
+    // documents that omit this required field still validate. The standalone
+    // `@scalar/openapi-validator` is strict and would otherwise reject them.
+    //
+    // Semver recommends `0.1.0` as the starting version for initial development,
+    // which makes it the right stand-in for a document that never declared one.
+    // (This used to be `0.0.1`, which semver does not suggest anywhere.)
+    if (isObject(specification) && isObject(specification.info) && typeof specification.info.version !== 'string') {
+      specification.info.version = '0.1.0'
+    }
+
+    // Schema and version validation only (no reference resolution). Runs first so
+    // empty/invalid input reports the same error, in the same order, including
+    // when `throwOnError` is set. Path-parameter semantics are left off here (the
+    // validator's default) and run below on the resolved document, so parameters
+    // declared via `$ref` are seen (validating the unresolved document would
+    // report them as missing).
+    const outcome = validateDocument(specification, { ...options, checkCookieParameters: false })
+
+    // Resolve references whenever the document passed schema validation.
+    // `outcome.schema` is only set once schema and version validation succeeded.
+    const passedSchemaValidation = outcome.schema !== undefined
+    const resolved = passedSchemaValidation ? resolveReferences(filesystem, options) : undefined
+    const referenceErrors: ErrorObject[] = resolved?.errors ?? []
+    const schema = (resolved?.schema ?? outcome.schema) as StrictOpenApiDocument | undefined
+
+    // Parameter semantics run on the resolved document (schema validation
+    // stays on the unresolved one to avoid following circular references). This
+    // matches the previous validator, which merged reference and semantic errors.
+    const cookieErrors = passedSchemaValidation ? validateCookieParameters(schema ?? specification) : []
+    if (cookieErrors.length && options?.throwOnError) {
+      throw new Error(cookieErrors[0]?.message)
+    }
+    const semanticErrors = passedSchemaValidation
+      ? [...validatePathParameters(schema ?? specification), ...cookieErrors]
+      : []
+
+    const errors = [...(outcome.errors ?? []), ...referenceErrors, ...semanticErrors]
+    const valid = outcome.valid && referenceErrors.length === 0 && semanticErrors.length === 0
+
+    if (!valid) {
+      return Promise.resolve({
+        valid: false,
+        errors,
+        schema,
+        specification,
+        version: outcome.version,
+      })
+    }
+
+    const strictSpecification = withStrictSpecification(specification, outcome.version)
+
+    if (!strictSpecification) {
+      return Promise.resolve({
+        valid: false,
+        errors: [
+          {
+            message: `Validated OpenAPI ${outcome.version} document is missing required top-level version field.`,
+          },
+        ],
+        schema,
+        specification,
+        version: outcome.version,
+      })
+    }
+
+    return Promise.resolve({
+      valid: true,
+      errors,
+      schema: schema,
+      specification: strictSpecification,
+      version: outcome.version,
+    })
+  } catch (err) {
+    return Promise.reject(err)
   }
 }

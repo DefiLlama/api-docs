@@ -17,38 +17,24 @@
     "parser",
     "typescript"
   ],
-  "version": "0.18.1",
+  "version": "0.29.27",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
-    "format": "prettier --write .",
-    "lint:check": "eslint .",
-    "lint:fix": "eslint .  --fix",
-    "test": "NODE_OPTIONS=--max_old_space_size=8192 vitest",
-    "test:prepare": "vite-node scripts/load-files.ts",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "NODE_OPTIONS=--max_old_space_size=8192 vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./plugins": {
-      "import": "./dist/plugins.js",
-      "types": "./dist/plugins.d.ts",
-      "default": "./dist/plugins.js"
-    },
-    "./plugins-browser": {
-      "import": "./dist/plugins-browser.js",
-      "types": "./dist/plugins-browser.d.ts",
-      "default": "./dist/plugins-browser.js"
     },
     "./plugins/fetch-urls": {
       "import": "./dist/plugins/fetch-urls/index.js",
@@ -65,26 +51,20 @@
     "dist",
     "CHANGELOG.md"
   ],
-  "module": "./dist/index.js",
   "sideEffects": false,
   "dependencies": {
-    "ajv": "^8.17.1",
-    "ajv-draft-04": "^1.0.0",
-    "ajv-formats": "^3.0.1",
-    "jsonpointer": "^5.0.1",
-    "leven": "^4.0.0",
+    "@scalar/helpers": "workspace:*",
+    "@scalar/json-magic": "workspace:*",
+    "@scalar/openapi-types": "workspace:*",
+    "@scalar/openapi-upgrader": "workspace:*",
+    "@scalar/openapi-validator": "workspace:*",
+    "@scalar/types": "workspace:*",
     "yaml": "catalog:*"
   },
   "devDependencies": {
-    "@apidevtools/swagger-parser": "^10.1.0",
-    "@scalar/build-tooling": "workspace:*",
-    "@scalar/openapi-types": "workspace:*",
-    "@scalar/types": "workspace:*",
+    "@apidevtools/swagger-parser": "13.1.0",
     "@types/node": "catalog:*",
-    "fastify": "catalog:*",
-    "json-to-ast": "^2.1.0",
     "just-diff": "^6.0.2",
-    "tinybench": "^2.8.0",
     "vite": "catalog:*"
   }
 }

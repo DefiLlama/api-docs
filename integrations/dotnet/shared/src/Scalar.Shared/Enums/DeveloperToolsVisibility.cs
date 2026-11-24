@@ -1,0 +1,40 @@
+using System.ComponentModel;
+using System.Text.Json.Serialization;
+using NetEscapades.EnumGenerators;
+
+#if SCALAR_ASPIRE
+namespace Scalar.Aspire;
+#elif SCALAR_AZURE_FUNCTIONS
+namespace Scalar.Azure.Functions;
+#elif SCALAR_AWS_LAMBDA
+namespace Scalar.Aws.Lambda;
+#else
+namespace Scalar.AspNetCore;
+#endif
+
+/// <summary>
+/// Controls the visibility of the developer tools toolbar.
+/// </summary>
+[EnumExtensions]
+[JsonConverter(typeof(DeveloperToolsVisibilityJsonConverter))]
+public enum DeveloperToolsVisibility
+{
+    /// <summary>
+    /// Always show the toolbar.
+    /// </summary>
+    [Description("always")]
+    Always,
+
+    /// <summary>
+    /// Only show the toolbar on localhost or similar hosts.
+    /// </summary>
+    [Description("localhost")]
+    Localhost,
+
+    /// <summary>
+    /// Never show the toolbar.
+    /// </summary>
+    [Description("never")]
+    Never
+}
+

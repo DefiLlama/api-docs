@@ -30,16 +30,16 @@ import { Tab } from '@headlessui/vue'
   margin-right: 3px;
   text-transform: uppercase;
   position: relative;
-  line-height: 1.35;
+  line-height: 22px;
 }
 .tab:before {
   content: '';
   position: absolute;
   z-index: 0;
   left: -6px;
-  top: -6px;
+  top: -2px;
   width: calc(100% + 12px);
-  height: calc(100% + 12px);
+  height: calc(100% + 4px);
   border-radius: var(--scalar-radius);
   background: var(--scalar-background-3);
   opacity: 0;
@@ -49,7 +49,7 @@ import { Tab } from '@headlessui/vue'
   opacity: 1;
 }
 .tab:focus-visible:before {
-  outline: 1px solid var(--scalar-color-accent);
+  outline: 1px solid var(--scalar-focus-color);
 }
 .tab span {
   z-index: 1;

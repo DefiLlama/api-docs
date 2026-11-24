@@ -1,5 +1,1542 @@
 # @scalar/oas-utils
 
+## 0.20.27
+
+No changes in this release.
+
+## 0.20.26
+
+No changes in this release.
+
+## 0.20.25
+
+No changes in this release.
+
+## 0.20.24
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.20.23
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.20.22
+
+No changes in this release.
+
+## 0.20.21
+
+### Patch Changes
+
+- [#10967](https://github.com/scalar/scalar/pull/10967): fix: parse YAML documents that merge shared anchors into many operations
+
+  Since yaml 2.9.1, merge keys (`<<: *anchor`) count toward the alias limit, so large API Gateway exports failed with "Excessive alias count indicates a resource exhaustion attack". The limit is now 100,000 and shared through `YAML_MAX_ALIAS_COUNT` from `@scalar/helpers`.
+
+## 0.20.20
+
+## 0.20.19
+
+## 0.20.18
+
+## 0.20.17
+
+## 0.20.16
+
+## 0.20.15
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.20.14
+
+## 0.20.13
+
+### Patch Changes
+
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 0.20.12
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+
+## 0.20.11
+
+## 0.20.10
+
+## 0.20.9
+
+## 0.20.8
+
+## 0.20.7
+
+## 0.20.6
+
+## 0.20.5
+
+## 0.20.4
+
+## 0.20.3
+
+## 0.20.2
+
+## 0.20.1
+
+## 0.20.0
+
+### Minor Changes
+
+- [#10102](https://github.com/scalar/scalar/pull/10102): Allow response hooks to return a replacement Response before the client processes its body, status, and headers. Add the onResponseReceived configuration callback for API References. Existing hooks can still read responses and return nothing.
+
+### Patch Changes
+
+- [#10160](https://github.com/scalar/scalar/pull/10160): Pass request duration to post-response scripts as `pm.response.responseTime` in milliseconds and enable the response-time example.
+- [#10140](https://github.com/scalar/scalar/pull/10140): Replace redundant type assertions with compiler-checked annotations, typed accumulators, and existing guards across helpers, API conversion, request handling, and schema rendering.
+
+  Narrow DOM elements and caught errors before accessing their properties. Correct header lookup to include missing values and handle them during PowerShell snippet generation.
+
+  Validate release-note provider responses, represent unresolved references and absent groups in helper return types, and require narrowing merged object values. Preserve AsyncAPI broker credentials separately from HTTP authentication schemes.
+
+## 0.19.16
+
+## 0.19.15
+
+## 0.19.14
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.19.13
+
+## 0.19.12
+
+## 0.19.11
+
+## 0.19.10
+
+### Patch Changes
+
+- [#9793](https://github.com/scalar/scalar/pull/9793): Expose `server` and `customFetch` in the ClientPlugin `beforeRequest` hook
+  payload (both optional, additive) so plugins can resolve relative URLs and run
+  network calls — e.g. a token refresh — through the host fetch without closing
+  over external state.
+
+## 0.19.9
+
+## 0.19.8
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.19.7
+
+## 0.19.6
+
+## 0.19.5
+
+## 0.19.4
+
+## 0.19.3
+
+## 0.19.2
+
+## 0.19.1
+
+## 0.19.0
+
+### Minor Changes
+
+- [#9515](https://github.com/scalar/scalar/pull/9515): feat: add `requestBuilt` client plugin hook and `onRequestBuilt` configuration callback that receive the exact fetch `Request` that is sent over the wire
+
+  The hook runs after the request has been built, right before it is sent. Header mutations apply to the outgoing request and the body bytes match what the server receives, which makes request signing possible: hashing the body of a rebuilt `multipart/form-data` request would produce a different multipart boundary than the request that is actually sent.
+
+## 0.18.5
+
+## 0.18.4
+
+### Patch Changes
+
+- [#9342](https://github.com/scalar/scalar/pull/9342): fix: resolve operations when OpenAPI path items use `$ref`
+
+  Path entries and webhooks can reference `components.pathItems` instead of inlining operations. Navigation, mutators, search, and markdown export now resolve path-item references before reading HTTP methods and path-level parameters.
+
+## 0.18.3
+
+## 0.18.2
+
+## 0.18.1
+
+## 0.18.0
+
+### Minor Changes
+
+- [#9341](https://github.com/scalar/scalar/pull/9341): feat: add WebSocket session transport and plugin hooks for AsyncAPI
+
+  Add WebSocketSession with connect, send, and close helpers, plus connectWebSocket orchestration using Result-based errors. Extend ClientPlugin with optional webSocketHooks (beforeConnect, onWebSocketMessage, onWebSocketClose).
+
+### Patch Changes
+
+- [#9338](https://github.com/scalar/scalar/pull/9338): perf: warm up the request scripts sandbox on mount when scripts are present, so the first request no longer pays the sandbox cold-start cost
+
+## 0.17.3
+
+## 0.17.2
+
+## 0.17.1
+
+## 0.17.0
+
+### Minor Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): feat: UID-based workspaces and local-team migration
+
+  IndexedDB v2 migrates existing data into the new shape, collapses all workspaces into the local team (aligned with a single team workspace on the client for now), resolves slug collisions deterministically, re-keys chunk stores by workspaceUid, and strips x-scalar-tabs and x-scalar-active-tab from meta chunks so routing does not follow stale paths after migration or slug changes.
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): feat: make `WorkspaceDocument` an union of OpenApiDocument and AsyncApiDocument
+
+### Patch Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): refactor(oas-utils): drop local `migrations/semver` and use `isVersionLessThan` from `@scalar/helpers` in the workspace migrator. The previous `semverLessThan` export is removed from `@scalar/oas-utils/migrations`; import from `@scalar/helpers/general/compare-versions` instead.
+- [#9211](https://github.com/scalar/scalar/pull/9211): feat: add more analytics events
+
+## 0.16.0
+
+### Minor Changes
+
+- [#9195](https://github.com/scalar/scalar/pull/9195): feat: UID-based workspaces and local-team migration
+
+  IndexedDB v2 migrates existing data into the new shape, collapses all workspaces into the local team (aligned with a single team workspace on the client for now), resolves slug collisions deterministically, re-keys chunk stores by workspaceUid, and strips x-scalar-tabs and x-scalar-active-tab from meta chunks so routing does not follow stale paths after migration or slug changes.
+
+- [#9018](https://github.com/scalar/scalar/pull/9018): feat: make `WorkspaceDocument` an union of OpenApiDocument and AsyncApiDocument
+
+### Patch Changes
+
+- [#9063](https://github.com/scalar/scalar/pull/9063): refactor(oas-utils): drop local `migrations/semver` and use `isVersionLessThan` from `@scalar/helpers` in the workspace migrator. The previous `semverLessThan` export is removed from `@scalar/oas-utils/migrations`; import from `@scalar/helpers/general/compare-versions` instead.
+- [#9125](https://github.com/scalar/scalar/pull/9125): feat: add more analytics events
+
+## 0.15.3
+
+## 0.15.2
+
+## 0.15.1
+
+### Patch Changes
+
+- [#9023](https://github.com/scalar/scalar/pull/9023): chore: use homemade slugger
+
+## 0.15.0
+
+### Minor Changes
+
+- [#9045](https://github.com/scalar/scalar/pull/9045): chore: migrate api-client from namespaces to teamSlug and convert team workspaces
+
+## 0.14.0
+
+### Minor Changes
+
+- [#8986](https://github.com/scalar/scalar/pull/8986): chore: migrate api-client from namespaces to teamSlug and convert team workspaces
+
+## 0.13.4
+
+## 0.13.3
+
+## 0.13.2
+
+## 0.13.1
+
+## 0.13.0
+
+### Minor Changes
+
+- [#8865](https://github.com/scalar/scalar/pull/8865): feat: add plugin support for custom response body content types
+
+### Patch Changes
+
+- [#8810](https://github.com/scalar/scalar/pull/8810): refactor: move telemetry to an optional plugin
+
+## 0.12.0
+
+### Minor Changes
+
+- [#8863](https://github.com/scalar/scalar/pull/8863): chore: updated imports to new api client version
+
+### Patch Changes
+
+- [#8825](https://github.com/scalar/scalar/pull/8825): chore: moving files around in preparation for the big deletion of client v1
+- [#8850](https://github.com/scalar/scalar/pull/8850): chore: remove entities, zod and the parser from oas-utils
+
+## 0.11.1
+
+## 0.11.0
+
+### Minor Changes
+
+- [#8695](https://github.com/scalar/scalar/pull/8695): feat: suport pre/post request scripts
+
+## 0.10.16
+
+## 0.10.15
+
+## 0.10.14
+
+## 0.10.13
+
+## 0.10.12
+
+### Patch Changes
+
+- [#8578](https://github.com/scalar/scalar/pull/8578): fix: correctly add openapi-parser as a dependency
+
+## 0.10.11
+
+## 0.10.10
+
+## 0.10.9
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.10.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.40.2**
+  - [#8468](https://github.com/scalar/scalar/pull/8468): fix: ignore response examples when generating navigation
+
+## 0.10.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.40.1**
+  - [#8424](https://github.com/scalar/scalar/pull/8424): feat: export XScalarCredentialsLocation
+  - [#8445](https://github.com/scalar/scalar/pull/8445): fix: generate unique id for models
+
+## 0.10.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.40.0**
+  - [#8426](https://github.com/scalar/scalar/pull/8426): feat: interact with the original and intermediate documents
+
+## 0.10.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.1**
+  - [#8420](https://github.com/scalar/scalar/pull/8420): fix TypeScript access to navigator.userAgentData in isMacOS without ts-expect-error
+
+- **@scalar/json-magic@0.12.3**
+
+- **@scalar/object-utils@1.3.2**
+
+- **@scalar/types@0.7.3**
+
+- **@scalar/workspace-store@0.39.2**
+
+## 0.10.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.39.1**
+  - [#8393](https://github.com/scalar/scalar/pull/8393): fix: correctly update active tab on tab close event
+  - [#8403](https://github.com/scalar/scalar/pull/8403): Persist auth url and token url in local storage
+
+## 0.10.3
+
+### Patch Changes
+
+- [#8253](https://github.com/scalar/scalar/pull/8253): feat(api-reference): support propertyNames enum for additionalProperties
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.39.0**
+  - [#8372](https://github.com/scalar/scalar/pull/8372): fix: avoid inlining $ref path parameters during path parameter sync
+  - [#8349](https://github.com/scalar/scalar/pull/8349): feat: support operation example rename
+  - [#8336](https://github.com/scalar/scalar/pull/8336): fix: sidebar title update and detect delete operaitons for proxy
+  - [#8253](https://github.com/scalar/scalar/pull/8253): feat(api-reference): support propertyNames enum for additionalProperties
+
+- **@scalar/helpers@0.4.0**
+  - [#8336](https://github.com/scalar/scalar/pull/8336): feat: support flushing any pending operations
+
+- **@scalar/json-magic@0.12.2**
+
+- **@scalar/object-utils@1.3.1**
+
+- **@scalar/types@0.7.2**
+
+## 0.10.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.1**
+  - [#8381](https://github.com/scalar/scalar/pull/8381): feat: add mcp config support
+
+- **@scalar/workspace-store@0.38.1**
+
+## 0.10.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.38.0**
+  - [#8347](https://github.com/scalar/scalar/pull/8347): chore: export server workspace type
+  - [#8365](https://github.com/scalar/scalar/pull/8365): feat: store oauth flow refresh tokens on the auth store
+
+- **@scalar/json-magic@0.12.1**
+  - [#8357](https://github.com/scalar/scalar/pull/8357): chore: improve performance and memory usage of bundler
+
+## 0.10.0
+
+### Minor Changes
+
+- [#8266](https://github.com/scalar/scalar/pull/8266): support operation level authentication and servers
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.37.0**
+  - [#8266](https://github.com/scalar/scalar/pull/8266): support operation level authentication and servers
+
+## 0.9.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.36.0**
+  - [#8340](https://github.com/scalar/scalar/pull/8340): feat: support navigation options on server store
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+  - [#8340](https://github.com/scalar/scalar/pull/8340): chore: disable perf logs by default
+
+- **@scalar/openapi-types@0.6.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/object-utils@1.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/json-magic@0.12.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/helpers@0.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/themes@0.15.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/types@0.7.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.8.3
+
+### Patch Changes
+
+- [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+#### Updated Dependencies
+
+- **@scalar/openapi-types@0.5.4**
+  - [#8275](https://github.com/scalar/scalar/pull/8275): fix(openapi-types): make the `$ref` property in the `ReferenceObject` type required
+
+- **@scalar/json-magic@0.11.7**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+- **@scalar/helpers@0.2.18**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+- **@scalar/workspace-store@0.35.3**
+
+- **@scalar/object-utils@1.2.32**
+
+- **@scalar/types@0.6.10**
+
+## 0.8.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/themes@0.14.3**
+  - [#8315](https://github.com/scalar/scalar/pull/8315): feat(theme): standardize tailwind line height behavior
+
+## 0.8.1
+
+### Patch Changes
+
+- [#8310](https://github.com/scalar/scalar/pull/8310): fix: correctly handle circular documents during the migration to indexdb
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.35.2**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): refactor: move helpers to the helpers package to share primitive helpers
+  - [#8294](https://github.com/scalar/scalar/pull/8294): default createAnySecurityScheme to false and fix index clamp issue
+  - [#8287](https://github.com/scalar/scalar/pull/8287): consider path-level parameters in syncPathParameters instead of creating bare synthetic ones
+
+- **@scalar/helpers@0.2.17**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): refactor: move helpers to the helpers package to share primitive helpers
+
+- **@scalar/json-magic@0.11.6**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): fix: properly parse json pointers
+
+- **@scalar/object-utils@1.2.31**
+
+- **@scalar/types@0.6.9**
+
+## 0.8.0
+
+### Minor Changes
+
+- [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/themes@0.14.2**
+  - [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+- **@scalar/workspace-store@0.35.1**
+  - [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+## 0.7.0
+
+### Minor Changes
+
+- [#8234](https://github.com/scalar/scalar/pull/8234): support operation level authentication and servers
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/themes@0.14.1**
+  - [#8276](https://github.com/scalar/scalar/pull/8276): feat(components): standardize form inputs to have a height of 40px
+
+- **@scalar/workspace-store@0.35.0**
+  - [#8234](https://github.com/scalar/scalar/pull/8234): support operation level authentication and servers
+
+## 0.6.48
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.8**
+  - [#8274](https://github.com/scalar/scalar/pull/8274): feat(agent): add config to hide search api
+
+- **@scalar/workspace-store@0.34.4**
+
+## 0.6.47
+
+### Patch Changes
+
+- [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+- [#8248](https://github.com/scalar/scalar/pull/8248): fix: remove unnecessary property truncation in example generation
+- [#8248](https://github.com/scalar/scalar/pull/8248): chore: map themeId to slug and add default operation to drafts
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.34.3**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+  - [#8248](https://github.com/scalar/scalar/pull/8248): feat: nest description headings in the sidebar
+  - [#8248](https://github.com/scalar/scalar/pull/8248): chore: map themeId to slug and add default operation to drafts
+
+- **@scalar/helpers@0.2.16**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+
+- **@scalar/json-magic@0.11.5**
+
+- **@scalar/object-utils@1.2.30**
+
+- **@scalar/types@0.6.7**
+
+## 0.6.46
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.34.2**
+  - [#8219](https://github.com/scalar/scalar/pull/8219): chore: default to proxy for web layout
+
+## 0.6.45
+
+### Patch Changes
+
+- [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.15**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/json-magic@0.11.4**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/types@0.6.6**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/workspace-store@0.34.1**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/object-utils@1.2.29**
+
+## 0.6.44
+
+### Patch Changes
+
+- [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.34.0**
+  - [#8198](https://github.com/scalar/scalar/pull/8198): feat: handle workspace rename
+  - [#8208](https://github.com/scalar/scalar/pull/8208): fix: unpack proxy before assigning
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/helpers@0.2.14**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/json-magic@0.11.3**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/types@0.6.5**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/object-utils@1.2.28**
+
+## 0.6.43
+
+### Patch Changes
+
+- [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.33.0**
+  - [#8162](https://github.com/scalar/scalar/pull/8162): feat: allow editing tags
+  - [#8151](https://github.com/scalar/scalar/pull/8151): fix: resolve external references on windows
+  - [#8191](https://github.com/scalar/scalar/pull/8191): chore: rename create document command
+  - [#8199](https://github.com/scalar/scalar/pull/8199): feat: create draft example
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+  - [#8160](https://github.com/scalar/scalar/pull/8160): fix: update sidebar entry when the operation summary changes
+  - [#8133](https://github.com/scalar/scalar/pull/8133): fix: allow editing content-type query parameters in the API client
+
+- **@scalar/json-magic@0.11.2**
+  - [#8151](https://github.com/scalar/scalar/pull/8151): fix: resolve external references on windows
+
+- **@scalar/helpers@0.2.13**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+- **@scalar/types@0.6.4**
+  - [#8174](https://github.com/scalar/scalar/pull/8174): feat: add `createAnySecurityScheme` config option to control generic auth scheme creation
+
+- **@scalar/object-utils@1.2.27**
+
+## 0.6.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.32.1**
+  - [#8159](https://github.com/scalar/scalar/pull/8159): fix: do not mutate document after ingress
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+- **@scalar/helpers@0.2.12**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+- **@scalar/json-magic@0.11.1**
+
+- **@scalar/object-utils@1.2.26**
+
+- **@scalar/types@0.6.3**
+
+## 0.6.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.32.0**
+  - [#8135](https://github.com/scalar/scalar/pull/8135): feat: added support for OpenID Connect Discovery
+  - [#8152](https://github.com/scalar/scalar/pull/8152): feat: support custom themes
+
+## 0.6.40
+
+### Patch Changes
+
+- [#8121](https://github.com/scalar/scalar/pull/8121): chore: moved client plugin types to oas-utils so they can be shared
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.31.2**
+  - [#8120](https://github.com/scalar/scalar/pull/8120): refactor: make navigation router-agnostic
+  - [#8121](https://github.com/scalar/scalar/pull/8121): feat: added post response scripts/testing to api client v2
+
+## 0.6.39
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.31.1**
+  - [#8114](https://github.com/scalar/scalar/pull/8114): feat(workspace-store): sync path variables on ingress
+  - [#8094](https://github.com/scalar/scalar/pull/8094): feat: open client to the correct example name
+
+## 0.6.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.31.0**
+  - [#8095](https://github.com/scalar/scalar/pull/8095): feat: support loading files into the store
+  - [#8096](https://github.com/scalar/scalar/pull/8096): feat: store relative urls/paths against base under the url mappings
+
+- **@scalar/json-magic@0.11.0**
+  - [#8095](https://github.com/scalar/scalar/pull/8095): feat: support loading files into the store
+  - [#8096](https://github.com/scalar/scalar/pull/8096): feat: store relative urls/paths against base under the url mappings
+
+## 0.6.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.30.0**
+  - [#8077](https://github.com/scalar/scalar/pull/8077): feat: support team workspaces
+
+## 0.6.36
+
+### Patch Changes
+
+- [#8037](https://github.com/scalar/scalar/pull/8037): Improve error message when running oas-utils tests while test-servers are not running
+
+#### Updated Dependencies
+
+- **@scalar/json-magic@0.10.0**
+  - [#8052](https://github.com/scalar/scalar/pull/8052): feat: allow custom LoaderPlugin plugins in dereference
+
+- **@scalar/workspace-store@0.29.0**
+  - [#8061](https://github.com/scalar/scalar/pull/8061): fix: do not throw when try to update a non existent document metadata
+  - [#8045](https://github.com/scalar/scalar/pull/8045): feat: manage active environments
+
+## 0.6.35
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.28.4**
+  - [#8047](https://github.com/scalar/scalar/pull/8047): fix: unpack proxy when update an environment
+
+## 0.6.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.28.3**
+  - [#8035](https://github.com/scalar/scalar/pull/8035): fix: correctly resolve and validate refs
+  - [#8034](https://github.com/scalar/scalar/pull/8034): fix: allow setting servers which dont exist in the document (from the config)
+
+## 0.6.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.28.2**
+  - [#8016](https://github.com/scalar/scalar/pull/8016): feat: move history and auth into their own store
+
+- **@scalar/helpers@0.2.11**
+  - [#8016](https://github.com/scalar/scalar/pull/8016): feat: move history and auth into their own store
+
+- **@scalar/json-magic@0.9.6**
+
+- **@scalar/object-utils@1.2.25**
+
+- **@scalar/types@0.6.2**
+
+## 0.6.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.28.1**
+  - [#7823](https://github.com/scalar/scalar/pull/7823): chore: update workspace schema index to support teamUid queries and local
+
+## 0.6.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.1**
+  - [#8000](https://github.com/scalar/scalar/pull/8000): fix(agent): change enabled flag to disabled
+  - [#7995](https://github.com/scalar/scalar/pull/7995): feat: enable/disable agent scalar
+
+- **@scalar/workspace-store@0.28.0**
+  - [#7970](https://github.com/scalar/scalar/pull/7970): feat: update sidebar when docuemnt title changes
+  - [#7988](https://github.com/scalar/scalar/pull/7988): feat: restore old client search
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/json-magic@0.9.5**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/helpers@0.2.10**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/object-utils@1.2.24**
+
+## 0.6.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/themes@0.14.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+- **@scalar/types@0.6.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+- **@scalar/workspace-store@0.27.2**
+
+## 0.6.29
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.27.1**
+  - [#7926](https://github.com/scalar/scalar/pull/7926): Make V2 command palette extensible and improve types
+
+## 0.6.28
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.27.0**
+  - [#7906](https://github.com/scalar/scalar/pull/7906): feat: remove parsing from codeinput and move to getExample
+  - [#7905](https://github.com/scalar/scalar/pull/7905): feat: support loading files on the store
+
+- **@scalar/json-magic@0.9.4**
+  - [#7922](https://github.com/scalar/scalar/pull/7922): fix: resolve $ref entries inside arrays (e.g. oneOf, allOf) in prefixInternalRefRecursive
+
+## 0.6.27
+
+### Patch Changes
+
+- [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.9**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+- **@scalar/workspace-store@0.26.2**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+- **@scalar/json-magic@0.9.3**
+
+- **@scalar/object-utils@1.2.23**
+
+- **@scalar/types@0.5.10**
+
+## 0.6.26
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.26.1**
+  - [#7888](https://github.com/scalar/scalar/pull/7888): fix: more robust parameter upsert and deletion
+
+## 0.6.25
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.26.0**
+  - [#7866](https://github.com/scalar/scalar/pull/7866): feat: history per operation support
+  - [#7886](https://github.com/scalar/scalar/pull/7886): fix: unpack proxy when we pop history items
+
+- **@scalar/types@0.5.9**
+  - [#7866](https://github.com/scalar/scalar/pull/7866): chore: expose har types
+
+## 0.6.24
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.25.3**
+  - [#7850](https://github.com/scalar/scalar/pull/7850): fix: remove unused workspace config
+  - [#7868](https://github.com/scalar/scalar/pull/7868): fix: updating path with a variable in it
+
+## 0.6.23
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.25.2**
+
+## 0.6.22
+
+### Patch Changes
+
+- [#7814](https://github.com/scalar/scalar/pull/7814): fix: additional properties generate invalid example
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.25.1**
+  - [#7828](https://github.com/scalar/scalar/pull/7828): fix: switch to upsert params due to race condition
+
+## 0.6.21
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.25.0**
+  - [#7786](https://github.com/scalar/scalar/pull/7786): chore: refactor mutators in workspace store
+  - [#7753](https://github.com/scalar/scalar/pull/7753): feat: default headers and global cookies
+  - [#7763](https://github.com/scalar/scalar/pull/7763): fix: normalize securitySchemes 'scheme'
+
+- **@scalar/json-magic@0.9.2**
+  - [#7763](https://github.com/scalar/scalar/pull/7763): fix: correctly execute onAfterNodeProcess for ref nodes
+
+## 0.6.20
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.10**
+  - [#7774](https://github.com/scalar/scalar/pull/7774): Adds exports to V2 client.
+
+## 0.6.19
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.9**
+  - [#7751](https://github.com/scalar/scalar/pull/7751): fix: auth persistence
+
+- **@scalar/helpers@0.2.8**
+  - [#7751](https://github.com/scalar/scalar/pull/7751): fix: auth persistence
+
+- **@scalar/json-magic@0.9.1**
+
+- **@scalar/object-utils@1.2.22**
+
+- **@scalar/types@0.5.8**
+
+## 0.6.18
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.8**
+  - [#7728](https://github.com/scalar/scalar/pull/7728): fix: formBody handling in api client
+
+## 0.6.17
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.7**
+  - [#7745](https://github.com/scalar/scalar/pull/7745): fix: add nested array support to references
+
+## 0.6.16
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.7**
+  - [#7720](https://github.com/scalar/scalar/pull/7720): feat: escape XML in json2xml
+
+- **@scalar/json-magic@0.9.0**
+  - [#7701](https://github.com/scalar/scalar/pull/7701): Made bundle external document extensions configurable
+
+- **@scalar/object-utils@1.2.21**
+
+- **@scalar/types@0.5.7**
+
+- **@scalar/workspace-store@0.24.6**
+
+## 0.6.15
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.5**
+  - [#7699](https://github.com/scalar/scalar/pull/7699): feat: added ui for oauth2 credentials location
+
+## 0.6.14
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.4**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/helpers@0.2.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/types@0.5.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/json-magic@0.8.10**
+
+- **@scalar/object-utils@1.2.20**
+
+## 0.6.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.3**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/helpers@0.2.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/types@0.5.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/json-magic@0.8.9**
+
+- **@scalar/object-utils@1.2.19**
+
+## 0.6.12
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.2**
+  - [#7643](https://github.com/scalar/scalar/pull/7643): chore: update typebox
+
+## 0.6.11
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.1**
+  - [#7580](https://github.com/scalar/scalar/pull/7580): feat: added default auth on client v2
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+  - [#7568](https://github.com/scalar/scalar/pull/7568): fix: object merge replacing arrays
+
+- **@scalar/helpers@0.2.4**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+- **@scalar/json-magic@0.8.8**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/object-utils@1.2.18**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/types@0.5.4**
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+## 0.6.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/workspace-store@0.24.0**
+  - [#7564](https://github.com/scalar/scalar/pull/7564): feat: restore cursor position after path/method update
+  - [#7530](https://github.com/scalar/scalar/pull/7530): fix: handle operation level servers when adding a new operation
+  - [#7559](https://github.com/scalar/scalar/pull/7559): feat: set the content-type header when switching body content-type
+  - [#7549](https://github.com/scalar/scalar/pull/7549): feat: send request animation
+  - [#7575](https://github.com/scalar/scalar/pull/7575): feat: add support for object examples + hide body when empty
+
+- **@scalar/helpers@0.2.3**
+  - [#7575](https://github.com/scalar/scalar/pull/7575): feat: add support for object examples + hide body when empty
+
+- **@scalar/json-magic@0.8.7**
+
+- **@scalar/object-utils@1.2.17**
+
+## 0.6.9
+
+### Patch Changes
+
+- Updated dependencies [[`099237a`](https://github.com/scalar/scalar/commit/099237ad9cba4d29dcc5e742e39c3e42429a5817), [`bb52d9a`](https://github.com/scalar/scalar/commit/bb52d9a21e53628270bab93c0f03b5731c9c97c6)]:
+  - @scalar/workspace-store@0.23.1
+  - @scalar/types@0.5.3
+  - @scalar/helpers@0.2.2
+  - @scalar/json-magic@0.8.6
+  - @scalar/object-utils@1.2.16
+  - @scalar/openapi-types@0.5.3
+  - @scalar/themes@0.13.26
+
+## 0.6.8
+
+### Patch Changes
+
+- Updated dependencies [[`f7c24e4`](https://github.com/scalar/scalar/commit/f7c24e4995580649dbc3cb87007a683f5dd91f7c), [`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf), [`10318b6`](https://github.com/scalar/scalar/commit/10318b6a59df49905225bdbd9e19044521cd4581), [`3f797b6`](https://github.com/scalar/scalar/commit/3f797b67489e07c4f3bf34a39b2175ed2d6f1465)]:
+  - @scalar/workspace-store@0.23.0
+  - @scalar/helpers@0.2.2
+  - @scalar/themes@0.13.26
+  - @scalar/json-magic@0.8.6
+  - @scalar/object-utils@1.2.16
+
+## 0.6.7
+
+### Patch Changes
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `yaml`
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `zod`
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a), [`21aa62e`](https://github.com/scalar/scalar/commit/21aa62e2ebdd262cb5aa53658c3b659736660722), [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/json-magic@0.8.5
+  - @scalar/workspace-store@0.22.2
+  - @scalar/helpers@0.2.1
+  - @scalar/openapi-types@0.5.3
+  - @scalar/types@0.5.2
+  - @scalar/object-utils@1.2.15
+
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [[`8842799`](https://github.com/scalar/scalar/commit/884279984b144082e85b699014e77ed71e9ae6a5), [`9ec8adf`](https://github.com/scalar/scalar/commit/9ec8adfea017333dee5bc3949104232f7dc57f4a)]:
+  - @scalar/workspace-store@0.22.1
+  - @scalar/helpers@0.2.0
+  - @scalar/json-magic@0.8.4
+  - @scalar/object-utils@1.2.14
+
+## 0.6.5
+
+### Patch Changes
+
+- Updated dependencies [[`61c980c`](https://github.com/scalar/scalar/commit/61c980cebef219685a05f3a4cb1e379984922cd4), [`1bc2b45`](https://github.com/scalar/scalar/commit/1bc2b45b6eabd5c5045e77d67f59d202ab04d3fb), [`9342adc`](https://github.com/scalar/scalar/commit/9342adcd76e26a8e5eff75c1a2abee2c207b1487), [`e04879c`](https://github.com/scalar/scalar/commit/e04879c65602dfb65393876754f5344751b8953d), [`a164d76`](https://github.com/scalar/scalar/commit/a164d76f21437b3a35210d62a996b6c9d483e5a4), [`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03), [`35af6bf`](https://github.com/scalar/scalar/commit/35af6bfce4bc4ae3d0fc5783ea36e0165e964361), [`86f028d`](https://github.com/scalar/scalar/commit/86f028deb0b456f923edd261f5f4b0fa9b616b7d), [`294f9fc`](https://github.com/scalar/scalar/commit/294f9fc6cfd43cdab110deb1c851883509bc2b84), [`af54a80`](https://github.com/scalar/scalar/commit/af54a80349269a4269a68f6a372f837177a3537c)]:
+  - @scalar/workspace-store@0.22.0
+  - @scalar/json-magic@0.8.3
+  - @scalar/openapi-types@0.5.2
+  - @scalar/helpers@0.1.3
+  - @scalar/types@0.5.1
+  - @scalar/themes@0.13.25
+  - @scalar/object-utils@1.2.13
+
+## 0.6.4
+
+### Patch Changes
+
+- [#7292](https://github.com/scalar/scalar/pull/7292) [`0519a33`](https://github.com/scalar/scalar/commit/0519a33c7d3f3cf65b93b37392c51d3c0586cbab) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(oas-utils): remove unused dependencies
+  - `@hyperjump/browser`
+  - `@hyperjump/json-schema`
+  - `@types/har-format`
+  - `js-base64`
+  - `microdiff`
+  - `nanoid`
+
+- Updated dependencies [[`d86f1d6`](https://github.com/scalar/scalar/commit/d86f1d6911ecbca70b011a2a0efb6d6e0eca59bb), [`6e1cb89`](https://github.com/scalar/scalar/commit/6e1cb89f71770601a5059449d68b409ffc87d332), [`1fbd809`](https://github.com/scalar/scalar/commit/1fbd809197bfaef77d7d3cb8cf7b657f397232a7), [`44aeef0`](https://github.com/scalar/scalar/commit/44aeef01073801165e339163462378b7b62ff68d), [`dd5c518`](https://github.com/scalar/scalar/commit/dd5c518a422dddc7948c0253861101cf741b6af0), [`a68b1af`](https://github.com/scalar/scalar/commit/a68b1afc54b2aa95a224fee89c3266bffed57215), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`a68b1af`](https://github.com/scalar/scalar/commit/a68b1afc54b2aa95a224fee89c3266bffed57215), [`5a108fc`](https://github.com/scalar/scalar/commit/5a108fcbc52ae7957731c23689896ba353b83d3b), [`4cda566`](https://github.com/scalar/scalar/commit/4cda566c2dc2cf306e4e3597e292ae1c2dadd78c), [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`3ebff92`](https://github.com/scalar/scalar/commit/3ebff92f29d8d03d626d4000e8323528e794e755), [`4059e68`](https://github.com/scalar/scalar/commit/4059e68375d31ec0142a8019b385bc3ac82055fc)]:
+  - @scalar/workspace-store@0.21.0
+  - @scalar/json-magic@0.8.2
+  - @scalar/helpers@0.1.2
+  - @scalar/types@0.5.0
+  - @scalar/object-utils@1.2.12
+  - @scalar/themes@0.13.24
+  - @scalar/openapi-types@0.5.1
+
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies [[`c7a4690`](https://github.com/scalar/scalar/commit/c7a4690cec484ee16cee8dcba7ef5cb0fbb98133), [`9c9dbba`](https://github.com/scalar/scalar/commit/9c9dbbaa940667303f0ace59469fd78c2a741937), [`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74), [`7ccd035`](https://github.com/scalar/scalar/commit/7ccd0351de104f78ef9c6e16538753d302c50d47)]:
+  - @scalar/workspace-store@0.20.0
+  - @scalar/helpers@0.1.1
+  - @scalar/object-utils@1.2.11
+  - @scalar/json-magic@0.8.1
+
+## 0.6.2
+
+### Patch Changes
+
+- [#7241](https://github.com/scalar/scalar/pull/7241) [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d) Thanks [@hanspagel](https://github.com/hanspagel)! - chore: use "current" not "latest" scalar registry url
+
+- Updated dependencies [[`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d), [`d6154a2`](https://github.com/scalar/scalar/commit/d6154a24d97fc28977def486f99b2eeee52d268c), [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66)]:
+  - @scalar/json-magic@0.8.0
+  - @scalar/workspace-store@0.19.0
+  - @scalar/helpers@0.1.0
+  - @scalar/object-utils@1.2.10
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [[`bffef40`](https://github.com/scalar/scalar/commit/bffef4092e40d12052f8538267af71bc99b7172f)]:
+  - @scalar/workspace-store@0.18.1
+
+## 0.6.0
+
+### Minor Changes
+
+- [#7121](https://github.com/scalar/scalar/pull/7121) [`9661e81`](https://github.com/scalar/scalar/commit/9661e81907d1a9b74ba30f270f2d6c8e49834cd5) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat(oas-utils): make `dereference` synchronous
+
+### Patch Changes
+
+- [#7143](https://github.com/scalar/scalar/pull/7143) [`81b0a7a`](https://github.com/scalar/scalar/commit/81b0a7a4245619f03161eae639dc5834b77432b6) Thanks [@amritk](https://github.com/amritk)! - fix: remove ignored parameters
+
+- [#7133](https://github.com/scalar/scalar/pull/7133) [`0319b8a`](https://github.com/scalar/scalar/commit/0319b8a8652a50667776b2e9fd27c3e15b34f765) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: account for text type content
+
+- Updated dependencies [[`eb022f2`](https://github.com/scalar/scalar/commit/eb022f2c8f93c84a04c0093fefe8a1e05d6ec80d), [`913607c`](https://github.com/scalar/scalar/commit/913607c7d67236f08f5369408f304440c6c42b22), [`17817ad`](https://github.com/scalar/scalar/commit/17817addbca916c8d625a03335ae58be3a1c4e4b), [`c22fc4e`](https://github.com/scalar/scalar/commit/c22fc4e5acb49d648014a6100c724a5b33c59cde), [`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`c162bb6`](https://github.com/scalar/scalar/commit/c162bb64b86e698427c1fce36f6d8a2b789e094a), [`b64265b`](https://github.com/scalar/scalar/commit/b64265b3e8b447a4d1c6dafaca8135ef69545d98), [`6ca835e`](https://github.com/scalar/scalar/commit/6ca835e5afd3e8c603e073e7c83f2cdd961a0f69), [`6aa06b0`](https://github.com/scalar/scalar/commit/6aa06b0f843ae3d8e6771e3c02ac11ee0043a4b1), [`81b0a7a`](https://github.com/scalar/scalar/commit/81b0a7a4245619f03161eae639dc5834b77432b6), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`704fa30`](https://github.com/scalar/scalar/commit/704fa302b2cdbb17b19ca2d742537ca163d58c1c), [`33edbf2`](https://github.com/scalar/scalar/commit/33edbf2a2648eb72ae49e36dfd289d4d57dc18e0), [`4fe1643`](https://github.com/scalar/scalar/commit/4fe1643be51f76a8ebdfd75f5675337b8d43418e), [`75ad74c`](https://github.com/scalar/scalar/commit/75ad74c0eee10103b966ce4707e4823d819456a8), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461), [`43bc5e8`](https://github.com/scalar/scalar/commit/43bc5e8b90dc0edf7176d0ddfc64bf3212494458)]:
+  - @scalar/types@0.4.0
+  - @scalar/workspace-store@0.18.0
+  - @scalar/openapi-types@0.5.1
+  - @scalar/helpers@0.0.13
+  - @scalar/json-magic@0.7.0
+  - @scalar/themes@0.13.23
+  - @scalar/object-utils@1.2.9
+
+## 0.5.2
+
+### Patch Changes
+
+- f8efecd: feat: use new schema example generation in the response
+- Updated dependencies [3f6d0b9]
+- Updated dependencies [2089748]
+- Updated dependencies [f3e17d8]
+- Updated dependencies [8a7fb2a]
+- Updated dependencies [1335923]
+- Updated dependencies [07397c8]
+- Updated dependencies [f69e7cc]
+  - @scalar/helpers@0.0.12
+  - @scalar/json-magic@0.6.1
+  - @scalar/types@0.3.2
+  - @scalar/workspace-store@0.17.1
+  - @scalar/openapi-types@0.5.0
+  - @scalar/object-utils@1.2.8
+  - @scalar/themes@0.13.22
+
+## 0.5.1
+
+### Patch Changes
+
+- debdcf6: Correctly handle additionalProperties when set to false
+- Updated dependencies [15c4240]
+- Updated dependencies [13dcd89]
+- Updated dependencies [63ff417]
+- Updated dependencies [5d99cad]
+- Updated dependencies [1e01464]
+  - @scalar/openapi-types@0.4.1
+  - @scalar/themes@0.13.21
+  - @scalar/workspace-store@0.17.0
+  - @scalar/types@0.3.1
+
+## 0.5.0
+
+### Minor Changes
+
+- 008a0f3: feat: migrate to Zod 4
+
+### Patch Changes
+
+- f833196: fix: performance issues on references
+- Updated dependencies [008a0f3]
+  - @scalar/openapi-types@0.4.0
+  - @scalar/types@0.3.0
+  - @scalar/themes@0.13.20
+  - @scalar/workspace-store@0.16.2
+
+## 0.4.34
+
+### Patch Changes
+
+- Updated dependencies [2b98503]
+- Updated dependencies [c6736fd]
+- Updated dependencies [4951456]
+  - @scalar/workspace-store@0.16.1
+  - @scalar/json-magic@0.6.0
+
+## 0.4.33
+
+### Patch Changes
+
+- Updated dependencies [0b3c6fa]
+  - @scalar/themes@0.13.19
+
+## 0.4.32
+
+### Patch Changes
+
+- Updated dependencies [6462733]
+- Updated dependencies [b858566]
+- Updated dependencies [db5b649]
+  - @scalar/json-magic@0.5.2
+  - @scalar/workspace-store@0.16.0
+
+## 0.4.31
+
+### Patch Changes
+
+- Updated dependencies [7be091c]
+- Updated dependencies [f0f28a9]
+- Updated dependencies [41d8600]
+- Updated dependencies [db966b4]
+  - @scalar/workspace-store@0.15.8
+  - @scalar/json-magic@0.5.1
+
+## 0.4.30
+
+### Patch Changes
+
+- Updated dependencies [005fba9]
+- Updated dependencies [fe46413]
+- Updated dependencies [a1f865c]
+- Updated dependencies [dcf50ef]
+  - @scalar/types@0.2.16
+  - @scalar/json-magic@0.5.0
+  - @scalar/workspace-store@0.15.7
+  - @scalar/themes@0.13.18
+
+## 0.4.29
+
+### Patch Changes
+
+- Updated dependencies [bff46e5]
+- Updated dependencies [8f2a2f2]
+  - @scalar/helpers@0.0.11
+  - @scalar/themes@0.13.17
+  - @scalar/json-magic@0.4.3
+  - @scalar/object-utils@1.2.7
+  - @scalar/workspace-store@0.15.6
+
+## 0.4.28
+
+### Patch Changes
+
+- Updated dependencies [3bd1209]
+- Updated dependencies [1943b99]
+  - @scalar/json-magic@0.4.2
+  - @scalar/workspace-store@0.15.5
+
+## 0.4.27
+
+### Patch Changes
+
+- Updated dependencies [019a22a]
+  - @scalar/workspace-store@0.15.4
+
+## 0.4.26
+
+### Patch Changes
+
+- 821717b: refactor: schema rendering
+- Updated dependencies [821717b]
+  - @scalar/workspace-store@0.15.3
+  - @scalar/helpers@0.0.10
+  - @scalar/json-magic@0.4.1
+  - @scalar/object-utils@1.2.6
+
+## 0.4.25
+
+### Patch Changes
+
+- @scalar/workspace-store@0.15.2
+
+## 0.4.24
+
+### Patch Changes
+
+- Updated dependencies [abe3842]
+  - @scalar/types@0.2.15
+  - @scalar/themes@0.13.16
+  - @scalar/workspace-store@0.15.1
+
+## 0.4.23
+
+### Patch Changes
+
+- 714b197: feat: support base64 unicode characters
+- 98c55d0: feat: better xml rendering
+- cededd8: fix: schema undefined in example generator
+- a6ae22a: feat: change the way we declare schemas
+- 976366f: feat: upgrade performance of example from schema generator
+- Updated dependencies [ba27329]
+- Updated dependencies [06a46f0]
+- Updated dependencies [98c55d0]
+- Updated dependencies [792c937]
+- Updated dependencies [3473e08]
+- Updated dependencies [a6ae22a]
+- Updated dependencies [63283aa]
+- Updated dependencies [8680da6]
+- Updated dependencies [2b22eab]
+- Updated dependencies [0e747c7]
+- Updated dependencies [99894bc]
+- Updated dependencies [5ad329e]
+  - @scalar/workspace-store@0.15.0
+  - @scalar/json-magic@0.4.0
+  - @scalar/helpers@0.0.9
+  - @scalar/types@0.2.14
+  - @scalar/themes@0.13.15
+  - @scalar/object-utils@1.2.5
+
+## 0.4.22
+
+### Patch Changes
+
+- Updated dependencies [443c507]
+- Updated dependencies [88385b1]
+- Updated dependencies [50032be]
+  - @scalar/workspace-store@0.14.2
+  - @scalar/json-magic@0.3.1
+  - @scalar/types@0.2.13
+  - @scalar/themes@0.13.14
+
+## 0.4.21
+
+### Patch Changes
+
+- e2272a1: fix(oas-utils): use const value as example
+- b6f4b60: fix: skip readOnly properties in request examples
+- Updated dependencies [b8776fc]
+  - @scalar/workspace-store@0.14.1
+
+## 0.4.20
+
+### Patch Changes
+
+- bbef120: fix: remove extra coerces and cleanUp plugin from bundler
+- a1429ca: chore: move to new extensions system for better type safety
+- 66b18fc: feat: update the references to handle $refs from the magic proxy
+- 5f022b5: feat: use registry.scalar.com URLs as example
+- Updated dependencies [bbef120]
+- Updated dependencies [b93e1fe]
+- Updated dependencies [a1429ca]
+- Updated dependencies [5208f06]
+- Updated dependencies [4d509fb]
+- Updated dependencies [66b18fc]
+- Updated dependencies [0fcd446]
+- Updated dependencies [6c24be9]
+- Updated dependencies [6a88108]
+- Updated dependencies [c838a3f]
+- Updated dependencies [9be6eec]
+- Updated dependencies [c4bf497]
+- Updated dependencies [d8adbed]
+- Updated dependencies [0c80ef0]
+  - @scalar/workspace-store@0.14.0
+  - @scalar/json-magic@0.3.0
+  - @scalar/helpers@0.0.8
+  - @scalar/themes@0.13.13
+  - @scalar/types@0.2.12
+  - @scalar/object-utils@1.2.4
+  - @scalar/openapi-types@0.3.7
+
+## 0.4.19
+
+### Patch Changes
+
+- 3de82ac: fix: uses document url even if it's relative
+- Updated dependencies [0d502cb]
+- Updated dependencies [0afc40c]
+- Updated dependencies [128af48]
+  - @scalar/workspace-store@0.13.0
+  - @scalar/helpers@0.0.7
+  - @scalar/object-utils@1.2.3
+  - @scalar/openapi-types@0.3.7
+  - @scalar/themes@0.13.12
+  - @scalar/types@0.2.11
+
+## 0.4.18
+
+### Patch Changes
+
+- 46bfd2f: fix: show path parameter values in request examples
+
+## 0.4.17
+
+### Patch Changes
+
+- 46ebe6e: fix: use schema to example generator for request example request body
+- Updated dependencies [952bde2]
+- Updated dependencies [5301a80]
+- Updated dependencies [ae8d1b9]
+- Updated dependencies [8199955]
+- Updated dependencies [2888e18]
+  - @scalar/workspace-store@0.12.0
+
+## 0.4.16
+
+### Patch Changes
+
+- 94d6d0c: fix: remove old ssr state and update nuxt for workspace store
+- b957a2c: feat: do not use first item of oneOf if it is `type: null`
+- Updated dependencies [ccf875a]
+- Updated dependencies [9924c47]
+- Updated dependencies [94d6d0c]
+- Updated dependencies [952f471]
+- Updated dependencies [a0c92d9]
+- Updated dependencies [c0d6793]
+- Updated dependencies [3c1e3e3]
+- Updated dependencies [f3d0216]
+- Updated dependencies [a5534e6]
+- Updated dependencies [6b6c72c]
+  - @scalar/openapi-types@0.3.7
+  - @scalar/types@0.2.11
+  - @scalar/workspace-store@0.11.0
+  - @scalar/themes@0.13.12
+  - @scalar/helpers@0.0.7
+  - @scalar/object-utils@1.2.3
+
+## 0.4.15
+
+### Patch Changes
+
+- Updated dependencies [fb62e1b]
+- Updated dependencies [fb62e1b]
+  - @scalar/types@0.2.10
+  - @scalar/themes@0.13.11
+  - @scalar/workspace-store@0.10.2
+
 ## 0.4.14
 
 ### Patch Changes

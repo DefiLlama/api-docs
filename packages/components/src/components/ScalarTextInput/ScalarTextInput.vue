@@ -13,40 +13,70 @@ export default {}
 import { useBindCx } from '@scalar/use-hooks/useBindCx'
 import { onMounted, ref } from 'vue'
 
+import { ScalarFormInput } from '../ScalarForm'
+
+const { readonly } = defineProps<{
+  readonly?: boolean
+}>()
+
+const emit = defineEmits<{
+  /** Emitted when the input is clicked */
+  (e: 'click', event: MouseEvent): void
+}>()
+
+defineSlots<{
+  /* Text content to display before the input text */
+  prefix?: () => unknown
+  /*Text content to display after the input text */
+  suffix?: () => unknown
+  /* Text content to display to the right of the input */
+  aside?: () => unknown
+}>()
+
 const model = defineModel<string>()
 
 const input = ref<HTMLInputElement>()
 
 defineOptions({ inheritAttrs: false })
-const { classCx, otherAttrs } = useBindCx()
+const { stylingAttrsCx, otherAttrs } = useBindCx()
 
 onMounted(() => {
   // Force autofocus if the input has the autofocus attribute
   if ('autofocus' in otherAttrs.value) input.value?.focus()
 })
+
+function handleClick(event: MouseEvent) {
+  // Re-emit the click event to any consumers
+  emit('click', event)
+
+  if (readonly) {
+    input.value?.select() // If readonly, select the input on click
+  } else {
+    input.value?.focus() // If not readonly, focus the input on click
+  }
+}
 </script>
 <template>
-  <div
-    v-bind="
-      classCx(
-        'bg-b-1.5 flex cursor-text items-center gap-0.75 rounded-md border px-3 py-2.5 outline-offset-[-1px] focus-within:bg-b-1 has-[input:focus-visible]:outline',
-      )
-    "
-    @click="input?.focus()">
-    <div class="flex flex-1 relative">
-      <span
+  <ScalarFormInput
+    is="div"
+    v-bind="stylingAttrsCx('cursor-text bg-b-1 text-c-1 dark:bg-b-1.5')"
+    @click="handleClick">
+    <div class="relative flex flex-1 items-center">
+      <div
         v-if="$slots.prefix"
-        class="select-none whitespace-nowrap text-sm text-transparent">
+        class="whitespace-nowrap text-transparent select-none">
         <slot name="prefix" />
-      </span>
+      </div>
       <input
         ref="input"
         v-model="model"
-        class="z-1 min-w-0 flex-1 border-none bg-transparent text-sm placeholder:font-[inherit] focus-within:outline-none"
+        :aria-readonly="readonly || undefined"
+        class="z-1 min-w-0 flex-1 rounded-none border-none bg-transparent placeholder:font-[inherit] focus-within:outline-none"
+        :readonly
         v-bind="otherAttrs" />
       <div
         v-if="$slots.prefix || $slots.suffix"
-        class="absolute inset-0 select-none overflow-hidden whitespace-nowrap text-sm">
+        class="absolute inset-0 flex items-center overflow-hidden whitespace-nowrap select-none">
         <span
           v-if="$slots.prefix"
           class="text-c-2">
@@ -61,5 +91,5 @@ onMounted(() => {
       </div>
     </div>
     <slot name="aside" />
-  </div>
+  </ScalarFormInput>
 </template>

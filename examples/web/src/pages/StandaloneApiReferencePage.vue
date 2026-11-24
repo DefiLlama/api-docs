@@ -1,100 +1,70 @@
 <script setup lang="ts">
-import { ApiReference } from '@scalar/api-reference'
-import { apiReferenceConfigurationSchema } from '@scalar/types/api-reference'
-import { ref } from 'vue'
+import { ApiReference, type ApiReferenceConfiguration } from '@scalar/api-reference'
+import { computed, ref } from 'vue'
 
 // Import the new spec files
 import freeSpecContent from '../../../../defillama-openapi-free.json'
 import proSpecContent from '../../../../defillama-openapi-pro.json'
 import ApiKeyInput from '../components/ApiKeyInput.vue'
 import SlotPlaceholder from '../components/SlotPlaceholder.vue'
+import { buildSpec, isMissingApiKey } from '../spec-transform'
+
+/** The saved key, or null on the free plan. ApiKeyInput reports it on mount and on every change. */
+const apiKey = ref<string | null>(null)
 
 /**
- * The published spec keeps {YOUR_API_KEY} in the server URL so copied URLs are right.
- * This page inserts the key itself (or an <API-KEY> placeholder in snippets),
- * so it uses the bare host, otherwise the key shows up twice.
+ * Test Request on an API-plan endpoint without a key would send <API-KEY> to the API.
+ * We answer it here instead, so the visitor sees what to do rather than an auth error.
  */
-const PRO_HOST = 'https://pro-api.llama.fi'
-
-// Create a deep copy of the spec to avoid mutating the original
-const getUpdatedSpec = (baseUrl: string) => {
-  if (baseUrl === 'https://pro-api.llama.fi') {
-    const spec = JSON.parse(JSON.stringify(proSpecContent))
-    spec.servers = [{ url: PRO_HOST }]
-    return spec
+const customFetch: typeof fetch = (input, init) => {
+  const url = input instanceof Request ? input.url : String(input)
+  if (isMissingApiKey(url)) {
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ error: 'Please set an API key to use this pro endpoint.' }),
+        { status: 401, statusText: 'API key required', headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
   }
-
-  // Free plan: merge free spec with x-api-plan-only endpoints from pro spec
-  const freeSpec = JSON.parse(JSON.stringify(freeSpecContent))
-  const proSpec = JSON.parse(JSON.stringify(proSpecContent))
-
-  // Add API-Plan-only endpoints to the free spec
-  for (const path in proSpec.paths) {
-    for (const method in proSpec.paths[path]) {
-      if (proSpec.paths[path][method]['x-api-plan-only']) {
-        if (!freeSpec.paths[path]) {
-          freeSpec.paths[path] = {}
-        }
-
-        const proOperation = proSpec.paths[path][method]
-
-        // If the pro operation doesn't have its own server, use the pro host
-        if (!proOperation.servers) {
-          proOperation.servers = [{ url: PRO_HOST }]
-        }
-        freeSpec.paths[path][method] = proOperation
-      }
-    }
-  }
-
-  if (!freeSpec.servers) {
-    freeSpec.servers = [{ url: baseUrl }]
-  }
-  return freeSpec
+  return fetch(input, init)
 }
 
-// Track the current base URL to prevent unnecessary reloads
-const currentBaseUrl = ref<string>('https://api.llama.fi')
+const configuration = computed<Partial<ApiReferenceConfiguration>>(() => ({
+  /**
+   * Without this, Scalar opens on the first custom code sample (the JavaScript SDK). curl shows the
+   * full URL, so readers and agents see exactly which host and key placement to use.
+   */
+  defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
+  /** Shows the Beta badge in the sidebar. style.css hides the other badges there. */
+  showBadgesInSidebar: true,
+  customFetch,
+  /**
+   * Scalar's own toolbar, hosting invite and AI chat. Off by default outside localhost, but turned
+   * off here too so local testing looks like production and an upstream default change cannot show them.
+   */
+  showDeveloperTools: 'never',
+  agent: { disabled: true },
+  // Add path routing option
+  ...(window.location.pathname.startsWith('/path-routing')
+    ? {
+        pathRouting: { basePath: '/path-routing' },
+      }
+    : {}),
+  content: buildSpec(freeSpecContent, proSpecContent, apiKey.value),
+}))
 
-const configuration = ref(
-  apiReferenceConfigurationSchema.parse({
-    isEditable: false,
-    /**
-     * Without this, Scalar opens on the first custom code sample (the JavaScript SDK). curl shows the
-     * full URL, so readers and agents see exactly which host and key placement to use.
-     */
-    defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
-    // Add path routing option
-    ...(window.location.pathname.startsWith('/path-routing')
-      ? {
-          pathRouting: { basePath: '/path-routing' },
-        }
-      : {}),
-    content: getUpdatedSpec(currentBaseUrl.value),
-  }),
-)
-
-// Handle API key changes from the input component
-const handleApiKeyChange = (apiKey: string | null) => {
-  const newBaseUrl = apiKey ? 'https://pro-api.llama.fi' : 'https://api.llama.fi'
-  
-  // Only update if the base URL would actually change
-  if (currentBaseUrl.value !== newBaseUrl) {
-    currentBaseUrl.value = newBaseUrl
-    configuration.value = apiReferenceConfigurationSchema.parse({
-      ...configuration.value,
-      content: getUpdatedSpec(newBaseUrl),
-    })
-  }
+const handleApiKeyChange = (key: string | null) => {
+  apiKey.value = key
 }
 </script>
 
 <template>
   <div class="standalone-api-reference-page">
     <ApiKeyInput @api-key-change="handleApiKeyChange" />
+    <!-- Remount when the key changes, so every snippet and request picks up the new server URL -->
     <ApiReference
-      :configuration="configuration"
-      :key="currentBaseUrl">
+      :key="apiKey ?? 'free'"
+      :configuration="configuration">
       <template #footer><SlotPlaceholder>footer</SlotPlaceholder></template>
     </ApiReference>
   </div>

@@ -1,16 +1,16 @@
 import Link from 'next/link'
 
-import { Button, ClientWrapper } from './components'
+import { Button } from '../client/components/Button'
 
 const Page = () => {
   return (
-    <ClientWrapper>
+    <>
       <Button
-        method="POST"
+        method="get"
         path="/planets"
       />
       <Link href="/another-client">Go to another client</Link>
-    </ClientWrapper>
+    </>
   )
 }
 

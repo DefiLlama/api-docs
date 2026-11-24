@@ -1,8 +1,8 @@
-# Scalar API Reference for Fastify
+# API Reference for Fastify
 
 The easiest way to render a beautiful API reference with Fastify. All based on your OpenAPI/Swagger document.
 
-[![Screenshot of an API Reference](https://github.com/scalar/scalar/assets/6201407/d8beb5e1-bf64-4589-8cb0-992ba79215a8)](https://docs.scalar.com/swagger-editor)
+![Screenshot of the Fastify integration](../assets/screenshots/fastify.png)
 
 ## Installation
 
@@ -12,17 +12,20 @@ npm install @scalar/fastify-api-reference
 
 And then register it with Fastify:
 
-```ts
+```typescript
 await fastify.register(import('@scalar/fastify-api-reference'), {
   routePrefix: '/reference',
 })
 ```
 
+> [!NOTE]
+> The plugin works with both Fastify v4 and v5. It ships as an ES module, so register it with a dynamic `import()` (as shown above) or a top-level `import` in an ESM project.
+
 ## Usage
 
-If you have a OpenAPI/Swagger document already, you can pass an URL to the plugin:
+If you have an OpenAPI/Swagger document already, you can pass a URL to the plugin:
 
-```ts
+```typescript
 // Render an API reference for a given OpenAPI/Swagger spec URL
 fastify.register(import('@scalar/fastify-api-reference'), {
   routePrefix: '/reference',
@@ -33,23 +36,54 @@ fastify.register(import('@scalar/fastify-api-reference'), {
 })
 ```
 
-With [@fastify/swagger], we're picking it up automatically, so this would be enough:
+With [@fastify/swagger](https://github.com/fastify/fastify-swagger), we're picking it up automatically, so this would be enough:
 
-```ts
+```typescript
 await fastify.register(import('@scalar/fastify-api-reference'), {
   routePrefix: '/reference',
 })
 ```
 
-We wrote a [detailed integration guide for Fastify](https://github.com/scalar/scalar/tree/main/documentation/integrations/fastify.md).
+The fastify plugin takes our universal configuration object, [read more about configuration](../configuration.md) in the core package README.
 
-The fastify plugin takes our universal configuration object, [read more about configuration](https://github.com/scalar/scalar/tree/main/documentation/configuration.md) in the core package README.
+## Options
+
+The plugin accepts the following options:
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `routePrefix` | `string` | `/reference` | Path where the API reference is served. |
+| `configuration` | `object` | – | The universal Scalar [configuration object](../configuration.md) (`url`, `content`, `sources`, `title`, `theme`, `layout`, …). |
+| `openApiDocumentEndpoints` | `object` | `{ json: '/openapi.json', yaml: '/openapi.yaml' }` | Where the OpenAPI document is exposed, relative to `routePrefix`. |
+| `hooks` | `object` | – | Fastify `onRequest` and `preHandler` hooks applied to every route the plugin registers (useful for authentication). |
+| `logLevel` | `string` | – | Log level for the plugin's routes. Set to `silent` to silence them. |
+
+Scalar looks for the OpenAPI document in this order of precedence: `configuration.content`, then `configuration.url`, then [@fastify/swagger](https://github.com/fastify/fastify-swagger) if it is registered.
+
+## Exposing the OpenAPI document
+
+When you provide the document via `configuration.content` or [@fastify/swagger](https://github.com/fastify/fastify-swagger), the plugin re-exposes it (parsed by [`@scalar/openapi-parser`](https://github.com/scalar/scalar/tree/main/packages/openapi-parser)) under `routePrefix`, so other tooling can consume it:
+
+- `/reference/openapi.json`
+- `/reference/openapi.yaml`
+
+These endpoints are served with permissive CORS headers so external tools can fetch them. You can change the paths:
+
+```typescript
+await fastify.register(import('@scalar/fastify-api-reference'), {
+  routePrefix: '/reference',
+  openApiDocumentEndpoints: {
+    json: '/openapi.json',
+    yaml: '/openapi.yaml',
+  },
+})
+```
 
 ## Themes
 
-By default, we're using a custom Fastify theme and it's beautiful. But you can choose [one of our other themes](https://github.com/scalar/scalar/tree/main/packages/themes), too:
+By default, we're using a custom Fastify theme and it's beautiful. But you can choose [one of our other themes](../themes.md), too:
 
-```ts
+```typescript
 await fastify.register(import('@scalar/fastify-api-reference'), {
   routePrefix: '/reference',
   configuration: {
@@ -58,16 +92,73 @@ await fastify.register(import('@scalar/fastify-api-reference'), {
 })
 ```
 
+## Content Security Policy (CSP)
+
+The plugin serves the Scalar bundle from your own origin (`${routePrefix}/js/scalar.js`), so you do not need to allowlist a CDN — `script-src 'self'` already covers it.
+
+To run under a strict CSP without `script-src 'unsafe-inline'` (and without `'unsafe-eval'`), pass a `nonce`. It is applied to the inline bootstrap `<script>` and `<style>` the plugin emits, and exposed to the bundle via a `<meta property="csp-nonce">` tag so the stylesheet it injects at runtime carries the same nonce:
+
+```typescript
+await fastify.register(import('@scalar/fastify-api-reference'), {
+  routePrefix: '/reference',
+  configuration: {
+    nonce: 'r4nd0m-nonce-value',
+  },
+})
+```
+
+A matching policy looks like this:
+
+```
+Content-Security-Policy: script-src 'self' 'nonce-r4nd0m-nonce-value'; style-src 'self' 'unsafe-inline'
+```
+
+> [!NOTE]
+> `style-src` still needs `'unsafe-inline'`. The reference renders inline `style="..."` attributes that a nonce cannot authorize — that is a limitation of CSP itself, not of the plugin.
+
+> [!NOTE]
+> The `nonce` is read once, when the plugin is registered, so the same value is sent on every response. A per-request nonce is not currently supported.
+
+Depending on how you use the reference you may need to extend other directives too — for example `connect-src` so the built-in API client can reach your API, and `img-src`/`font-src` for images and fonts referenced by your document or theme.
+
 ## Logging
 
 The plugin is compatible with the Fastify logger. You can configure the log level for the routes registered by the plugin:
 
-```ts
+```typescript
 fastify.register(import('@scalar/fastify-api-reference'), {
   routePrefix: '/reference',
   logLevel: 'silent',
 })
 ```
+
+## Authentication
+
+Because the plugin registers standard Fastify routes, you can protect the API reference with any Fastify auth plugin through the `hooks` option. Here is an example using [@fastify/basic-auth](https://github.com/fastify/fastify-basic-auth):
+
+```typescript
+import FastifyBasicAuth from '@fastify/basic-auth'
+
+await fastify.register(FastifyBasicAuth, {
+  validate(username, password, request, reply, done) {
+    if (username === 'admin' && password === 'admin') {
+      done()
+    } else {
+      done(new Error('Access denied'))
+    }
+  },
+  authenticate: true,
+})
+
+await fastify.register(import('@scalar/fastify-api-reference'), {
+  routePrefix: '/reference',
+  hooks: {
+    onRequest: fastify.basicAuth,
+  },
+})
+```
+
+The `onRequest` and `preHandler` hooks are applied to every route the plugin registers — the HTML page, the bundled JavaScript, and the OpenAPI document endpoints.
 
 ## Guide
 
@@ -84,7 +175,7 @@ npm install fastify
 
 Then, to use it, we need to create a JavaScript file (`index.js`):
 
-```js
+```javascript
 // index.js
 import Fastify from 'fastify'
 
@@ -148,9 +239,9 @@ In order to use it, we need to install the official package first:
 npm install @fastify/swagger
 ```
 
-Okay, you've got this. To actually set up the package, there's a some boilerplate code required. **Replace the content** of our previous `index.js` with the following:
+Okay, you've got this. To actually set up the package, there's some boilerplate code required. **Replace the content** of our previous `index.js` with the following:
 
-```js
+```javascript
 import FastifySwagger from '@fastify/swagger'
 import Fastify from 'fastify'
 
@@ -276,7 +367,7 @@ npm install @scalar/fastify-api-reference
 
 Put the following snippet into your `index.js` right before the `await fastify.ready`
 
-```js
+```javascript
 // …
 // Render the API reference
 import ScalarApiReference from '@scalar/fastify-api-reference'
@@ -297,9 +388,8 @@ await fastify.register(ScalarApiReference, {
 // …
 ```
 
-:::scalar-callout{ type=info }
-It's not really a problem to have an `import` statement in the middle of your file, it's not really common, though. Feel free to move it to the top of your files, where `import` statements usually live.
-:::
+> [!NOTE]
+> It's not really a problem to have an `import` statement in the middle of your file, it's not really common, though. Feel free to move it to the top of your files, where `import` statements usually live.
 
 Wow, this is it already. Restart the server, if it didn't already and take a look at your new API reference:
 
@@ -313,7 +403,7 @@ For Additional hooks you can learn more about [route's options](https://fastify.
 
 You can customize a ton! Just pass a `configuration` object to the plugin:
 
-```js
+```javascript
 import ScalarApiReference from '@scalar/fastify-api-reference'
 
 await fastify.register(ScalarApiReference, {
@@ -332,11 +422,10 @@ TypeScript should give you a nice autocomplete for all options. If you're more i
 
 Auto-generated OpenAPI files are great, but some OpenAPI purists argue it's worth to handcraft your OpenAPI files. If you're one of them, feel free to just pass an URL to your existing OpenAPI file:
 
-:::scalar-callout{ type=info }
-If you don't use `@fastify/swagger` to generate and serve an OpenAPI specification, you need to serve it manually. [To serve static files, try @fastify/static](https://github.com/fastify/fastify-static).
-:::
+> [!NOTE]
+> If you don't use `@fastify/swagger` to generate and serve an OpenAPI specification, you need to serve it manually. [To serve static files, try @fastify/static](https://github.com/fastify/fastify-static).
 
-```js
+```javascript
 import ScalarApiReference from '@scalar/fastify-api-reference'
 
 await fastify.register(ScalarApiReference, {
@@ -345,7 +434,7 @@ await fastify.register(ScalarApiReference, {
     // On your domain:
     url: '/openapi.json',
     // Or somewhere else:
-    // url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml',
+    // url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=yaml',
   },
 })
 ```

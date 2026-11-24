@@ -1,4 +1,9 @@
+import { isJsonMediaType } from '@scalar/helpers/http/is-json-media-type'
 import type { Plugin } from '@scalar/types/snippetz'
+
+import { mergeCookieHeaders } from '@/libs/cookies'
+import { joinUrlAndQuery, normalizeMethod } from '@/libs/http'
+import { dispositionValue } from '@/libs/prepare-request'
 
 /**
  * http/http1.1
@@ -17,7 +22,7 @@ export const httpHttp11: Plugin = {
     }
 
     // Normalize method
-    normalizedRequest.method = normalizedRequest.method.toUpperCase()
+    normalizedRequest.method = normalizeMethod(normalizedRequest.method)
 
     // Parse URL with error handling
     let url
@@ -30,29 +35,20 @@ export const httpHttp11: Plugin = {
       path = normalizedRequest.url || '/'
     }
 
-    const hostname = url?.hostname || 'UNKNOWN_HOSTNAME'
+    // `host` keeps a non-default port (e.g. `localhost:8080`), as the Host header requires
+    const host = url?.host || 'UNKNOWN_HOSTNAME'
 
     // Start building the request
-    let requestString = `${normalizedRequest.method} ${path} HTTP/1.1\r\n`
-
-    // Handle query string parameters
-    if (normalizedRequest.queryString.length) {
-      const queryString = normalizedRequest.queryString
-        .map((param) => `${encodeURIComponent(param.name)}=${encodeURIComponent(param.value)}`)
-        .join('&')
-
-      // Append query string to the path
-      requestString = `${normalizedRequest.method} ${path}?${queryString} HTTP/1.1\r\n`
-    }
+    let requestString = `${normalizedRequest.method} ${joinUrlAndQuery(path, normalizedRequest.queryString)} HTTP/1.1\r\n`
 
     // Store all headers
     const headers = new Map()
 
     // Host header
-    headers.set('Host', hostname)
+    headers.set('Host', host)
 
     // Passed headers
-    normalizedRequest.headers.forEach((header) => {
+    mergeCookieHeaders(normalizedRequest).forEach((header) => {
       if (headers.has(header.name)) {
         headers.set(header.name, `${headers.get(header.name)}, ${header.value}`)
       } else {
@@ -60,22 +56,13 @@ export const httpHttp11: Plugin = {
       }
     })
 
-    // Query string parameters
-    if (normalizedRequest.queryString.length) {
-      const queryString = normalizedRequest.queryString
-        .map((param) => `${encodeURIComponent(param.name)}=${encodeURIComponent(param.value)}`)
-        .join('&')
-
-      // Append query string to the path
-      requestString = `${normalizedRequest.method} ${path}?${queryString} HTTP/1.1\r\n`
-    }
-
     // Request body
     let body = ''
     if (normalizedRequest.postData) {
       // Always set the Content-Type header based on postData.mimeType
-      if (normalizedRequest.postData.mimeType === 'application/json' && normalizedRequest.postData.text) {
-        headers.set('Content-Type', 'application/json')
+      if (isJsonMediaType(normalizedRequest.postData.mimeType) && normalizedRequest.postData.text) {
+        // Keep the media type as written, so `application/vnd.api+json` or a charset stays intact
+        headers.set('Content-Type', normalizedRequest.postData.mimeType)
         body = normalizedRequest.postData.text
       } else if (
         normalizedRequest.postData.mimeType === 'application/octet-stream' &&
@@ -94,18 +81,27 @@ export const httpHttp11: Plugin = {
         headers.set('Content-Type', 'application/x-www-form-urlencoded')
         body = formData
       } else if (normalizedRequest.postData.mimeType === 'multipart/form-data' && normalizedRequest.postData.params) {
-        const boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
+        const boundary = '{{boundary}}'
+        requestString = `// Files and boundary variables use VS Code REST Client syntax.\r\n@boundary = {{$guid}}\r\n\r\n${requestString}`
         headers.set('Content-Type', `multipart/form-data; boundary=${boundary}`)
 
         body =
           normalizedRequest.postData.params
             .map((param) => {
-              if (param.fileName) {
-                return `--${boundary}\r\nContent-Disposition: form-data; name="${param.name}"; filename="${param.fileName}"\r\n\r\n`
+              const contentTypeHeader = param.contentType ? `Content-Type: ${param.contentType}\r\n` : ''
+
+              if (param.fileName !== undefined) {
+                return `--${boundary}\r\nContent-Disposition: form-data; name="${dispositionValue(param.name)}"; filename="${dispositionValue(param.fileName)}"\r\n${contentTypeHeader}\r\n< ${param.fileName}\r\n`
               }
-              return `--${boundary}\r\nContent-Disposition: form-data; name="${param.name}"\r\n\r\n${param.value}\r\n`
+              return `--${boundary}\r\nContent-Disposition: form-data; name="${dispositionValue(param.name)}"\r\n${contentTypeHeader}\r\n${param.value ?? ''}\r\n`
             })
             .join('') + `--${boundary}--\r\n`
+      } else if (normalizedRequest.postData.text) {
+        // Any other body (text/plain, application/xml, …) is sent as it is
+        if (normalizedRequest.postData.mimeType) {
+          headers.set('Content-Type', normalizedRequest.postData.mimeType)
+        }
+        body = normalizedRequest.postData.text
       }
     }
 

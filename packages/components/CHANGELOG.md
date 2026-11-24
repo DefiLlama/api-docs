@@ -1,5 +1,1642 @@
 # @scalar/components
 
+## 0.35.5
+
+No changes in this release.
+
+## 0.35.4
+
+### Patch Changes
+
+- [#11154](https://github.com/scalar/scalar/pull/11154): Color operators like punctuation in syntax highlighting
+
+  Operators such as `=`, `->` and `::` now get an `hljs-operator` class and use the same quieter color as brackets and commas, so `client.planets()` and `Client::new()` read consistently. If you pair `@scalar/highlight/compat` with your own highlight.js theme, its `.hljs-operator` rules now apply too.
+- [#11126](https://github.com/scalar/scalar/pull/11126): Give syntax highlighting a fuller palette
+
+  Parameters, object members, type names and punctuation now have their own colors, plain code is easier to read, and the colors are adjusted so they stay readable and distinct in light and dark mode. They still come from the active theme's hues.
+
+  The colors live in `@scalar/themes` as `--scalar-code-*` variables named by role (`--scalar-code-keyword`, `--scalar-code-string`, `--scalar-code-parameter` and so on), so a theme or custom stylesheet can set its own syntax colors. The Moon theme sets darker and lighter values to stay readable on its tinted backgrounds.
+
+## 0.35.3
+
+### Patch Changes
+
+- [#11124](https://github.com/scalar/scalar/pull/11124): Render Markdown through `@scalar/markdown` instead of `@scalar/code-highlight`
+
+  None of them pull in lowlight or highlight.js any more: code blocks in descriptions are highlighted by `@scalar/highlight`, the same highlighter `ScalarCodeBlock` uses. A fenced code block without a language is no longer auto-detected and renders as plain text. In `@scalar/openapi-to-markdown` this shows up in descriptions that contain HTML or alerts: an unlabeled fence used to come out labeled with highlight.js's guess (often wrong, such as `properties` for JSON), and now stays unlabeled.
+- [#11112](https://github.com/scalar/scalar/pull/11112): Render legacy ScalarIcon stroke-width styles during server-side rendering to avoid hydration mismatches in Vue and Nuxt applications.
+
+## 0.35.2
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.35.1
+
+### Patch Changes
+
+- [#11078](https://github.com/scalar/scalar/pull/11078): Center card headers and footers between the card's edge and the surface beside them. They sat on the card's 4px padding on one side only, so their contents were 2px off center toward the surface: the request example's buttons, for example, were 6px under the code but 10px above the card's edge. Cards keep their height, and a card given `p-0` is unchanged.
+- [#11004](https://github.com/scalar/scalar/pull/11004): Support TypeScript 6 builds and compiler API consumers while preserving runtime output and public handler types. Keep Nuxt build tooling on its supported TypeScript 5 compiler.
+
+## 0.35.0
+
+### Minor Changes
+
+- [#10980](https://github.com/scalar/scalar/pull/10980): feat: redesign code cards as a padded shell with the code on a lifted surface
+
+  This changes the default look of every `ScalarCard`, not only the cards in the API reference. `ScalarCard` drops its border and dividers for a 12px shell with 4px of padding, and each plain `ScalarCardSection` becomes an 8px surface lifted off it. If you use these components in your own app, check your cards after this bump:
+
+  - A card recolored to match its page (for example `bg-b-1` on a `bg-b-1` page) no longer has an edge. Pass `border` to bring it back, or give the card a fill that differs from the page.
+  - Two plain sections in a row are two surfaces with a 4px gap, where they were one box with a divider.
+  - Content placed straight in `ScalarCard` without a section sits inside the 4px padding. Pass `p-0` to remove it.
+
+  In the API reference, the request example, example responses, operations list and AsyncAPI cards all pick this up. The surface color is derived from `--scalar-background-2`, and its outline from `--scalar-shadow-1` and `--scalar-border-color`. A copy button on a surface sits one step above it, toward the text color. Set `--scalar-card-surface`, `--scalar-card-surface-raised` or `--scalar-card-surface-shadow` on `.scalar-card` to change them. Every class name is unchanged, and the new rules are single-class selectors, so existing theme and `customCss` rules keep winning.
+- [#11040](https://github.com/scalar/scalar/pull/11040): feat: add a medium size to ScalarToggle and ScalarTristateToggle
+
+  Pass `size="md"` for a larger toggle with a 20×32px track and a 16px thumb, sized to sit next to full-height form controls in settings rows. The tristate toggle's center position scales with it. The default stays `sm`, so existing toggles are unchanged. The input and group wrappers keep the `sm` toggle, since their form-row layout is built around it.
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+- [#11027](https://github.com/scalar/scalar/pull/11027): fix: render server-rendered teleports in place until they are mounted, so hydrating the API reference no longer replaces elements of the host page or breaks its dropdowns
+
+## 0.34.1
+
+No changes in this release.
+
+## 0.34.0
+
+### Minor Changes
+
+- [#10894](https://github.com/scalar/scalar/pull/10894): Substitute explicitly mapped reader credentials into custom code samples with default masking, public field opt-outs, and real values on copy.
+- [#10890](https://github.com/scalar/scalar/pull/10890): Add an Elixir language icon and show it on Elixir SDK installation tabs.
+
+## 0.33.2
+
+### Patch Changes
+
+- [#10735](https://github.com/scalar/scalar/pull/10735): Cancel the pending selected-option scroll when a combobox is unmounted.
+- [#10843](https://github.com/scalar/scalar/pull/10843): Prevent opening or navigating combobox options from scrolling the surrounding page before the picker is positioned.
+- [#10849](https://github.com/scalar/scalar/pull/10849): Make code block containers own line spacing so highlighted text, plain text, blank lines, and line numbers use the same height. ScalarCodeBlock defaults to 1.4 and Markdown fenced code defaults to 1.5; override either with --scalar-code-line-height on the component or an ancestor. The shared highlighting stylesheet preserves the 1.4 default for direct consumers with a zero-specificity container rule, so existing container overrides still take precedence.
+
+## 0.33.1
+
+## 0.33.0
+
+### Minor Changes
+
+- [#9939](https://github.com/scalar/scalar/pull/9939): Switch `ScalarCodeBlock` from `@scalar/code-highlight` to `@scalar/highlight/compat`. The markup keeps the same `<pre><code class="hljs language-x">` envelope and the same `hljs-*` token classes, so `code.css` and every consumer of the rendered string are unchanged, but the highlighter underneath is now a state machine rather than a lowlight instance built per call — around 47 KB gzipped for all forty grammars against 127 KB before.
+
+  Two token colors move, both because the finer scope vocabulary now reaches `code.css` rules that lowlight's output never hit. JSON `true`, `false` and `null` render green rather than purple: highlight.js nested a `hljs-keyword` inside `hljs-literal`, so the keyword color won, and a single `hljs-literal` span now picks up the green that stylesheet already defines for literals. HTTP header values, previously left unstyled, are colored as well. Python docstrings are scoped as comments instead of strings.
+
+  `ScalarMarkdown` still uses `@scalar/code-highlight` for its remark/rehype pipeline, which the compat layer deliberately does not cover.
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Fix the combobox filter declaration importing a private source alias and restore toast styles after upgrading vue-sonner.
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+- [#10699](https://github.com/scalar/scalar/pull/10699): Apply the shared import and Tailwind class formatting to components.
+- [#10704](https://github.com/scalar/scalar/pull/10704): Preserve sidebar section spacing when navigation overflows, including AsyncAPI filters with all tags selected.
+
+## 0.32.1
+
+### Patch Changes
+
+- [#10669](https://github.com/scalar/scalar/pull/10669): fix: wrap long operation paths in request example cards instead of truncating them, and move the client picker below the path when it does not fit
+- [#10663](https://github.com/scalar/scalar/pull/10663): Stop `ScalarDropdown` from scrolling the page to the top of its containing block when it opens. The menu is now focused with `preventScroll`, since Floating UI has not positioned it yet at that point.
+
+## 0.32.0
+
+### Minor Changes
+
+- [#10552](https://github.com/scalar/scalar/pull/10552): Search combobox options asynchronously: bind the search text with `v-model:query`, skip client-side filtering with a `filterFn` that returns the options as given, show a spinner or error mark in the search field with `loader`, and add content to the end of the search field with the `search-end` slot.
+- [#10213](https://github.com/scalar/scalar/pull/10213): Add per-reference Markdown rendering hooks and an explicitly loaded Mermaid plugin with interactive diagrams, keyboard panning, and zoom controls.
+
+  Provide Markdown hooks before mounting the embedded client modal so its initial render receives the configured hooks. The Mermaid viewer uses customizable Scalar theme styles and an intentional light drawing surface.
+
+  Isolate Markdown plugin cleanup failures so other plugins still release their resources when content changes or unmounts.
+
+### Patch Changes
+
+- [#10636](https://github.com/scalar/scalar/pull/10636): Make the discrete sidebar group toggle button 24px so it meets the WCAG 2.5.8 minimum target size.
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 0.31.1
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+- [#10537](https://github.com/scalar/scalar/pull/10537): fix(components): stop host page `pre` styles from adding borders and padding to code blocks
+- [#10529](https://github.com/scalar/scalar/pull/10529): Align import and export ordering with the Biome checks.
+- [#10520](https://github.com/scalar/scalar/pull/10520): Sort imports and exports to satisfy the Biome checks.
+- [#10526](https://github.com/scalar/scalar/pull/10526): Align import and export ordering with the repository CI checks.
+- [#10536](https://github.com/scalar/scalar/pull/10536): fix(components): keep the tooltip open when the pointer moves from it onto a child of its target, and draw its border with the theme hairline instead of the text colour
+
+## 0.31.0
+
+### Minor Changes
+
+- [#10493](https://github.com/scalar/scalar/pull/10493): Floating surfaces now paint their own background, border, and shadow instead of using an absolutely positioned backdrop layer. The `#backdrop` slot on `ScalarDropdown`, `ScalarPopover`, `ScalarListbox`, and `ScalarCombobox` is removed; style the floating element with `class` instead. `ScalarFloatingBackdrop`, `--scalar-lifted-brightness`, and the `brightness-lifted` utility are deprecated in favor of `bg-b-1 dark:bg-b-1.5`. `ScalarFloatingBackdrop` itself now uses the same surface styles, so it no longer clips its slot or draws a real border. A new `inset-shadow-border` utility draws the hairline border so it can stack with `shadow-*` without taking up layout space; Tailwind's default `inset-shadow-*` sizes are reset, matching the other theme namespaces.
+
+## 0.30.7
+
+### Patch Changes
+
+- [#10467](https://github.com/scalar/scalar/pull/10467): Use the design system border, shadow, and extra-large radius for all floating surfaces. Backdrops now inherit their radius from the floating element, and the lifted brightness no longer brightens the border.
+
+## 0.30.6
+
+### Patch Changes
+
+- [#10372](https://github.com/scalar/scalar/pull/10372): fix: improve keyboard and screen reader access to code blocks and multiselect comboboxes
+  - The code block scroller is exposed as a named group ("Code sample: Shell cURL" in the API Reference, localizable via `operation.codeSample`) so screen readers announce it when it receives focus
+  - The code block copy button now has a stable accessible name ("Copy Shell code") in every state, including while its visible label is hidden
+  - In multiselect comboboxes such as the auth scheme picker, Space toggles the active option while the search query is empty instead of hiding the whole list
+
+## 0.30.5
+
+### Patch Changes
+
+- [#10401](https://github.com/scalar/scalar/pull/10401): Preserve inline code styling in collapsed Markdown summaries, including authentication descriptions.
+
+## 0.30.4
+
+### Patch Changes
+
+- [#10392](https://github.com/scalar/scalar/pull/10392): Give code samples, including virtualized large examples, a named keyboard-scrollable region and keep copy buttons descriptively named before hover or focus.
+- [#10385](https://github.com/scalar/scalar/pull/10385): feat: add UTM parameters identifying the integration to the "Powered by Scalar" link
+- [#10369](https://github.com/scalar/scalar/pull/10369): fix: address a batch of screen reader and keyboard accessibility findings
+
+  Corrects programmatic semantics only, with no change to how anything renders:
+  the current sidebar item now reports `aria-current`, the single content type
+  readout leaves the tab order, collapsible sections no longer announce their
+  title twice, the password toggle reports its state through `aria-pressed`, the
+  two document download buttons get distinct accessible names, response status
+  tabs announce what each code means, and the client picker and its search field
+  get accessible names.
+
+## 0.30.3
+
+## 0.30.2
+
+## 0.30.1
+
+## 0.30.0
+
+### Minor Changes
+
+- [#10269](https://github.com/scalar/scalar/pull/10269): Add title filtering and keyboard-friendly search to the multi-document API selector.
+
+## 0.29.3
+
+### Patch Changes
+
+- [#10245](https://github.com/scalar/scalar/pull/10245): Use design system borders, shadows, and radii for dropdown surfaces and items.
+
+## 0.29.2
+
+### Patch Changes
+
+- [#10133](https://github.com/scalar/scalar/pull/10133): Restore the empty Astro logo.
+- [#10074](https://github.com/scalar/scalar/pull/10074): perf(components): defer ScalarFloating's first positioning to the next tick
+
+  `useFloating`'s `autoUpdate` ran `computePosition` inside the mount flush, so every floating element forced a style and layout pass while it was mounting, whether or not it was open. A page that mounts ten closed dropdowns paid ten forced passes before anything appeared.
+
+  `whileElementsMounted` now starts `autoUpdate` from `nextTick`, chained on the current flush so it still runs before paint, with a disposed flag so an element unmounted within that tick never starts one. On a large API reference document this takes layout events per interaction from eleven to two, and the layout objects walked from 278,715 to 49,539.
+
+  This affects every consumer of `ScalarFloating`, including the dropdown, listbox, popover, combobox, menu and tooltip components. The full component end-to-end suite (203 tests, 219 screenshots) shows no snapshot change, and `ScalarFloating`'s own suite covers all twelve placements, resizing and the constrained max-size case.
+
+- [#10138](https://github.com/scalar/scalar/pull/10138): Test sidebar content and accessible attribute forwarding.
+- [#10140](https://github.com/scalar/scalar/pull/10140): Replace redundant type assertions with compiler-checked annotations, typed accumulators, and existing guards across helpers, API conversion, request handling, and schema rendering.
+
+  Narrow DOM elements and caught errors before accessing their properties. Correct header lookup to include missing values and handle them during PowerShell snippet generation.
+
+  Validate release-note provider responses, represent unresolved references and absent groups in helper return types, and require narrowing merged object values. Preserve AsyncAPI broker credentials separately from HTTP authentication schemes.
+
+## 0.29.1
+
+### Patch Changes
+
+- [#10058](https://github.com/scalar/scalar/pull/10058): chore: upgrade to Storybook 10.5.10 and drop the third-party dark mode addon
+
+## 0.29.0
+
+### Minor Changes
+
+- [#10025](https://github.com/scalar/scalar/pull/10025): **Breaking:** `ScalarHeader` no longer lays out its own columns. The `start` and `end` slots have been removed in favour of composing `ScalarHeaderColumn` children in the default slot, and a new `is` prop lets the header render as something other than a `header` element.
+
+  Columns hug their content. Give the content-bearing column `flex-1` so it takes the free space — that is also the column that absorbs the shrinking when space runs out.
+
+  ```diff
+  <ScalarHeader>
+  -   <template #start>
+  -     <ScalarMenu />
+  -   </template>
+  -   <template #end>
+  -     <ScalarHeaderButton cta>Register</ScalarHeaderButton>
+  -   </template>
+  +   <ScalarHeaderColumn class="flex-1">
+  +     <ScalarMenu />
+  +   </ScalarHeaderColumn>
+  +   <ScalarHeaderColumn class="justify-end">
+  +     <ScalarHeaderButton cta>Register</ScalarHeaderButton>
+  +   </ScalarHeaderColumn>
+  </ScalarHeader>
+  ```
+
+  **Put `flex-1` on both side columns only when there is a genuine `justify-center` middle column.** In a two-column header it splits the width 50/50 instead, which clips the content-bearing side on narrow screens:
+
+  ```html
+  <ScalarHeader>
+    <ScalarHeaderColumn class="flex-1">…</ScalarHeaderColumn>
+    <ScalarHeaderColumn class="justify-center">…</ScalarHeaderColumn>
+    <ScalarHeaderColumn class="flex-1 justify-end">…</ScalarHeaderColumn>
+  </ScalarHeader>
+  ```
+
+  Passing the old slots logs a deprecation warning, and typed consumers get a `vue-tsc` error. One case cannot be detected: a header that used _only_ the middle slot now renders its contents left-aligned rather than centred, because that content is indistinguishable from the new default slot. Wrap it as above.
+
+  `is` is worth reaching for when a header is nested inside an existing `header` landmark — `is="div"` avoids exposing a second `banner` role.
+
+  `ScalarMenu`'s default logo now renders at a fixed size. It previously inherited `ScalarIcon`'s `size: 'full'`, and because the Scalar logo ships a `viewBox` with no intrinsic dimensions, that percentage width resolved against the available space in WebKit — stretching the logo box to fill the header and leaving the mark floating in the middle of it.
+
+  This also fixes the app header overflowing narrow viewports, including on iOS Safari. `ScalarHeaderColumn` carries `min-w-0`, so a `flex-1` column shrinks and its long title ellipsizes instead of pushing the header past the screen. Hug columns still size to their content, so keep a trailing action cluster narrow enough to fit on its own.
+
+## 0.28.1
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.28.0
+
+### Minor Changes
+
+- [#9922](https://github.com/scalar/scalar/pull/9922): Give sidebar groups whose label is a link their own expand and collapse button.
+
+  Group labels render as anchors so the navigation stays crawlable, which left the caret as a plain `<div>` inside the link. That gave each row a single focusable element: pressing Enter followed the link (expanding the group as a side effect) and nothing collapsed it again, `aria-expanded` sat on the link rather than on a control that can toggle, and the caret's screen reader text ran into the link's accessible name ("Authentication Close Group").
+  - `@scalar/components`: new `ScalarSidebarGroupToggleButton` and `ScalarSidebarGroupToggleSpacer`, which `ScalarSidebarGroup` now uses for its discrete toggle in place of an inline button. `ScalarSidebarGroup` no longer sets `aria-expanded` on the group label when `discrete` is set, because the toggle button is what owns the expanded state.
+  - `@scalar/sidebar`: a group renders a discrete toggle whenever `getHref` returns a URL for it, so tags, models and documents in the reference sidebar each get a toggle button of their own. The caret is now focusable and operable from the keyboard, `aria-expanded` moved from the label onto that button, and the button is named after the group it belongs to ("Open Group - Authentication") so a screen reader user can tell the toggles apart. Groups without an href are unchanged, so the client sidebar keeps its current behavior.
+
+### Patch Changes
+
+- [#9931](https://github.com/scalar/scalar/pull/9931): Keep the copy button off the end of one-line code blocks. On a single-line `ScalarCodeBlock` the copy button is centered over the only line there is, so the tail of a long snippet (an install command ending in a repository URL, for example) stayed underneath the button and its label even when scrolled all the way right. One-line blocks with a copy button now reserve trailing space on the line so it can scroll clear of the button.
+- [#9913](https://github.com/scalar/scalar/pull/9913): Add Julia (HTTP.jl) as a code example target. The new `julia/http` client generates HTTP.jl snippets, including headers, query parameters, cookies, basic auth, JSON bodies (as `Dict`s serialized with `JSON.json`), url-encoded bodies and `HTTP.Form` multipart uploads. Julia syntax highlighting and a Julia icon are included, so the client shows up in the code example picker like any other language.
+
+## 0.27.11
+
+### Patch Changes
+
+- [#9783](https://github.com/scalar/scalar/pull/9783): fix: resolve axe-core ARIA violations in the API reference sidebar and client tabs
+
+  Sidebar items used `aria-selected` on links/buttons (invalid for those roles) and the search trigger used `role="search"` on a button. Selected items now use `aria-current="page"`, the search control is a plain named button, and the sidebar no longer sets an invalid `role="navigation"` on `<aside>` (it keeps the default complementary landmark).
+
+  Client library and SDK installation "More" comboboxes sat inside `role="tablist"`, which fails `aria-required-children`. They now sit beside the tablist. MCP install controls without a target URL render as buttons instead of empty `a[href=""]` links.
+
+- [#9842](https://github.com/scalar/scalar/pull/9842): fix: show tooltips whose trigger sits inside a modal `<dialog>`
+
+  A `<dialog>` opened with `showModal()` is promoted to the browser's top layer, which
+  paints above the rest of the document no matter what `z-index` anything else carries.
+  The tooltip element is a shared singleton parented to `<body>`, so it rendered behind
+  the dialog and was invisible. It now moves into the dialog while it points at a target
+  in there, and moves back to the body once it is hidden.
+
+- [#9844](https://github.com/scalar/scalar/pull/9844): Use the base surface for text inputs, text areas, and text input copy controls in light mode.
+- [#9829](https://github.com/scalar/scalar/pull/9829): Update Vue to 3.5.40. Vue 3.5.36 tightened `defineModel` default validation, so
+  models with array or object defaults now use the factory form
+  (`defineModel<T[]>({ default: () => [] })`) as Vue already requires for regular
+  props. Behaviour is unchanged.
+
+## 0.27.10
+
+### Patch Changes
+
+- [#9782](https://github.com/scalar/scalar/pull/9782): Fix the tooltip rendering with a dark background in light mode. The light-mode tooltip tokens were hard-coded to a dark fill with light text, so the tooltip stayed black regardless of the active color mode. They now derive from `--scalar-background-1` and `--scalar-color-1`, so the tooltip follows the theme in both modes.
+
+  The tooltip surface is also polished to match the rest of the system: a standard hairline border and base shadow in both color modes (replacing the dark-mode-only inset border), a large radius, regular font weight, and tighter vertical padding. Horizontal and vertical padding are now separate variables so the placement offset applies to the correct axis.
+
+## 0.27.9
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.27.8
+
+### Patch Changes
+
+- [#9687](https://github.com/scalar/scalar/pull/9687): feat(themes): derive the border radius scale from `--scalar-radius`
+
+  The radius tokens used to be independent, so setting `--scalar-radius: 0` still left rounded corners
+  behind on anything using `--scalar-radius-lg`, `--scalar-radius-xl` or `rounded-full`. They now all
+  derive from `--scalar-radius`, which means overriding that single variable rescales every corner in the
+  interface, and `0` squares it off completely.
+
+  Two new tokens fill out the scale, `--scalar-radius-2xl` (12px) and `--scalar-radius-3xl` (16px), along
+  with `--scalar-radius-full` for pills and circles. The matching `rounded-2xl` and `rounded-3xl` Tailwind
+  utilities now emit CSS; previously they were silently dropped.
+
+  Every default value is unchanged, so nothing shifts unless you were relying on the old behaviour. If
+  your theme sets `--scalar-radius` on its own and expects the larger radii to stay put, set those tokens
+  explicitly. Override `--scalar-radius` on `:root`: a custom property substitutes `var()` at the element
+  where it is declared, so setting the base further down the tree moves it without moving anything derived
+  from it.
+
+- [#9687](https://github.com/scalar/scalar/pull/9687): feat(themes): cap container corners with `--scalar-radius-max`
+
+  A large `--scalar-radius` used to curve tall containers hard enough that they swallowed their own
+  content: dropdown panels clipped their last rows, and code blocks rendered as stadiums.
+
+  Every radius token except `--scalar-radius-full` now clamps to a new `--scalar-radius-max`, which
+  defaults to `20px`. A new `--scalar-radius-md` gives the base radius the same cap, and is what
+  `rounded`, `rounded-md` and form controls now use. Pills and circles are deliberately exempt, so
+  avatars, spinners and toggles stay round.
+
+  The reset no longer sets a `border-radius` on `:focus-visible`. It was reshaping the focused element
+  rather than its outline, which meant a large theme radius turned bare focus containers into pills the
+  moment they were focused. Outlines already follow an element's own corners, so focus rings now match
+  whatever shape the element actually has.
+
+  Defaults are unchanged: every default token sits at or below the cap, so nothing moves unless you were
+  already setting a very large radius.
+
+## 0.27.7
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.27.6
+
+### Patch Changes
+
+- [#9668](https://github.com/scalar/scalar/pull/9668): feat: add tristate toggle and tristate toggle group components
+
+## 0.27.5
+
+## 0.27.4
+
+### Patch Changes
+
+- [#9597](https://github.com/scalar/scalar/pull/9597): Add API Reference UI localization configuration with built-in English, Russian, Spanish, French, German, Simplified Chinese and Arabic translations, including automatic RTL direction for Arabic locales.
+
+  Update the shared theme reset so text inputs align to the logical start by default for RTL documents.
+
+  Add a `mergeObjects` deep-merge helper to `@scalar/helpers`, used by the localization layer to merge translation overrides onto the built-in locale.
+
+- [#9590](https://github.com/scalar/scalar/pull/9590): Add syntax highlighting for the Mojo programming language
+
+## 0.27.3
+
+### Patch Changes
+
+- [#9565](https://github.com/scalar/scalar/pull/9565): Apply the themed placeholder color and font to textarea placeholders so they match input placeholders
+
+## 0.27.2
+
+### Patch Changes
+
+- [#9536](https://github.com/scalar/scalar/pull/9536): Fix `ScalarTooltip` offset gap on `-start` / `-end` placements. The offset was applied as uniform padding on all four sides of the tooltip, which shifted the visible box inward by the offset amount on edge-aligned placements (e.g. `top-start`, `bottom-end`) since Floating UI aligns the floating element's edge with the target's edge. The offset gap is now applied only to the side facing the target, so the tooltip lines up flush with the target on the start/end axis.
+
+## 0.27.1
+
+## 0.27.0
+
+### Minor Changes
+
+- [#9388](https://github.com/scalar/scalar/pull/9388): Add `ScalarVirtualCodeBlock` component with copy button support for virtualized code blocks
+
+### Patch Changes
+
+- [#9397](https://github.com/scalar/scalar/pull/9397): fix(components): vertically center the copy button for single-line code blocks
+- [#9421](https://github.com/scalar/scalar/pull/9421): fix(api-reference): avoid SSR hydration mismatch from the search shortcut and teleport ids
+
+  The macOS search shortcut symbol was derived from `navigator` during render, so a Mac client hydrated `⌘` where the server sent `⌃`. The platform is now resolved after mount. Teleport target ids and the search modal ids also switched from `nanoid()` to Vue's SSR-stable `useId()`.
+
+## 0.26.1
+
+### Patch Changes
+
+- [#9381](https://github.com/scalar/scalar/pull/9381): Disable font ligatures in ScalarCodeBlock so code renders with literal characters
+
+## 0.26.0
+
+### Minor Changes
+
+- [#9291](https://github.com/scalar/scalar/pull/9291): refactor: rename component subpath exports to kebab-case without the `Scalar` prefix (e.g. `@scalar/components/scalar-button` is now `@scalar/components/button`). The exported component names are unchanged (`ScalarButton`, etc.).
+
+### Patch Changes
+
+- [#9291](https://github.com/scalar/scalar/pull/9291): chore: add `./helpers` and individual component subpath exports so consumers can import directly from component subpaths instead of the package barrel, improving tree-shaking
+
+## 0.25.0
+
+### Minor Changes
+
+- [#9229](https://github.com/scalar/scalar/pull/9229): feat: sidebar document filters and registry namespace UX
+  - Rework `AppSidebar` (and related UI) so document lists respect title + namespace filtering together, with clearer controls and layout/markup cleanup.
+  - Fix sidebar navigation scrolling, a small `PublishDocumentModal` issue, and a minor tweak to `ScalarSidebarSearchInput`.
+
+## 0.24.4
+
+### Patch Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): feat: some polish for the scalar-app
+- [#9211](https://github.com/scalar/scalar/pull/9211): fix(components): add `highlighted` Tailwind variant for Radix menu item highlight state
+
+  Adds a new `highlighted` custom Tailwind variant (matching `[data-highlighted]`) to `@scalar/themes` and uses it in `ScalarDropdownButton` to restore the hover and keyboard-navigation highlight in the workspace and team picker dropdowns.
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): feat: add team switching to the scalar app
+- [#9211](https://github.com/scalar/scalar/pull/9211): fix: respect optional `VITE_SCALAR_HOTKEY_SYMBOL_SET` on ScalarHotkey to override OS-based modifier
+
+  This can be really useful when we want to have deterministic results on the CI
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): fix(components): remove tooltip when scope is disposed
+
+## 0.24.3
+
+### Patch Changes
+
+- [#9199](https://github.com/scalar/scalar/pull/9199): feat: some polish for the scalar-app
+- [#9198](https://github.com/scalar/scalar/pull/9198): fix(components): add `highlighted` Tailwind variant for Radix menu item highlight state
+
+  Adds a new `highlighted` custom Tailwind variant (matching `[data-highlighted]`) to `@scalar/themes` and uses it in `ScalarDropdownButton` to restore the hover and keyboard-navigation highlight in the workspace and team picker dropdowns.
+
+- [#9152](https://github.com/scalar/scalar/pull/9152): feat: add team switching to the scalar app
+- [#9118](https://github.com/scalar/scalar/pull/9118): fix: respect optional `VITE_SCALAR_HOTKEY_SYMBOL_SET` on ScalarHotkey to override OS-based modifier
+
+  This can be really useful when we want to have deterministic results on the CI
+
+- [#9123](https://github.com/scalar/scalar/pull/9123): fix(components): remove tooltip when scope is disposed
+
+## 0.24.2
+
+### Patch Changes
+
+- [#9086](https://github.com/scalar/scalar/pull/9086): feat: code split tailwind CSS to reduce bundle size
+
+## 0.24.1
+
+### Patch Changes
+
+- [#9042](https://github.com/scalar/scalar/pull/9042): fix(components): set Scrolling listbox story to multiselect mode
+- [#9048](https://github.com/scalar/scalar/pull/9048): fix: stabilize sidebar nested item refs for proper unmount
+- [#9042](https://github.com/scalar/scalar/pull/9042): fix(components): improve floating ui flip offset logic
+
+## 0.24.0
+
+### Minor Changes
+
+- [#9045](https://github.com/scalar/scalar/pull/9045): feat: support title for the scalar menu component
+
+### Patch Changes
+
+- [#9045](https://github.com/scalar/scalar/pull/9045): fix(components): set specific padding and margin for nested items
+- [#9045](https://github.com/scalar/scalar/pull/9045): fix: hide sidebar section label when there is no default slot
+
+## 0.23.0
+
+### Minor Changes
+
+- [#9021](https://github.com/scalar/scalar/pull/9021): feat: support title for the scalar menu component
+
+### Patch Changes
+
+- [#9020](https://github.com/scalar/scalar/pull/9020): fix(components): set specific padding and margin for nested items
+- [#9024](https://github.com/scalar/scalar/pull/9024): fix: hide sidebar section label when there is no default slot
+
+## 0.22.5
+
+## 0.22.4
+
+### Patch Changes
+
+- [#8976](https://github.com/scalar/scalar/pull/8976): feat(components): add sidebar group loading state
+
+## 0.22.3
+
+## 0.22.2
+
+## 0.22.1
+
+### Patch Changes
+
+- [#8866](https://github.com/scalar/scalar/pull/8866): feat(components): update and align header buttons
+
+## 0.22.0
+
+### Minor Changes
+
+- [#8848](https://github.com/scalar/scalar/pull/8848): feat: support search for virtual text
+
+### Patch Changes
+
+- [#8827](https://github.com/scalar/scalar/pull/8827): chore: removed old client v1 code
+- [#8849](https://github.com/scalar/scalar/pull/8849): fix(components): apply ScalarMenuLink is prop correctly
+
+## 0.21.4
+
+### Patch Changes
+
+- [#8769](https://github.com/scalar/scalar/pull/8769): feat(themes): add Tailwind v3 transform reset
+- [#8767](https://github.com/scalar/scalar/pull/8767): feat(components): expose summary truncation state
+- [#8779](https://github.com/scalar/scalar/pull/8779): feat(component): don't add word breaks for the start of text
+
+## 0.21.3
+
+### Patch Changes
+
+- [#8692](https://github.com/scalar/scalar/pull/8692): feat: replace pretty-bytes dependency with internal helper
+- [#8715](https://github.com/scalar/scalar/pull/8715): fix: correct main field in package.json to point to .js instead of non-existent .cjs files
+- [#8634](https://github.com/scalar/scalar/pull/8634): feat: add saving ui component
+- [#8664](https://github.com/scalar/scalar/pull/8664): refactor: replace wildcard export barrels with explicit named re-exports
+
+## 0.21.2
+
+### Patch Changes
+
+- [#8630](https://github.com/scalar/scalar/pull/8630): docs: add JSDoc blocks to all components
+
+## 0.21.1
+
+## 0.21.0
+
+### Minor Changes
+
+- [#8511](https://github.com/scalar/scalar/pull/8511): feat: support intermediate state for checkbox
+- [#8526](https://github.com/scalar/scalar/pull/8526): feat: add support for custom combobox filter functions
+
+### Patch Changes
+
+- [#8564](https://github.com/scalar/scalar/pull/8564): fix: remove global radix override
+- [#8565](https://github.com/scalar/scalar/pull/8565): fix(components): align sidebar to top after opening
+- [#8564](https://github.com/scalar/scalar/pull/8564): refactor: move context menu to api client
+- [#8563](https://github.com/scalar/scalar/pull/8563): fix: type declarations don't use the full path for imports
+
+## 0.20.12
+
+## 0.20.11
+
+## 0.20.10
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+- [#8491](https://github.com/scalar/scalar/pull/8491): feat(components): simplify blockquote styles
+
+## 0.20.9
+
+### Patch Changes
+
+- [#8453](https://github.com/scalar/scalar/pull/8453): refactor: remove @ts-expect-error from ScalarTextArea
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.8**
+
+## 0.20.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.7**
+
+## 0.20.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.6**
+
+## 0.20.6
+
+### Patch Changes
+
+- [#8327](https://github.com/scalar/scalar/pull/8327): fix: markdown tables with specified width attributes in td/th break the layout
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.1**
+  - [#8420](https://github.com/scalar/scalar/pull/8420): fix TypeScript access to navigator.userAgentData in isMacOS without ts-expect-error
+
+- **@scalar/oas-utils@0.10.5**
+
+## 0.20.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.4**
+
+## 0.20.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.4.0**
+  - [#8336](https://github.com/scalar/scalar/pull/8336): feat: support flushing any pending operations
+
+- **@scalar/oas-utils@0.10.3**
+  - [#8253](https://github.com/scalar/scalar/pull/8253): feat(api-reference): support propertyNames enum for additionalProperties
+
+## 0.20.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.2**
+
+## 0.20.2
+
+### Patch Changes
+
+- [#8366](https://github.com/scalar/scalar/pull/8366): fix(components): clean up search components and add snapshots
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.1**
+
+## 0.20.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.0**
+  - [#8266](https://github.com/scalar/scalar/pull/8266): support operation level authentication and servers
+
+## 0.20.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/code-highlight@0.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/oas-utils@0.9.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/use-hooks@0.4.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/helpers@0.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/themes@0.15.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/icons@0.6.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.19.15
+
+### Patch Changes
+
+- [#8319](https://github.com/scalar/scalar/pull/8319): fix(components): fix adjust sidebar section line height
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.8.3**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+- **@scalar/helpers@0.2.18**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+## 0.19.14
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/themes@0.14.3**
+  - [#8315](https://github.com/scalar/scalar/pull/8315): feat(theme): standardize tailwind line height behavior
+
+- **@scalar/code-highlight@0.2.4**
+
+- **@scalar/oas-utils@0.8.2**
+
+## 0.19.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.17**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): refactor: move helpers to the helpers package to share primitive helpers
+
+- **@scalar/oas-utils@0.8.1**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): fix: correctly handle circular documents during the migration to indexdb
+
+## 0.19.12
+
+### Patch Changes
+
+- [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.8.0**
+  - [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+- **@scalar/themes@0.14.2**
+  - [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+- **@scalar/code-highlight@0.2.4**
+
+## 0.19.11
+
+### Patch Changes
+
+- [#8276](https://github.com/scalar/scalar/pull/8276): feat(components): standardize form inputs to have a height of 40px
+
+#### Updated Dependencies
+
+- **@scalar/themes@0.14.1**
+  - [#8276](https://github.com/scalar/scalar/pull/8276): feat(components): standardize form inputs to have a height of 40px
+
+- **@scalar/oas-utils@0.7.0**
+  - [#8234](https://github.com/scalar/scalar/pull/8234): support operation level authentication and servers
+
+- **@scalar/code-highlight@0.2.4**
+
+## 0.19.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.48**
+
+## 0.19.9
+
+### Patch Changes
+
+- [#8248](https://github.com/scalar/scalar/pull/8248): feat: slugs for headings with nested content
+- [#8248](https://github.com/scalar/scalar/pull/8248): feat: add optional chevron click handler for the sidebar
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.47**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: remove unnecessary property truncation in example generation
+  - [#8248](https://github.com/scalar/scalar/pull/8248): chore: map themeId to slug and add default operation to drafts
+
+- **@scalar/helpers@0.2.16**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+
+- **@scalar/code-highlight@0.2.4**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): feat: slugs for headings with nested content
+
+## 0.19.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.46**
+
+## 0.19.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.15**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/oas-utils@0.6.45**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+## 0.19.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.14**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/oas-utils@0.6.44**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+## 0.19.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.43**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+- **@scalar/helpers@0.2.13**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+## 0.19.4
+
+### Patch Changes
+
+- [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.12**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+- **@scalar/oas-utils@0.6.42**
+
+## 0.19.3
+
+### Patch Changes
+
+- [#8155](https://github.com/scalar/scalar/pull/8155): fix(api-reference): bugs with cards rendering
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.41**
+
+## 0.19.2
+
+### Patch Changes
+
+- [#8134](https://github.com/scalar/scalar/pull/8134): fix(components): change caret position to right
+
+#### Updated Dependencies
+
+- **@scalar/icons@0.5.3**
+  - [#8134](https://github.com/scalar/scalar/pull/8134): fix(components): change caret position to right
+
+- **@scalar/oas-utils@0.6.40**
+  - [#8121](https://github.com/scalar/scalar/pull/8121): chore: moved client plugin types to oas-utils so they can be shared
+
+## 0.19.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.39**
+
+## 0.19.0
+
+### Minor Changes
+
+- [#8065](https://github.com/scalar/scalar/pull/8065): feat(components): add editor to ScalarMenu and optionally remove docs
+
+### Patch Changes
+
+- [#8081](https://github.com/scalar/scalar/pull/8081): feat(components): improve ScalarCodeBlock copy UI
+
+#### Updated Dependencies
+
+- **@scalar/code-highlight@0.2.3**
+  - [#8081](https://github.com/scalar/scalar/pull/8081): feat(components): improve ScalarCodeBlock copy UI
+
+- **@scalar/oas-utils@0.6.38**
+
+## 0.18.0
+
+### Minor Changes
+
+- [#8077](https://github.com/scalar/scalar/pull/8077): feat: support team workspaces
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.37**
+
+## 0.17.6
+
+### Patch Changes
+
+- [#8070](https://github.com/scalar/scalar/pull/8070): chore: remove the import modal and change the workspace picker to support groups
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.36**
+  - [#8037](https://github.com/scalar/scalar/pull/8037): Improve error message when running oas-utils tests while test-servers are not running
+
+## 0.17.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.35**
+
+## 0.17.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.34**
+
+## 0.17.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.11**
+  - [#8016](https://github.com/scalar/scalar/pull/8016): feat: move history and auth into their own store
+
+- **@scalar/oas-utils@0.6.33**
+
+## 0.17.2
+
+### Patch Changes
+
+- [#7934](https://github.com/scalar/scalar/pull/7934): fix: z-index issues in addressBar
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.32**
+
+## 0.17.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/use-hooks@0.3.7**
+  - [#7977](https://github.com/scalar/scalar/pull/7977): chore(use-hooks): update tailwind merge to v3.4.0
+
+- **@scalar/helpers@0.2.10**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/oas-utils@0.6.31**
+
+## 0.17.0
+
+### Minor Changes
+
+- [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/themes@0.14.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+- **@scalar/code-highlight@0.2.2**
+
+- **@scalar/oas-utils@0.6.30**
+
+## 0.16.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.29**
+
+## 0.16.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.28**
+
+## 0.16.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.27**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+- **@scalar/helpers@0.2.9**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+## 0.16.29
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.26**
+
+## 0.16.28
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.25**
+
+## 0.16.27
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.24**
+
+## 0.16.26
+
+### Patch Changes
+
+- [#7846](https://github.com/scalar/scalar/pull/7846): Fix dev dep issue
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.23**
+
+## 0.16.25
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.22**
+  - [#7814](https://github.com/scalar/scalar/pull/7814): fix: additional properties generate invalid example
+
+## 0.16.24
+
+### Patch Changes
+
+- [#7802](https://github.com/scalar/scalar/pull/7802): fix: Vue warning because of deprecated icon syntax
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.21**
+
+## 0.16.23
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.20**
+
+## 0.16.22
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.8**
+  - [#7751](https://github.com/scalar/scalar/pull/7751): fix: auth persistence
+
+- **@scalar/oas-utils@0.6.19**
+
+## 0.16.21
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.18**
+
+## 0.16.20
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.17**
+
+## 0.16.19
+
+### Patch Changes
+
+- [#7725](https://github.com/scalar/scalar/pull/7725): fix(components): support slot for nested items icon
+- [#7693](https://github.com/scalar/scalar/pull/7693): feat: markdown default line height
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.7**
+  - [#7720](https://github.com/scalar/scalar/pull/7720): feat: escape XML in json2xml
+
+- **@scalar/use-hooks@0.3.6**
+  - [#7678](https://github.com/scalar/scalar/pull/7678): feat: added object stringification to useClipboard
+
+- **@scalar/oas-utils@0.6.16**
+
+## 0.16.18
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.15**
+
+## 0.16.17
+
+### Patch Changes
+
+- [#7680](https://github.com/scalar/scalar/pull/7680): feat(components): simplify nested sidebar items styles
+
+## 0.16.16
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/use-hooks@0.3.5**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/helpers@0.2.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/oas-utils@0.6.14**
+
+## 0.16.15
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/use-hooks@0.3.4**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/helpers@0.2.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/oas-utils@0.6.13**
+
+## 0.16.14
+
+### Patch Changes
+
+- [#7654](https://github.com/scalar/scalar/pull/7654): fix(components): explicitly set line height for buttons and sections
+
+#### Updated Dependencies
+
+- **@scalar/code-highlight@0.2.2**
+
+- **@scalar/helpers@0.2.4**
+
+- **@scalar/icons@0.5.2**
+
+- **@scalar/oas-utils@0.6.12**
+
+- **@scalar/themes@0.13.26**
+
+- **@scalar/use-hooks@0.3.3**
+
+## 0.16.13
+
+### Patch Changes
+
+- [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove internal unused export
+  - `CARD_Heading_SYMBOL`
+  - `FORM_GROUP_SYMBOL`
+  - `formatHotKey#isDefault`
+  - `LoadingCompletionOptions`
+  - `MaybeElement`
+  - `ScalarComboBox#isGroup`
+
+- [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove unused `@scalar/use-toasts` dependency
+- [#7604](https://github.com/scalar/scalar/pull/7604): fix(components): improve sidebar groups
+- [#7589](https://github.com/scalar/scalar/pull/7589): chore(components): upgrade to Storybook 10
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.12**
+
+## 0.16.12
+
+### Patch Changes
+
+- [#7562](https://github.com/scalar/scalar/pull/7562): feat(components): remove headless ui from dropdown component
+
+## 0.16.11
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.4**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+- **@scalar/icons@0.5.2**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/oas-utils@0.6.11**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+## 0.16.10
+
+### Patch Changes
+
+- [#7531](https://github.com/scalar/scalar/pull/7531): feat(components): add discrete sidebar group buttons
+
+#### Updated Dependencies
+
+- **@scalar/icons@0.5.1**
+  - [#7542](https://github.com/scalar/scalar/pull/7542): fix: move `generate-icons` script outside of src folder
+
+No need to include it in published packages
+
+- [#7542](https://github.com/scalar/scalar/pull/7542): fix: use named instead of star exports
+
+- **@scalar/helpers@0.2.3**
+  - [#7575](https://github.com/scalar/scalar/pull/7575): feat: add support for object examples + hide body when empty
+
+- **@scalar/oas-utils@0.6.10**
+
+## 0.16.9
+
+### Patch Changes
+
+- Updated dependencies [[`93ffb63`](https://github.com/scalar/scalar/commit/93ffb63e9d97c7a4ea810d9eeb95cc416c368806)]:
+  - @scalar/code-highlight@0.2.2
+  - @scalar/oas-utils@0.6.9
+  - @scalar/helpers@0.2.2
+  - @scalar/icons@0.5.0
+  - @scalar/themes@0.13.26
+  - @scalar/use-hooks@0.3.3
+  - @scalar/use-toasts@0.9.1
+
+## 0.16.8
+
+### Patch Changes
+
+- [#7520](https://github.com/scalar/scalar/pull/7520) [`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf) Thanks [@hwkr](https://github.com/hwkr)! - refactor(components): apply sidebar variables
+
+- Updated dependencies [[`f7c24e4`](https://github.com/scalar/scalar/commit/f7c24e4995580649dbc3cb87007a683f5dd91f7c), [`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf)]:
+  - @scalar/helpers@0.2.2
+  - @scalar/themes@0.13.26
+  - @scalar/oas-utils@0.6.8
+  - @scalar/code-highlight@0.2.1
+
+## 0.16.7
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a), [`21aa62e`](https://github.com/scalar/scalar/commit/21aa62e2ebdd262cb5aa53658c3b659736660722), [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/oas-utils@0.6.7
+  - @scalar/helpers@0.2.1
+  - @scalar/use-hooks@0.3.3
+
+## 0.16.6
+
+### Patch Changes
+
+- Updated dependencies [[`9ec8adf`](https://github.com/scalar/scalar/commit/9ec8adfea017333dee5bc3949104232f7dc57f4a), [`cc4de25`](https://github.com/scalar/scalar/commit/cc4de2587b36f0d169b01c1bf312ba91b67e3e0c)]:
+  - @scalar/helpers@0.2.0
+  - @scalar/use-hooks@0.3.2
+  - @scalar/oas-utils@0.6.6
+
+## 0.16.5
+
+### Patch Changes
+
+- [#7371](https://github.com/scalar/scalar/pull/7371) [`5aa0380`](https://github.com/scalar/scalar/commit/5aa0380adfcd173e58659fb5dd57df363d985583) Thanks [@hwkr](https://github.com/hwkr)! - feat(sidebar): convert draggable logic to a hook
+
+- [#7460](https://github.com/scalar/scalar/pull/7460) [`62b5210`](https://github.com/scalar/scalar/commit/62b521092bafeb8e83e79222e13378c4a19defc8) Thanks [@hwkr](https://github.com/hwkr)! - feat(components): update and polish ScalarLoading
+
+- Updated dependencies [[`781f264`](https://github.com/scalar/scalar/commit/781f2648bc758a251435c3a1e2b126a37f20e44f), [`ea13cd2`](https://github.com/scalar/scalar/commit/ea13cd2a44ff1ba7f19abcfcad1e51c9e7a0b75d), [`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03), [`ea13cd2`](https://github.com/scalar/scalar/commit/ea13cd2a44ff1ba7f19abcfcad1e51c9e7a0b75d), [`781f264`](https://github.com/scalar/scalar/commit/781f2648bc758a251435c3a1e2b126a37f20e44f), [`35af6bf`](https://github.com/scalar/scalar/commit/35af6bfce4bc4ae3d0fc5783ea36e0165e964361), [`86f028d`](https://github.com/scalar/scalar/commit/86f028deb0b456f923edd261f5f4b0fa9b616b7d)]:
+  - @scalar/code-highlight@0.2.1
+  - @scalar/use-toasts@0.9.1
+  - @scalar/helpers@0.1.3
+  - @scalar/themes@0.13.25
+  - @scalar/oas-utils@0.6.5
+  - @scalar/icons@0.5.0
+  - @scalar/use-hooks@0.3.1
+
+## 0.16.4
+
+### Patch Changes
+
+- [#7306](https://github.com/scalar/scalar/pull/7306) [`5a108fc`](https://github.com/scalar/scalar/commit/5a108fcbc52ae7957731c23689896ba353b83d3b) Thanks [@hwkr](https://github.com/hwkr)! - feat(components): add ScalarThemeSwatches component
+
+- [#7348](https://github.com/scalar/scalar/pull/7348) [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74) Thanks [@hwkr](https://github.com/hwkr)! - feat(components): add ScalarWrappingText component
+
+- Updated dependencies [[`d86f1d6`](https://github.com/scalar/scalar/commit/d86f1d6911ecbca70b011a2a0efb6d6e0eca59bb), [`0519a33`](https://github.com/scalar/scalar/commit/0519a33c7d3f3cf65b93b37392c51d3c0586cbab), [`5a108fc`](https://github.com/scalar/scalar/commit/5a108fcbc52ae7957731c23689896ba353b83d3b), [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74)]:
+  - @scalar/helpers@0.1.2
+  - @scalar/oas-utils@0.6.4
+  - @scalar/themes@0.13.24
+  - @scalar/code-highlight@0.2.0
+  - @scalar/icons@0.5.0
+  - @scalar/use-hooks@0.3.0
+  - @scalar/use-toasts@0.9.0
+
+## 0.16.3
+
+### Patch Changes
+
+- [#7252](https://github.com/scalar/scalar/pull/7252) [`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74) Thanks [@hwkr](https://github.com/hwkr)! - fix(api-reference): improve wrapping of long strings
+
+- Updated dependencies [[`9c9dbba`](https://github.com/scalar/scalar/commit/9c9dbbaa940667303f0ace59469fd78c2a741937), [`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74)]:
+  - @scalar/helpers@0.1.1
+  - @scalar/oas-utils@0.6.3
+
+## 0.16.2
+
+### Patch Changes
+
+- Updated dependencies [[`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d), [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d)]:
+  - @scalar/helpers@0.1.0
+  - @scalar/oas-utils@0.6.2
+
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/oas-utils@0.6.1
+
+## 0.16.0
+
+### Minor Changes
+
+- [#7199](https://github.com/scalar/scalar/pull/7199) [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat: update vue to 3.5.21
+
+### Patch Changes
+
+- [#7154](https://github.com/scalar/scalar/pull/7154) [`348f8f6`](https://github.com/scalar/scalar/commit/348f8f6292ef41844fda1fdd3089a55d97adbc0e) Thanks [@bgrcs](https://github.com/bgrcs)! - export sidebar components
+
+- [#7159](https://github.com/scalar/scalar/pull/7159) [`c22fc4e`](https://github.com/scalar/scalar/commit/c22fc4e5acb49d648014a6100c724a5b33c59cde) Thanks [@amritk](https://github.com/amritk)! - feat: added new layouts for client v2
+
+- [#7129](https://github.com/scalar/scalar/pull/7129) [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a) Thanks [@geoffgscott](https://github.com/geoffgscott)! - Simplify ApiReferences state management and migrate to new shared sidebar component. Eliminates the useSidebar and useNav hooks in favour of event bubbling and centralized state management in ApiReference.vue
+
+- [#7162](https://github.com/scalar/scalar/pull/7162) [`8a5a6a0`](https://github.com/scalar/scalar/commit/8a5a6a052cc05b0902b05052c80cc429ebc5a730) Thanks [@hwkr](https://github.com/hwkr)! - test(api-reference): add visual regression testing
+
+- [#7227](https://github.com/scalar/scalar/pull/7227) [`704fa30`](https://github.com/scalar/scalar/commit/704fa302b2cdbb17b19ca2d742537ca163d58c1c) Thanks [@hwkr](https://github.com/hwkr)! - feat(sidebar): cleanup structure and improve text wrapping
+
+- [#7209](https://github.com/scalar/scalar/pull/7209) [`a26ced6`](https://github.com/scalar/scalar/commit/a26ced6f2897074f0c102d5ccbff55c6fd520e12) Thanks [@hwkr](https://github.com/hwkr)! - fix(sidebar): word break sidebar entries with no spaces
+
+- [#7144](https://github.com/scalar/scalar/pull/7144) [`6a090a2`](https://github.com/scalar/scalar/commit/6a090a2e07ef961c56041c85ee9786180437593a) Thanks [@hwkr](https://github.com/hwkr)! - feat(useBindCx): add support for style attr
+
+- [#7152](https://github.com/scalar/scalar/pull/7152) [`592533f`](https://github.com/scalar/scalar/commit/592533faf60b6a5ba27909a4ca0847ca9f04a96d) Thanks [@hwkr](https://github.com/hwkr)! - refactor(sidebar): remove some divs from sidebar elements
+
+- [#7094](https://github.com/scalar/scalar/pull/7094) [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461) Thanks [@geoffgscott](https://github.com/geoffgscott)! - Migrate to workspace store as primary source of truth.
+
+- [#7183](https://github.com/scalar/scalar/pull/7183) [`c72a2c5`](https://github.com/scalar/scalar/commit/c72a2c59eb80e1f5e216c687229ff90bea88f554) Thanks [@hwkr](https://github.com/hwkr)! - test(components): fixture team picker snapshots
+
+- Updated dependencies [[`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`9661e81`](https://github.com/scalar/scalar/commit/9661e81907d1a9b74ba30f270f2d6c8e49834cd5), [`81b0a7a`](https://github.com/scalar/scalar/commit/81b0a7a4245619f03161eae639dc5834b77432b6), [`0319b8a`](https://github.com/scalar/scalar/commit/0319b8a8652a50667776b2e9fd27c3e15b34f765), [`6a090a2`](https://github.com/scalar/scalar/commit/6a090a2e07ef961c56041c85ee9786180437593a), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461), [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0)]:
+  - @scalar/helpers@0.0.13
+  - @scalar/oas-utils@0.6.0
+  - @scalar/use-hooks@0.3.0
+  - @scalar/use-toasts@0.9.0
+  - @scalar/icons@0.5.0
+  - @scalar/themes@0.13.23
+  - @scalar/code-highlight@0.2.0
+
+## 0.15.1
+
+### Patch Changes
+
+- f8efecd: chore: accept unknown in code block
+- Updated dependencies [3f6d0b9]
+- Updated dependencies [f8efecd]
+  - @scalar/helpers@0.0.12
+  - @scalar/oas-utils@0.5.2
+  - @scalar/themes@0.13.22
+  - @scalar/code-highlight@0.2.0
+
+## 0.15.0
+
+### Minor Changes
+
+- 63ff417: feat: sidebar package
+
+### Patch Changes
+
+- a747da6: feat(components): overhaul and polish ScalarButton ✨
+- c69cb71: fix(components): update list styles to match guides
+- 90d54b6: fix(components): use border to table instead of box shadow
+- Updated dependencies [debdcf6]
+- Updated dependencies [13dcd89]
+  - @scalar/oas-utils@0.5.1
+  - @scalar/themes@0.13.21
+  - @scalar/code-highlight@0.2.0
+
+## 0.14.40
+
+### Patch Changes
+
+- a9f8d56: test(components): expand markdown lists test baselines
+- Updated dependencies [008a0f3]
+- Updated dependencies [f833196]
+  - @scalar/oas-utils@0.5.0
+  - @scalar/themes@0.13.20
+  - @scalar/code-highlight@0.2.0
+
+## 0.14.39
+
+### Patch Changes
+
+- @scalar/oas-utils@0.4.34
+
+## 0.14.38
+
+### Patch Changes
+
+- 0b3c6fa: feat(api-reference): localhost development toolbar
+- bbceb27: fix: long words break markdown table layout
+- Updated dependencies [0b3c6fa]
+  - @scalar/themes@0.13.19
+  - @scalar/code-highlight@0.2.0
+  - @scalar/oas-utils@0.4.33
+
+## 0.14.37
+
+### Patch Changes
+
+- db5b649: feat: auth selector block
+  - @scalar/oas-utils@0.4.32
+
+## 0.14.36
+
+### Patch Changes
+
+- @scalar/oas-utils@0.4.31
+
+## 0.14.35
+
+### Patch Changes
+
+- Updated dependencies [0aa6d26]
+  - @scalar/code-highlight@0.2.0
+  - @scalar/oas-utils@0.4.30
+  - @scalar/themes@0.13.18
+
+## 0.14.34
+
+### Patch Changes
+
+- 498f771: fix(components): default scalar menu links to be <a> tags
+- 8f2a2f2: Bump some dependencies to latest
+- Updated dependencies [bff46e5]
+- Updated dependencies [8f2a2f2]
+  - @scalar/helpers@0.0.11
+  - @scalar/use-hooks@0.2.5
+  - @scalar/themes@0.13.17
+  - @scalar/oas-utils@0.4.29
+  - @scalar/code-highlight@0.1.9
+
+## 0.14.33
+
+### Patch Changes
+
+- @scalar/oas-utils@0.4.28
+
+## 0.14.32
+
+### Patch Changes
+
+- @scalar/oas-utils@0.4.27
+
+## 0.14.31
+
+### Patch Changes
+
+- 2249fe3: fix: a > img takes the full width
+- Updated dependencies [821717b]
+  - @scalar/oas-utils@0.4.26
+  - @scalar/helpers@0.0.10
+
+## 0.14.30
+
+### Patch Changes
+
+- @scalar/oas-utils@0.4.25
+
+## 0.14.29
+
+### Patch Changes
+
+- c470c60: fix(components): update scalar menu button flex
+  - @scalar/oas-utils@0.4.24
+  - @scalar/themes@0.13.16
+  - @scalar/code-highlight@0.1.9
+
+## 0.14.28
+
+### Patch Changes
+
+- f918582: feat(api-reference, components): update scalar floating components contraints
+- 422cb2b: feat(components)!: add "Add new option" slot to combobox
+- Updated dependencies [714b197]
+- Updated dependencies [98c55d0]
+- Updated dependencies [cededd8]
+- Updated dependencies [a6ae22a]
+- Updated dependencies [2b22eab]
+- Updated dependencies [0e747c7]
+- Updated dependencies [976366f]
+  - @scalar/oas-utils@0.4.23
+  - @scalar/helpers@0.0.9
+  - @scalar/themes@0.13.15
+  - @scalar/code-highlight@0.1.9
+
+## 0.14.27
+
+### Patch Changes
+
+- @scalar/oas-utils@0.4.22
+- @scalar/themes@0.13.14
+- @scalar/code-highlight@0.1.9
+
+## 0.14.26
+
+### Patch Changes
+
+- Updated dependencies [e2272a1]
+- Updated dependencies [b6f4b60]
+  - @scalar/oas-utils@0.4.21
+
+## 0.14.25
+
+### Patch Changes
+
+- 172e397: feat(components): add hotkey component and tooltip support
+- d8b8a5b: fix(components): add scalar fonts to storybook
+- 6c24be9: feat(components): update scalar hotkey design
+- 638120c: test(components): add additional component snapshots and functionality
+- 0804cfc: eat(components): Add ScalarMarkdown summary component
+- Updated dependencies [bbef120]
+- Updated dependencies [a1429ca]
+- Updated dependencies [66b18fc]
+- Updated dependencies [5f022b5]
+- Updated dependencies [6c24be9]
+  - @scalar/oas-utils@0.4.20
+  - @scalar/helpers@0.0.8
+  - @scalar/themes@0.13.13
+  - @scalar/code-highlight@0.1.9
+  - @scalar/icons@0.4.7
+  - @scalar/use-hooks@0.2.4
+  - @scalar/use-toasts@0.8.0
+
+## 0.14.24
+
+### Patch Changes
+
+- 58b9321: feat: adds scalar code block copy component
+- fbafeab: test(components): add snapshot testing to scalar components
+- Updated dependencies [3de82ac]
+- Updated dependencies [b1ceaab]
+  - @scalar/oas-utils@0.4.19
+  - @scalar/icons@0.4.7
+  - @scalar/code-highlight@0.1.9
+  - @scalar/themes@0.13.12
+  - @scalar/use-hooks@0.2.4
+  - @scalar/use-toasts@0.8.0
+
+## 0.14.23
+
+### Patch Changes
+
+- Updated dependencies [46bfd2f]
+  - @scalar/oas-utils@0.4.18
+
+## 0.14.22
+
+### Patch Changes
+
+- dd00357: feat(components): add support for custom combobox items
+- Updated dependencies [46ebe6e]
+  - @scalar/oas-utils@0.4.17
+
+## 0.14.21
+
+### Patch Changes
+
+- f913898: fix(components): apply tooltip shadow without tailwind variant
+- cf5d6a2: fix(components): make paragraph line height variable
+- 1af32c0: fix: sets scalar markdown contents and p display for in li usage
+- f3d0216: feat: lazy loading v1.5
+- af22451: feat: increases caret icon usage and style concistency amongst reference and client
+- Updated dependencies [d4cb86b]
+- Updated dependencies [94d6d0c]
+- Updated dependencies [952f471]
+- Updated dependencies [b957a2c]
+- Updated dependencies [3c1e3e3]
+  - @scalar/code-highlight@0.1.9
+  - @scalar/oas-utils@0.4.16
+  - @scalar/themes@0.13.12
+
+## 0.14.20
+
+### Patch Changes
+
+- 60c7bef: fix: updates auth description overflowing line clamp
+- cac47ea: fix: sets missing line height contraint and transform reset
+- Updated dependencies [fb62e1b]
+  - @scalar/themes@0.13.11
+  - @scalar/oas-utils@0.4.15
+  - @scalar/code-highlight@0.1.8
+
 ## 0.14.19
 
 ### Patch Changes

@@ -1,0 +1,334 @@
+import { createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import type { TraversedTag } from '@scalar/workspace-store/schemas/navigation'
+import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import ModernLayout from './ModernLayout.vue'
+
+vi.mock('vue', async () => {
+  const actual = await vi.importActual('vue')
+  return {
+    ...actual,
+    useId: vi.fn(() => 'test-header-id'),
+  }
+})
+
+const createMockTag = (overrides: Partial<TraversedTag> = {}): TraversedTag => ({
+  type: 'tag',
+  id: 'test-tag',
+  title: 'Test Tag',
+  children: [],
+  isGroup: false,
+  name: 'test-tag',
+  description: 'Test description',
+  ...overrides,
+})
+
+const mockProps = {
+  isCollapsed: false,
+  eventBus: null,
+}
+
+vi.mock('@/helpers/lazy-bus', async () => {
+  const { computed, ref } = await import('vue')
+  return {
+    getLazyPlaceholderHeight: () => undefined,
+    requestLazyRender: vi.fn(),
+    setLazyPlaceholderHeight: vi.fn(),
+    scrollTargetId: ref(''),
+    useLazyBus: () => ({
+      isReady: computed(() => true),
+    }),
+  }
+})
+
+afterEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('TagSection rendering', () => {
+  it('renders TagSection when moreThanOneTag is true', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag(),
+        moreThanOneTag: true,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'TagSection' }).exists()).toBe(true)
+  })
+
+  it('renders TagSection when tag title is not default', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({ title: 'custom-tag' }),
+        moreThanOneTag: false,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'TagSection' }).exists()).toBe(true)
+  })
+
+  it('renders TagSection when tag has description', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({
+          title: 'default',
+          name: 'default',
+          description: 'Has description',
+        }),
+        moreThanOneTag: false,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'TagSection' }).exists()).toBe(true)
+  })
+
+  it('does not render TagSection for default tag without description', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({
+          title: 'default',
+          name: 'default',
+          description: '',
+        }),
+        moreThanOneTag: false,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'TagSection' }).exists()).toBe(false)
+  })
+})
+
+describe('ShowMoreButton rendering', () => {
+  it('renders ShowMoreButton when tag is collapsed and moreThanOneTag is true', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({
+          children: [
+            {
+              type: 'operation',
+              id: 'op-1',
+              title: 'Test Operation',
+              ref: '#/paths/test',
+              method: 'get',
+              path: '/test',
+            },
+          ],
+        }),
+        moreThanOneTag: true,
+        isCollapsed: true,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ShowMoreButton' }).exists()).toBe(true)
+    expect(wrapper.find('.tag-section-container').classes()).toContain('tag-section-collapsed')
+  })
+
+  it('names ShowMoreButton by its visible text and describes it with the tag title', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({
+          children: [
+            {
+              type: 'operation',
+              id: 'op-1',
+              title: 'Test Operation',
+              ref: '#/paths/test',
+              method: 'get',
+              path: '/test',
+            },
+          ],
+        }),
+        moreThanOneTag: true,
+        isCollapsed: true,
+      },
+    })
+
+    const button = wrapper.find('button.show-more')
+    expect(button.attributes('aria-label')).toBeUndefined()
+    const description = wrapper.find(`[id="${button.attributes('aria-describedby')}"][hidden]`)
+    expect(description.text()).toBe('Show all Test Tag endpoints')
+  })
+
+  it('does not render ShowMoreButton when tag is not collapsed', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag(),
+        moreThanOneTag: true,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ShowMoreButton' }).exists()).toBe(false)
+    expect(wrapper.find('.tag-section-container').classes()).not.toContain('tag-section-collapsed')
+  })
+
+  it('does not render ShowMoreButton when moreThanOneTag is false', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag(),
+        moreThanOneTag: false,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ShowMoreButton' }).exists()).toBe(false)
+  })
+
+  it('renders ShowMoreButton for a collapsed nested tag without sibling tags', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({
+          children: [
+            {
+              type: 'operation',
+              id: 'op-1',
+              title: 'Test Operation',
+              ref: '#/paths/test',
+              method: 'get',
+              path: '/test',
+            },
+          ],
+        }),
+        moreThanOneTag: false,
+        nested: true,
+        isCollapsed: true,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ShowMoreButton' }).exists()).toBe(true)
+    expect(wrapper.find('.tag-section-container').classes()).not.toContain('tag-section-collapsed')
+  })
+
+  it('does not render ShowMoreButton when tag has empty children array', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({ children: [] }),
+        moreThanOneTag: true,
+        isCollapsed: true,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ShowMoreButton' }).exists()).toBe(false)
+  })
+
+  it('does not render ShowMoreButton when tag has undefined children', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag({ children: undefined }),
+        moreThanOneTag: true,
+        isCollapsed: true,
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ShowMoreButton' }).exists()).toBe(false)
+  })
+})
+
+describe('slot content rendering', () => {
+  it('renders slot content when ShowMoreButton is not shown', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag(),
+        moreThanOneTag: false,
+      },
+      slots: {
+        default: '<div class="slot-content">Test content</div>',
+      },
+    })
+
+    expect(wrapper.find('.slot-content').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Test content')
+  })
+
+  it('hides slot content for a collapsed nested tag without sibling tags', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag(),
+        moreThanOneTag: false,
+        nested: true,
+        isCollapsed: true,
+      },
+      slots: {
+        default: '<div class="slot-content">Test content</div>',
+      },
+    })
+
+    expect(wrapper.find('.slot-content').exists()).toBe(false)
+  })
+})
+
+describe('component props and behavior', () => {
+  it('passes correct props to TagSection', () => {
+    const mockTag = createMockTag()
+
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: mockTag,
+        moreThanOneTag: true,
+      },
+    })
+
+    const tagSection = wrapper.findComponent({ name: 'TagSection' })
+    expect(tagSection.props('headerId')).toBe('test-header-id')
+    expect(tagSection.props('tag')).toEqual(mockTag)
+  })
+
+  it('calls setCollapsedSidebarItem when ShowMoreButton is clicked', async () => {
+    const eventBus = createWorkspaceEventBus()
+    const toggleHandler = vi.fn()
+    eventBus.on('toggle:nav-item', toggleHandler)
+
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        eventBus,
+        tag: createMockTag({
+          children: [
+            {
+              type: 'operation',
+              id: 'op-1',
+              title: 'Test Operation',
+              ref: '#/paths/test',
+              method: 'get',
+              path: '/test',
+            },
+          ],
+        }),
+        moreThanOneTag: true,
+        isCollapsed: true,
+      },
+    })
+
+    const showMoreButton = wrapper.findComponent({ name: 'ShowMoreButton' })
+    await showMoreButton.find('button').trigger('click')
+
+    expect(toggleHandler).toHaveBeenCalledWith({ id: 'test-tag', open: true })
+  })
+
+  it('handles tag with null tag property gracefully', () => {
+    const wrapper = mount(ModernLayout, {
+      props: {
+        ...mockProps,
+        tag: createMockTag(),
+        moreThanOneTag: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('Test Tag')
+    expect(wrapper.findComponent({ name: 'TagSection' }).exists()).toBe(true)
+  })
+})

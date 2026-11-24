@@ -1,5 +1,9 @@
-import { objectToString } from '@/utils/objectToString'
 import type { Plugin } from '@scalar/types/snippetz'
+
+import { prepareBrowserCookies } from '@/libs/browser-request'
+import { buildFormData, formDataHeaders, urlSearchParams } from '@/libs/form-data'
+import { normalizeMethod, reduceQueryParams } from '@/libs/http'
+import { Raw, escapeJsString, formatSetup, objectToString } from '@/libs/javascript'
 
 /**
  * js/ofetch
@@ -16,7 +20,7 @@ export const jsOfetch: Plugin = {
     }
 
     // Normalization
-    normalizedRequest.method = normalizedRequest.method.toUpperCase()
+    normalizedRequest.method = normalizeMethod(normalizedRequest.method)
 
     // Reset fetch defaults
     const options: Record<string, any> = {
@@ -24,25 +28,21 @@ export const jsOfetch: Plugin = {
     }
 
     // Query
-    options.query = normalizedRequest.queryString
-
-    // Headers
-    if (normalizedRequest.headers?.length) {
-      options.headers = {}
-
-      normalizedRequest.headers.forEach((header) => {
-        options.headers![header.name] = header.value
-      })
+    if (normalizedRequest.queryString?.length) {
+      options.query = reduceQueryParams(normalizedRequest.queryString)
     }
 
-    // Cookies
-    if (normalizedRequest.cookies?.length) {
-      options.headers = options.headers || {}
+    const { headers: cookieHeaders, setup, withCredentials } = prepareBrowserCookies(normalizedRequest)
+    if (withCredentials) {
+      options.credentials = 'include'
+    }
 
-      normalizedRequest.cookies.forEach((cookie) => {
-        options.headers!['Set-Cookie'] = options.headers!['Set-Cookie']
-          ? `${options.headers!['Set-Cookie']}; ${cookie.name}=${cookie.value}`
-          : `${cookie.name}=${cookie.value}`
+    // Headers
+    const headers = formDataHeaders({ ...normalizedRequest, headers: cookieHeaders })
+    if (headers?.length) {
+      options.headers = {}
+      headers.forEach((header) => {
+        options.headers![header.name] = header.value
       })
     }
 
@@ -53,10 +53,21 @@ export const jsOfetch: Plugin = {
       }
     })
 
+    let prefix = ''
+
     // Add body
     if (normalizedRequest.postData) {
-      // Plain text
-      options.body = normalizedRequest.postData.text
+      if (normalizedRequest.postData.mimeType === 'multipart/form-data' && normalizedRequest.postData.params) {
+        prefix = `${buildFormData(normalizedRequest.postData.params, 'js').join('\n')}\n\n`
+        options.body = new Raw('formData')
+      } else if (
+        normalizedRequest.postData.mimeType === 'application/x-www-form-urlencoded' &&
+        normalizedRequest.postData.params
+      ) {
+        options.body = new Raw(urlSearchParams(normalizedRequest.postData.params))
+      } else {
+        options.body = normalizedRequest.postData.text
+      }
 
       // JSON
       if (normalizedRequest.postData.mimeType === 'application/json') {
@@ -64,12 +75,14 @@ export const jsOfetch: Plugin = {
       }
     }
 
+    prefix = `${formatSetup(setup)}${prefix}`
+
     // Transform to JSON
     const jsonOptions = Object.keys(options).length ? `, ${objectToString(options)}` : ''
 
     // Code Template
     return `import { ofetch } from 'ofetch'
 
-ofetch('${normalizedRequest.url}'${jsonOptions})`
+${prefix}ofetch('${escapeJsString(normalizedRequest.url ?? '')}'${jsonOptions})`
   },
 }

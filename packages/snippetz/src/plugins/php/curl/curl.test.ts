@@ -8,11 +8,9 @@ describe('phpCurl', () => {
       url: 'https://example.com',
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('returns a POST request', () => {
@@ -21,13 +19,11 @@ curl_close($ch);`)
       method: 'post',
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('has headers', () => {
@@ -41,13 +37,11 @@ curl_close($ch);`)
       ],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it("doesn't add empty headers", () => {
@@ -56,11 +50,9 @@ curl_close($ch);`)
       headers: [],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('has JSON body with PHP array', () => {
@@ -81,7 +73,7 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
@@ -89,9 +81,7 @@ curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
   'hello' => 'world'
 ]));
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('has query string', () => {
@@ -109,11 +99,9 @@ curl_close($ch);`)
       ],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com?foo=bar&bar=foo");
+    expect(result).toBe(`$ch = curl_init('https://example.com?foo=bar&bar=foo');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('has cookies', () => {
@@ -131,13 +119,11 @@ curl_close($ch);`)
       ],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_COOKIE, 'foo=bar; bar=foo');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it("doesn't add empty cookies", () => {
@@ -146,11 +132,9 @@ curl_close($ch);`)
       cookies: [],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('adds basic auth credentials', () => {
@@ -166,13 +150,11 @@ curl_close($ch);`)
       },
     )
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_USERPWD, 'user:pass');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('omits auth when not provided', () => {
@@ -180,11 +162,9 @@ curl_close($ch);`)
       url: 'https://example.com',
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('omits auth when username is missing', () => {
@@ -200,11 +180,9 @@ curl_close($ch);`)
       },
     )
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('omits auth when password is missing', () => {
@@ -220,11 +198,9 @@ curl_close($ch);`)
       },
     )
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles special characters in auth credentials', () => {
@@ -240,13 +216,11 @@ curl_close($ch);`)
       },
     )
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_USERPWD, 'user@example.com:pass:word!');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles undefined auth object', () => {
@@ -259,11 +233,9 @@ curl_close($ch);`)
       },
     )
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles multipart form data with files', () => {
@@ -285,15 +257,77 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$boundary = bin2hex(random_bytes(16));
+$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: multipart/form-data']);
-curl_setopt($ch, CURLOPT_POSTFIELDS, ['file' => '@test.txt', 'field' => 'value']);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [str_replace('scalar-boundary', $boundary, 'Content-Type: multipart/form-data; boundary=scalar-boundary')]);
+$body = '';
+$body .= str_replace('scalar-boundary', $boundary, '--scalar-boundary\r
+Content-Disposition: form-data; name="file"; filename="test.txt"\r
+Content-Type: application/octet-stream\r
+\r
+');
+$body .= file_get_contents('test.txt');
+$body .= str_replace('scalar-boundary', $boundary, '\r
+');
+$body .= str_replace('scalar-boundary', $boundary, '--scalar-boundary\r
+Content-Disposition: form-data; name="field"\r
+\r
+');
+$body .= str_replace('scalar-boundary', $boundary, 'value');
+$body .= str_replace('scalar-boundary', $boundary, '\r
+');
+$body .= str_replace('scalar-boundary', $boundary, '--scalar-boundary--\r
+');
+curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
 
-curl_exec($ch);
+curl_exec($ch);`)
+  })
 
-curl_close($ch);`)
+  it('preserves duplicate multipart field names in the serialized body', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            value: 'first',
+          },
+          {
+            name: 'file',
+            value: 'second',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`$ch = curl_init('https://example.com');
+
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: multipart/form-data; boundary=scalar-boundary']);
+$body = '';
+$body .= '--scalar-boundary\r
+Content-Disposition: form-data; name="file"\r
+\r
+';
+$body .= 'first';
+$body .= '\r
+';
+$body .= '--scalar-boundary\r
+Content-Disposition: form-data; name="file"\r
+\r
+';
+$body .= 'second';
+$body .= '\r
+';
+$body .= '--scalar-boundary--\r
+';
+curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+
+curl_exec($ch);`)
   })
 
   it('handles multipart form data with JSON payload', () => {
@@ -314,7 +348,7 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: multipart/form-data']);
@@ -322,9 +356,7 @@ curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
   'foo' => 'bar'
 ]));
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles url-encoded form data with special characters', () => {
@@ -342,15 +374,13 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
 curl_setopt($ch, CURLOPT_POSTFIELDS, 'special%20chars!%40%23=value');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles binary data flag', () => {
@@ -363,15 +393,13 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/octet-stream']);
 curl_setopt($ch, CURLOPT_POSTFIELDS, 'binary content');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles compressed response', () => {
@@ -385,14 +413,12 @@ curl_close($ch);`)
       ],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept-Encoding: gzip, deflate']);
 curl_setopt($ch, CURLOPT_ENCODING, '');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles special characters in URL', () => {
@@ -400,11 +426,9 @@ curl_close($ch);`)
       url: 'https://example.com/path with spaces/[brackets]',
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com/path with spaces/[brackets]");
+    expect(result).toBe(`$ch = curl_init('https://example.com/path with spaces/[brackets]');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles special characters in query parameters', () => {
@@ -424,11 +448,9 @@ curl_close($ch);`)
 
     expect(
       result,
-    ).toBe(`$ch = curl_init("https://example.com?q=hello%20world%20%26%20more&special=!%40%23%24%25%5E%26*()");
+    ).toBe(`$ch = curl_init('https://example.com?q=hello%20world%20%26%20more&special=!%40%23%24%25%5E%26*()');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles empty URL', () => {
@@ -436,11 +458,9 @@ curl_close($ch);`)
       url: '',
     })
 
-    expect(result).toBe(`$ch = curl_init("");
+    expect(result).toBe(`$ch = curl_init('');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles extremely long URLs', () => {
@@ -448,11 +468,9 @@ curl_close($ch);`)
       url: 'https://example.com/' + 'a'.repeat(2000),
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com/${'a'.repeat(2000)}");
+    expect(result).toBe(`$ch = curl_init('https://example.com/${'a'.repeat(2000)}');
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles multiple headers with same name', () => {
@@ -464,13 +482,11 @@ curl_close($ch);`)
       ],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-Custom: value1', 'X-Custom: value2']);
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles headers with empty values', () => {
@@ -479,13 +495,11 @@ curl_close($ch);`)
       headers: [{ name: 'X-Empty', value: '' }],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-Empty: ']);
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles multipart form data with empty file names', () => {
@@ -503,15 +517,25 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$boundary = bin2hex(random_bytes(16));
+$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: multipart/form-data']);
-curl_setopt($ch, CURLOPT_POSTFIELDS, ['file' => '@']);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [str_replace('scalar-boundary', $boundary, 'Content-Type: multipart/form-data; boundary=scalar-boundary')]);
+$body = '';
+$body .= str_replace('scalar-boundary', $boundary, '--scalar-boundary\r
+Content-Disposition: form-data; name="file"; filename=""\r
+Content-Type: application/octet-stream\r
+\r
+');
+$body .= file_get_contents('');
+$body .= str_replace('scalar-boundary', $boundary, '\r
+');
+$body .= str_replace('scalar-boundary', $boundary, '--scalar-boundary--\r
+');
+curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles JSON body with special characters using PHP array', () => {
@@ -535,12 +559,12 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-  'key' => '"quotes" and \\backslashes\\',
+  'key' => '"quotes" and \\\\backslashes\\\\',
   'nested' => [
     'array' => [
       'item1',
@@ -550,9 +574,7 @@ curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
   ]
 ]));
 
-curl_exec($ch);
-
-curl_close($ch);`)
+curl_exec($ch);`)
   })
 
   it('handles cookies with special characters', () => {
@@ -566,13 +588,111 @@ curl_close($ch);`)
       ],
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_COOKIE, 'special%3Bcookie=value%20with%20spaces');
 
-curl_exec($ch);
+curl_exec($ch);`)
+  })
 
-curl_close($ch);`)
+  it('does not duplicate CURLOPT_HTTPHEADER when headers and form-urlencoded body both set Content-Type', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com/register',
+      method: 'POST',
+      headers: [
+        {
+          name: 'Content-Type',
+          value: 'application/x-www-form-urlencoded',
+        },
+      ],
+      postData: {
+        mimeType: 'application/x-www-form-urlencoded',
+        params: [
+          { name: 'username', value: 'john_doe' },
+          { name: 'email', value: 'john@example.com' },
+          { name: 'password', value: 'securePassword123' },
+        ],
+      },
+    })
+
+    // CURLOPT_HTTPHEADER should appear exactly once
+    const httpHeaderCount = (result.match(/CURLOPT_HTTPHEADER/g) || []).length
+    expect(httpHeaderCount).toBe(1)
+
+    expect(result).toBe(`$ch = curl_init('https://example.com/register');
+
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+curl_setopt($ch, CURLOPT_POSTFIELDS, 'username=john_doe&email=john%40example.com&password=securePassword123');
+
+curl_exec($ch);`)
+  })
+
+  it('does not duplicate CURLOPT_HTTPHEADER with custom headers and form-urlencoded body', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      headers: [
+        { name: 'Authorization', value: 'Bearer token123' },
+        { name: 'Content-Type', value: 'application/x-www-form-urlencoded' },
+      ],
+      postData: {
+        mimeType: 'application/x-www-form-urlencoded',
+        params: [{ name: 'key', value: 'value' }],
+      },
+    })
+
+    // CURLOPT_HTTPHEADER should appear exactly once and include both headers
+    const httpHeaderCount = (result.match(/CURLOPT_HTTPHEADER/g) || []).length
+    expect(httpHeaderCount).toBe(1)
+    expect(result).toContain("'Authorization: Bearer token123'")
+    expect(result).toContain("'Content-Type: application/x-www-form-urlencoded'")
+  })
+
+  it('sets CURLOPT_CUSTOMREQUEST for DELETE requests', () => {
+    const result = phpCurl.generate({
+      url: 'https://access.scalar.com/v1/themes/{slug}',
+      method: 'DELETE',
+      headers: [
+        {
+          name: 'Authorization',
+          value: 'Bearer YOUR_SECRET_TOKEN',
+        },
+      ],
+    })
+
+    expect(result).toBe(`$ch = curl_init('https://access.scalar.com/v1/themes/{slug}');
+
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer YOUR_SECRET_TOKEN']);
+
+curl_exec($ch);`)
+  })
+
+  it('sets CURLOPT_CUSTOMREQUEST for PUT requests', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'PUT',
+    })
+
+    expect(result).toBe(`$ch = curl_init('https://example.com');
+
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+
+curl_exec($ch);`)
+  })
+
+  it('sets CURLOPT_CUSTOMREQUEST for PATCH requests', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'PATCH',
+    })
+
+    expect(result).toBe(`$ch = curl_init('https://example.com');
+
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PATCH');
+
+curl_exec($ch);`)
   })
 
   it('prettifies JSON body using PHP array', () => {
@@ -597,7 +717,7 @@ curl_close($ch);`)
       },
     })
 
-    expect(result).toBe(`$ch = curl_init("https://example.com");
+    expect(result).toBe(`$ch = curl_init('https://example.com');
 
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
@@ -615,8 +735,100 @@ curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
   'simple' => 'value'
 ]));
 
-curl_exec($ch);
+curl_exec($ch);`)
+  })
+  it('escapes quotes and backslashes in a plain text body', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'text/plain' }],
+      postData: {
+        mimeType: 'text/plain',
+        text: "it's a C:\\temp path",
+      },
+    })
 
-curl_close($ch);`)
+    expect(result).toContain("curl_setopt($ch, CURLOPT_POSTFIELDS, 'it\\'s a C:\\\\temp path');")
+  })
+
+  it('escapes quotes in a JSON body that cannot be parsed', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'application/json' }],
+      postData: {
+        mimeType: 'application/json',
+        text: "{'name': 'it's'}",
+      },
+    })
+
+    expect(result).toContain("curl_setopt($ch, CURLOPT_POSTFIELDS, '{\\'name\\': \\'it\\'s\\'}');")
+  })
+
+  it('escapes quotes in an octet-stream body', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'application/octet-stream',
+        text: "it's binary",
+      },
+    })
+
+    expect(result).toContain("curl_setopt($ch, CURLOPT_POSTFIELDS, 'it\\'s binary');")
+  })
+
+  it.each([
+    ["it's", 'value', "'it\\'s=value'"],
+    ['name', "O'Reilly", "'name=O\\'Reilly'"],
+  ])('escapes the apostrophe in the urlencoded body %s=%s', (name, value, literal) => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: { mimeType: 'application/x-www-form-urlencoded', params: [{ name, value }] },
+    })
+
+    expect(result).toContain(`curl_setopt($ch, CURLOPT_POSTFIELDS, ${literal});`)
+  })
+
+  it.each([
+    ["https://example.com/Customers('ALFKI')/$count", "'https://example.com/Customers(\\'ALFKI\\')/$count'"],
+    ['https://example.com/files/a\\b', "'https://example.com/files/a\\\\b'"],
+    ['https://example.com/{$id}/${id}', "'https://example.com/{$id}/${id}'"],
+    ['https://example.com/a"b', `'https://example.com/a"b'`],
+  ])('escapes the request URL %s', (url, expected) => {
+    expect(phpCurl.generate({ url })).toBe(`$ch = curl_init(${expected});\n\ncurl_exec($ch);`)
+  })
+
+  it('escapes apostrophes that the query string keeps', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com/Products',
+      queryString: [{ name: '$filter', value: "Name eq 'John'" }],
+    })
+    expect(result).toBe(
+      "$ch = curl_init('https://example.com/Products?%24filter=Name%20eq%20\\'John\\'');\n\ncurl_exec($ch);",
+    )
+  })
+
+  it('escapes the method and credentials', () => {
+    const result = phpCurl.generate(
+      { url: 'https://example.com', method: 'PURGE' },
+      { auth: { username: "o'neil", password: 'p\\w' } },
+    )
+    expect(result).toBe(`$ch = curl_init('https://example.com');
+
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PURGE');
+curl_setopt($ch, CURLOPT_USERPWD, 'o\\'neil:p\\\\w');
+
+curl_exec($ch);`)
+  })
+
+  it('escapes JSON body keys', () => {
+    const result = phpCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: { mimeType: 'application/json', text: JSON.stringify({ "it's": 1 }) },
+    })
+    expect(result).toContain("curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([\n  'it\\'s' => 1\n]));")
   })
 })

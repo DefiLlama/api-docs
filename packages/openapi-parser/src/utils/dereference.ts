@@ -1,4 +1,5 @@
 import type { AnyApiDefinitionFormat, DereferenceResult, Filesystem } from '@/types/index'
+
 import { details } from './details'
 import { getEntrypoint } from './get-entrypoint'
 import { makeFilesystem } from './make-filesystem'
@@ -7,12 +8,17 @@ import { type ResolveReferencesOptions, resolveReferences } from './resolve-refe
 export type DereferenceOptions = ResolveReferencesOptions
 
 /**
- * Resolves all references in an OpenAPI document
+ * Dereferences an API definition or filesystem by resolving all references within the specification.
+ *
+ * @param value - The API definition or filesystem to dereference.\
+ *                Can be any supported API definition format or a filesystem object.
+ *
+ * @param options - Optional options for the dereferencing process.
  */
-export async function dereference(
+export function dereference(
   value: AnyApiDefinitionFormat | Filesystem,
   options?: DereferenceOptions,
-): Promise<DereferenceResult> {
+): DereferenceResult {
   const filesystem = makeFilesystem(value)
 
   const entrypoint = getEntrypoint(filesystem)

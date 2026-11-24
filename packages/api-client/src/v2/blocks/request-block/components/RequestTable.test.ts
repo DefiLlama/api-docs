@@ -1,0 +1,489 @@
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+
+import RequestTable from './RequestTable.vue'
+import type { TableRow, TableRowUpsertPayload } from './RequestTableRow.vue'
+
+const environment = {
+  description: 'Test Environment',
+  variables: [],
+  color: 'c',
+}
+
+describe('RequestTable', () => {
+  it('saves a new header once and removes it after it is unchecked', async () => {
+    const wrapper = mount(RequestTable, {
+      attachTo: document.body,
+      props: { data: [], environment, label: 'Header' },
+    })
+    const key = wrapper.get('[aria-label="Header Key"][contenteditable]')
+    const editor = key.element as HTMLElement
+    editor.focus()
+    editor.textContent = 'x-demo-header'
+    await key.trigger('input')
+    expect(wrapper.emitted('upsertRow')).toStrictEqual([[0, { name: 'x-demo-header', value: '', isDisabled: true }]])
+
+    const saved = {
+      name: 'x-demo-header',
+      value: '',
+      isDisabled: false,
+      originalParameter: { name: 'x-demo-header', in: 'header' as const },
+    }
+    await wrapper.setProps({ data: [saved] })
+    expect(document.activeElement).toBe(editor)
+    expect(wrapper.findAll('[aria-label="Header Key"][contenteditable]').map((input) => input.text())).toStrictEqual([
+      'x-demo-header',
+      '',
+    ])
+
+    // Clicking the checkbox blurs the key first. This must not submit the placeholder again.
+    await key.trigger('blur')
+    await wrapper.get('input[aria-label="Include x-demo-header in request"]').setValue(false)
+    expect(wrapper.emitted('upsertRow')).toStrictEqual([
+      [0, { name: 'x-demo-header', value: '', isDisabled: true }],
+      [0, { name: 'x-demo-header', value: '', isDisabled: true }],
+    ])
+    await wrapper.setProps({ data: [{ ...saved, isDisabled: true }] })
+    await wrapper.get('button[aria-label="Delete x-demo-header"]').trigger('click')
+    expect(wrapper.emitted('deleteRow')).toStrictEqual([[0]])
+    await wrapper.setProps({ data: [] })
+    expect(wrapper.findAll('[aria-label="Header Key"][contenteditable]').map((input) => input.text())).toStrictEqual([
+      '',
+    ])
+    wrapper.unmount()
+  })
+
+  it('renders with empty data', () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [],
+        environment,
+      },
+    })
+
+    expect(wrapper.exists()).toBe(true)
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    // Should have one empty row added by displayData computed
+    expect(rows.length).toBe(1)
+  })
+
+  it('renders with provided data', () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [
+          { name: 'header1', value: 'value1', isEnabled: true },
+          { name: 'header2', value: 'value2', isEnabled: false },
+        ],
+        environment,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    // Should have 2 data rows + 1 empty row
+    expect(rows.length).toBe(3)
+  })
+
+  it('adds empty row when last row has content', () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [
+          { name: 'key1', value: 'val1', isEnabled: true },
+          { name: 'key2', value: 'val2', isEnabled: true },
+        ],
+        environment,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    // Original 2 rows + 1 empty row
+    expect(rows.length).toBe(3)
+  })
+
+  it('does not add empty row when last row is already empty', () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [
+          { name: 'key1', value: 'val1', isEnabled: true },
+          { name: '', value: '', isEnabled: false },
+        ],
+        environment,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    // Only 2 rows, no additional empty row needed
+    expect(rows.length).toBe(2)
+  })
+
+  it('emits upsertRow when updating last row', async () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [{ name: 'existing', value: 'data', isEnabled: true }],
+        environment,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    // Update the last row (index 1, which is the empty row)
+    await rows[1]?.vm.$emit('upsertRow', {
+      name: 'new',
+      value: 'row',
+      isDisabled: false,
+    })
+
+    expect(wrapper.emitted('upsertRow')).toBeTruthy()
+    expect(wrapper.emitted('upsertRow')?.[0]).toEqual([
+      1,
+      {
+        name: 'new',
+        value: 'row',
+        isDisabled: false,
+      },
+    ])
+  })
+
+  it('emits upsertRow when updating existing row', async () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [
+          { name: 'key1', value: 'val1', isEnabled: true },
+          { name: 'key2', value: 'val2', isEnabled: false },
+        ],
+        environment,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    // Update first row (index 0)
+    await rows[0]?.vm.$emit('upsertRow', {
+      name: 'updated',
+      value: 'value',
+      isDisabled: true,
+    })
+
+    expect(wrapper.emitted('upsertRow')).toBeTruthy()
+    expect(wrapper.emitted('upsertRow')?.[0]).toEqual([0, { name: 'updated', value: 'value', isDisabled: true }])
+  })
+
+  it('emits deleteRow with correct index', async () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [
+          { name: 'key1', value: 'val1', isEnabled: true },
+          { name: 'key2', value: 'val2', isEnabled: true },
+        ],
+        environment,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    await rows[1]?.vm.$emit('deleteRow')
+
+    expect(wrapper.emitted('deleteRow')).toBeTruthy()
+    expect(wrapper.emitted('deleteRow')?.[0]?.[0]).toBe(1)
+  })
+
+  it('emits uploadFile with correct index', async () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [{ name: 'file', value: '', isEnabled: true }],
+        environment,
+        showUploadButton: true,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    await rows[0]?.vm.$emit('uploadFile')
+
+    expect(wrapper.emitted('uploadFile')).toBeTruthy()
+    expect(wrapper.emitted('uploadFile')?.[0]?.[0]).toBe(0)
+  })
+
+  it('emits removeFile with correct index', async () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [{ name: 'file', value: 'test.pdf', isEnabled: true }],
+        environment,
+        showUploadButton: true,
+      },
+    })
+
+    const rows = wrapper.findAllComponents({ name: 'RequestTableRow' })
+    await rows[0]?.vm.$emit('removeFile')
+
+    expect(wrapper.emitted('removeFile')).toBeTruthy()
+    expect(wrapper.emitted('removeFile')?.[0]?.[0]).toBe(0)
+  })
+
+  it('passes props to RequestTableRow correctly', () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [{ name: 'test', value: 'value', isEnabled: true }],
+        environment,
+        hasCheckboxDisabled: true,
+        label: 'Custom Label',
+        showUploadButton: true,
+      },
+    })
+
+    const row = wrapper.findComponent({ name: 'RequestTableRow' })
+    expect(row.props('hasCheckboxDisabled')).toBe(true)
+    expect(row.props('label')).toBe('Custom Label')
+    expect(row.props('showUploadButton')).toBe(true)
+  })
+
+  it('renders DataTableHeader with correct label', () => {
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [],
+        environment,
+        label: 'Parameter',
+      },
+    })
+
+    const headers = wrapper.findAllComponents({ name: 'DataTableHeader' })
+    expect(headers[0]?.text()).toBe('Parameter Enabled')
+    expect(headers[1]?.text()).toBe('Parameter Key')
+    expect(headers[2]?.text()).toBe('Parameter Value')
+  })
+
+  it('keys rows by parameter identity so a row instance is never reused for a different parameter', async () => {
+    // Regression: key:index bound each RequestTableRow instance to a position, so
+    // when displayData recomputed and the row order shifted, Vue reused the
+    // x-scenario-id instance for a different row (or the appended placeholder),
+    // blanking the parameter name. We assert on component-instance identity — not
+    // just the props — because that is what the stable key guarantees on its own,
+    // independent of the defensive guards inside RequestTableRow.
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [
+          {
+            name: 'x-scenario-id',
+            value: '200_success',
+            isDisabled: false,
+            originalParameter: { name: 'x-scenario-id', in: 'header' },
+          },
+        ],
+        environment,
+      },
+    })
+
+    const findScenario = () =>
+      wrapper.findAllComponents({ name: 'RequestTableRow' }).find((row) => row.props('data').name === 'x-scenario-id')
+
+    // The DOM node rendering x-scenario-id is the identity we track: Vue keeps the
+    // same node when it moves a keyed instance, but reuses a different node when it
+    // patches by index.
+    const elementBefore = findScenario()?.element
+    expect(elementBefore).toBeDefined()
+
+    // Prepend another parameter so x-scenario-id shifts from index 0 to index 1.
+    // With key:index Vue reuses the instance that sat at the new index (previously
+    // the placeholder) for x-scenario-id; with a stable key it moves the original
+    // instance, keeping the same node.
+    await wrapper.setProps({
+      data: [
+        {
+          name: 'x-request-id',
+          value: 'abc',
+          isDisabled: false,
+          originalParameter: { name: 'x-request-id', in: 'header' },
+        },
+        {
+          name: 'x-scenario-id',
+          value: '200_success',
+          isDisabled: false,
+          originalParameter: { name: 'x-scenario-id', in: 'header' },
+        },
+      ],
+    })
+
+    expect(findScenario()?.element).toBe(elementBefore)
+  })
+  it('replaces and reorders repeated file fields without retaining stale rows', async () => {
+    const first = new File(['one'], 'one.txt')
+    const second = new File(['two'], 'two.txt')
+    const third = new File(['three'], 'three.txt')
+    const fourth = new File(['four'], 'four.txt')
+    const wrapper = mount(RequestTable, {
+      props: {
+        data: [
+          { name: 'files', value: first },
+          { name: 'files', value: second },
+          { name: 'other', value: 'old' },
+        ],
+        environment,
+        showAddRowPlaceholder: false,
+        showUploadButton: true,
+      },
+    })
+    const updated = [
+      { name: 'other', value: 'new' },
+      { name: 'files', value: third },
+      { name: 'files', value: fourth },
+    ]
+    await wrapper.setProps({ data: updated })
+    expect(wrapper.findAll('[title$=".txt"]').map((file) => file.attributes('title'))).toEqual([
+      'three.txt',
+      'four.txt',
+    ])
+    expect(wrapper.findAllComponents({ name: 'RequestTableRow' }).map((row) => row.props('data'))).toEqual(updated)
+    await wrapper.setProps({ data: updated.slice(0, 2) })
+    expect(wrapper.findAllComponents({ name: 'RequestTableRow' }).map((row) => row.props('data'))).toEqual(
+      updated.slice(0, 2),
+    )
+    wrapper.unmount()
+  })
+
+  it.each(['header', 'cookie', 'query'] as const)(
+    'keeps one focused row while creating and renaming a %s parameter',
+    async (type) => {
+      const wrapper = mount(RequestTable, {
+        attachTo: document.body,
+        props: { data: [], environment },
+      })
+      const editor = wrapper.find<HTMLElement>('[contenteditable="true"]')
+      editor.element.focus()
+
+      for (const name of ['x', 'x-demo', 'x-demo-header']) {
+        editor.element.textContent = name
+        await editor.trigger('input')
+        const [index, payload] = wrapper.emitted<[number, TableRowUpsertPayload]>('upsertRow')!.at(-1)!
+        expect(index).toBe(0)
+        expect(payload.name).toBe(name)
+
+        await wrapper.setProps({
+          data: [{ ...payload, isDisabled: false, originalParameter: { name, in: type } }],
+        })
+
+        expect(document.activeElement).toBe(editor.element)
+        expect(wrapper.findAll('[contenteditable="true"]').map((input) => input.element.textContent)).toStrictEqual([
+          name,
+          '',
+          '',
+          '',
+        ])
+        expect(
+          wrapper.findAll<HTMLInputElement>('input[type="checkbox"]').map((input) => input.element.checked),
+        ).toStrictEqual([true, false])
+      }
+
+      const nextEditor = wrapper.findAll<HTMLElement>('[contenteditable="true"]')[2]!
+      nextEditor.element.focus()
+      nextEditor.element.textContent = 'second'
+      await nextEditor.trigger('input')
+      expect(wrapper.emitted('upsertRow')?.at(-1)).toStrictEqual([1, { name: 'second', value: '', isDisabled: true }])
+      await wrapper.setProps({
+        data: [
+          ...wrapper.props('data'),
+          { name: 'second', value: '', isDisabled: false, originalParameter: { name: 'second', in: type } },
+        ],
+      })
+      expect(document.activeElement).toBe(nextEditor.element)
+      expect(wrapper.findAll('[contenteditable="true"]').map((input) => input.element.textContent)).toStrictEqual([
+        'x-demo-header',
+        '',
+        'second',
+        '',
+        '',
+        '',
+      ])
+      wrapper.unmount()
+    },
+  )
+
+  it('keeps focus when entering a new parameter value before its key', async () => {
+    const wrapper = mount(RequestTable, {
+      attachTo: document.body,
+      props: { data: [], environment },
+    })
+    const editor = wrapper.findAll<HTMLElement>('[contenteditable="true"]')[1]!
+    editor.element.focus()
+    editor.element.textContent = 'hello'
+    await editor.trigger('input')
+    await wrapper.setProps({
+      data: [{ name: '', value: 'hello', isDisabled: false, originalParameter: { name: '', in: 'header' } }],
+    })
+
+    expect(document.activeElement).toBe(editor.element)
+    expect(wrapper.findAll('[contenteditable="true"]').map((input) => input.element.textContent)).toStrictEqual([
+      '',
+      'hello',
+      '',
+      '',
+    ])
+    editor.element.textContent = 'hello world'
+    await editor.trigger('input')
+    expect(wrapper.emitted('upsertRow')?.at(-1)).toStrictEqual([
+      0,
+      { name: '', value: 'hello world', isDisabled: false },
+    ])
+    wrapper.unmount()
+  })
+
+  it('keeps a pending editor when another row arrives with matching name and value', async () => {
+    const initial: TableRow = {
+      name: 'existing',
+      value: '',
+      originalParameter: { name: 'existing', in: 'header' },
+    }
+    const wrapper = mount(RequestTable, {
+      attachTo: document.body,
+      props: { data: [initial], environment },
+    })
+    const editor = wrapper.find<HTMLElement>('[contenteditable="true"]')
+    editor.element.focus()
+    editor.element.textContent = 'incoming'
+    await editor.trigger('input')
+
+    // An unrelated refresh must not steal the editor while its original row still exists.
+    await wrapper.setProps({
+      data: [{ name: 'incoming', value: '', originalParameter: { name: 'incoming', in: 'header' } }, initial],
+    })
+    expect(document.activeElement).toBe(editor.element)
+    expect(wrapper.findAll<HTMLElement>('[contenteditable="true"]')[2]!.element).toBe(editor.element)
+    editor.element.textContent = 'renamed'
+    await editor.trigger('input')
+    expect(wrapper.emitted('upsertRow')?.at(-1)).toStrictEqual([1, { name: 'renamed', value: '', isDisabled: false }])
+    wrapper.unmount()
+  })
+
+  it('retains a pending row edit across an unrelated refresh before the save arrives', async () => {
+    const initial: TableRow = {
+      name: 'existing',
+      value: 'old',
+      originalParameter: { name: 'existing', in: 'header' },
+    }
+    const wrapper = mount(RequestTable, {
+      attachTo: document.body,
+      props: { data: [initial], environment },
+    })
+    const editor = wrapper.findAll<HTMLElement>('[contenteditable="true"]')[2]!
+    editor.element.focus()
+    editor.element.textContent = 'x-demo-header'
+    await editor.trigger('input')
+    await wrapper.setProps({ data: [{ ...initial, value: 'updated' }] })
+    await wrapper.setProps({
+      data: [
+        { ...initial, value: 'updated' },
+        {
+          name: 'x-demo-header',
+          value: '',
+          isDisabled: false,
+          originalParameter: { name: 'x-demo-header', in: 'header' },
+        },
+      ],
+    })
+
+    expect(document.activeElement).toBe(editor.element)
+    expect(wrapper.findAll('[contenteditable="true"]').map((input) => input.element.textContent)).toStrictEqual([
+      'existing',
+      'updated',
+      'x-demo-header',
+      '',
+      '',
+      '',
+    ])
+    wrapper.unmount()
+  })
+})

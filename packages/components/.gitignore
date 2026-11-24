@@ -30,6 +30,10 @@ coverage
 
 test-results/
 playwright-report/
+playwright-results.json
 
 # Storybook
 storybook-static/
+
+# Playwright mount() gallery
+gallery-static/

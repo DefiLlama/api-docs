@@ -1,0 +1,789 @@
+<script lang="ts">
+/**  Any config options required for the OAuth2 flow */
+export type OAuth2Options = Pick<
+  ApiClientConfiguration,
+  'oauth2RedirectUri'
+> & {
+  /** Optional fetch override (IPC-backed on desktop) used for token exchange, refresh, and OIDC discovery */
+  customFetch?: typeof fetch
+  /** Optional redirect capture (loopback-backed on desktop) for interactive OAuth2 flows */
+  captureOAuth2Callback?: CaptureOAuth2Callback
+}
+</script>
+
+<script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
+import { useLoadingState } from '@scalar/components/loading'
+import type { ApiClientConfiguration } from '@scalar/types/api-reference'
+import { pkceOptions } from '@scalar/types/entities'
+import { useToasts } from '@scalar/use-toasts'
+import type { SecretsOAuthFlows } from '@scalar/workspace-store/entities/auth'
+import type {
+  ApiReferenceEvents,
+  WorkspaceEventBus,
+} from '@scalar/workspace-store/events'
+import {
+  canResetSecretField,
+  isSecretFieldCleared,
+  type AuthSecretField,
+} from '@scalar/workspace-store/helpers/auth-secret-fields'
+import {
+  getEnvironmentVariables,
+  type OAuthFlowAuthorizationCodeSecret,
+  type OAuthFlowClientCredentialsSecret,
+  type OAuthFlowPasswordSecret,
+  type OAuthFlowsObjectSecret,
+  type SecuritySchemeObjectSecret,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type { XScalarCredentialsLocation } from '@scalar/workspace-store/schemas/extensions/security/x-scalar-credentials-location'
+import type {
+  OAuthFlow,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+import OAuthScopesInput from '@/v2/blocks/scalar-auth-selector-block/components/OAuthScopesInput.vue'
+import {
+  authorizeOauth2,
+  refreshOauth2Token,
+  type CaptureOAuth2Callback,
+} from '@/v2/blocks/scalar-auth-selector-block/helpers/oauth'
+import { resolveDefaultOAuth2RedirectUri } from '@/v2/blocks/scalar-auth-selector-block/helpers/resolve-default-oauth2-redirect-url'
+import { DataTableRow } from '@/v2/components/data-table'
+import { useLocalization } from '@/v2/features/localization'
+
+import type { DeviceAuthorizationPrompt } from '../helpers/oauth-device-authorization'
+import RequestAuthDataTableInput from './RequestAuthDataTableInput.vue'
+
+const {
+  environment,
+  flows,
+  type,
+  scheme,
+  selectedScopes: selectedScopesProp,
+  server,
+  proxyUrl,
+  eventBus,
+  name,
+  options = {},
+} = defineProps<{
+  /** Current environment configuration */
+  environment: XScalarEnvironment
+  /** OAuth flows */
+  flows: OAuthFlowsObjectSecret
+  /** Type of the OAuth flow */
+  type: keyof OAuthFlowsObjectSecret
+  /** Selected scopes */
+  selectedScopes: string[]
+  /** Security scheme */
+  scheme: SecuritySchemeObjectSecret
+  /** Current server configuration */
+  server: ServerObject | null
+  /** Proxy URL */
+  proxyUrl: string
+  /** Name of the security scheme */
+  name: string
+  /** Event bus for authentication updates */
+  eventBus: WorkspaceEventBus
+  /**  Any config options required for the OAuth2 flow */
+  options?: OAuth2Options
+  /**
+   * Hides the Authorize / Refresh / Clear actions. Used when the form is embedded as a
+   * configuration-only view (e.g. behind a gear icon), so the host component owns the
+   * authorize action and the tokens are routed to the scheme it chooses.
+   */
+  hideActions?: boolean
+}>()
+
+const emits = defineEmits<{
+  (
+    e: 'update:selectedScopes',
+    payload: { scopes?: string[]; scope?: string; selected?: boolean },
+  ): void
+  (
+    e: 'upsert:scope',
+    payload: Omit<ApiReferenceEvents['auth:upsert:scopes'], 'name'>,
+  ): void
+  (
+    e: 'delete:scope',
+    payload: Omit<ApiReferenceEvents['auth:delete:scopes'], 'name'>,
+  ): void
+}>()
+
+const devicePrompt = ref<DeviceAuthorizationPrompt | null>(null)
+let deviceController: AbortController | undefined
+const cancelDeviceAuthorization = (): void => {
+  deviceController?.abort()
+  devicePrompt.value = null
+}
+onBeforeUnmount(cancelDeviceAuthorization)
+watch(() => [type, name, flows], cancelDeviceAuthorization)
+
+const { translate } = useLocalization()
+
+const loader = useLoadingState()
+const { toast } = useToasts()
+
+/** The current OAuth flow based on the selected type */
+const flow = computed(() => flows[type]!)
+type NonImplicitFlow =
+  | OAuthFlowPasswordSecret
+  | OAuthFlowClientCredentialsSecret
+  | OAuthFlowAuthorizationCodeSecret
+
+/** We filter selected scopes to only include scopes that are defined on this flow (own keys only). */
+const selectedScopes = computed(() => {
+  const definedScopes = flow.value.scopes
+  if (!definedScopes) {
+    return []
+  }
+  return selectedScopesProp.filter((scope) =>
+    Object.hasOwn(definedScopes, scope),
+  )
+})
+
+/**
+ * Show the client secret whenever the flow supports one. PKCE and a client
+ * secret are independent, so confidential clients can use both together
+ * (see RFC 9700 Section 2.1.1).
+ */
+const showClientSecret = computed(
+  () => 'x-scalar-secret-client-secret' in flow.value,
+)
+
+const clientSecretValue = computed((): string => {
+  const f = flow.value as { 'x-scalar-secret-client-secret'?: string }
+  return f['x-scalar-secret-client-secret'] ?? ''
+})
+
+/** Updates the security scheme base */
+const handleOauth2Update = (
+  payload: Partial<OAuthFlow & XScalarCredentialsLocation> & {
+    deviceAuthorizationUrl?: string
+  },
+): void => {
+  // OpenIdConnect uses the secrets update for all
+  if (scheme.type === 'openIdConnect') {
+    return handleOauth2SecretsUpdate(payload)
+  }
+
+  // Only OAuth2 schemes carry flows on the document; this component is never
+  // rendered for the other scheme types.
+  if (scheme.type !== 'oauth2') {
+    return
+  }
+
+  eventBus.emit('auth:update:security-scheme', {
+    payload: {
+      type: scheme.type,
+      flows: {
+        [type]: payload,
+      },
+    },
+    name,
+  })
+}
+
+/** Updates the flow secrets */
+const handleOauth2SecretsUpdate = (
+  payload: Omit<Partial<SecretsOAuthFlows[keyof SecretsOAuthFlows]>, 'type'>,
+): void => {
+  // This component only renders for oauth2/openIdConnect. Other scheme types (e.g. mutualTLS)
+  // carry no flow secrets, so there is nothing to persist and no matching secrets payload type.
+  if (scheme.type !== 'oauth2' && scheme.type !== 'openIdConnect') {
+    return
+  }
+
+  eventBus.emit('auth:update:security-scheme-secrets', {
+    payload: {
+      type: scheme.type,
+      [type]: payload,
+    },
+    name,
+  })
+}
+
+/** Reset only this field; redirect URI may need its browser default prefilled again. */
+const handleResetSecret = (field: AuthSecretField): void => {
+  if (field === 'x-scalar-secret-redirect-uri') {
+    hasHandledRedirectPrefill.value = false
+  }
+  eventBus.emit('auth:reset:security-scheme-secret', {
+    name,
+    flow: type,
+    field,
+  })
+}
+
+/**
+ * Without a configured redirect URI the default comes from the address bar, which the server
+ * cannot see. That default only counts once the server markup is hydrated, so the first browser
+ * render matches the server.
+ */
+const isMounted = ref(false)
+onMounted(() => {
+  isMounted.value = true
+})
+
+/**
+ * Reset needs a default to restore, otherwise it would only clear the field like the clear
+ * action does.
+ */
+const canReset = (
+  field: AuthSecretField,
+  value: string | undefined,
+): boolean => {
+  // Without a stored default, resetting the redirect URI re-runs the browser prefill below,
+  // unless the desktop loopback capture computes it at authorize time instead.
+  const fallback =
+    field === 'x-scalar-secret-redirect-uri' &&
+    !options.captureOAuth2Callback &&
+    (options.oauth2RedirectUri || isMounted.value)
+      ? resolveDefaultOAuth2RedirectUri(options)
+      : ''
+  return canResetSecretField(flow.value, field, value, fallback)
+}
+
+/** Fixed-choice fields must never write an empty string into the document. */
+const handlePkceUpdate = (value: string): void => {
+  if (value === 'SHA-256' || value === 'plain' || value === 'no') {
+    handleOauth2Update({ 'x-usePkce': value })
+  }
+}
+
+/** Clears the flow secrets */
+const clearOauth2Secrets = (): void => {
+  if (loader.isLoading) {
+    return
+  }
+  eventBus.emit('auth:clear:security-scheme-secrets', {
+    name,
+  })
+}
+
+/** Clears stored access and refresh tokens (authorized state) */
+const handleClearAccessTokens = (): void => {
+  if (loader.isLoading) {
+    return
+  }
+  handleOauth2SecretsUpdate({
+    'x-scalar-secret-token': '',
+    'x-scalar-secret-refresh-token': '',
+  })
+}
+
+/** Track redirect URI prefill per flow instance to support document switching */
+const prefilledFlowIdentity = ref<string | null>(null)
+const hasHandledRedirectPrefill = ref(false)
+
+const resolveFlowIdentity = (
+  currentFlow: OAuthFlowsObjectSecret[keyof OAuthFlowsObjectSecret] | undefined,
+): string =>
+  JSON.stringify({
+    type,
+    authorizationUrl:
+      currentFlow && 'authorizationUrl' in currentFlow
+        ? currentFlow.authorizationUrl
+        : '',
+    tokenUrl:
+      currentFlow && 'tokenUrl' in currentFlow ? currentFlow.tokenUrl : '',
+    refreshUrl: currentFlow?.refreshUrl ?? '',
+    scopes: Object.keys(currentFlow?.scopes ?? {}),
+  })
+
+/** Default the redirect-uri to the current origin if we have access to window */
+watch(
+  () => flow.value,
+  (currentFlow) => {
+    if (!currentFlow || !('x-scalar-secret-redirect-uri' in currentFlow)) {
+      return
+    }
+
+    const flowIdentity = resolveFlowIdentity(currentFlow)
+    if (prefilledFlowIdentity.value !== flowIdentity) {
+      prefilledFlowIdentity.value = flowIdentity
+      hasHandledRedirectPrefill.value = false
+    }
+
+    if (hasHandledRedirectPrefill.value) {
+      return
+    }
+
+    const newRedirectUri = (currentFlow as OAuthFlowAuthorizationCodeSecret)[
+      'x-scalar-secret-redirect-uri'
+    ]
+    const defaultRedirectUri = resolveDefaultOAuth2RedirectUri(options)
+
+    hasHandledRedirectPrefill.value = true
+
+    // The desktop loopback path computes the redirect URI at authorize time (an
+    // ephemeral 127.0.0.1 port), so persisting a default into the document would
+    // only bake in a stale, unused value. Leave it empty and show a hint instead.
+    if (
+      isSecretFieldCleared(currentFlow, 'x-scalar-secret-redirect-uri') ||
+      newRedirectUri ||
+      !defaultRedirectUri ||
+      options.captureOAuth2Callback
+    ) {
+      return
+    }
+
+    handleOauth2SecretsUpdate({
+      'x-scalar-secret-redirect-uri': defaultRedirectUri,
+    })
+  },
+  { immediate: true },
+)
+
+/**
+ * Authorizes the user using the specified OAuth flow.
+ * Opens the appropriate OAuth dialog and/or performs the token exchange.
+ */
+const handleAuthorize = async (): Promise<void> => {
+  if (loader.isLoading) {
+    return
+  }
+
+  loader.start()
+  const controller = new AbortController()
+  deviceController = controller
+
+  const [error, tokens] = await authorizeOauth2(
+    flows,
+    type,
+    selectedScopes.value,
+    server,
+    proxyUrl,
+    getEnvironmentVariables(environment),
+    options.customFetch,
+    options.captureOAuth2Callback,
+    {
+      signal: controller.signal,
+      onPrompt: (prompt) => {
+        devicePrompt.value = prompt
+      },
+    },
+  )
+  devicePrompt.value = null
+
+  await loader.clear()
+  if (controller.signal.aborted) {
+    return
+  }
+
+  if (tokens?.accessToken) {
+    handleOauth2SecretsUpdate({
+      'x-scalar-secret-token': tokens.accessToken,
+      ...(tokens.refreshToken
+        ? { 'x-scalar-secret-refresh-token': tokens.refreshToken }
+        : {}),
+    })
+  } else {
+    console.error(error)
+    toast(
+      error?.message ?? translate('apiClient.oauth2.failedToauthorize'),
+      'error',
+    )
+  }
+}
+
+/** Refreshing requires a token issued by the provider, not just a compatible flow. */
+const canRefreshToken = computed<boolean>(
+  (): boolean =>
+    type !== 'implicit' && Boolean(flow.value['x-scalar-secret-refresh-token']),
+)
+
+/**
+ * Refresh URL placeholder, shows tokenUrl as hint if refreshUrl is not specified.
+ * This helps users understand that tokenUrl will be used as fallback.
+ */
+const refreshUrlPlaceholder = computed(() => {
+  if ('tokenUrl' in flow.value && flow.value.tokenUrl) {
+    return flow.value.tokenUrl
+  }
+  return 'https://galaxy.scalar.com/oauth/refresh'
+})
+
+/**
+ * Uses the stored refresh token to obtain a new access token
+ * via grant_type=refresh_token.
+ */
+const handleRefresh = async (): Promise<void> => {
+  // The explicit flow check narrows the type for refreshOauth2Token; the computed boolean cannot.
+  if (loader.isLoading || type === 'implicit' || !canRefreshToken.value) {
+    return
+  }
+
+  loader.start()
+
+  const [error, tokens] = await refreshOauth2Token(
+    flows,
+    type,
+    proxyUrl,
+    server,
+    getEnvironmentVariables(environment),
+    options.customFetch,
+  )
+
+  await loader.clear()
+
+  if (tokens?.accessToken) {
+    handleOauth2SecretsUpdate({
+      'x-scalar-secret-token': tokens.accessToken,
+      ...(tokens.refreshToken
+        ? { 'x-scalar-secret-refresh-token': tokens.refreshToken }
+        : {}),
+    })
+  } else {
+    console.error(error)
+    toast(
+      error?.message ?? translate('apiClient.oauth2.failedToRefreshToken'),
+      'error',
+    )
+  }
+}
+
+/** Updates the secret location */
+const handleSecretLocationUpdate = (value: string): void => {
+  if (value !== 'body' && value !== 'header') return
+  const credentialsLocation = value
+
+  if (scheme.type !== 'openIdConnect') {
+    handleOauth2Update({
+      'x-scalar-credentials-location': credentialsLocation,
+    })
+  }
+
+  handleOauth2SecretsUpdate({
+    'x-scalar-credentials-location': credentialsLocation,
+  })
+}
+</script>
+
+<template>
+  <!-- Access Token Display: Shows when user is already authorized -->
+  <template v-if="flow['x-scalar-secret-token']">
+    <DataTableRow>
+      <RequestAuthDataTableInput
+        :canReset="
+          canReset('x-scalar-secret-token', flow['x-scalar-secret-token'])
+        "
+        class="border-r-transparent"
+        :environment
+        :modelValue="flow['x-scalar-secret-token']"
+        placeholder="QUxMIFlPVVIgQkFTRSBBUkUgQkVMT05HIFRPIFVT"
+        type="password"
+        @reset="handleResetSecret('x-scalar-secret-token')"
+        @update:modelValue="
+          (v) => handleOauth2SecretsUpdate({ 'x-scalar-secret-token': v })
+        ">
+        {{ translate('apiClient.oauth2.accessToken') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <DataTableRow v-if="canRefreshToken">
+      <RequestAuthDataTableInput
+        class="border-r-transparent"
+        :environment
+        :modelValue="flow.refreshUrl ?? ''"
+        :placeholder="refreshUrlPlaceholder"
+        @update:modelValue="(v) => handleOauth2Update({ refreshUrl: v })">
+        {{ translate('apiClient.oauth2.refreshUrl') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <DataTableRow
+      v-if="!hideActions"
+      class="min-w-full">
+      <td class="contents">
+        <div class="flex h-8 items-center justify-end gap-2 border-t">
+          <ScalarButton
+            v-if="canRefreshToken"
+            class="p-0 px-2 py-0.5"
+            :loader
+            size="sm"
+            variant="outlined"
+            @click="handleRefresh">
+            {{ translate('apiClient.oauth2.refresh') }}
+          </ScalarButton>
+          <ScalarButton
+            class="mr-1 p-0 px-2 py-0.5"
+            :disabled="loader.isLoading"
+            size="sm"
+            variant="outlined"
+            @click="handleClearAccessTokens">
+            {{ translate('apiClient.oauth2.clearTokens') }}
+          </ScalarButton>
+        </div>
+      </td>
+    </DataTableRow>
+  </template>
+
+  <!-- Authorization Form: Shows when user needs to authorize -->
+  <template v-else>
+    <DataTableRow v-if="'deviceAuthorizationUrl' in flow">
+      <RequestAuthDataTableInput
+        :environment
+        :modelValue="flow.deviceAuthorizationUrl"
+        @update:modelValue="
+          (v) => handleOauth2Update({ deviceAuthorizationUrl: v })
+        ">
+        {{ translate('apiClient.oauth2.deviceAuthorizationUrl') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+    <DataTableRow v-if="devicePrompt">
+      <td class="contents">
+        <div class="w-full p-2">
+          <div
+            class="bg-b-2 flex flex-col gap-3 rounded-lg border p-3 text-sm"
+            role="status">
+            <p class="text-c-2 text-xs leading-normal">
+              {{ translate('apiClient.oauth2.deviceVerificationPrompt') }}
+            </p>
+            <strong
+              class="bg-b-1 font-code w-fit max-w-full rounded border px-3 py-2 text-base font-medium tracking-widest break-all select-all">
+              {{ devicePrompt.userCode }}
+            </strong>
+            <a
+              class="text-c-accent w-fit max-w-full text-xs break-all underline underline-offset-2"
+              :href="
+                devicePrompt.verificationUriComplete ||
+                devicePrompt.verificationUri
+              "
+              rel="noopener noreferrer"
+              target="_blank">
+              {{ devicePrompt.verificationUri }}
+            </a>
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-c-2 text-xs">
+                {{ translate('apiClient.oauth2.waitingForAuthorization') }}
+              </p>
+              <ScalarButton
+                size="xs"
+                variant="outlined"
+                @click="cancelDeviceAuthorization">
+                {{ translate('apiClient.oauth2.cancelDeviceAuthorization') }}
+              </ScalarButton>
+            </div>
+          </div>
+        </div>
+      </td>
+    </DataTableRow>
+    <DataTableRow>
+      <RequestAuthDataTableInput
+        v-if="'authorizationUrl' in flow"
+        :canReset="
+          canReset(
+            'x-scalar-secret-auth-url',
+            flow['x-scalar-secret-auth-url'] ?? '',
+          )
+        "
+        containerClass="border-r-0"
+        :environment
+        :modelValue="flow['x-scalar-secret-auth-url'] ?? ''"
+        placeholder="https://galaxy.scalar.com/authorize"
+        @reset="handleResetSecret('x-scalar-secret-auth-url')"
+        @update:modelValue="
+          (v) => {
+            handleOauth2SecretsUpdate({ 'x-scalar-secret-auth-url': v })
+            if (v) handleOauth2Update({ authorizationUrl: v })
+          }
+        ">
+        {{ translate('apiClient.oauth2.authUrl') }}
+      </RequestAuthDataTableInput>
+
+      <RequestAuthDataTableInput
+        v-if="'tokenUrl' in flow"
+        :canReset="
+          canReset(
+            'x-scalar-secret-token-url',
+            flow['x-scalar-secret-token-url'] ?? '',
+          )
+        "
+        :environment
+        :modelValue="flow['x-scalar-secret-token-url'] ?? ''"
+        placeholder="https://galaxy.scalar.com/token"
+        @reset="handleResetSecret('x-scalar-secret-token-url')"
+        @update:modelValue="
+          (v) => {
+            handleOauth2SecretsUpdate({ 'x-scalar-secret-token-url': v })
+            if (v) handleOauth2Update({ tokenUrl: v })
+          }
+        ">
+        {{ translate('apiClient.oauth2.tokenUrl') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <DataTableRow v-if="'x-scalar-secret-redirect-uri' in flow">
+      <RequestAuthDataTableInput
+        :canReset="
+          canReset(
+            'x-scalar-secret-redirect-uri',
+            flow['x-scalar-secret-redirect-uri'],
+          )
+        "
+        :environment
+        :modelValue="flow['x-scalar-secret-redirect-uri']"
+        :placeholder="
+          options.captureOAuth2Callback
+            ? `${resolveDefaultOAuth2RedirectUri(options) || 'http://127.0.0.1'} (handled automatically)`
+            : translate('apiClient.oauth2.optionalRedirectUrl')
+        "
+        @reset="handleResetSecret('x-scalar-secret-redirect-uri')"
+        @update:modelValue="
+          (v) => {
+            hasHandledRedirectPrefill = true
+            handleOauth2SecretsUpdate({ 'x-scalar-secret-redirect-uri': v })
+          }
+        ">
+        {{ translate('apiClient.oauth2.redirectUrl') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <template
+      v-if="
+        'x-scalar-secret-username' in flow && 'x-scalar-secret-password' in flow
+      ">
+      <DataTableRow>
+        <RequestAuthDataTableInput
+          :canReset="
+            canReset(
+              'x-scalar-secret-username',
+              flow['x-scalar-secret-username'],
+            )
+          "
+          class="text-c-2"
+          :environment
+          :modelValue="flow['x-scalar-secret-username']"
+          placeholder="janedoe"
+          @reset="handleResetSecret('x-scalar-secret-username')"
+          @update:modelValue="
+            (v) => handleOauth2SecretsUpdate({ 'x-scalar-secret-username': v })
+          ">
+          {{ translate('apiClient.oauth2.username') }}
+        </RequestAuthDataTableInput>
+      </DataTableRow>
+
+      <DataTableRow>
+        <RequestAuthDataTableInput
+          :canReset="
+            canReset(
+              'x-scalar-secret-password',
+              flow['x-scalar-secret-password'],
+            )
+          "
+          :environment
+          :modelValue="flow['x-scalar-secret-password']"
+          placeholder="********"
+          type="password"
+          @reset="handleResetSecret('x-scalar-secret-password')"
+          @update:modelValue="
+            (v) => handleOauth2SecretsUpdate({ 'x-scalar-secret-password': v })
+          ">
+          {{ translate('apiClient.oauth2.password') }}
+        </RequestAuthDataTableInput>
+      </DataTableRow>
+    </template>
+
+    <DataTableRow>
+      <RequestAuthDataTableInput
+        :canReset="
+          canReset(
+            'x-scalar-secret-client-id',
+            flow['x-scalar-secret-client-id'],
+          )
+        "
+        :environment
+        :modelValue="flow['x-scalar-secret-client-id']"
+        placeholder="12345"
+        @reset="handleResetSecret('x-scalar-secret-client-id')"
+        @update:modelValue="
+          (v) => handleOauth2SecretsUpdate({ 'x-scalar-secret-client-id': v })
+        ">
+        {{ translate('apiClient.oauth2.clientID') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <DataTableRow v-if="showClientSecret">
+      <RequestAuthDataTableInput
+        :canReset="canReset('x-scalar-secret-client-secret', clientSecretValue)"
+        :environment
+        :modelValue="clientSecretValue"
+        placeholder="XYZ123"
+        type="password"
+        @reset="handleResetSecret('x-scalar-secret-client-secret')"
+        @update:modelValue="
+          (v) =>
+            handleOauth2SecretsUpdate({ 'x-scalar-secret-client-secret': v })
+        ">
+        {{ translate('apiClient.oauth2.clientSecret') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <DataTableRow v-if="'x-usePkce' in flow">
+      <RequestAuthDataTableInput
+        :enum="pkceOptions"
+        :environment
+        :modelValue="flow['x-usePkce']"
+        readOnly
+        @update:modelValue="handlePkceUpdate">
+        {{ translate('apiClient.oauth2.usePKCE') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <!-- Credentials Location -->
+    <DataTableRow v-if="type !== 'implicit'">
+      <RequestAuthDataTableInput
+        :enum="['header', 'body']"
+        :environment
+        :modelValue="
+          (flow as NonImplicitFlow)['x-scalar-credentials-location'] || 'header'
+        "
+        placeholder="header"
+        readOnly
+        @update:modelValue="(v) => handleSecretLocationUpdate(v)">
+        {{ translate('apiClient.oauth2.credentialsLocation') }}
+      </RequestAuthDataTableInput>
+    </DataTableRow>
+
+    <!-- Scopes -->
+    <DataTableRow>
+      <OAuthScopesInput
+        :flow
+        :flowType="type"
+        :selectedScopes
+        @delete:scope="(v) => emits('delete:scope', v)"
+        @update:selectedScopes="(v) => emits('update:selectedScopes', v)"
+        @upsert:scope="(v) => emits('upsert:scope', v)" />
+    </DataTableRow>
+
+    <DataTableRow
+      v-if="!hideActions"
+      class="min-w-full">
+      <td class="contents">
+        <div class="flex h-8 w-full items-center justify-end border-t">
+          <!-- Allow clearing the oauth section and going back to discovery -->
+          <ScalarButton
+            v-if="scheme.type === 'openIdConnect'"
+            class="mr-1 p-0 px-2 py-0.5"
+            :disabled="loader.isLoading"
+            size="sm"
+            variant="outlined"
+            @click="clearOauth2Secrets">
+            {{ translate('apiClient.oauth2.resetDiscovery') }}
+          </ScalarButton>
+
+          <ScalarButton
+            class="mr-0.75 p-0 px-2 py-0.5"
+            :loader
+            size="sm"
+            variant="outlined"
+            @click="handleAuthorize">
+            {{ translate('apiClient.oauth2.authorize') }}
+          </ScalarButton>
+        </div>
+      </td>
+    </DataTableRow>
+  </template>
+</template>

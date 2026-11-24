@@ -1,46 +1,116 @@
 # CLI
-This guide will help you interact with our registry with our CLI, programatically. If you want to also work with the registry with our cloud dashboard you can.
+Use the Scalar CLI to publish and manage API documents in the Scalar Registry. You can also manage them in the Scalar dashboard.
 
-### Generate Token
-If you choose to interface with our registry with our [CLI](/scalar/scalar-cli/getting-started) or our API you will need to generate an API key this can be done in two steps
+Before running any of the commands below, make sure you are [authenticated](../cli/authentication.md) with the Scalar CLI using your [API key](../cli/authentication.md#login-with-an-api-key).
 
-Go to https://dashboard.scalar.com and navigate to User > API Keys
-![Scalar Create API Key](https://api.scalar.com/cdn/images/UCkGjASrXpR8OxgWEj32i/RlDb2KoAByHiUPxNsOAHk.png "Scalar Create API Key")
-
-Once you have your API key you can now use the CLI or API to interface with the registry.
-
-## Add an OpenAPI Document
-Now let's add an OpenAPI document to the registry ✨
-
-First you need to login, you can do that by the following two commands
+## Publishing API Documents
+To add an API document to the Scalar Registry, use the `publish` command:
 
 ```bash
-scalar auth login
+scalar registry publish ./openapi.yaml --namespace your-team --slug your-api
 ```
 
-or
+`publish` accepts OpenAPI and [AsyncAPI](../../asyncapi.md) documents alike. The format is detected when the document reaches the Scalar Registry, so the command is the same either way:
 
 ```bash
-scalar auth login --token 1234secrettoken5678
+scalar registry publish ./asyncapi.yaml --namespace your-team --slug your-events-api
 ```
 
-Now you can interface with the registry by
+### Required Parameters
+- `file`: Path to your API document
+- `--namespace`: Your Scalar team namespace
+- `--slug`: Unique identifier for the registry entry (defaults to title if not specified)
+
+### Optional Parameters
+- `--version`: API version (e.g., 0.1.0)
+- `--private`: Make API private (default: false)
+- `--force`: Force override an existing version (default: false)
+
+### Examples
 
 ```bash
-scalar registry create ./openapi.yaml
+# Basic publish
+scalar registry publish api/openapi.json --namespace your-team --slug user-api
+
+# Publish with version and make private
+scalar registry publish api/openapi.json --namespace your-team --slug user-api --version 1.0.0 --private
+
+# Force update existing version
+scalar registry publish api/openapi.json --namespace your-team --slug user-api --force
 ```
 
-## Update an OpenAPI Document
-Once you have an OpenAPI document on our registry, you can push up changes by a simple CLI call
+## Managing Registry Documents
+
+### List Documents
+View all registry APIs for your team:
+
 ```bash
-scalar registry version scalar-galaxy ./openapi/galaxy.yaml --namespace scalar
+scalar registry list --namespace your-team
 ```
 
-## Delete an OpenAPI Document
-You can delete an OpenAPI document from the Registry > Overview page, however please consider the downstream effects of which products are depending on that OpenAPI document before deleting that resource.
+### Update Document Metadata
+Update title and description without re-uploading the file:
 
 ```bash
-scalar registry delete scalar-galaxy --namespace scalar
+scalar registry update your-team your-api --title "New Title" --description "New description"
 ```
 
+### Delete Documents
+Remove a document from the Scalar Registry:
 
+```bash
+scalar registry delete your-team your-api
+```
+
+## Validation and Quality
+Before publishing, you can validate your API document:
+
+```bash
+scalar document validate ./openapi.yaml
+```
+
+You can also lint your document using Spectral rules:
+
+```bash
+scalar document lint ./openapi.yaml
+```
+
+Use rules from the Scalar Registry:
+
+```bash
+scalar document lint ./openapi.yaml --rule https://registry.scalar.com/@your-team/rules/your-rule
+```
+
+> [!NOTE]
+> `scalar document validate` and `scalar document lint` both support [AsyncAPI](../../asyncapi.md) documents. Validation detects the document type and checks it against the corresponding OpenAPI or AsyncAPI specification. By default, linting applies Spectral's `spectral:asyncapi` ruleset to AsyncAPI documents and `spectral:oas` to OpenAPI documents.
+
+```bash
+scalar document validate ./asyncapi.yaml
+scalar document lint ./asyncapi.yaml
+```
+
+## Team Management
+If you're part of multiple teams, you can manage which team is active:
+
+```bash
+# List all teams you're part of
+scalar team list
+
+# Set active team
+scalar team set --team team-uid
+```
+
+## Working with Multiple APIs
+For repositories containing multiple APIs, you can use the CLI in scripts or CI/CD pipelines:
+
+```bash
+# Example: Publish multiple APIs
+scalar registry publish ./apis/user-api/openapi.json --namespace your-team --slug user-api
+scalar registry publish ./apis/product-api/openapi.json --namespace your-team --slug product-api
+scalar registry publish ./apis/order-api/openapi.json --namespace your-team --slug order-api
+```
+
+## Integration with CI/CD
+For automated publishing, you can integrate the CLI with GitHub Actions or other CI/CD systems. See our [GitHub Actions guide](../registry/github-actions.md) for detailed examples.
+
+The CLI supports environment variables and can be easily integrated into automated workflows for continuous deployment of your API documentation.

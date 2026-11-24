@@ -1,111 +1,278 @@
-import { describe, expect, it } from 'vitest'
+/// <reference types="vitest/jsdom" />
+
+import type { ApiReferencePlugin, PluginAuthState } from '@scalar/types/api-reference'
+import { renderToString } from '@vue/server-renderer'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSSRApp, h } from 'vue'
 
 import ApiReference from '@/components/ApiReference.vue'
-import { flushPromises, mount } from '@vue/test-utils'
+import ApiHostingBetaPrompt from '@/features/api-hosting-beta/components/ApiHostingBetaPrompt.vue'
+import { DeveloperTools } from '@/features/developer-tools'
+import { authStorage } from '@/helpers/storage'
 
-describe('ApiReference', () => {
-  describe('multiple configurations', () => {
-    it('renders a single API reference', async () => {
-      const wrapper = mount(ApiReference, {
-        props: {
-          configuration: {
+enableAutoUnmount(afterEach)
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  vi.unstubAllGlobals()
+  jsdom.reconfigure({ url: 'http://localhost:3000/' })
+
+  // Mock window.location for all tests
+  vi.stubGlobal('location', {
+    href: 'http://localhost:3000/',
+    origin: 'http://localhost:3000',
+    protocol: 'http:',
+    host: 'localhost:3000',
+    hostname: 'localhost',
+    port: '3000',
+    pathname: '/',
+    search: '',
+    hash: '',
+    ancestorOrigins: {} as DOMStringList,
+    assign: vi.fn(),
+    reload: vi.fn(),
+    replace: vi.fn(),
+    toString: () => 'http://localhost:3000/',
+  })
+})
+
+const stubLocation = (href: string) => {
+  jsdom.reconfigure({ url: href })
+  const url = new URL(href)
+  vi.stubGlobal('location', {
+    href,
+    origin: url.origin,
+    protocol: url.protocol,
+    host: url.host,
+    hostname: url.hostname,
+    port: url.port,
+    pathname: url.pathname,
+    search: '',
+    hash: '',
+    ancestorOrigins: {} as DOMStringList,
+    assign: vi.fn(),
+    reload: vi.fn(),
+    replace: vi.fn(),
+    toString: () => href,
+  })
+}
+
+describe('multiple configurations', () => {
+  it.each([
+    { label: 'empty scopes', populatedScopes: false, redirectUri: undefined },
+    { label: 'populated scopes', populatedScopes: true, redirectUri: undefined },
+    { label: 'a configured redirect', populatedScopes: false, redirectUri: 'https://app.example.com/callback' },
+  ])('prefills the OAuth2 redirect on initial load with $label', async ({ populatedScopes, redirectUri }) => {
+    const scopes: Record<string, string> = populatedScopes ? { read: 'Read access' } : {}
+    const wrapper = mount(ApiReference, {
+      attachTo: document.body,
+      props: {
+        configuration: {
+          oauth2RedirectUri: redirectUri,
+          authentication: {
+            preferredSecurityScheme: 'OAuth2',
+            securitySchemes: {
+              OAuth2: {
+                flows: {
+                  authorizationCode: {
+                    authorizationUrl: 'https://auth.example.com/authorize',
+                    tokenUrl: 'https://auth.example.com/token',
+                    'x-scalar-client-id': 'scalar-demo-client',
+                  },
+                },
+              },
+            },
+          },
+          content: {
+            openapi: '3.1.1',
+            info: { title: 'OAuth API', version: '1.0.0' },
+            paths: {},
+            components: {
+              securitySchemes: {
+                OAuth2: {
+                  type: 'oauth2',
+                  flows: {
+                    authorizationCode: {
+                      authorizationUrl: 'https://auth.example.com/authorize',
+                      tokenUrl: 'https://auth.example.com/token',
+                      scopes,
+                    },
+                  },
+                },
+              },
+            },
+            security: [{ OAuth2: [] }],
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const redirectInput = wrapper
+      .findAllComponents({ name: 'RequestAuthDataTableInput' })
+      .find((input) => input.text().includes('Redirect URL'))
+    if (!redirectInput) {
+      throw new Error('Expected the OAuth2 redirect input')
+    }
+    expect(redirectInput.props('modelValue')).toBe(redirectUri ?? 'http://localhost:3000/')
+
+    // A successful prefill must still let the user clear the redirect deliberately.
+    redirectInput.vm.$emit('update:modelValue', '')
+    await flushPromises()
+    expect(redirectInput.props('modelValue')).toBe('')
+  })
+
+  it('renders a single API reference', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          content: {
+            openapi: '3.1.0',
+            info: {
+              title: 'My API',
+              version: '1.0.0',
+            },
+            paths: {
+              '/api/v1/users': {
+                get: {
+                  summary: 'Get users',
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    // Wait for the API reference to be rendered
+    await wrapper.vm.$nextTick()
+
+    // Check whether it renders the Content component only once
+    expect(wrapper.findAllComponents({ name: 'Content' })).toHaveLength(1)
+  })
+
+  it(`doesn't render the select when there is only one configuration`, async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: [
+          {
             content: {
               openapi: '3.1.0',
               info: {
                 title: 'My API',
                 version: '1.0.0',
               },
-              paths: {
-                '/api/v1/users': {
-                  get: {
-                    summary: 'Get users',
-                  },
-                },
+            },
+          },
+        ],
+      },
+    })
+
+    // Wait for the API reference to be rendered
+    await wrapper.vm.$nextTick()
+
+    // Check whether it renders the Content component
+    expect(wrapper.findAllComponents({ name: 'Content' })).toHaveLength(1)
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+
+    // Check whether it doesn't render the select
+    expect(documentSelector.exists()).toBe(false)
+  })
+
+  it('renders a select when multiple configurations are provided', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: [
+          {
+            content: {
+              openapi: '3.1.0',
+              info: {
+                title: 'My API #1',
+                version: '1.0.0',
               },
             },
           },
-        },
-      })
-
-      // Wait for the API reference to be rendered
-      await wrapper.vm.$nextTick()
-
-      // Check whether it renders the ApiReferenceWorkspace component only once
-      expect(wrapper.findAllComponents({ name: 'ApiReferenceWorkspace' })).toHaveLength(1)
-      wrapper.unmount()
-    })
-
-    it(`doesn't render the select when there is only one configuration`, async () => {
-      const wrapper = mount(ApiReference, {
-        props: {
-          configuration: [
-            {
-              content: {
-                openapi: '3.1.0',
-                info: {
-                  title: 'My API',
-                  version: '1.0.0',
-                },
+          {
+            content: {
+              openapi: '3.1.0',
+              info: {
+                title: 'My API #2',
+                version: '1.0.0',
               },
             },
-          ],
-        },
-      })
-
-      // Wait for the API reference to be rendered
-      await wrapper.vm.$nextTick()
-
-      // Check whether it renders the ApiReferenceWorkspace component
-      expect(wrapper.findAllComponents({ name: 'ApiReferenceWorkspace' })).toHaveLength(1)
-      const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
-
-      // Check whether it doesn't render the select
-      expect(documentSelector.html()).toBe('<!--v-if-->')
-      wrapper.unmount()
+          },
+        ],
+      },
     })
 
-    it('renders a select when multiple configurations are provided', async () => {
-      const wrapper = mount(ApiReference, {
-        props: {
-          configuration: [
-            {
-              content: {
-                openapi: '3.1.0',
-                info: {
-                  title: 'My API #1',
-                  version: '1.0.0',
-                },
+    // Wait for the API reference to be rendered
+    await wrapper.vm.$nextTick()
+
+    // Check whether it renders the Content component
+    expect(wrapper.findAllComponents({ name: 'Content' })).toHaveLength(1)
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+
+    // Ensure the select is rendered
+    expect(documentSelector.html()).not.toBe('<!--v-if-->')
+  })
+
+  it('renders a select with the names', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: [
+          {
+            slug: 'my-api-1',
+            content: {
+              openapi: '3.1.0',
+              info: {
+                title: 'My API #1',
+                version: '1.0.0',
               },
             },
-            {
-              content: {
-                openapi: '3.1.0',
-                info: {
-                  title: 'My API #2',
-                  version: '1.0.0',
-                },
+          },
+          {
+            slug: 'my-api-2',
+            content: {
+              openapi: '3.1.0',
+              info: {
+                title: 'My API #2',
+                version: '1.0.0',
               },
             },
-          ],
-        },
-      })
-
-      // Wait for the API reference to be rendered
-      await wrapper.vm.$nextTick()
-
-      // Check whether it renders the ApiReferenceWorkspace component
-      expect(wrapper.findAllComponents({ name: 'ApiReferenceWorkspace' })).toHaveLength(1)
-      const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
-
-      // Ensure the select is rendered
-      expect(documentSelector.html()).not.toBe('<!--v-if-->')
-      wrapper.unmount()
+          },
+        ],
+      },
     })
 
-    it('renders a select with the names', async () => {
-      const wrapper = mount(ApiReference, {
-        props: {
-          configuration: [
+    // Wait for the API reference to be rendered
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    // Check whether it renders the Content component
+    expect(wrapper.findAllComponents({ name: 'Content' })).toHaveLength(1)
+
+    // Check whether it renders the select
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+    expect(documentSelector.exists()).toBe(true)
+
+    // Check whether it renders the names
+    expect(documentSelector.html()).toContain('my-api-1')
+    await documentSelector.vm.$emit('update:modelValue', 'my-api-2')
+    await wrapper.vm.$nextTick()
+    expect(documentSelector.html()).toContain('my-api-2')
+  })
+
+  it('should fire `onDocumentSelect` when changing document', async () => {
+    const onDocumentSelect = vi.fn()
+
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          onDocumentSelect,
+
+          sources: [
             {
               slug: 'my-api-1',
               content: {
@@ -128,58 +295,1272 @@ describe('ApiReference', () => {
             },
           ],
         },
-      })
+      },
+    })
 
-      // Wait for the API reference to be rendered
-      await flushPromises()
+    // Wait for the API reference to be rendered
+    await wrapper.vm.$nextTick()
 
-      // Check whether it renders the ApiReferenceWorkspace component
-      expect(wrapper.findAllComponents({ name: 'ApiReferenceWorkspace' })).toHaveLength(1)
+    // onDocumentSelect should be called after API reference is loaded
+    expect(onDocumentSelect).toHaveBeenCalledOnce()
 
-      // Check whether it renders the select
-      const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
-      expect(documentSelector.exists()).toBe(true)
+    // Check whether it renders the Content component
+    expect(wrapper.findAllComponents({ name: 'Content' })).toHaveLength(1)
 
-      // Check whether it renders the names
-      expect(documentSelector.html()).toContain('my-api-1')
-      await documentSelector.vm.$emit('update:modelValue', 1)
-      expect(documentSelector.html()).toContain('my-api-2')
-      wrapper.unmount()
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+
+    // Ensure the select is rendered
+    expect(documentSelector.exists()).toBe(true)
+
+    await documentSelector.vm.$emit('update:modelValue', 'my-api-2')
+    await wrapper.vm.$nextTick()
+
+    // onDocumentSelect should be called after choosing another document
+    expect(onDocumentSelect).toHaveBeenCalledTimes(2)
+  })
+
+  it('should fire `onDocumentSelect` then `onLoaded`', async () => {
+    const onDocumentSelect = vi.fn()
+    const onLoaded = vi.fn()
+
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          onDocumentSelect,
+          onLoaded,
+
+          sources: [
+            {
+              slug: 'my-api-1',
+              content: {
+                openapi: '3.1.0',
+                info: {
+                  title: 'My API #1',
+                  version: '1.0.0',
+                },
+              },
+            },
+            {
+              slug: 'my-api-2',
+              content: {
+                openapi: '3.1.0',
+                info: {
+                  title: 'My API #2',
+                  version: '1.0.0',
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    // Wait for the API reference to be rendered
+    await wrapper.vm.$nextTick()
+
+    // onDocumentSelect should be called after API reference is loaded
+    expect(onDocumentSelect).toHaveBeenCalledOnce()
+
+    // onLoaded should not have been called yet
+    expect(onLoaded).not.toHaveBeenCalled()
+
+    // resolve document load promises
+    await flushPromises()
+
+    // now onLoaded should have been called
+    expect(onLoaded).toHaveBeenCalledOnce()
+
+    // Check whether it renders the Content component
+    expect(wrapper.findAllComponents({ name: 'Content' })).toHaveLength(1)
+
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+
+    // Reset mocks
+    onDocumentSelect.mockClear()
+    onLoaded.mockClear()
+
+    // Ensure the select is rendered
+    expect(documentSelector.exists()).toBe(true)
+
+    await documentSelector.vm.$emit('update:modelValue', 'my-api-2')
+    await wrapper.vm.$nextTick()
+
+    // onDocumentSelect should be called after choosing another document
+    expect(onDocumentSelect).toHaveBeenCalledOnce()
+    expect(onLoaded).not.toHaveBeenCalledOnce()
+
+    // resolve promises loading the document
+    await flushPromises()
+
+    // now onLoaded should have been called
+    expect(onLoaded).toHaveBeenCalledOnce()
+  })
+
+  it('restores client libraries when switching from hiddenClients=true source', async () => {
+    const createDocument = (title: string) => ({
+      openapi: '3.1.0',
+      info: {
+        title,
+        version: '1.0.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+          },
+        },
+      },
+    })
+
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          sources: [
+            {
+              slug: 'all-clients',
+              default: true,
+              content: createDocument('All Clients'),
+            },
+            {
+              slug: 'no-clients',
+              // `sources` typing does not yet include per-source api-reference settings.
+              hiddenClients: true,
+              content: createDocument('No Clients'),
+            } as never,
+          ],
+        },
+      },
+    })
+
+    const getVisibleClientIds = (): string[] => {
+      const clientSelector = wrapper.findComponent({ name: 'ClientSelector' })
+      if (!clientSelector.exists()) {
+        return []
+      }
+
+      const clientOptions = clientSelector.props('clientOptions') as Array<{
+        options: Array<{ id: string }>
+      }>
+
+      return clientOptions.flatMap((group) => group.options.map((option) => option.id))
+    }
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(getVisibleClientIds().includes('js/fetch')).toBe(true)
+
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+    await documentSelector.vm.$emit('update:modelValue', 'no-clients')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(getVisibleClientIds()).toStrictEqual([])
+
+    await documentSelector.vm.$emit('update:modelValue', 'all-clients')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(getVisibleClientIds().includes('js/fetch')).toBe(true)
+  })
+
+  it('restores client libraries when switching array-based configurations', async () => {
+    const createDocument = (title: string) => ({
+      openapi: '3.1.0',
+      info: {
+        title,
+        version: '1.0.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+          },
+        },
+      },
+    })
+
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: [
+          {
+            slug: 'all-clients',
+            default: true,
+            content: createDocument('All Clients'),
+          },
+          {
+            slug: 'no-clients',
+            hiddenClients: true,
+            content: createDocument('No Clients'),
+          },
+        ],
+      },
+    })
+
+    const getVisibleClientIds = (): string[] => {
+      const clientSelector = wrapper.findComponent({ name: 'ClientSelector' })
+      if (!clientSelector.exists()) {
+        return []
+      }
+
+      const clientOptions = clientSelector.props('clientOptions') as Array<{
+        options: Array<{ id: string }>
+      }>
+
+      return clientOptions.flatMap((group) => group.options.map((option) => option.id))
+    }
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(getVisibleClientIds().includes('js/fetch')).toBe(true)
+
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+    await documentSelector.vm.$emit('update:modelValue', 'no-clients')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(getVisibleClientIds()).toStrictEqual([])
+
+    await documentSelector.vm.$emit('update:modelValue', 'all-clients')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(getVisibleClientIds().includes('js/fetch')).toBe(true)
+  })
+})
+
+describe('circular documents', () => {
+  it('handles circular references in schemas gracefully', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          content: {
+            openapi: '3.0.1',
+            info: {
+              title: 'API with Circular Dependencies',
+              version: '1.0.0',
+            },
+            components: {
+              schemas: {
+                Base: {
+                  required: ['Type'],
+                  type: 'object',
+                  anyOf: [{ $ref: '#/components/schemas/Derived1' }, { $ref: '#/components/schemas/Derived2' }],
+                  discriminator: {
+                    propertyName: 'Type',
+                    mapping: {
+                      'Value1': '#/components/schemas/Derived1',
+                      'Value2': '#/components/schemas/Derived2',
+                    },
+                  },
+                },
+                Derived1: {
+                  properties: {
+                    Type: {
+                      enum: ['Value1'],
+                      type: 'string',
+                    },
+                  },
+                },
+                Derived2: {
+                  required: ['Ref'],
+                  properties: {
+                    Type: {
+                      enum: ['Value2'],
+                      type: 'string',
+                    },
+                    Ref: {
+                      $ref: '#/components/schemas/Base',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    // Wait for the API reference to be rendered
+    // await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    // Check whether it renders the Content component
+    expect(wrapper.findAllComponents({ name: 'Content' })).toHaveLength(1)
+
+    // Verify the component doesn't crash or throw errors when processing circular references
+    expect(wrapper.exists()).toBe(true)
+
+    // Check that the component is still functional despite circular dependencies
+    const Content = wrapper.findComponent({ name: 'Content' })
+    expect(Content.exists()).toBe(true)
+  })
+})
+
+describe('multiple sources', () => {
+  it('renders two URLs', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          default: false,
+          sources: [
+            {
+              url: 'https://api.example.com/v1/openapi.yaml',
+              slug: 'my-api-1',
+              default: true,
+            },
+            {
+              url: 'https://api.example.com/v2/openapi.yaml',
+              slug: 'my-api-2',
+            },
+          ],
+        },
+      },
+    })
+
+    // Wait for the API reference to be rendered
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    // Check whether it renders the select
+    const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
+    expect(documentSelector.exists()).toBe(true)
+    await documentSelector.find('button').trigger('click')
+
+    // Check whether it renders the names
+    expect(documentSelector.text()).toContain('my-api-2')
+    await documentSelector.vm.$emit('update:modelValue', 'my-api-1')
+    await wrapper.vm.$nextTick()
+    expect(documentSelector.text()).toContain('my-api-1')
+  })
+})
+
+describe('Rendering', () => {
+  it('has the title in the HTML output', async () => {
+    const document = {
+      openapi: '3.1.0',
+      info: {
+        title: 'Test API',
+        version: '1.0.0',
+      },
+      paths: {},
+    }
+
+    const app = createSSRApp({
+      render: () =>
+        h(ApiReference, {
+          configuration: {
+            content: document,
+          },
+        }),
+    })
+
+    const html = await renderToString(app)
+
+    expect(html).toContain('Test API')
+  })
+
+  it.each([
+    ['express', 'https://scalar.com/?utm_source=powered-by&utm_medium=api-reference&utm_campaign=express'],
+    ['dotnet', 'https://scalar.com/?utm_source=powered-by&utm_medium=api-reference&utm_campaign=dotnet'],
+    [undefined, 'https://scalar.com/?utm_source=powered-by&utm_medium=api-reference'],
+  ] as const)('server-renders the powered by link for the %s integration', async (integration, expected) => {
+    const app = createSSRApp({
+      render: () =>
+        h(ApiReference, {
+          configuration: {
+            _integration: integration,
+            content: {
+              openapi: '3.1.0',
+              info: { title: 'Test API', version: '1.0.0' },
+              paths: {},
+            },
+          },
+        }),
+    })
+
+    const html = await renderToString(app)
+
+    // The link has to be in the server-rendered HTML, not only added on the client
+    const document = new DOMParser().parseFromString(html, 'text/html')
+    const link = document.querySelector('a[href*="utm_source=powered-by"]')
+    expect(link?.getAttribute('href')).toBe(expected)
+    expect(link?.getAttribute('rel')).toBe('noopener')
+    expect(link?.getAttribute('target')).toBe('_blank')
+    expect(link?.textContent?.trim()).toBe('Powered by Scalar')
+  })
+
+  it('includes crawler navigation links for entries inside collapsed groups', async () => {
+    const document = {
+      openapi: '3.1.0',
+      info: {
+        title: 'Test API',
+        version: '1.0.0',
+      },
+      paths: {
+        '/planets': {
+          get: { summary: 'List planets', tags: ['planets'] },
+        },
+        '/moons': {
+          get: { summary: 'List moons', tags: ['moons'] },
+        },
+      },
+      components: {
+        schemas: {
+          Moon: { type: 'object' },
+        },
+      },
+    }
+
+    const app = createSSRApp({
+      render: () =>
+        h(ApiReference, {
+          configuration: {
+            content: document,
+          },
+        }),
+    })
+
+    const html = await renderToString(app)
+
+    // Only the first tag is expanded during SSR, so the links for the second tag and the
+    // models section have to come from the crawler navigation
+    expect(html).toContain('data-scalar-crawler-nav')
+    expect(html).toContain('href="#tag/moons/GET/moons"')
+    expect(html).toContain('href="#models/Moon"')
+  })
+
+  it('removes the crawler navigation after mounting', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          content: {
+            openapi: '3.1.0',
+            info: {
+              title: 'Test API',
+              version: '1.0.0',
+            },
+            paths: {
+              '/planets': {
+                get: { summary: 'List planets', tags: ['planets'] },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-scalar-crawler-nav]').exists()).toBe(false)
+  })
+})
+
+describe('proxy configuration', () => {
+  it('uses the proxy to load the document when proxyUrl is configured', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          openapi: '3.1.0',
+          info: {
+            title: 'Test API',
+            version: '1.0.0',
+          },
+          paths: {},
+        }),
+      json: async () => ({
+        openapi: '3.1.0',
+        info: {
+          title: 'Test API',
+          version: '1.0.0',
+        },
+        paths: {},
+      }),
+    })
+
+    vi.stubGlobal('fetch', mockFetch)
+
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          sources: [
+            {
+              url: 'https://api.example.com/v1/openapi.yaml',
+              slug: 'my-api',
+              default: true,
+            },
+          ],
+          proxyUrl: 'https://custom-proxy.example.com',
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    // Verify that fetch was called with the proxied URL
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://custom-proxy.example.com/?scalar_url=https%3A%2F%2Fapi.example.com%2Fv1%2Fopenapi.yaml',
+      expect.any(Object),
+    )
+  })
+
+  it('does not use the proxy when custom fetch is provided', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          openapi: '3.1.0',
+          info: {
+            title: 'Test API',
+            version: '1.0.0',
+          },
+          paths: {},
+        }),
+      json: async () => ({
+        openapi: '3.1.0',
+        info: {
+          title: 'Test API',
+          version: '1.0.0',
+        },
+        paths: {},
+      }),
+    })
+
+    vi.stubGlobal('fetch', mockFetch)
+
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          sources: [
+            {
+              url: 'https://api.example.com/v1/openapi.yaml',
+              slug: 'my-api',
+              default: true,
+            },
+          ],
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    // Verify that fetch was called without the proxied URL
+    expect(mockFetch).toHaveBeenCalledWith('https://api.example.com/v1/openapi.yaml', expect.any(Object))
+  })
+})
+
+describe('sidebar introduction toggle behavior', () => {
+  beforeEach(() => {
+    // jsdom localStorage can be missing after vi.unstubAllGlobals() in the file hook
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+      clear: () => {
+        store.clear()
+      },
+      key: (index: number) => [...store.keys()][index] ?? null,
+      get length() {
+        return store.size
+      },
     })
   })
 
-  describe('multiple sources', () => {
-    it('renders two URLs', async () => {
+  it('collapses introduction when clicked a second time', async () => {
+    const wrapper = mount(ApiReference, {
+      props: {
+        configuration: {
+          content: {
+            openapi: '3.1.0',
+            info: {
+              title: 'My API',
+              version: '1.0.0',
+              description: `
+Welcome to the API.
+
+# Main Section
+## Subsection
+              `,
+            },
+            paths: {},
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const introduction = wrapper.vm.sidebarItems.find(
+      (item: { type: string; title: string }) => item.type === 'text' && item.title === 'Introduction',
+    )
+    expect(introduction).toBeDefined()
+    if (!introduction) {
+      throw new Error('Expected Introduction entry in sidebar items')
+    }
+
+    const introductionRoot = wrapper.find(`[data-sidebar-id="${introduction.id}"]`)
+    // Discrete groups render two controls: the label, which is an anchor so
+    // the navigation stays crawlable, and a separate caret button.
+    // Do not key off aria-current — it is only present when the item is selected.
+    const introductionButton = introductionRoot.find('a[href]')
+    const introductionToggle = introductionRoot.find('button[aria-expanded]')
+
+    expect(introductionButton.exists()).toBe(true)
+    expect(introductionToggle.exists()).toBe(true)
+
+    // The caret is the control that expands and collapses, so it is the only
+    // one that reports the expanded state. A link that also claimed to be a
+    // toggle would be announced as something it cannot do.
+    expect(introductionButton.attributes('aria-expanded')).toBeUndefined()
+    expect(introductionToggle.attributes('aria-expanded')).toBe('false')
+
+    await introductionButton.trigger('click')
+    expect(introductionToggle.attributes('aria-expanded')).toBe('true')
+
+    await introductionToggle.trigger('click')
+    expect(introductionToggle.attributes('aria-expanded')).toBe('false')
+  })
+})
+
+describe('plugin auth accessor', () => {
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('reads the credentials the reference Authentication panel persists into the client store', async () => {
+    const slug = 'my-api'
+    const schemeName = 'apiKeyAuth'
+    const token = 'super-secret-token'
+
+    // Seed the persisted auth for this document, as if the user had entered it in the
+    // reference-side Authentication panel (which writes into the client store).
+    authStorage().setAuth(slug, {
+      secrets: {
+        [schemeName]: { type: 'apiKey', 'x-scalar-secret-token': token },
+      },
+      selected: { document: undefined, path: undefined },
+    })
+
+    // A plugin captures the read-only auth accessor it receives during `onInit`.
+    let capturedAuth: PluginAuthState | undefined
+
+    const authReaderPlugin: ApiReferencePlugin = () => ({
+      name: 'auth-reader',
+      extensions: [],
+      hooks: {
+        onInit: ({ auth }) => {
+          capturedAuth = auth
+        },
+      },
+    })
+
+    mount(ApiReference, {
+      props: {
+        configuration: {
+          slug,
+          persistAuth: true,
+          plugins: [authReaderPlugin],
+          content: {
+            openapi: '3.1.0',
+            info: { title: 'My API', version: '1.0.0' },
+            components: {
+              securitySchemes: {
+                [schemeName]: { type: 'apiKey', name: 'X-API-Key', in: 'header' },
+              },
+            },
+            paths: {},
+          },
+        },
+      },
+    })
+
+    // Let the document load so the persisted auth is applied to the client store.
+    await flushPromises()
+
+    expect(capturedAuth).toBeDefined()
+
+    // The plugin must see the credentials that were persisted into the client store.
+    // Before the fix the accessor read from the (empty) workspace store, so this was `undefined`.
+    expect(capturedAuth?.getAuthSecrets(slug, schemeName)).toMatchObject({
+      type: 'apiKey',
+      'x-scalar-secret-token': token,
+    })
+    expect(capturedAuth?.export()[slug]?.secrets?.[schemeName]).toMatchObject({
+      type: 'apiKey',
+      'x-scalar-secret-token': token,
+    })
+  })
+})
+
+describe('sidebar footer call to action', () => {
+  const document = {
+    openapi: '3.1.0',
+    info: { title: 'Footer API', version: '1.0.0' },
+    paths: {},
+  }
+
+  type FooterConfiguration = {
+    mcp?: { name?: string; url?: string; disabled?: boolean }
+    hideClientButton?: boolean
+    showDeveloperTools?: 'never'
+    agent?: { disabled: boolean }
+  }
+
+  /** Mounts, then waits for `onMounted` and the async chunks to settle */
+  const mountFooter = async (configuration: FooterConfiguration = {}) => {
+    const wrapper = mount(ApiReference, {
+      attachTo: window.document.body,
+      props: { configuration: { content: document, ...configuration } },
+    })
+    await flushPromises()
+    await flushPromises()
+    await flushPromises()
+    return wrapper
+  }
+
+  /** What the sidebar footer offers. A "Generate SDKs & MCP" card would show up as `generate` */
+  const footerOf = (wrapper: ReturnType<typeof mount>) => {
+    const footer = wrapper.find('.darklight-reference')
+    return {
+      generate: footer.text().includes('Generate SDK'),
+      mcpRows: footer.find('.scalar-mcp-layer').exists(),
+      client: footer.text().includes('Open API Client'),
+    }
+  }
+
+  /** jsdom has no scrollIntoView, so the stub is installed per test and removed again afterwards */
+  const originalScrollIntoView = Element.prototype.scrollIntoView
+
+  beforeEach(async () => {
+    // Pending scroll retries from earlier tests find this attached mount
+    Element.prototype.scrollIntoView = vi.fn()
+    // Load the Explore chunk once, so the async component resolves within a microtask in every test
+    await import('@/features/explore-scalar/components/ExploreScalarModal.vue')
+
+    // Headless UI's Dialog observes the panel size, and jsdom has no ResizeObserver; the file-level
+    // `vi.unstubAllGlobals()` removes this stub again
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        disconnect = vi.fn()
+        observe = vi.fn()
+        unobserve = vi.fn()
+      },
+    )
+  })
+
+  afterEach(() => {
+    Element.prototype.scrollIntoView = originalScrollIntoView
+  })
+
+  it('hides SDK generation when developer tools are disabled', async () => {
+    const wrapper = await mountFooter({
+      showDeveloperTools: 'never',
+      agent: { disabled: true },
+      mcp: { disabled: true },
+      hideClientButton: true,
+    })
+    expect(wrapper.find('.api-reference-toolbar').exists()).toBe(false)
+    expect(footerOf(wrapper)).toStrictEqual({ generate: false, mcpRows: false, client: false })
+    const button = wrapper.findAll('button').find((candidate) => candidate.text() === 'Generate SDK')
+    expect(button).toBeUndefined()
+  })
+
+  it.each([undefined, {}])(
+    'hides the local sidebar promotion with developer tools disabled and MCP %j',
+    async (mcp) => {
+      const wrapper = await mountFooter({ showDeveloperTools: 'never', mcp })
+      expect(wrapper.find('.api-reference-toolbar').exists()).toBe(false)
+      expect(footerOf(wrapper)).toStrictEqual({ generate: false, mcpRows: false, client: true })
+    },
+  )
+
+  it('updates SDK generation when developer tools visibility changes', async () => {
+    const wrapper = await mountFooter()
+    const hasSdkButton = (): boolean => wrapper.findAll('button').some((button) => button.text() === 'Generate SDK')
+    expect(hasSdkButton()).toBe(true)
+
+    await wrapper.setProps({ configuration: { content: document, showDeveloperTools: 'never' } })
+    await flushPromises()
+    expect(hasSdkButton()).toBe(false)
+
+    await wrapper.setProps({ configuration: { content: document, showDeveloperTools: 'localhost' } })
+    await flushPromises()
+    expect(hasSdkButton()).toBe(true)
+  })
+
+  it('keeps explicitly configured MCP connections when developer tools are disabled', async () => {
+    const wrapper = await mountFooter({
+      showDeveloperTools: 'never',
+      mcp: { name: 'Acme', url: 'https://mcp.acme.io' },
+    })
+    expect(footerOf(wrapper)).toStrictEqual({ generate: false, mcpRows: true, client: false })
+  })
+
+  // The localhost shell keeps its tools in the developer toolbar, so the sidebar footer offers nothing
+  it('renders nothing in the localhost shell without an MCP config', async () => {
+    const wrapper = await mountFooter()
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: false, client: false })
+  })
+
+  it('renders nothing in the localhost shell when mcp is an empty object', async () => {
+    const wrapper = await mountFooter({ mcp: {} })
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: false, client: false })
+  })
+
+  it('renders nothing on localhost when hideClientButton is true', async () => {
+    const wrapper = await mountFooter({ hideClientButton: true })
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: false, client: false })
+  })
+
+  it('keeps the MCP rows on localhost when an MCP name or url is configured', async () => {
+    const wrapper = await mountFooter({ mcp: { name: 'Acme', url: 'https://mcp.acme.io' } })
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: true, client: false })
+  })
+
+  it('renders nothing in the localhost shell when mcp is disabled', async () => {
+    const wrapper = await mountFooter({ mcp: { disabled: true } })
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: false, client: false })
+  })
+
+  it('renders the API client button on localhost with developer tools disabled', async () => {
+    const wrapper = await mountFooter({ showDeveloperTools: 'never', mcp: { disabled: true } })
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: false, client: true })
+  })
+
+  it('renders nothing on localhost when mcp is disabled and hideClientButton is true', async () => {
+    const wrapper = await mountFooter({ mcp: { disabled: true }, hideClientButton: true })
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: false, client: false })
+  })
+
+  it('renders the API client button on a public host', async () => {
+    stubLocation('https://docs.acme.io/')
+    const wrapper = await mountFooter()
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: false, client: true })
+  })
+
+  it('renders the MCP rows on a public host when mcp is configured', async () => {
+    stubLocation('https://docs.acme.io/')
+    const wrapper = await mountFooter({ mcp: {} })
+
+    expect(footerOf(wrapper)).toEqual({ generate: false, mcpRows: true, client: false })
+  })
+
+  it('renders the client button while deferring browser-only footer controls', async () => {
+    const app = createSSRApp({
+      render: () => h(ApiReference, { configuration: { content: document } }),
+    })
+
+    const html = await renderToString(app)
+
+    expect(html).toContain('Open API Client')
+    expect(html).not.toContain('Generate SDKs & MCP')
+    expect(html).not.toContain('scalar-mcp-layer')
+  })
+})
+
+describe('localhost shell', () => {
+  const document = {
+    openapi: '3.1.0',
+    info: { title: 'Shell API', version: '1.0.0' },
+    paths: {},
+  }
+
+  type ShellConfiguration = {
+    showDeveloperTools?: 'localhost' | 'always' | 'never'
+    urlRouting?: false
+    _integration?: 'fastapi' | 'docusaurus'
+  }
+
+  /** jsdom has no scrollIntoView, so the stub is installed per test and removed again afterwards */
+  const originalScrollIntoView = Element.prototype.scrollIntoView
+  const originalElementFromPoint = window.document.elementFromPoint
+
+  beforeEach(async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    // jsdom does not perform layout hit testing.
+    window.document.elementFromPoint = vi.fn(() => null)
+    // Load the Explore chunk once, so the async component resolves within a microtask in every test
+    await import('@/features/explore-scalar/components/ExploreScalarModal.vue')
+
+    // Headless UI's Dialog observes the panel size, and jsdom has no ResizeObserver
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        disconnect = vi.fn()
+        observe = vi.fn()
+        unobserve = vi.fn()
+      },
+    )
+  })
+
+  afterEach(() => {
+    Element.prototype.scrollIntoView = originalScrollIntoView
+    window.document.elementFromPoint = originalElementFromPoint
+  })
+
+  /** Mounts, then waits for `onMounted` (where the host is resolved) and the async chunks to settle */
+  const mountReference = async (configuration: ShellConfiguration = {}) => {
+    const wrapper = mount(ApiReference, {
+      attachTo: window.document.body,
+      props: { configuration: { content: document, ...configuration } },
+    })
+    await flushPromises()
+    await flushPromises()
+    await flushPromises()
+    return wrapper
+  }
+
+  /** Where the developer toolbar rendered: above the whole reference, inside the content column, or not at all */
+  const toolbarPlacement = (wrapper: ReturnType<typeof mount>): 'shell' | 'content' | 'none' => {
+    if (!wrapper.find('.api-reference-toolbar').exists()) {
+      return 'none'
+    }
+    return wrapper.find('main .api-reference-toolbar').exists() ? 'content' : 'shell'
+  }
+
+  /**
+   * The component root is the layout's parent. `wrapper.element` cannot stand in for it: the dev
+   * build keeps the leading template comment, which turns the root into a fragment.
+   */
+  const shellOf = (wrapper: ReturnType<typeof mount>) => ({
+    root: wrapper.find('.references-layout').element.parentElement?.getAttribute('class') ?? null,
+    card: wrapper.find('.references-layout').classes().includes('references-shell-card'),
+    frame: wrapper.find('.references-shell-frame').exists(),
+    toolbar: toolbarPlacement(wrapper),
+  })
+
+  it('wraps the reference in the shell on localhost', async () => {
+    const wrapper = await mountReference()
+
+    expect(shellOf(wrapper)).toStrictEqual({
+      root: 'scalar-app references-shell',
+      card: true,
+      frame: true,
+      toolbar: 'shell',
+    })
+    expect(wrapper.find('.references-shell-toolbar').attributes('data-scalar-scroll-header')).toBe('true')
+  })
+
+  it('leaves a public host untouched', async () => {
+    stubLocation('https://docs.acme.io/')
+    // jsdom refuses history writes for a cross-origin URL, which would abort the document load
+    const wrapper = await mountReference({ urlRouting: false })
+
+    // The document loaded, so the content toolbar was considered, and stayed hidden off localhost
+    expect(wrapper.findComponent(DeveloperTools).exists()).toBe(true)
+    expect(shellOf(wrapper)).toStrictEqual({ root: null, card: false, frame: false, toolbar: 'none' })
+  })
+
+  it('keeps the toolbar in the content column on a public host that always shows it', async () => {
+    stubLocation('https://docs.acme.io/')
+    // jsdom refuses history writes for a cross-origin URL, which would abort the document load
+    const wrapper = await mountReference({ showDeveloperTools: 'always', urlRouting: false })
+
+    expect(shellOf(wrapper)).toStrictEqual({ root: null, card: false, frame: false, toolbar: 'content' })
+    expect(wrapper.find('.api-reference-toolbar').attributes('data-scalar-scroll-header')).toBeUndefined()
+  })
+
+  it('renders the plain layout on localhost when developer tools are disabled', async () => {
+    const wrapper = await mountReference({ showDeveloperTools: 'never' })
+
+    expect(shellOf(wrapper)).toStrictEqual({ root: null, card: false, frame: false, toolbar: 'none' })
+  })
+
+  it('follows the developer tools setting while mounted', async () => {
+    const wrapper = await mountReference()
+    expect(shellOf(wrapper).toolbar).toBe('shell')
+
+    await wrapper.setProps({ configuration: { content: document, showDeveloperTools: 'never' } })
+    await flushPromises()
+    expect(shellOf(wrapper)).toStrictEqual({ root: null, card: false, frame: false, toolbar: 'none' })
+
+    await wrapper.setProps({ configuration: { content: document, showDeveloperTools: 'localhost' } })
+    await flushPromises()
+    expect(shellOf(wrapper).toolbar).toBe('shell')
+  })
+
+  describe('side panel', () => {
+    beforeEach(async () => {
+      // Load the panel chunk once, so the async component resolves within a microtask in every test
+      await import('@/features/developer-tools/DeveloperToolsPanel.vue')
+    })
+
+    /** The panel needs the toolbar's breakpoint, and jsdom has no matchMedia, so the width is stubbed */
+    const stubViewport = (wide: boolean) =>
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: wide && query === '(min-width: 1000px)',
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+
+    const toolbarButton = (wrapper: ReturnType<typeof mount>, name: string) => {
+      const button = wrapper
+        .get('.references-shell-toolbar')
+        .findAll('button')
+        .find((candidate) => candidate.text() === name)
+      if (!button) {
+        throw new Error(`No toolbar button named ${name}`)
+      }
+      return button
+    }
+
+    /** The panel is fetched on demand, so a click needs a few ticks before it renders */
+    const click = async (button: ReturnType<ReturnType<typeof mount>['get']>) => {
+      await button.trigger('click')
+      await flushPromises()
+      await flushPromises()
+    }
+
+    it('opens the picked tool beside the card and closes it again', async () => {
+      stubViewport(true)
+      const wrapper = await mountReference()
+      const configure = toolbarButton(wrapper, 'Configure')
+
+      expect(configure.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('.references-shell-panel').exists()).toBe(false)
+
+      await click(configure)
+
+      const panel = wrapper.get('aside.references-shell-panel')
+      expect(panel.attributes('aria-label')).toBe('Configure')
+      expect(panel.text()).toContain('Scalar Configuration')
+      expect(configure.attributes('aria-expanded')).toBe('true')
+      expect(configure.attributes('aria-controls')).toBe(panel.attributes('id'))
+      // The panel replaces the dropdown, so nothing else opens
+      expect(window.document.querySelector('[role="dialog"]')).toBeNull()
+
+      await click(toolbarButton(wrapper, 'Share'))
+      expect(wrapper.get('.references-shell-panel').attributes('aria-label')).toBe('Share')
+      expect(configure.attributes('aria-expanded')).toBe('false')
+
+      await click(toolbarButton(wrapper, 'Share'))
+      expect(wrapper.find('.references-shell-panel').exists()).toBe(false)
+    })
+
+    it('closes with Escape and gives focus back to the button that opened it', async () => {
+      stubViewport(true)
+      const wrapper = await mountReference()
+      const deploy = toolbarButton(wrapper, 'Deploy API')
+      ;(deploy.element as HTMLElement).focus()
+
+      await click(deploy)
+      const panel = wrapper.get('.references-shell-panel')
+      const control = panel.findAll('button').at(-1)!
+      ;(control.element as HTMLElement).focus()
+      await control.trigger('keydown', { key: 'Escape' })
+      await flushPromises()
+
+      expect(wrapper.find('.references-shell-panel').exists()).toBe(false)
+      expect(window.document.activeElement).toBe(deploy.element)
+    })
+
+    it('closes with Escape from the toolbar too, since the panel has no close button of its own', async () => {
+      stubViewport(true)
+      const wrapper = await mountReference()
+      const configure = toolbarButton(wrapper, 'Configure')
+
+      await click(configure)
+      expect(wrapper.find('.references-shell-panel').exists()).toBe(true)
+
+      await configure.trigger('keydown', { key: 'Escape' })
+      await flushPromises()
+
+      expect(wrapper.find('.references-shell-panel').exists()).toBe(false)
+      expect(configure.attributes('aria-expanded')).toBe('false')
+    })
+
+    it.each([
+      [undefined, 'Deploy API'],
+      ['docusaurus', 'Deploy API'],
+      ['fastapi', 'Deploy FastAPI'],
+    ] as const)('labels Deploy for the %s integration', async (integration, label) => {
+      stubViewport(true)
+      const wrapper = await mountReference(integration ? { _integration: integration } : {})
+
+      expect(toolbarButton(wrapper, label).exists()).toBe(true)
+    })
+
+    it('shows Generate SDK in the panel instead of the dialog', async () => {
+      stubViewport(true)
+      const wrapper = await mountReference()
+      const generate = toolbarButton(wrapper, 'Generate SDK')
+
+      // A disclosure for the panel, not a popup
+      expect(generate.attributes('aria-haspopup')).toBeUndefined()
+
+      await click(generate)
+
+      const panel = wrapper.get('.references-shell-panel')
+      expect(panel.attributes('aria-label')).toBe('Generate SDK')
+      expect(panel.get('h2').text()).toBe('Everything your API needs, from one OpenAPI document')
+      expect(generate.attributes('aria-expanded')).toBe('true')
+      expect(window.document.querySelector('[role="dialog"]')).toBeNull()
+
+      // Its own close button closes the panel
+      await panel.get('button[aria-label="Close"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('.references-shell-panel').exists()).toBe(false)
+    })
+
+    it('keeps the dialog for Generate SDK on narrow screens', async () => {
+      stubViewport(false)
+      const wrapper = await mountReference()
+      const generate = toolbarButton(wrapper, 'Generate SDK')
+
+      expect(generate.attributes('aria-haspopup')).toBe('dialog')
+
+      await click(generate)
+
+      expect(wrapper.find('.references-shell-panel').exists()).toBe(false)
+      expect(window.document.querySelector('[role="dialog"]')).not.toBeNull()
+    })
+  })
+
+  describe('API Hosting beta popup', () => {
+    const SEEN_KEY = 'scalar-api-hosting-beta-prompt-seen'
+
+    /**
+     * Longer than the popup waits for the reference to settle: jsdom has no `requestIdleCallback`,
+     * so the preloader takes a 200ms timer to find nothing left to load, then the popup waits 1.5s
+     */
+    const SETTLED_MS = 1900
+
+    const queryPopup = () => window.document.querySelector('[role="dialog"] .developer-tools-card')
+
+    /** jsdom names itself in its user agent, which the popup takes as automated */
+    const JSDOM_USER_AGENT = navigator.userAgent
+
+    beforeEach(() => {
+      window.document.cookie = `${SEEN_KEY}=; Max-Age=0; Path=/`
+      localStorage.clear()
+      // The test setup reports every test as automated, and jsdom names itself, which keeps the popup shut
+      Object.defineProperty(navigator, 'webdriver', { configurable: true, get: () => false })
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+      })
+    })
+
+    afterEach(() => {
+      Object.defineProperty(navigator, 'webdriver', { configurable: true, get: () => true })
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, get: () => JSDOM_USER_AGENT })
+      window.document.cookie = `${SEEN_KEY}=; Max-Age=0; Path=/`
+    })
+
+    it('invites the developer once the reference has settled on localhost', async () => {
+      const wrapper = await mountReference({ _integration: 'fastapi' })
+      expect(wrapper.findComponent(ApiHostingBetaPrompt).exists()).toBe(true)
+
+      await vi.waitFor(() => expect(queryPopup()).not.toBeNull(), { timeout: SETTLED_MS * 2 })
+      // The Deploy panel's own card, naming the framework serving the reference
+      expect(window.document.querySelector('[role="dialog"] h2')?.textContent?.trim()).toBe(
+        'Deploy your FastAPI app on Scalar',
+      )
+      expect(localStorage.getItem(SEEN_KEY)).toBe('true')
+    })
+
+    it('holds the popup back while other documents load in the background, which can hold the page', async () => {
+      const loads = new Map<string, (response: Response) => void>()
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((url: string) => new Promise<Response>((resolve) => loads.set(url, resolve))),
+      )
       const wrapper = mount(ApiReference, {
+        attachTo: window.document.body,
         props: {
           configuration: {
             sources: [
-              {
-                url: 'https://api.example.com/v1/openapi.yaml',
-                slug: 'my-api-1',
-              },
-              {
-                url: 'https://api.example.com/v2/openapi.yaml',
-                slug: 'my-api-2',
-              },
+              { slug: 'first', content: document, default: true },
+              { slug: 'second', url: 'https://example.com/second.json' },
             ],
           },
         },
       })
-
-      // Wait for the API reference to be rendered
       await flushPromises()
 
-      // Check whether it renders the select
-      const documentSelector = wrapper.findComponent({ name: 'DocumentSelector' })
-      expect(documentSelector.html()).not.toBe('<!--v-if-->')
+      // The first document is on screen, so the prompt is already noticing anyone who starts reading
+      await vi.waitFor(() => expect(loads.has('https://example.com/second.json')).toBe(true))
+      expect(wrapper.text()).toContain('Shell API')
+      const prompt = wrapper.findComponent(ApiHostingBetaPrompt)
+      expect(prompt.exists()).toBe(true)
+      expect(prompt.props('ready')).toBe(false)
 
-      // Check whether it renders the names
-      expect(documentSelector.text()).toContain('my-api-2')
-      await documentSelector.vm.$emit('update:modelValue', 0)
-      await wrapper.vm.$nextTick()
-      expect(documentSelector.text()).toContain('my-api-1')
-      wrapper.unmount()
+      loads.get('https://example.com/second.json')?.(new Response(JSON.stringify(document)))
+      await vi.waitFor(() => expect(wrapper.findComponent(ApiHostingBetaPrompt).props('ready')).toBe(true))
     })
+
+    // Checked by whether the prompt mounts at all, not by waiting for it: the first test has already
+    // spent this file's one try per page load, so a mounted prompt would stay shut here anyway
+    it('never mounts on a public host, not even one that always shows the developer tools', async () => {
+      stubLocation('https://docs.acme.io/')
+      // jsdom refuses history writes for a cross-origin URL, which would abort the document load
+      const wrapper = await mountReference({ showDeveloperTools: 'always', urlRouting: false })
+
+      // The document loaded, so the prompt would have mounted by now if it were going to
+      expect(wrapper.findComponent(DeveloperTools).exists()).toBe(true)
+      expect(wrapper.findComponent(ApiHostingBetaPrompt).exists()).toBe(false)
+      expect(queryPopup()).toBeNull()
+      expect(window.document.cookie).not.toContain(SEEN_KEY)
+      expect(localStorage.getItem(SEEN_KEY)).toBeNull()
+    })
+
+    it('never mounts on a reserved local name that the shell covers, such as .test', async () => {
+      stubLocation('http://my-api.test/')
+      const wrapper = await mountReference({ urlRouting: false })
+
+      expect(wrapper.find('.references-shell-toolbar').exists()).toBe(true)
+      expect(wrapper.findComponent(ApiHostingBetaPrompt).exists()).toBe(false)
+    })
+
+    it('never mounts on localhost when the developer tools are turned off', async () => {
+      const wrapper = await mountReference({ showDeveloperTools: 'never' })
+
+      expect(wrapper.find('.references-layout').exists()).toBe(true)
+      expect(wrapper.findComponent(ApiHostingBetaPrompt).exists()).toBe(false)
+    })
+  })
+
+  it('renders the plain layout on the server, so hydration starts from the same markup', async () => {
+    const app = createSSRApp({
+      render: () => h(ApiReference, { configuration: { content: document } }),
+    })
+
+    const html = await renderToString(app)
+
+    // Skip the fragment's leading comment markers with plain string search, not a backtracking regex
+    let markup = html
+    while (markup.startsWith('<!--')) {
+      markup = markup.slice(markup.indexOf('-->') + 3)
+    }
+
+    // The root `<div>` carries nothing but its style scope
+    expect(markup).toMatch(/^<div(?: data-v-[a-z0-9]+)?><!--/)
+    expect(html).not.toContain('references-shell')
   })
 })

@@ -1,0 +1,181 @@
+<script setup lang="ts">
+import { addScalarClassesToHeadless } from '@scalar/components/helpers'
+import type { ModalState } from '@scalar/components/modal'
+import { ScalarTeleportRoot } from '@scalar/components/teleport'
+import { useFocusTrap } from '@vueuse/integrations/useFocusTrap'
+import { nextTick, onBeforeMount, onBeforeUnmount, ref, watch } from 'vue'
+
+import { useLocalization } from '@/v2/features/localization'
+
+const props = defineProps<{ modalState: ModalState }>()
+
+const emit = defineEmits<{
+  (e: 'open'): void
+  (e: 'close'): void
+}>()
+
+const { translate } = useLocalization()
+
+const client = ref<HTMLElement | null>(null)
+
+const { activate: activateFocusTrap, deactivate: deactivateFocusTrap } =
+  useFocusTrap(client, {
+    allowOutsideClick: true,
+    fallbackFocus: () => client.value as HTMLElement,
+    /**
+     * Put initial focus on the close button so assistive technology users hear
+     * the way out of the dialog before anything else. Returning `undefined`
+     * (no marked element, e.g. a layout without a close button) keeps
+     * focus-trap's default of the first tabbable element. Never return `null`
+     * here: focus-trap throws on a non-node return value. The lookup is scoped
+     * to the dialog so a host page element can never be picked up.
+     */
+    initialFocus: () =>
+      client.value?.querySelector<HTMLElement>('[data-modal-initial-focus]') ??
+      undefined,
+  })
+
+// ensure scalar classes exist on headless-ui root
+onBeforeMount(() => addScalarClassesToHeadless())
+
+// manage the focus trap and emit lifecycle events
+watch(
+  () => props.modalState.open,
+  async (open) => {
+    if (open) {
+      await nextTick()
+      activateFocusTrap()
+      emit('open')
+    } else {
+      deactivateFocusTrap()
+      emit('close')
+    }
+  },
+  { immediate: false },
+)
+
+// best-effort cleanup on unmount
+onBeforeUnmount(() => {
+  deactivateFocusTrap()
+})
+</script>
+
+<template>
+  <div class="scalar scalar-app z-overlay relative">
+    <div
+      class="scalar-container"
+      :class="{ 'scalar-client--open': modalState.open }">
+      <div
+        ref="client"
+        :aria-label="translate('apiClient.modalClientContainer.label')"
+        aria-modal="true"
+        v-bind="$attrs"
+        class="scalar-app-layout scalar-client"
+        role="dialog"
+        tabindex="-1">
+        <ScalarTeleportRoot>
+          <slot />
+        </ScalarTeleportRoot>
+      </div>
+
+      <!-- overlay / exit area -->
+      <div
+        class="scalar-app-exit"
+        @click="modalState.hide()" />
+    </div>
+  </div>
+</template>
+
+<style scoped>
+@reference "@/style.css";
+
+.scalar .scalar-app-layout {
+  background: var(--scalar-background-1);
+  height: calc(100% - 120px);
+  max-width: 1390px;
+  width: 100%;
+  margin: auto;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+}
+/**
+ * Allow the modal to fill more space on
+ * very short (or very zoomed in) screens
+ */
+@variant zoomed {
+  .scalar .scalar-app-layout {
+    height: 100%;
+    max-height: 90svh;
+  }
+}
+
+.scalar .scalar-app-exit {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #00000038;
+  cursor: pointer;
+  z-index: -1;
+}
+
+.dark-mode .scalar .scalar-app-exit {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.scalar .scalar-app-exit:before {
+  font-family: sans-serif;
+  position: absolute;
+  top: 0;
+  right: 12px;
+  font-size: 30px;
+  font-weight: 100;
+  line-height: 50px;
+  text-align: center;
+  color: white;
+  opacity: 0.6;
+}
+
+.scalar .scalar-app-exit:hover:before {
+  opacity: 1;
+}
+
+/* container */
+.scalar-container {
+  overflow: hidden;
+  visibility: hidden;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+  transition:
+    opacity 0.35s ease,
+    visibility 0s linear 0.35s;
+}
+
+.scalar-container.scalar-client--open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.35s ease;
+}
+
+.scalar .url-form-input {
+  min-height: auto !important;
+}
+
+.scalar .scalar-container {
+  line-height: normal;
+}
+</style>

@@ -7,7 +7,7 @@ export type PostmanCollection = {
   protocolProfileBehavior?: ProtocolProfileBehavior
 }
 
-export type Info = {
+type Info = {
   name: string
   _postman_id?: string
   description?: Description
@@ -23,7 +23,7 @@ export type Description =
       version?: string | number
     }
 
-export type Version =
+type Version =
   | string
   | {
       major: number
@@ -63,7 +63,7 @@ export type Event = {
   disabled?: boolean
 }
 
-export type Script = {
+type Script = {
   id?: string
   type?: string
   exec?: string[] | string
@@ -71,7 +71,7 @@ export type Script = {
   name?: string
 }
 
-export type Url =
+type Url =
   | string
   | {
       raw?: string
@@ -84,7 +84,7 @@ export type Url =
       variable?: Variable[]
     }
 
-export type QueryParam = {
+type QueryParam = {
   key: string | null
   value: string | null
   disabled?: boolean
@@ -97,24 +97,28 @@ export type Variable = {
   type?: 'string' | 'number' | 'boolean' | 'environment'
   enum?: string[]
   description?: string
+  disabled?: boolean
 }
 
 export type Auth = {
   type: string
   noauth?: null
-  apikey?: AuthAttribute[]
-  awsv4?: AuthAttribute[]
-  basic?: AuthAttribute[]
-  bearer?: AuthAttribute[]
-  digest?: AuthAttribute[]
-  edgegrid?: AuthAttribute[]
-  hawk?: AuthAttribute[]
-  ntlm?: AuthAttribute[]
-  oauth1?: AuthAttribute[]
-  oauth2?: AuthAttribute[]
+  apikey?: AuthAttributes
+  awsv4?: AuthAttributes
+  basic?: AuthAttributes
+  bearer?: AuthAttributes
+  digest?: AuthAttributes
+  edgegrid?: AuthAttributes
+  hawk?: AuthAttributes
+  ntlm?: AuthAttributes
+  oauth1?: AuthAttributes
+  oauth2?: AuthAttributes
 }
 
-export type AuthAttribute = {
+/** Postman v2.1 lists attributes as key/value rows, while v2.0 uses one object. */
+export type AuthAttributes = AuthAttribute[] | Record<string, string | number | boolean>
+
+type AuthAttribute = {
   key: string
   value?: string | number | boolean
   type?: string
@@ -133,7 +137,7 @@ export type Request =
       body?: RequestBody | null
     }
 
-export type ProxyConfig = {
+type ProxyConfig = {
   match?: string
   host?: string
   port?: number
@@ -141,7 +145,7 @@ export type ProxyConfig = {
   disabled?: boolean
 }
 
-export type Certificate = {
+type Certificate = {
   name?: string
   matches?: string[]
   key?: { src?: string }
@@ -163,7 +167,7 @@ export type RequestBody = {
   raw?: string
   graphql?: {
     query?: string
-    variables?: Record<string, string | number | boolean | null>
+    variables?: string | Record<string, unknown> | null
   }
   urlencoded?: UrlEncodedParameter[]
   formdata?: FormParameter[]
@@ -203,6 +207,7 @@ export type FormParameter =
 
 export type Response = {
   id?: string
+  name?: string
   originalRequest?: Request
   responseTime?: string | number | null
   timings?: object | null
@@ -213,7 +218,7 @@ export type Response = {
   code?: number
 }
 
-export type Cookie = {
+type Cookie = {
   domain: string
   expires?: string | null
   maxAge?: string
@@ -244,6 +249,6 @@ export type TableObject = {
   [key: string]: TableCell
 }
 
-export type ProtocolProfileBehavior = {
+type ProtocolProfileBehavior = {
   // This is left as an empty object as per the schema
 }

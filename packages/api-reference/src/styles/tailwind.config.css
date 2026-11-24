@@ -1,0 +1,98 @@
+/**
+ * Note on the `!` suffix used across the schema tree templates: utilities
+ * compile before SFC scoped styles here, so a utility loses every equal-
+ * specificity tie against a scoped rule targeting the same class. The tree
+ * keeps its class names as styling hooks for scoped rules and `customCss`,
+ * so contested declarations carry `!` (e.g. `mt-1!`) to win that tie —
+ * nothing else does.
+ *
+ * API Reference Tailwind Configuration
+ *
+ * This file can be imported into other projects using Tailwind to
+ * generate the appropriate Tailwind utilities for the API Reference.
+ */
+
+/* Dependency Tailwind Configurations */
+@import "@scalar/components/tailwind.config.css";
+@import "@scalar/sidebar/tailwind.config.css";
+@import "@scalar/api-client/tailwind.config.css";
+@import "@scalar/blocks/tailwind.config.css";
+@import "@scalar/agent-chat/tailwind.config.css";
+
+/* API Reference Tailwind Theme Extensions */
+@import "./theme.css";
+
+/* Search for Tailwind classes in the API Reference */
+@source "../";
+
+/**
+ * Narrow reference variant
+ *
+ * The API reference is an embeddable widget, so responsive styles must adapt
+ * to the rendered width of the reference, never to the viewport. This variant
+ * is the utility-class counterpart of the raw
+ * `@container references-container (max-width: 900px)` blocks used in
+ * scoped styles — the query is identical, so the two idioms can never
+ * disagree. The container itself is declared in Content.vue.
+ */
+@custom-variant narrow {
+  @container references-container (max-width: 900px) {
+    @slot;
+  }
+}
+
+/**
+ * Honour a request for reduced motion. Motion is collapsed to a near-zero
+ * duration rather than removed, because `transitionend` must still fire for
+ * components that sequence their own state on it. Scoped to the app root so an
+ * embedding page keeps control of its own motion; the visual baselines run
+ * under no-preference and are untouched. Written with Tailwind's own
+ * `motion-reduce` variant so this block and any `motion-reduce:` utility can
+ * never disagree on the query.
+ */
+.scalar-app {
+  @variant motion-reduce {
+    & *,
+    & *::before,
+    & *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/*
+ * Narrow container: tighten the indent and shrink the glyphs so a deep tree
+ * still fits, and so the outermost control clears the page edge instead of
+ * being clipped by it. The toggle's transparent hit box stays 24px (WCAG 2.5.8).
+ *
+ * The query matches `Section.vue`'s, which is what makes the numbers work: at
+ * this width a section pads its content by 24px, and the outermost control
+ * hangs `gutter + half` to the LEFT of that content, outside the padding. The
+ * wide tokens need 25px and were clipped by the viewport; these need 18px.
+ * Tying the two to one query is the point — a section that padded differently
+ * from what the controls assume is exactly how they end up cut off again.
+ *
+ * Applied to every direct child of the container rather than to `.schema-tree`,
+ * for two reasons. Response rows, callbacks and header groups draw rails of
+ * their own ABOVE any tree root — scoped to the root they kept the wide gutter
+ * and their glyphs landed on a different line from the schema rows below them.
+ * And a container query never matches the element declaring the container, so
+ * these cannot live in the `.scalar-app` token block in Blocks: that element is an
+ * ancestor of the container (declared in Content.vue), not inside it.
+ */
+@container references-container (max-width: 900px) {
+  .references-container > * {
+    --schema-gutter: 10px;
+    --schema-glyph-size: 16px;
+    --schema-glyph-half: 8px;
+    --schema-glyph-icon: 14px;
+    /* The toggle keeps the 24px hit box from the Blocks token block (WCAG 2.5.8):
+       it is transparent, so only the glyph needs to shrink. Hanging
+       gutter + half = 10 + 12 = 22px it still clears the 24px section padding
+       this query pairs with, and its centre stays on the rail. Its box now
+       ends 2px past the content edge, over text that toggles the same row. */
+  }
+}

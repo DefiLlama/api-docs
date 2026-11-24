@@ -1,0 +1,776 @@
+<script lang="ts">
+import type { MultipartNaming } from '@scalar/types/api-reference'
+
+export type CodeExampleProps = {
+  /** Localized status text shown when the selected example has no linked code sample. */
+  codeSampleUnavailable?: string
+  /**
+   * Localized purpose of the client picker. It opens the button's accessible name and the
+   * selected client's title is appended, so the name still contains the visible label.
+   */
+  clientPickerLabel?: string
+  /** Localized accessible name for the search field inside the client picker. */
+  clientSearchLabel?: string
+  /**
+   * Localized accessible name for the focusable code sample. The selected client's title is
+   * appended so the announcement also says which language the sample is in.
+   */
+  codeSampleLabel?: string
+  /**
+   * Integration type: determines if the code sample is displayed in a client environment
+   * or in an API reference environment.
+   */
+  integration?: 'client' | 'reference'
+  /**
+   * List of all http clients formatted into option groups for the client selector
+   */
+  clientOptions: ClientOptionGroup[]
+  /**
+   * Pre-selected client, this will determine which client is initially selected in the dropdown.
+   * Either a built-in client id (e.g. `js/fetch`) or a custom sample id (e.g. `custom/python`).
+   *
+   * Typed as a plain string: unioning the (large) client-id union with the `custom/...`
+   * ids overflows TypeScript's union-complexity limit inside this component's `defineProps`.
+   *
+   * @defaults to a custom sample if one is available, otherwise shell/curl
+   */
+  selectedClient?: string
+  /**
+   * Which server from the spec to use for the code example
+   */
+  selectedServer?: ServerObject | null
+  /**
+   * The selected content type from the requestBody.content, this will determine which examples are available
+   * as well as the content type of the code example
+   *
+   * @defaults to the first content type if not provided
+   */
+  selectedContentType?: string
+  /**
+   * Example name to use for resolving example values for parameters AND requestBody.
+   *
+   * This is the document-wide selection: it is honored only when this operation defines an example
+   * with the same key, so picking an example on one operation syncs the rest without blanking out
+   * operations that do not share that key.
+   *
+   * @example "limited"
+   * ```ts
+   * parameters: {
+   *   name: 'foobar',
+   *   in: 'query',
+   *   examples: {
+   *     limited: {
+   *       dataValue: 10,
+   *     }
+   *   }
+   * },
+   * body: {
+   *   content: {
+   *     'application/json': {
+   *       examples: {
+   *         limited: {
+   *           dataValue: { foo: 'bar' },
+   *         }
+   *       }
+   *     }
+   *   }
+   * }
+   *
+   * ```
+   */
+  selectedExample?: string
+  /**
+   * Event bus
+   */
+  eventBus: WorkspaceEventBus
+  /**
+   * The security schemes which are applicable to this operation
+   */
+  securitySchemes: SecuritySchemeObjectSecret[]
+  /**
+   * HTTP method of the operation
+   */
+  method: string
+  /**
+   * Path of the operation
+   */
+  path: string
+  /**
+   * De-referenced OpenAPI Operation object
+   */
+  operation: OperationObject
+  /**
+   * If true and there's no example, we will display a small card with the method and path only
+   */
+  fallback?: boolean
+  /**
+   * A method to generate the label of the block, should return an html string
+   */
+  generateLabel?: () => string
+  /**
+   * If true, render this as a webhook request example
+   */
+  isWebhook?: boolean
+  /**
+   * Workspace + document cookies
+   */
+  globalCookies?: XScalarCookie[]
+  /**
+   * When the request body schema uses oneOf/anyOf, use these selected variants
+   * for the example snippet (e.g. from the schema dropdowns in the API reference).
+   */
+  /** Originating OpenAPI version, used for XML mapping rules. */
+  openapiVersion?: string
+  /** Document-level JSON Schema dialect used when generating array `contains` examples. */
+  jsonSchemaDialect?: string
+  multipartNaming?: MultipartNaming
+  requestBodyCompositionSelection?: Record<string, number>
+}
+
+/**
+ * Request Example
+ *
+ * The core component for rendering a request example block,
+ * this component does not have much of its own state but operates on props and custom events
+ *
+ * @event workspace:update:selected-client - Emitted when the selected client changes
+ * @event workspace:update:selected-example - Emitted when the selected example changes, so other operations can sync
+ */
+export default {}
+</script>
+
+<script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
+import {
+  ScalarCard,
+  ScalarCardFooter,
+  ScalarCardHeader,
+  ScalarCardSection,
+} from '@scalar/components/card'
+import {
+  ScalarCodeBlock,
+  ScalarCodeBlockCopy,
+} from '@scalar/components/code-block'
+import { ScalarCombobox } from '@scalar/components/combobox'
+import { ScalarVirtualText } from '@scalar/components/virtual-text'
+import { freezeElement } from '@scalar/helpers/dom/freeze-element'
+import { ScalarIconCaretDown } from '@scalar/icons'
+import { type WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import {
+  getOperationExamples,
+  resolveOperationExamples,
+} from '@scalar/workspace-store/helpers/operation-examples'
+import {
+  useExampleVisibility,
+  useExternalExamples,
+} from '@scalar/workspace-store/helpers/use-external-examples'
+import {
+  resolveCredentialPlaceholders,
+  type SecuritySchemeObjectSecret,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarCookie } from '@scalar/workspace-store/schemas/extensions/general/x-scalar-cookies'
+import type {
+  OperationObject,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import {
+  computed,
+  ref,
+  useId,
+  watch,
+  watchEffect,
+  type ComponentPublicInstance,
+} from 'vue'
+
+import { filterClientsByQuery } from '../helpers/filter-clients-by-query'
+import { findClient } from '../helpers/find-client'
+import { generateCodeSnippet } from '../helpers/generate-code-snippet'
+import { getClients } from '../helpers/get-clients'
+import { getCustomCodeSamples } from '../helpers/get-custom-code-samples'
+import { getSecrets } from '../helpers/get-secrets'
+import { operationToHar } from '../helpers/operation-to-har/operation-to-har'
+import type {
+  ClientOption,
+  ClientOptionGroup,
+  CustomClientOption,
+} from '../types'
+import ExamplePicker from './ExamplePicker.vue'
+import HttpMethod from './HttpMethod.vue'
+
+const {
+  integration,
+  codeSampleUnavailable = 'No code sample available for this example.',
+  clientPickerLabel = 'Change code sample language',
+  clientSearchLabel = 'Search clients',
+  codeSampleLabel = 'Code sample',
+  clientOptions,
+  selectedClient,
+  selectedServer = null,
+  selectedContentType,
+  selectedExample,
+  securitySchemes = [],
+  method,
+  eventBus,
+  path,
+  operation,
+  isWebhook,
+  generateLabel,
+  globalCookies,
+  openapiVersion,
+  jsonSchemaDialect,
+  multipartNaming,
+  requestBodyCompositionSelection,
+} = defineProps<CodeExampleProps>()
+
+const emit = defineEmits<{
+  /**
+   * Emitted whenever the example key actually shown for this operation changes.
+   *
+   * This is the resolved local key (not the raw document-wide selection), so layouts that render
+   * the test-request button outside this component can open the client with the same example the
+   * snippet displays.
+   */
+  (e: 'update:exampleKey', value: string): void
+}>()
+
+defineSlots<{
+  'header': () => unknown
+  /** Rendered at the start of the footer, only while the example picker does not need that space */
+  'footer-start'?: () => unknown
+  'footer': ({ exampleName }: { exampleName: string }) => unknown
+}>()
+
+/** Grab the examples for the given content type */
+const requestBodyExamples = computed(() => {
+  const content = getResolvedRef(operation.requestBody)?.content ?? {}
+  const contentType = selectedContentType || Object.keys(content)[0]
+  if (!contentType) return {}
+
+  const examples = content[contentType]?.examples ?? {}
+
+  return examples
+})
+
+/**
+ * The example key actually shown for this operation.
+ *
+ * `selectedExample` is the document-wide selection that syncs across operations. We honor it only
+ * when this operation actually defines that key, otherwise we keep the local example: a selection
+ * on one operation should never blank out an operation that does not share the same example.
+ */
+const localExampleKey = ref('')
+
+/** Resolve the key to display, preferring the document-wide selection when this operation has it */
+const resolveExampleKey = (preferred: string | undefined): string => {
+  const keys = Object.keys(requestBodyExamples.value)
+  if (preferred && keys.includes(preferred)) {
+    return preferred
+  }
+  // Keep the current local example when it is still valid, otherwise fall back to the first one
+  if (localExampleKey.value && keys.includes(localExampleKey.value)) {
+    return localExampleKey.value
+  }
+  return keys[0] ?? ''
+}
+
+// Set the initial example from the document-wide selection, falling back to the first example.
+// This runs during setup so the server renders the same example as the browser.
+localExampleKey.value = resolveExampleKey(selectedExample)
+
+// Follow the document-wide selection when it changes and this operation has that example
+watch(
+  () => selectedExample,
+  (preferred) => {
+    localExampleKey.value = resolveExampleKey(preferred)
+  },
+)
+
+/** Reset the selected example key if the content type changes and the new content type doesn't have the previously selected example */
+watch(
+  () => selectedContentType,
+  () => {
+    if (
+      !Object.keys(requestBodyExamples.value).includes(localExampleKey.value)
+    ) {
+      // Re-resolve so the new content type still follows the document-wide selection when it has
+      // that key, instead of always snapping back to the first example
+      localExampleKey.value = resolveExampleKey(selectedExample)
+    }
+  },
+)
+
+// Keep the parent informed of the resolved key so a test-request button rendered outside this
+// component (e.g. the classic layout header) opens the client with the example the snippet shows
+watchEffect(() => {
+  emit('update:exampleKey', localExampleKey.value)
+})
+
+/** Select an example locally and sync the choice across the document */
+const selectExample = (key: string) => {
+  localExampleKey.value = key
+  eventBus.emit('workspace:update:selected-example', key)
+}
+
+/** Grab any custom code samples from the operation */
+const customCodeSamples = computed(() => getCustomCodeSamples(operation))
+
+/** Merge custom code samples with the client options */
+const clients = computed(() =>
+  getClients(
+    customCodeSamples.value.samples,
+    clientOptions,
+    customCodeSamples.value.label,
+  ),
+)
+
+/** Total number of available clients across all option groups */
+const clientCount = computed(() =>
+  clients.value.reduce((total, group) => total + group.options.length, 0),
+)
+
+/** The locally selected client which would include code samples from this operation only */
+const localSelectedClient = ref<ClientOption | CustomClientOption | undefined>(
+  findClient(clients.value, selectedClient),
+)
+
+/**
+ * Re-resolve the local client whenever the global selection or the available
+ * clients change. Watching `clients` matters when navigating between operations:
+ * the stored id stays the same, but the matching option (e.g. a custom sample)
+ * differs per operation, so without this the snippet could go stale.
+ */
+watch([() => selectedClient, clients], ([newClient]) => {
+  const client = findClient(clients.value, newClient)
+  if (client) {
+    localSelectedClient.value = client
+  }
+})
+
+/**
+ * Accessible name for the client picker.
+ *
+ * On its own the button reads as its current value ("C Libcurl"), which never
+ * says what activating it does. The visible title stays part of the name so it
+ * still matches what is on screen.
+ */
+const clientPickerAriaLabel = computed(() =>
+  [clientPickerLabel, localSelectedClient.value?.title]
+    .filter(Boolean)
+    .join(': '),
+)
+
+/**
+ * Accessible name for the focusable code sample, e.g. "Code sample: Shell cURL".
+ *
+ * Screen readers announce only the name and role when focus lands on the scroller, so the
+ * name tells the user both what the region is and which client it is generated for.
+ */
+const codeSampleAriaLabel = computed(() =>
+  [codeSampleLabel, localSelectedClient.value?.title]
+    .filter(Boolean)
+    .join(': '),
+)
+
+const elem = ref<ComponentPublicInstance | null>(null)
+const visible = useExampleVisibility(elem)
+const externalExamples = useExternalExamples(
+  () =>
+    getOperationExamples(operation, localExampleKey.value, selectedContentType),
+  () => visible.value,
+)
+const resolvedOperation = computed(() =>
+  resolveOperationExamples(
+    operation,
+    localExampleKey.value,
+    selectedContentType,
+    externalExamples.resolve,
+  ),
+)
+
+/** Keep the picker available because it also selects the example opened by Test Request. */
+const showExamplePicker = computed(
+  () => Object.keys(requestBodyExamples.value).length > 1,
+)
+
+/** Generate HAR data for webhook requests */
+const webhookHar = computed(() => {
+  if (!isWebhook) return null
+
+  try {
+    return operationToHar({
+      operation: resolvedOperation.value,
+      method,
+      path,
+      example: localExampleKey.value,
+      openapiVersion,
+      jsonSchemaDialect,
+      multipartNaming,
+      requestBodyCompositionSelection,
+      // Only required parameters are shown in code examples; optional parameters
+      // are omitted unless explicitly enabled via `x-disabled: false`.
+      defaultDisabledParameters: true,
+    })
+  } catch (error) {
+    console.error('[webhookHar]', error)
+    return null
+  }
+})
+
+/** Generate the code snippet for the selected example */
+const generatedTemplate = computed<string | null>(() => {
+  if (isWebhook) {
+    return webhookHar.value?.postData?.text ?? ''
+  }
+
+  return generateCodeSnippet({
+    // Only required parameters are shown in code examples; optional parameters
+    // are omitted unless explicitly enabled via `x-disabled: false`.
+    defaultDisabledParameters: true,
+    includeDefaultHeaders: integration === 'client',
+    clientId: localSelectedClient.value?.id,
+    customCodeSamples: customCodeSamples.value.samples,
+    operation: resolvedOperation.value,
+    method,
+    path,
+    contentType: selectedContentType,
+    server: selectedServer,
+    securitySchemes,
+    example: localExampleKey.value,
+    globalCookies,
+    openapiVersion,
+    jsonSchemaDialect,
+    multipartNaming,
+    requestBodyCompositionSelection,
+  })
+})
+
+/** Resolve custom templates at render time so auth changes never mutate the document. */
+const resolvedCredentials = computed(() =>
+  !isWebhook &&
+  localSelectedClient.value?.id.startsWith('custom/') &&
+  generatedTemplate.value !== null &&
+  securitySchemes.some((scheme) => 'x-scalar-credential-placeholders' in scheme)
+    ? resolveCredentialPlaceholders(generatedTemplate.value, securitySchemes)
+    : undefined,
+)
+
+const generatedCode = computed(
+  () => resolvedCredentials.value?.content ?? generatedTemplate.value,
+)
+
+/** Mask inserted secrets before escaping or syntax tokenization can split their values. */
+const displayCode = computed(
+  () => resolvedCredentials.value?.displayContent ?? generatedCode.value,
+)
+
+/** The language for the code block, used for syntax highlighting */
+const codeBlockLanguage = computed(() => {
+  if (isWebhook) {
+    return webhookLanguage.value
+  }
+
+  return localSelectedClient.value?.lang
+})
+
+/** Determine the language for webhook content based on MIME type */
+const webhookLanguage = computed<string>(() => {
+  if (!webhookHar.value?.postData) return 'json'
+
+  const contentType = webhookHar.value.postData.mimeType
+  if (contentType?.includes('json')) return 'json'
+  if (contentType?.includes('xml')) return 'xml'
+  if (contentType?.includes('yaml') || contentType?.includes('yml'))
+    return 'yaml'
+  if (contentType?.includes('text/plain')) return 'text'
+
+  return 'json'
+})
+
+/**  Block secrets from being shown in the code block */
+const secretCredentials = computed(() =>
+  resolvedCredentials.value ? [] : getSecrets(securitySchemes),
+)
+
+/** Set custom example, or update the selected HTTP client globally */
+const selectClient = (option: ClientOption) => {
+  // We need to freeze the ui to prevent scrolling as the clients change
+  if (elem.value) {
+    const unfreeze = freezeElement(elem.value.$el)
+    setTimeout(() => {
+      unfreeze()
+    }, 300)
+  }
+  // Update to the local example
+  localSelectedClient.value = option
+
+  // Sync the selection globally so other operations follow along. Custom samples
+  // sync too (keyed by language), so picking e.g. the Python SDK example here
+  // shows the Python example on every operation that ships one.
+  if (option) {
+    eventBus.emit('workspace:update:selected-client', option.id)
+  }
+}
+
+// Virtualize the code block if it's too large
+// This prevents the entire app from freezing up if there's a massive example
+// We set a lower threshold here as code examples can get quite large
+const VIRTUALIZATION_THRESHOLD = 20_000
+
+const shouldVirtualize = computed(
+  () => (generatedCode.value?.length ?? 0) > VIRTUALIZATION_THRESHOLD,
+)
+
+const id = useId()
+</script>
+<template>
+  <ScalarCard
+    v-if="
+      generatedCode === null || generatedCode || externalExamples.pending.value
+    "
+    ref="elem"
+    class="request-card dark-mode">
+    <!-- Header -->
+    <ScalarCardHeader class="pr-2.5">
+      <span class="sr-only">Request Example for</span>
+      <HttpMethod
+        as="span"
+        class="request-method"
+        :method="method" />
+      <span
+        v-if="generateLabel"
+        v-html="generateLabel()" />
+      <slot name="header" />
+      <!-- Client picker -->
+      <template
+        v-if="!isWebhook && clientCount"
+        #actions>
+        <!-- Multiple clients: render a dropdown to switch between them -->
+        <ScalarCombobox
+          v-if="clientCount > 1"
+          v-slot="{ open }"
+          class="max-h-80"
+          :filterFn="filterClientsByQuery"
+          :inputLabel="clientSearchLabel"
+          :modelValue="localSelectedClient"
+          :options="clients"
+          placement="bottom-end"
+          teleport
+          @update:modelValue="selectClient($event as ClientOption)">
+          <ScalarButton
+            :aria-label="clientPickerAriaLabel"
+            class="text-c-2 hover:text-c-1 flex h-full w-fit gap-1.5 px-0.5 py-0 text-base font-normal"
+            data-testid="client-picker"
+            variant="ghost">
+            {{ localSelectedClient?.title }}
+            <!--
+              Follow this picker's own state. The `ui-open:` variant also matches any open
+              Headless UI ancestor, such as an expanded operation in the classic layout.
+            -->
+            <ScalarIconCaretDown
+              class="mt-px size-3 transition-transform duration-100"
+              :class="{ 'rotate-180': open }"
+              weight="bold" />
+          </ScalarButton>
+        </ScalarCombobox>
+        <!-- Single client: just show its label, no need for a dropdown -->
+        <span
+          v-else
+          class="text-c-2 flex h-full w-fit items-center px-0.5 py-0 text-base font-normal"
+          data-testid="client-picker">
+          {{ localSelectedClient?.title }}
+        </span>
+      </template>
+    </ScalarCardHeader>
+
+    <!-- Code snippet -->
+    <ScalarCardSection class="request-editor-section custom-scroll p-0">
+      <div
+        v-if="externalExamples.pending.value"
+        class="text-c-2 p-4"
+        role="status">
+        <template v-if="externalExamples.failed.value">
+          Could not load this example.
+          <ScalarButton
+            size="sm"
+            variant="ghost"
+            @click="externalExamples.retry">
+            Retry
+          </ScalarButton>
+        </template>
+        <template v-else>Loading example…</template>
+      </div>
+      <div
+        v-else-if="generatedCode === null"
+        class="text-c-2 p-4"
+        role="status">
+        {{ codeSampleUnavailable }}
+      </div>
+      <div
+        v-else
+        :id="`${id}-example`"
+        class="code-snippet group/code-block relative">
+        <ScalarCodeBlock
+          v-if="!shouldVirtualize"
+          class="h-full bg-transparent"
+          :content="displayCode ?? ''"
+          :copyContent="resolvedCredentials ? (generatedCode ?? '') : undefined"
+          :hideCredentials="secretCredentials"
+          :label="codeSampleAriaLabel"
+          :lang="codeBlockLanguage"
+          lineNumbers />
+        <template v-else>
+          <ScalarCodeBlockCopy
+            :aria-controls="`${id}-virtual-code`"
+            class="scalar-code-copy absolute top-2.5 right-2.5 z-1"
+            :content="generatedCode"
+            :lang="codeBlockLanguage" />
+          <ScalarVirtualText
+            :id="`${id}-virtual-code`"
+            aria-label="Request code sample"
+            containerClass="custom-scroll scalar-code-block flex flex-1 max-h-screen"
+            contentClass="language-plaintext whitespace-pre font-code text-base p-2"
+            :lineHeight="20"
+            role="region"
+            :text="displayCode ?? ''" />
+        </template>
+      </div>
+    </ScalarCardSection>
+
+    <!-- Footer -->
+    <ScalarCardFooter
+      v-if="showExamplePicker || $slots.footer || $slots['footer-start']"
+      class="request-card-footer"
+      :class="{
+        'request-card-footer--wraps':
+          showExamplePicker || $slots['footer-start'],
+      }">
+      <!-- Example picker -->
+      <div
+        v-if="showExamplePicker"
+        class="request-card-footer-addon">
+        <template v-if="Object.keys(requestBodyExamples).length">
+          <ExamplePicker
+            :examples="requestBodyExamples"
+            :modelValue="localExampleKey"
+            @update:modelValue="selectExample" />
+        </template>
+      </div>
+      <!-- Otherwise the start of the footer is free for the caller -->
+      <div
+        v-else-if="$slots['footer-start']"
+        class="request-card-footer-start">
+        <slot name="footer-start" />
+      </div>
+
+      <!-- Footer -->
+      <slot
+        :exampleName="localExampleKey"
+        name="footer" />
+    </ScalarCardFooter>
+  </ScalarCard>
+
+  <!-- Fallback card with just method and path in the case of no examples -->
+  <ScalarCard
+    v-else-if="fallback"
+    class="request-card dark-mode">
+    <!-- A single row of method, path and actions reads as a header, so it stays on the card -->
+    <ScalarCardSection class="request-card-simple bg-transparent shadow-none">
+      <div class="request-header">
+        <HttpMethod
+          as="span"
+          class="request-method"
+          :method="method" />
+        <slot name="header" />
+      </div>
+      <div
+        v-if="$slots.footer"
+        class="request-card-actions relative max-w-full">
+        <slot
+          :exampleName="localExampleKey"
+          name="footer" />
+      </div>
+    </ScalarCardSection>
+  </ScalarCard>
+</template>
+<style scoped>
+.request-card {
+  color: var(--scalar-color-1);
+  font-size: var(--scalar-font-size-3);
+}
+.request-method {
+  font-family: var(--scalar-font-code);
+  margin-right: 6px;
+}
+.request-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px;
+  flex-shrink: 0;
+  position: relative;
+}
+/*
+ * The example picker or footer-start content keeps room for itself; when the footer is too narrow
+ * for everything, the end controls wrap onto a second line instead of squeezing or covering it.
+ */
+.request-card-footer--wraps {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.request-card-footer-start {
+  display: flex;
+  align-items: center;
+  flex: 1 0 auto;
+}
+/*
+ * The picker asks for its example name's width, capped at 7em (about eight characters), so on a
+ * narrow card the end controls wrap rather than squeeze the name out of view. The cap keeps a long
+ * name truncating beside them on wider cards, as before. The picker never grows past its name, and
+ * the end margin holds it at the start of the line.
+ */
+.request-card-footer-addon {
+  display: flex;
+  align-items: center;
+
+  flex: 1 1 7em;
+  min-width: 0;
+  max-width: max-content;
+  margin-inline-end: auto;
+}
+.request-editor-section {
+  display: flex;
+  flex: 1;
+}
+/*
+ * A long sample is drawn as virtual text with its own copy button rather than a code block, so
+ * that button gets the same raised fill a code block gives its button on a card's surface.
+ */
+.code-snippet > .scalar-code-copy {
+  background: var(--scalar-card-surface-raised, var(--scalar-background-2));
+}
+.request-card-simple {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  padding: 8px 8px 8px 12px;
+
+  font-size: var(--scalar-small);
+}
+.request-header {
+  /* Give spare inline space to the path, while actions fill their own row after wrapping. */
+  flex: 999 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.request-card-actions {
+  flex: 1 0 auto;
+}
+.code-snippet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+</style>

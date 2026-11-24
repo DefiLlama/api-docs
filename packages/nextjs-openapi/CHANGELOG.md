@@ -1,5 +1,594 @@
 # @scalar/nextjs-openapi
 
+## 0.3.62
+
+No changes in this release.
+
+## 0.3.61
+
+No changes in this release.
+
+## 0.3.60
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.3.59
+
+No changes in this release.
+
+## 0.3.58
+
+No changes in this release.
+
+## 0.3.57
+
+### Patch Changes
+
+- [#10898](https://github.com/scalar/scalar/pull/10898): Preserve path parameters when generating OpenAPI descriptions from Next.js handlers with asynchronous params, and mark path parameters as required.
+
+  Infer missing path parameters from route paths when handlers use named parameter aliases or generated Next.js RouteContext types.
+
+## 0.3.56
+
+## 0.3.55
+
+## 0.3.54
+
+## 0.3.53
+
+## 0.3.52
+
+## 0.3.51
+
+## 0.3.50
+
+## 0.3.49
+
+## 0.3.48
+
+## 0.3.47
+
+## 0.3.46
+
+## 0.3.45
+
+## 0.3.44
+
+## 0.3.43
+
+## 0.3.42
+
+## 0.3.41
+
+## 0.3.40
+
+### Patch Changes
+
+- [#10135](https://github.com/scalar/scalar/pull/10135): Extract parameters and JSON responses from variable handlers, including concise arrows and multiple declarations. Safely read declaration names and JSDoc.
+
+## 0.3.39
+
+## 0.3.38
+
+## 0.3.37
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.3.36
+
+## 0.3.35
+
+## 0.3.34
+
+## 0.3.33
+
+## 0.3.32
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.3.31
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.3.30
+
+## 0.3.29
+
+## 0.3.28
+
+## 0.3.27
+
+## 0.3.26
+
+## 0.3.25
+
+## 0.3.24
+
+## 0.3.23
+
+## 0.3.22
+
+## 0.3.21
+
+## 0.3.20
+
+## 0.3.19
+
+## 0.3.18
+
+## 0.3.17
+
+## 0.3.16
+
+## 0.3.15
+
+## 0.3.14
+
+## 0.3.13
+
+## 0.3.12
+
+## 0.3.11
+
+## 0.3.10
+
+## 0.3.9
+
+## 0.3.8
+
+## 0.3.7
+
+## 0.3.6
+
+## 0.3.5
+
+## 0.3.4
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.3.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.3**
+
+- **@scalar/nextjs-api-reference@0.10.3**
+
+## 0.3.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.2**
+
+- **@scalar/nextjs-api-reference@0.10.2**
+
+## 0.3.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.1**
+  - [#8381](https://github.com/scalar/scalar/pull/8381): feat: add mcp config support
+
+- **@scalar/nextjs-api-reference@0.10.1**
+
+## 0.3.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/ts-to-openapi@0.2.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/nextjs-api-reference@0.10.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/types@0.7.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.2.52
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.10**
+
+- **@scalar/nextjs-api-reference@0.9.26**
+
+## 0.2.51
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.9**
+
+- **@scalar/nextjs-api-reference@0.9.25**
+
+## 0.2.50
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.8**
+  - [#8274](https://github.com/scalar/scalar/pull/8274): feat(agent): add config to hide search api
+
+- **@scalar/nextjs-api-reference@0.9.24**
+
+## 0.2.49
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.7**
+
+- **@scalar/nextjs-api-reference@0.9.23**
+
+## 0.2.48
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.6**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/nextjs-api-reference@0.9.22**
+
+## 0.2.47
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.5**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/nextjs-api-reference@0.9.21**
+
+## 0.2.46
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.4**
+  - [#8174](https://github.com/scalar/scalar/pull/8174): feat: add `createAnySecurityScheme` config option to control generic auth scheme creation
+
+- **@scalar/nextjs-api-reference@0.9.20**
+
+## 0.2.45
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.3**
+
+- **@scalar/nextjs-api-reference@0.9.19**
+
+## 0.2.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.2**
+
+- **@scalar/nextjs-api-reference@0.9.18**
+
+## 0.2.43
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.1**
+  - [#8000](https://github.com/scalar/scalar/pull/8000): fix(agent): change enabled flag to disabled
+  - [#7995](https://github.com/scalar/scalar/pull/7995): feat: enable/disable agent scalar
+
+- **@scalar/nextjs-api-reference@0.9.17**
+
+## 0.2.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+- **@scalar/nextjs-api-reference@0.9.16**
+
+## 0.2.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/nextjs-api-reference@0.9.15**
+  - [#7908](https://github.com/scalar/scalar/pull/7908): fix: use named instead of star exports
+
+## 0.2.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/nextjs-api-reference@0.9.14**
+
+- **@scalar/types@0.5.10**
+
+## 0.2.39
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.9**
+  - [#7866](https://github.com/scalar/scalar/pull/7866): chore: expose har types
+
+- **@scalar/nextjs-api-reference@0.9.13**
+
+## 0.2.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/nextjs-api-reference@0.9.12**
+  - [#7810](https://github.com/scalar/scalar/pull/7810): docs: update documentation domain
+
+## 0.2.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/nextjs-api-reference@0.9.11**
+
+- **@scalar/types@0.5.8**
+
+## 0.2.36
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.7**
+
+- **@scalar/nextjs-api-reference@0.9.10**
+
+## 0.2.35
+
+### Patch Changes
+
+- [#7666](https://github.com/scalar/scalar/pull/7666): fix: export public API via named exports
+
+#### Updated Dependencies
+
+- **@scalar/nextjs-api-reference@0.9.9**
+
+## 0.2.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/nextjs-api-reference@0.9.9**
+
+## 0.2.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/nextjs-api-reference@0.9.8**
+
+## 0.2.32
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/ts-to-openapi@0.1.2**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/types@0.5.4**
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+- **@scalar/nextjs-api-reference@0.9.7**
+
+## 0.2.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/ts-to-openapi@0.1.1**
+  - [#7558](https://github.com/scalar/scalar/pull/7558): fix: exclude test files from `dist` folder
+
+- **@scalar/nextjs-api-reference@0.9.6**
+
+## 0.2.30
+
+### Patch Changes
+
+- Updated dependencies [[`bb52d9a`](https://github.com/scalar/scalar/commit/bb52d9a21e53628270bab93c0f03b5731c9c97c6)]:
+  - @scalar/types@0.5.3
+  - @scalar/ts-to-openapi@0.1.0
+  - @scalar/nextjs-api-reference@0.9.6
+
+## 0.2.29
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/types@0.5.2
+  - @scalar/nextjs-api-reference@0.9.5
+
+## 0.2.28
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/nextjs-api-reference@0.9.4
+
+## 0.2.27
+
+### Patch Changes
+
+- Updated dependencies [[`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03)]:
+  - @scalar/types@0.5.1
+  - @scalar/ts-to-openapi@0.1.0
+  - @scalar/nextjs-api-reference@0.9.3
+
+## 0.2.26
+
+### Patch Changes
+
+- Updated dependencies [[`44aeef0`](https://github.com/scalar/scalar/commit/44aeef01073801165e339163462378b7b62ff68d), [`55bb334`](https://github.com/scalar/scalar/commit/55bb3346d1f9ac964770acc90aa810266a972d96), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47)]:
+  - @scalar/types@0.5.0
+  - @scalar/nextjs-api-reference@0.9.2
+  - @scalar/ts-to-openapi@0.1.0
+
+## 0.2.25
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/nextjs-api-reference@0.9.1
+
+## 0.2.24
+
+### Patch Changes
+
+- Updated dependencies [[`eb022f2`](https://github.com/scalar/scalar/commit/eb022f2c8f93c84a04c0093fefe8a1e05d6ec80d), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`c713362`](https://github.com/scalar/scalar/commit/c7133623da7ac5f2cfe501ad55fffb89978f21f1), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461)]:
+  - @scalar/types@0.4.0
+  - @scalar/nextjs-api-reference@0.9.0
+  - @scalar/ts-to-openapi@0.1.0
+
+## 0.2.23
+
+### Patch Changes
+
+- Updated dependencies [f3e17d8]
+  - @scalar/types@0.3.2
+  - @scalar/nextjs-api-reference@0.8.23
+
+## 0.2.22
+
+### Patch Changes
+
+- Updated dependencies [1e01464]
+  - @scalar/types@0.3.1
+  - @scalar/nextjs-api-reference@0.8.22
+
+## 0.2.21
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/types@0.3.0
+  - @scalar/nextjs-api-reference@0.8.21
+
+## 0.2.20
+
+### Patch Changes
+
+- Updated dependencies [005fba9]
+  - @scalar/types@0.2.16
+  - @scalar/nextjs-api-reference@0.8.20
+
+## 0.2.19
+
+### Patch Changes
+
+- Updated dependencies [abe3842]
+  - @scalar/types@0.2.15
+  - @scalar/nextjs-api-reference@0.8.19
+
+## 0.2.18
+
+### Patch Changes
+
+- Updated dependencies [792c937]
+  - @scalar/types@0.2.14
+  - @scalar/nextjs-api-reference@0.8.18
+
+## 0.2.17
+
+### Patch Changes
+
+- Updated dependencies [50032be]
+  - @scalar/types@0.2.13
+  - @scalar/nextjs-api-reference@0.8.17
+
+## 0.2.16
+
+### Patch Changes
+
+- Updated dependencies [6a88108]
+  - @scalar/types@0.2.12
+  - @scalar/nextjs-api-reference@0.8.16
+  - @scalar/ts-to-openapi@0.1.0
+
+## 0.2.15
+
+### Patch Changes
+
+- @scalar/nextjs-api-reference@0.8.15
+- @scalar/ts-to-openapi@0.1.0
+- @scalar/types@0.2.11
+
+## 0.2.14
+
+### Patch Changes
+
+- Updated dependencies [ccf875a]
+- Updated dependencies [94d6d0c]
+  - @scalar/types@0.2.11
+  - @scalar/nextjs-api-reference@0.8.14
+
+## 0.2.13
+
+### Patch Changes
+
+- Updated dependencies [fb62e1b]
+  - @scalar/types@0.2.10
+  - @scalar/nextjs-api-reference@0.8.13
+
 ## 0.2.12
 
 ### Patch Changes

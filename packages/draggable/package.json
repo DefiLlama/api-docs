@@ -13,24 +13,19 @@
   "keywords": [
     "vue drag and drop draggable html"
   ],
-  "version": "0.2.0",
+  "version": "0.4.9",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-vite",
-    "dev": "vite",
-    "format": "scalar-format",
-    "format:check": "scalar-format-check",
-    "lint:check": "eslint .",
-    "lint:fix": "eslint .  --fix",
-    "preview": "vite preview",
-    "test": "vitest",
-    "types:build": "scalar-types-build-vue",
-    "types:check": "scalar-types-check-vue"
+    "build": "vite build && vue-tsc -p tsconfig.build.json",
+    "dev": "vite ./playground -c ./vite.config.ts",
+    "test": "vitest --run",
+    "types:check": "vue-tsc --noEmit"
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -52,15 +47,14 @@
     "dist",
     "CHANGELOG.md"
   ],
-  "module": "dist/index.js",
   "dependencies": {
     "vue": "catalog:*"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
+    "@scalar/themes": "workspace:*",
+    "@tailwindcss/vite": "catalog:*",
     "@vitejs/plugin-vue": "catalog:*",
     "vite": "catalog:*",
-    "vite-svg-loader": "^5.1.0",
     "vue": "catalog:*"
   }
 }

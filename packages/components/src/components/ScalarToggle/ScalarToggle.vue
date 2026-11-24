@@ -1,46 +1,47 @@
+<script lang="ts">
+/**
+ * Scalar Toggle component
+ *
+ * A switch-style toggle control with support for
+ * disabled state and accessible labeling.
+ *
+ * @example
+ * <ScalarToggle v-model="enabled" label="Enable feature" />
+ */
+export default {}
+</script>
 <script setup lang="ts">
-import { cva, cx } from '@scalar/use-hooks/useBindCx'
+import ScalarToggleSlider from './ScalarToggleSlider.vue'
+import type { ScalarToggleSize } from './types'
 
 const props = defineProps<{
-  modelValue?: boolean
   disabled?: boolean
   label?: string
+  /**
+   * Size of the toggle
+   *
+   * @default 'sm'
+   */
+  size?: ScalarToggleSize
 }>()
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
-}>()
+const model = defineModel<boolean>({ default: false })
 
 function toggle() {
   if (props.disabled) {
     return
   }
-  emit('update:modelValue', !props.modelValue)
+  model.value = !model.value
 }
-
-const variants = cva({
-  base: 'relative h-3.5 min-w-6 w-6 cursor-pointer rounded-full bg-b-3 transition-colors duration-300',
-  variants: {
-    checked: { true: 'bg-c-accent' },
-    disabled: { true: 'cursor-not-allowed opacity-40' },
-  },
-})
 </script>
 <template>
-  <button
-    :aria-checked="modelValue"
-    :aria-disabled="disabled"
-    :class="cx(variants({ checked: modelValue, disabled }))"
+  <ScalarToggleSlider
+    :aria-checked="model"
+    :class="model ? 'bg-c-accent' : ''"
+    :disabled
+    :label
     role="switch"
-    type="button"
-    @click="toggle">
-    <div
-      class="absolute left-px top-px flex h-3 w-3 items-center justify-center rounded-full bg-b-1 text-c-accent transition-transform duration-300"
-      :class="{ 'translate-x-2.5': modelValue }" />
-    <span
-      v-if="label"
-      class="sr-only">
-      {{ label }}
-    </span>
-  </button>
+    :size
+    :thumb="model ? 'end' : 'start'"
+    @click="toggle" />
 </template>

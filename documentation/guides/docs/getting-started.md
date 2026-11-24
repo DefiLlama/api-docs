@@ -1,44 +1,60 @@
 # Getting Started
 
-Reading this guide helps you to get started with Scalar Docs, literally in minutes. You don't need anything to get started, not even an account if you just want to play around.
+Create and publish your first documentation site with Scalar Docs in minutes. Write guides in Markdown or MDX, add API documents for interactive API references, and deploy from GitHub, the CLI, or the web editor.
 
-## Guides
+## Create docs in three steps
 
-:::scalar-callout{ type=info }
-Guides are part of our Scalar Pro plan (read below, or [visit our pricing page for more info](https://scalar.com/#pricing)).
-:::
+<scalar-steps>
+  <scalar-step title="Start a project" icon="phosphor/regular/folder-plus">
+Create a Docs project from the dashboard, the [Starter Kit](starter-kit.md), or any folder that contains a `scalar.config.json` file.
 
-In the top left corner of <https://docs.scalar.com>, you'll see a “Guide” tab. This is where you land by default.
+```bash
+npx @scalar/cli project preview
+```
+  </scalar-step>
 
-Guides are basically a blank sheet of paper. These pages are where you will publish your non-reference content (API reference pages are [discussed below](#api-references)). You can start writing your documentation, your guidelines, your knowledge base — whatever you want to write — using our editor. You can alternatively manage your guides using a Git repository, covered in the [GitHub Sync](/scalar/scalar-docs/github-sync) guide.
+  <scalar-step title="Add guides and APIs" icon="phosphor/regular/book-open">
+Write guides in Markdown or MDX, then add API documents for interactive API references.
 
-If you're serious about this, you can [create an account here](https://docs.scalar.com/register) to make sure your changes are saved.
+```json
+{
+  "scalar": "2.0.0",
+  "navigation": {
+    "routes": {
+      "/getting-started": {
+        "type": "page",
+        "filepath": "docs/getting-started.md"
+      }
+    }
+  }
+}
+```
+  </scalar-step>
 
-## API References
+  <scalar-step title="Preview, publish, and sync" icon="phosphor/regular/git-branch">
+Use preview deployments for review, publish from the CLI, or connect GitHub Actions for automatic deployments.
 
-> This is a free feature. You'll even get a nice `${whatever-you-like}.apidocumentation.com` subdomain.
+```bash
+npx @scalar/cli project publish --slug your-docs
+```
+  </scalar-step>
+</scalar-steps>
 
-Every project can have one, or even multiple API references: In the top left corner, you'll see a “Reference” tab. Try to click on it to switch to our OpenAPI editor.
+## Write anywhere
 
-OpenAPI is the most popular standard to describe your API in a machine readable format. No matter which languages, libraries or frameworks you're using to build your API, it's very, very likely there's a tool, plugin or package to generate an OpenAPI document for you. If you don't find something which says “OpenAPI”, look for “Swagger”. It's what it used be called a few years ago, before it was an open standard.
+| Source | Description |
+| ------ | ----------- |
+| **GitHub** | Keep content and API documents in your repository. Use [preview deployments](deployment/preview-deployments.md), [automatic deployment](deployment/automatic-deployment.md), [GitHub Actions](deployment/github-actions.md), and [scalar.config.json](configuration/scalar.config.json.md). |
+| **Any folder or CLI** | Work from any folder or repository without granting repository access. Publish with [`npx @scalar/cli project publish --slug your-docs`](deployment/cli.md). |
+| **Web editor** | Edit and store docs at [docs.scalar.com](https://docs.scalar.com). No Git required. |
 
-Those OpenAPI documents are what we base all our tools on. So once you've got one, it should be straight-forward to use our tools.
+## Next steps
 
-Scalar Docs offers multiple ways to connect your OpenAPI document. Pick whatever fits your workflow:
+- Scaffold a project with the [Starter Kit](starter-kit.md)
+- Configure your site with [scalar.config.json](configuration/scalar.config.json.md)
+- Structure your sidebar with [Navigation](configuration/navigation.md)
+- Deploy automatically with [GitHub Actions](deployment/github-actions.md)
 
-- Paste your OpenAPI document in the editor
-- Upload an OpenAPI document to the editor
-- Import an URL (you can even create a “Live Link”, which means it'll fetch updates from the URL vs. just fetching it once)
-- [Sync your OpenAPI document from GitHub](/scalar/scalar-docs/github-sync#advanced-configuration__add-an-openapi-reference)
-
-## Scalar Pro
-
-Most of our stuff is actually freely available. Upgrading to Scalar Pro unlocks a set of additional features, including:
-
-* Custom domains,
-* [GitHub sync](/scalar/scalar-docs/github-sync),
-* Guides (and versioning of your guides),
-* TypeSense search and
-* priority support (including a private Discord channel or a dedicated Slack connect channel if you like).
-
-[Pricing information can be found here](https://scalar.com#pricing).
+<scalar-callout type="info" icon="phosphor/regular/info">
+  Just need an API reference? Use the [API Reference](../../guides/api-references/getting-started.md). It is open source, free, and has integrations for REST API frameworks.
+</scalar-callout>

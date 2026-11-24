@@ -1,25 +1,28 @@
 import Fastify from 'fastify'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 describe('exports', () => {
-  it('ESM export', () =>
-    new Promise((resolve) => {
-      const fastify = Fastify({
-        logger: false,
-      })
+  let fastify: ReturnType<typeof Fastify>
 
-      fastify.register(import('../dist/index.js'), {
-        routePrefix: '/foobar',
-        configuration: {
-          url: '/openapi.json',
-        },
-      })
+  afterEach(async () => {
+    await fastify?.close()
+  })
 
-      fastify.listen({ port: 0 }, (_err, address) => {
-        fetch(`${address}/foobar`).then((response) => {
-          expect(response.status).toBe(200)
-          resolve(null)
-        })
-      })
-    }))
+  it('ESM export', async () => {
+    fastify = Fastify({
+      logger: false,
+    })
+
+    fastify.register(import('../dist/index.js'), {
+      routePrefix: '/foobar',
+      configuration: {
+        url: '/openapi.json',
+      },
+    })
+
+    const address = await fastify.listen({ port: 0 })
+
+    const response = await fetch(`${address}/foobar`)
+    expect(response.status).toBe(200)
+  })
 })

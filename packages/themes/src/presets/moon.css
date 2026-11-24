@@ -12,12 +12,11 @@
   --scalar-border-color: rgba(0, 0, 0, 0.2);
   --scalar-scrollbar-color: rgba(0, 0, 0, 0.18);
   --scalar-scrollbar-color-active: rgba(0, 0, 0, 0.36);
-  --scalar-lifted-brightness: 1;
   --scalar-backdrop-brightness: 1;
 
   --scalar-shadow-1: 0 1px 3px 0 rgba(0, 0, 0, 0.11);
-  --scalar-shadow-2: rgba(0, 0, 0, 0.08) 0px 13px 20px 0px, rgba(0, 0, 0, 0.08) 0px 3px 8px 0px,
-    var(--scalar-border-color) 0px 0 0 1px;
+  --scalar-shadow-2:
+    rgba(0, 0, 0, 0.08) 0px 13px 20px 0px, rgba(0, 0, 0, 0.08) 0px 3px 8px 0px, var(--scalar-border-color) 0px 0 0 1px;
 
   --scalar-button-1: rgb(49 53 56);
   --scalar-button-1-color: #fff;
@@ -26,9 +25,10 @@
   --scalar-color-red: #b91c1c;
   --scalar-color-orange: #a16207;
   --scalar-color-green: #047857;
-  --scalar-color-blue: #1d4ed8;
+  --scalar-color-blue: #1841b5;
   --scalar-color-orange: #c2410c;
   --scalar-color-purple: #6d28d9;
+  --scalar-color-query: #0f766e;
 }
 
 .dark-mode {
@@ -45,12 +45,11 @@
   --scalar-border-color: #505452;
   --scalar-scrollbar-color: rgba(255, 255, 255, 0.24);
   --scalar-scrollbar-color-active: rgba(255, 255, 255, 0.48);
-  --scalar-lifted-brightness: 1.45;
   --scalar-backdrop-brightness: 0.5;
 
   --scalar-shadow-1: 0 1px 3px 0 rgba(0, 0, 0, 0.11);
-  --scalar-shadow-2: rgba(15, 15, 15, 0.2) 0px 3px 6px, rgba(15, 15, 15, 0.4) 0px 9px 24px, 0 0 0 1px
-    rgba(255, 255, 255, 0.1);
+  --scalar-shadow-2:
+    rgba(15, 15, 15, 0.2) 0px 3px 6px, rgba(15, 15, 15, 0.4) 0px 9px 24px, 0 0 0 1px rgba(255, 255, 255, 0.1);
 
   --scalar-button-1: #f6f6f6;
   --scalar-button-1-color: #000;
@@ -62,6 +61,7 @@
   --scalar-color-blue: #4eb3ec;
   --scalar-color-orange: #ff8d4d;
   --scalar-color-purple: #b191f9;
+  --scalar-color-query: #5eead4;
 }
 
 /* Sidebar */
@@ -84,4 +84,36 @@
 }
 *::selection {
   background-color: color-mix(in srgb, var(--scalar-color-accent), transparent 80%);
+}
+
+/*
+ * Syntax highlighting: Moon's tinted backgrounds sit far from white and black, so the default
+ * adjustments leave code too faint. Pull every hue further toward the text color instead.
+ */
+@supports (color: oklch(from white l c h)) {
+  .light-mode {
+    --scalar-code-keyword: oklch(from var(--scalar-color-purple) min(l, 0.38) min(c, 0.2) h);
+    --scalar-code-string: oklch(from var(--scalar-color-blue) min(l, 0.38) min(c, 0.14) h);
+    --scalar-code-number: oklch(from var(--scalar-color-orange) min(l, 0.4) min(c, 0.13) calc(h + 3));
+    --scalar-code-function: oklch(from var(--scalar-color-orange) min(l, 0.4) min(c, 0.13) calc(h + 3));
+    --scalar-code-builtin: oklch(from var(--scalar-color-blue) min(l, 0.38) min(c, 0.14) h);
+    --scalar-code-type: oklch(from var(--scalar-color-blue) min(l, 0.3) min(c, 0.09) calc(h + 8));
+    --scalar-code-parameter: oklch(from var(--scalar-color-red) min(l, 0.4) min(c, 0.15) calc(h - 14));
+    --scalar-code-property: oklch(from var(--scalar-color-green) min(l, 0.38) min(c, 0.09) h);
+    --scalar-code-addition: oklch(from var(--scalar-color-green) min(l, 0.38) min(c, 0.09) h);
+    --scalar-code-deletion: oklch(from var(--scalar-color-red) min(l, 0.4) min(c, 0.15) calc(h - 14));
+  }
+
+  .dark-mode {
+    --scalar-code-keyword: oklch(from var(--scalar-color-purple) max(l, 0.78) min(c, 0.14) h);
+    --scalar-code-string: oklch(from var(--scalar-color-blue) max(l, 0.78) min(c, 0.12) h);
+    --scalar-code-number: oklch(from var(--scalar-color-orange) max(l, 0.8) min(c, 0.13) h);
+    --scalar-code-function: oklch(from var(--scalar-color-orange) max(l, 0.8) min(c, 0.13) h);
+    --scalar-code-builtin: oklch(from var(--scalar-color-blue) max(l, 0.78) min(c, 0.12) h);
+    --scalar-code-type: oklch(from var(--scalar-color-blue) max(l, 0.88) min(c, 0.06) h);
+    --scalar-code-parameter: oklch(from var(--scalar-color-red) max(l, 0.76) min(c, 0.14) calc(h - 14));
+    --scalar-code-property: oklch(from var(--scalar-color-green) max(l, 0.78) min(c, 0.15) h);
+    --scalar-code-addition: oklch(from var(--scalar-color-green) max(l, 0.78) min(c, 0.15) h);
+    --scalar-code-deletion: oklch(from var(--scalar-color-red) max(l, 0.76) min(c, 0.14) calc(h - 14));
+  }
 }

@@ -1,0 +1,1748 @@
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import { RequestBodyObjectSchema } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { assert, describe, expect, it } from 'vitest'
+
+import type { ExampleObject, RequestBodyObject } from '@/schemas/v3.2/strict/openapi-document'
+
+import { buildRequestBody } from './build-request-body'
+
+describe('buildRequestBody', () => {
+  it.each(['structured', 'edited', 'legacy'] as const)(
+    'sends indexed-dot URL-encoded fields from a %s example',
+    (format) => {
+      const value = {
+        structured: {
+          contacts: [{ name: 'Ada & Grace', active: false }],
+          profile: { city: 'New York' },
+          tags: ['a+b', 'x&y'],
+          ignored: 'skip',
+        },
+        legacy: [
+          { name: 'contacts', value: '[{"name":"Ada & Grace","active":false}]' },
+          { name: 'profile', value: '{"city":"New York"}' },
+          { name: 'tags', value: '["a+b","x&y"]' },
+          { name: 'ignored', value: 'skip', isDisabled: true },
+        ],
+        edited: [
+          { name: 'contacts[0].name', value: 'Ada & Grace' },
+          { name: 'contacts[0].active', value: 'false' },
+          { name: 'profile.city', value: 'New York' },
+          { name: 'tags', value: '["a+b","x&y"]', isArray: true },
+          { name: 'ignored', value: 'skip', isDisabled: true },
+        ],
+      }[format]
+      const body = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          'application/x-www-form-urlencoded': {
+            schema: {
+              type: 'object',
+              required: ['contacts', 'profile', 'tags'],
+              properties: {
+                contacts: {
+                  type: 'array',
+                  items: { type: 'object', properties: { name: { type: 'string' }, active: { type: 'boolean' } } },
+                },
+                profile: { type: 'object', properties: { city: { type: 'string' } } },
+                tags: { type: 'array', items: { type: 'string' } },
+                ignored: { type: 'string' },
+              },
+            },
+            examples: { default: { value } },
+          },
+        },
+      })
+      const result = buildRequestBody(body, undefined, undefined, undefined, undefined, {
+        multipartNaming: 'indexed-dot',
+      })
+      expect(result).toStrictEqual({
+        mode: 'urlencoded',
+        value: [
+          { key: 'contacts[0].name', value: 'Ada & Grace' },
+          { key: 'contacts[0].active', value: 'false' },
+          { key: 'profile.city', value: 'New York' },
+          { key: 'tags', value: 'a+b' },
+          { key: 'tags', value: 'x&y' },
+        ],
+      })
+      assert(result?.mode === 'urlencoded')
+      expect(new URLSearchParams(result.value.map(({ key, value }) => [key, value])).toString()).toBe(
+        'contacts%5B0%5D.name=Ada+%26+Grace&contacts%5B0%5D.active=false&profile.city=New+York&tags=a%2Bb&tags=x%26y',
+      )
+    },
+  )
+
+  it('includes sparse collection indices in URL-encoded bodies', () => {
+    expect(
+      buildRequestBody(
+        {
+          content: {
+            'application/x-www-form-urlencoded': {
+              examples: {
+                default: {
+                  value: [
+                    { name: 'groups[0].members[0].name', value: 'skip', isDisabled: true },
+                    { name: 'groups[1].members[2].name', value: 'Ada' },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { multipartNaming: 'indexed-dot' },
+      ),
+    ).toStrictEqual({
+      mode: 'urlencoded',
+      value: [
+        { key: 'groups[1].members[2].name', value: 'Ada' },
+        { key: 'groups.index', value: '1' },
+        { key: 'groups[1].members.index', value: '2' },
+      ],
+    })
+  })
+
+  it.each(['structured', 'edited'] as const)(
+    'preserves root encoding content types for indexed-dot files from a %s example',
+    async (format) => {
+      const file = new File(['certificate'], 'certificate.txt', { type: 'text/plain', lastModified: 123 })
+      const value =
+        format === 'structured'
+          ? { certificates: [{ file }], profile: { file }, 'literal.file': file }
+          : [
+              { name: 'certificates[0].file', value: file },
+              { name: 'profile.file', value: file },
+              { name: 'literal.file', value: file },
+            ]
+      const body = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['certificates', 'profile', 'literal.file'],
+              properties: {
+                certificates: {
+                  type: 'array',
+                  items: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } },
+                },
+                profile: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } },
+                'literal.file': { type: 'string', format: 'binary' },
+              },
+            },
+            encoding: {
+              certificates: { contentType: 'application/pkix-cert' },
+              profile: { contentType: 'application/octet-stream' },
+              'literal.file': { contentType: 'application/pdf' },
+            },
+            examples: { default: { value } },
+          },
+        },
+      })
+      const result = buildRequestBody(body, undefined, undefined, undefined, undefined, {
+        multipartNaming: 'indexed-dot',
+      })
+      assert(result?.mode === 'formdata')
+      expect(
+        await Promise.all(
+          result.value.map(async (part) => {
+            assert(part.type === 'file')
+            return {
+              key: part.key,
+              contentType: part.contentType,
+              fileType: part.value.type,
+              filename: part.value.name,
+              lastModified: part.value.lastModified,
+              text: await part.value.text(),
+            }
+          }),
+        ),
+      ).toStrictEqual(
+        [
+          { key: 'certificates[0].file', contentType: 'application/pkix-cert' },
+          { key: 'profile.file', contentType: 'application/octet-stream' },
+          { key: 'literal.file', contentType: 'application/pdf' },
+        ].map((part) => ({
+          ...part,
+          fileType: part.contentType,
+          filename: 'certificate.txt',
+          lastModified: 123,
+          text: 'certificate',
+        })),
+      )
+    },
+  )
+
+  it.each(['structured', 'edited'] as const)(
+    'recognizes nested snippet file placeholders using root encoding from a %s example',
+    (format) => {
+      const body = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['certificates'],
+              properties: {
+                certificates: {
+                  type: 'array',
+                  items: { type: 'object', properties: { file: { type: 'string' } } },
+                },
+              },
+            },
+            encoding: { certificates: { contentType: 'application/pkix-cert' } },
+            examples: {
+              default: {
+                value:
+                  format === 'structured'
+                    ? { certificates: [{ file: '@certificate.cer' }] }
+                    : [{ name: 'certificates[0].file', value: '@certificate.cer' }],
+              },
+            },
+          },
+        },
+      })
+      const result = buildRequestBody(body, undefined, undefined, undefined, undefined, {
+        multipartNaming: 'indexed-dot',
+        aspNetFilePlaceholders: true,
+      })
+      assert(result?.mode === 'formdata')
+      expect(
+        result.value.map((part) => {
+          assert(part.type === 'file')
+          return { key: part.key, contentType: part.contentType, filename: part.value.name, fileType: part.value.type }
+        }),
+      ).toStrictEqual([
+        {
+          key: 'certificates[0].file',
+          contentType: 'application/pkix-cert',
+          filename: 'certificate.cer',
+          fileType: 'application/pkix-cert',
+        },
+      ])
+    },
+  )
+
+  it.each(['structured', 'edited'] as const)('sends ASP.NET Core multipart fields from a %s example', (format) => {
+    const file = new File(['certificate'], 'certificate.txt')
+    const value =
+      format === 'structured'
+        ? { certificates: [{ name: 'Ada', file }], profile: { name: 'Grace', file }, tags: ['one', 'two'] }
+        : [
+            { name: 'certificates[0].name', value: 'Ada' },
+            { name: 'certificates[0].file', value: file },
+            { name: 'profile.name', value: 'Grace' },
+            { name: 'profile.file', value: file },
+            { name: 'tags', value: ['one', 'two'] },
+            { name: 'disabled', value: 'skip me', isDisabled: true },
+          ]
+    const item = {
+      type: 'object',
+      properties: { name: { type: 'string' }, file: { type: 'string', format: 'binary' } },
+    }
+    const body = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            required: ['certificates', 'profile', 'tags'],
+            properties: {
+              certificates: { type: 'array', items: item },
+              profile: item,
+              tags: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          examples: { default: { value } },
+        },
+      },
+    })
+    expect(
+      buildRequestBody(body, undefined, undefined, undefined, undefined, { multipartNaming: 'indexed-dot' }),
+    ).toStrictEqual({
+      mode: 'formdata',
+      value: [
+        { type: 'text', key: 'certificates[0].name', value: 'Ada' },
+        { type: 'file', key: 'certificates[0].file', value: file, contentType: undefined },
+        { type: 'text', key: 'profile.name', value: 'Grace' },
+        { type: 'file', key: 'profile.file', value: file, contentType: undefined },
+        { type: 'text', key: 'tags', value: 'one' },
+        { type: 'text', key: 'tags', value: 'two' },
+      ],
+    })
+  })
+
+  it.each([
+    { value: { certificates: [{}, { name: 'Ada' }] }, indexField: 'certificates.index' },
+    {
+      value: [
+        { name: 'certificates[0].name', value: 'Grace', isDisabled: true },
+        { name: 'certificates[1].name', value: 'Ada' },
+      ],
+      indexField: 'certificates.index',
+    },
+    {
+      value: [
+        { name: 'certificates[1].name', value: 'Ada' },
+        { name: 'certificates.Index', value: '1' },
+      ],
+      indexField: 'certificates.Index',
+    },
+  ])('binds populated positions in sparse multipart arrays: $indexField', ({ value, indexField }) => {
+    expect(
+      buildRequestBody(
+        {
+          content: {
+            'multipart/form-data': {
+              examples: { default: { value } },
+            },
+          },
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { multipartNaming: 'indexed-dot' },
+      ),
+    ).toStrictEqual({
+      mode: 'formdata',
+      value: [
+        { type: 'text', key: 'certificates[1].name', value: 'Ada' },
+        { type: 'text', key: indexField, value: '1' },
+      ],
+    })
+  })
+
+  it('regroups structural allOf fields into a typed JSON part', () => {
+    const body = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              file: {
+                allOf: [
+                  { type: 'object', properties: { name: { type: 'string' } } },
+                  { type: 'object', properties: { count: { type: 'integer' }, active: { type: 'boolean' } } },
+                ],
+              },
+            },
+          },
+          examples: {
+            default: {
+              value: [
+                { name: 'file.name', value: 'Alice' },
+                { name: 'file.count', value: '42' },
+                { name: 'file.active', value: 'false' },
+              ],
+            },
+          },
+        },
+      },
+    })
+    expect(buildRequestBody(body, 'default')).toStrictEqual({
+      mode: 'formdata',
+      value: [{ type: 'text', key: 'file', value: '{"name":"Alice","count":42,"active":false}' }],
+    })
+  })
+
+  it.each([false, true])(
+    'regroups annotated allOf object fields without losing leaf types (reversed: %s)',
+    (reversed) => {
+      const reference = {
+        $ref: '#/components/schemas/MyData',
+        '$ref-value': {
+          type: 'object' as const,
+          properties: { name: { type: 'string' as const }, value: { type: 'integer' as const } },
+          required: ['name'],
+        },
+      }
+      const annotation = { description: 'JSON file containing the data.' }
+      const body = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: { file: { allOf: reversed ? [annotation, reference] : [reference, annotation] } },
+              required: ['file'],
+            },
+            examples: {
+              default: {
+                value: [
+                  { name: 'file.name', value: 'Alice' },
+                  { name: 'file.value', value: '42' },
+                ],
+              },
+            },
+          },
+        },
+      })
+      expect(buildRequestBody(body, 'default')).toStrictEqual({
+        mode: 'formdata',
+        value: [{ type: 'text', key: 'file', value: '{"name":"Alice","value":42}' }],
+      })
+    },
+  )
+
+  it.each([
+    [{ dataValue: 'hello' }, '"hello"'],
+    [{ dataValue: false }, 'false'],
+    [{ dataValue: null }, 'null'],
+    [{ dataValue: 0 }, '0'],
+    [{ serializedValue: '  { "id": 1 }\n', dataValue: { id: 2 } }, '  { "id": 1 }\n'],
+    [{ serializedValue: '' }, ''],
+  ] satisfies [ExampleObject, string][])('sends the selected body example %j', (example, expected) => {
+    const body: RequestBodyObject = { content: { 'application/json': { examples: { selected: example } } } }
+    expect(buildRequestBody(body, 'selected')).toStrictEqual({
+      mode: 'raw',
+      value: expected,
+      contentType: 'application/json',
+    })
+  })
+
+  it.each(['oneOf', 'anyOf'] as const)('serializes selected %s nested rows using their declared types', (keyword) => {
+    const body = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            required: ['file'],
+            properties: {
+              file: {
+                [keyword]: [
+                  { type: 'object', properties: { count: { type: 'string' } } },
+                  { type: 'object', properties: { count: { type: 'integer' }, active: { type: 'boolean' } } },
+                ],
+              },
+            },
+          },
+          examples: {
+            default: {
+              value: [
+                { name: 'file.count', value: '42' },
+                { name: 'file.active', value: 'false' },
+              ],
+            },
+          },
+        },
+      },
+    })
+    expect(buildRequestBody(body, 'default', { [`requestBody.file.${keyword}`]: 1 })).toStrictEqual({
+      mode: 'formdata',
+      value: [{ type: 'text', key: 'file', value: '{"count":42,"active":false}' }],
+    })
+  })
+
+  it('returns null when requestBody is undefined', () => {
+    const result = buildRequestBody(undefined, 'default')
+    expect(result).toBe(null)
+  })
+
+  it('returns null when no example value exists', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {},
+        },
+      },
+    })
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result).toBe(null)
+  })
+
+  it('returns string body with environment variables replaced for JSON content', () => {
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            default: {
+              value: '{"name": "{{username}}", "id": "{{userId}}"}',
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result).toEqual({
+      mode: 'raw',
+      value: '{"name": "{{username}}", "id": "{{userId}}"}',
+    })
+  })
+
+  it('uses requestBodyCompositionSelection when building a generated JSON body', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {
+            anyOf: [
+              {
+                type: 'object',
+                properties: {
+                  source: { type: 'string', default: 'file' },
+                },
+              },
+              {
+                type: 'object',
+                properties: {
+                  source: { type: 'string', default: 'service' },
+                },
+              },
+            ],
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default', {
+      'requestBody.anyOf': 1,
+    })
+
+    expect(result).toEqual({
+      contentType: 'application/json',
+      mode: 'raw',
+      value: '{\"source\":\"service\"}',
+    })
+  })
+
+  it('builds FormData for multipart/form-data content type', () => {
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          examples: {
+            default: {
+              value: [
+                { name: 'username', value: '{{user}}' },
+                { name: 'email', value: 'test@example.com' },
+              ],
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result).toEqual({
+      mode: 'formdata',
+      value: [
+        { type: 'text', key: 'username', value: '{{user}}' },
+        { type: 'text', key: 'email', value: 'test@example.com' },
+      ],
+    })
+  })
+
+  it('applies encoding.contentType to multipart string parts', () => {
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          encoding: {
+            user: {
+              contentType: 'application/json;charset=utf-8',
+            },
+          },
+          examples: {
+            default: {
+              value: [{ name: 'user', value: '{"name":"{{username}}"}' }],
+            },
+          },
+        },
+      },
+    }
+
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].type).toBe('text')
+    expect(result.value[0].contentType).toBe('application/json;charset=utf-8')
+  })
+
+  it('applies encoding.contentType overrides to multipart files', () => {
+    const mockFile = new File(['file content'], 'test.txt', { type: 'text/plain', lastModified: 123 })
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          encoding: {
+            file: {
+              contentType: 'application/json',
+            },
+          },
+          examples: {
+            default: {
+              value: [{ name: 'file', value: mockFile }],
+            },
+          },
+        },
+      },
+    }
+
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].value).toBeInstanceOf(File)
+    assert(result.value[0].value instanceof File)
+    expect(result.value[0].value.type).toBe('application/json')
+  })
+
+  describe('encoding style/explode', () => {
+    it('breaks a multipart object into deepObject bracket-notation parts', () => {
+      const requestBody = {
+        content: {
+          'multipart/form-data': {
+            encoding: {
+              address: { style: 'deepObject' as const, explode: true },
+            },
+            examples: {
+              default: {
+                value: { address: { street: 'Main', city: 'Berlin' } },
+              },
+            },
+          },
+        },
+      }
+
+      const result = buildRequestBody(requestBody, 'default')
+
+      expect(result).toEqual({
+        mode: 'formdata',
+        value: [
+          { type: 'text', key: 'address[street]', value: 'Main' },
+          { type: 'text', key: 'address[city]', value: 'Berlin' },
+        ],
+      })
+    })
+
+    it('explodes a multipart object into one part per property under style: form', () => {
+      const requestBody = {
+        content: {
+          'multipart/form-data': {
+            encoding: {
+              address: { style: 'form' as const, explode: true },
+            },
+            examples: {
+              default: {
+                value: { address: { street: 'Main', city: 'Berlin' } },
+              },
+            },
+          },
+        },
+      }
+
+      const result = buildRequestBody(requestBody, 'default')
+
+      expect(result).toEqual({
+        mode: 'formdata',
+        value: [
+          { type: 'text', key: 'street', value: 'Main' },
+          { type: 'text', key: 'city', value: 'Berlin' },
+        ],
+      })
+    })
+
+    it('regroups dotted UI rows then serializes them with bracket notation', () => {
+      const requestBody = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          'multipart/form-data': {
+            encoding: {
+              address: { style: 'deepObject', explode: true },
+            },
+            schema: {
+              type: 'object',
+              properties: {
+                address: {
+                  type: 'object',
+                  properties: {
+                    street: { type: 'string' },
+                    city: { type: 'string' },
+                  },
+                },
+              },
+            },
+            examples: {
+              default: {
+                value: [
+                  { name: 'address.street', value: 'Main' },
+                  { name: 'address.city', value: 'Berlin' },
+                ],
+              },
+            },
+          },
+        },
+      })
+
+      const result = buildRequestBody(requestBody, 'default')
+
+      expect(result).toEqual({
+        mode: 'formdata',
+        value: [
+          { type: 'text', key: 'address[street]', value: 'Main' },
+          { type: 'text', key: 'address[city]', value: 'Berlin' },
+        ],
+      })
+    })
+
+    it('ignores encoding.contentType when a style is set', () => {
+      const requestBody = {
+        content: {
+          'multipart/form-data': {
+            encoding: {
+              address: { style: 'form' as const, explode: true, contentType: 'application/json' },
+            },
+            examples: {
+              default: {
+                value: { address: { city: 'Berlin' } },
+              },
+            },
+          },
+        },
+      }
+
+      const result = buildRequestBody(requestBody, 'default')
+
+      expect(result).toEqual({
+        mode: 'formdata',
+        value: [{ type: 'text', key: 'city', value: 'Berlin' }],
+      })
+    })
+
+    it('serializes urlencoded objects with bracket notation under style: deepObject', () => {
+      const requestBody = {
+        content: {
+          'application/x-www-form-urlencoded': {
+            encoding: {
+              filter: { style: 'deepObject' as const, explode: true },
+            },
+            examples: {
+              default: {
+                value: { filter: { status: 'active', role: 'admin' } },
+              },
+            },
+          },
+        },
+      }
+
+      const result = buildRequestBody(requestBody, 'default')
+
+      expect(result).toEqual({
+        mode: 'urlencoded',
+        value: [
+          { key: 'filter[status]', value: 'active' },
+          { key: 'filter[role]', value: 'admin' },
+        ],
+      })
+    })
+
+    it('drops a styled empty object instead of emitting an empty part', () => {
+      const requestBody = {
+        content: {
+          'multipart/form-data': {
+            encoding: {
+              address: { style: 'form' as const, explode: true },
+            },
+            examples: {
+              default: {
+                value: { address: {} },
+              },
+            },
+          },
+        },
+      }
+
+      const result = buildRequestBody(requestBody, 'default')
+
+      expect(result).toEqual({ mode: 'formdata', value: [] })
+    })
+
+    it('keeps JSON-stringifying multipart objects without an encoding style', () => {
+      const requestBody = {
+        content: {
+          'multipart/form-data': {
+            examples: {
+              default: {
+                value: { address: { city: 'Berlin' } },
+              },
+            },
+          },
+        },
+      }
+
+      const result = buildRequestBody(requestBody, 'default')
+
+      expect(result).toEqual({
+        mode: 'formdata',
+        value: [{ type: 'text', key: 'address', value: '{"city":"Berlin"}' }],
+      })
+    })
+  })
+
+  it('builds URLSearchParams for application/x-www-form-urlencoded content type', () => {
+    const requestBody = {
+      content: {
+        'application/x-www-form-urlencoded': {
+          examples: {
+            default: {
+              value: [
+                { name: 'field1', value: '{{var1}}' },
+                { name: 'field2', value: 'static_value' },
+              ],
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('urlencoded')
+    assert(result?.mode === 'urlencoded')
+
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].key).toBe('field1')
+    expect(result.value[0].value).toBe('{{var1}}')
+    assert(result.value[1])
+    expect(result.value[1].key).toBe('field2')
+    expect(result.value[1].value).toBe('static_value')
+  })
+
+  it('builds URLSearchParams for application/x-www-form-urlencoded with object example value', () => {
+    // This tests the case where the example value is a plain object (from schema)
+    // rather than the array format (from UI editor)
+    const requestBody = {
+      content: {
+        'application/x-www-form-urlencoded': {
+          examples: {
+            default: {
+              value: {
+                ac: '4',
+                product_id: '{{productId}}',
+              },
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('urlencoded')
+    assert(result?.mode === 'urlencoded')
+
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].key).toBe('ac')
+    expect(result.value[0].value).toBe('4')
+    assert(result.value[1])
+    expect(result.value[1].key).toBe('product_id')
+    expect(result.value[1].value).toBe('{{productId}}')
+  })
+
+  it('converts non-string values to strings in form-urlencoded object format', () => {
+    const requestBody = {
+      content: {
+        'application/x-www-form-urlencoded': {
+          examples: {
+            default: {
+              value: {
+                count: 42,
+                active: true,
+                name: 'test',
+              },
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('urlencoded')
+    assert(result?.mode === 'urlencoded')
+
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].key).toBe('count')
+    expect(result.value[0].value).toBe('42')
+    assert(result.value[1])
+    expect(result.value[1].key).toBe('active')
+    expect(result.value[1].value).toBe('true')
+    assert(result.value[2])
+    expect(result.value[2].key).toBe('name')
+    expect(result.value[2].value).toBe('test')
+  })
+
+  it('JSON-stringifies nested object and array values in form-urlencoded object format', () => {
+    const requestBody = {
+      content: {
+        'application/x-www-form-urlencoded': {
+          examples: {
+            default: {
+              value: {
+                tags: ['a', 'b'],
+                meta: { foo: 'bar' },
+              },
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('urlencoded')
+    assert(result?.mode === 'urlencoded')
+
+    assert(result.value[0])
+    expect(result.value[0].key).toBe('tags')
+    expect(result.value[0].value).toBe('["a","b"]')
+    assert(result.value[1])
+    expect(result.value[1].key).toBe('meta')
+    expect(result.value[1].value).toBe('{"foo":"bar"}')
+  })
+
+  it('skips null and undefined values in form-urlencoded object format', () => {
+    const requestBody = {
+      content: {
+        'application/x-www-form-urlencoded': {
+          examples: {
+            default: {
+              value: {
+                valid: 'value',
+                nullField: null,
+                undefinedField: undefined,
+              },
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('urlencoded')
+    assert(result?.mode === 'urlencoded')
+
+    expect(result.value.length).toBe(1)
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].key).toBe('valid')
+    expect(result.value[0].value).toBe('value')
+  })
+
+  it('handles File objects in FormData for multipart/form-data', () => {
+    const mockFile = new File(['file content'], 'test.txt', { type: 'text/plain' })
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          examples: {
+            default: {
+              value: [
+                { name: 'file', value: mockFile },
+                { name: 'description', value: 'Test file' },
+              ],
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].key).toBe('file')
+    expect(result.value[0].value).toBe(mockFile)
+    assert(result.value[1])
+    expect(result.value[1].key).toBe('description')
+    expect(result.value[1].value).toBe('Test file')
+  })
+
+  it('builds FormData for schema-generated multipart/form-data object examples, omitting optional properties', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              image: {
+                type: 'string',
+                format: 'binary',
+              },
+              description: {
+                type: 'string',
+                default: 'An image upload',
+              },
+            },
+            required: ['image'],
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    // Only the required `image` is sent; the optional `description` is left out by default,
+    // matching how optional parameters are dropped. See issue #10045.
+    expect(result.value).toStrictEqual([
+      {
+        type: 'text',
+        key: 'image',
+        value: '@filename',
+      },
+    ])
+  })
+
+  it('omits optional form properties but keeps required ones (issue #10045)', () => {
+    const schema = {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: { type: 'string' },
+        note: { type: 'string' },
+        mode: { type: 'string', enum: ['none', 'fast', 'slow'] },
+      },
+    }
+
+    const urlencoded = buildRequestBody(
+      coerceValue(RequestBodyObjectSchema, {
+        content: { 'application/x-www-form-urlencoded': { schema } },
+      }),
+      'default',
+    )
+    assert(urlencoded?.mode === 'urlencoded')
+    expect(urlencoded.value.map((v) => v.key)).toEqual(['name'])
+
+    const multipart = buildRequestBody(
+      coerceValue(RequestBodyObjectSchema, {
+        content: { 'multipart/form-data': { schema } },
+      }),
+      'default',
+    )
+    assert(multipart?.mode === 'formdata')
+    expect(multipart.value.map((v) => v.key)).toEqual(['name'])
+  })
+
+  it('keeps a property marked required inside an allOf member (issue #10045)', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/x-www-form-urlencoded': {
+          schema: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            // `name` is required via a composition member, not the top-level `required`.
+            allOf: [{ required: ['name'] }],
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    assert(result?.mode === 'urlencoded')
+    // Composed schemas are left untouched so an effectively-required field is never dropped.
+    expect(result.value.map((v) => v.key)).toContain('name')
+  })
+
+  it('keeps an undeclared key named like an Object.prototype member (issue #10045)', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/x-www-form-urlencoded': {
+          schema: {
+            type: 'object',
+            required: ['name'],
+            properties: { name: { type: 'string' } },
+          },
+          examples: {
+            default: {
+              // `toString` is not declared in the schema, so it must be kept, not dropped.
+              value: { name: 'a', toString: 'keep-me' },
+            },
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    assert(result?.mode === 'urlencoded')
+    expect(result.value.map((v) => v.key)).toContain('toString')
+  })
+
+  it('returns File bodies for raw binary request examples', () => {
+    const mockFile = new File(['binary content'], 'payload.bin', { type: 'application/octet-stream' })
+    const requestBody = {
+      content: {
+        'application/octet-stream': {
+          examples: {
+            default: {
+              value: mockFile,
+            },
+          },
+        },
+      },
+    }
+
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+
+    expect(result?.value).toBe(mockFile)
+    assert(result?.value === mockFile)
+  })
+
+  it('returns raw File for multipart/form-data when example value is a File instance', () => {
+    const mockFile = new File(['binary content'], 'payload.bin', { type: 'application/octet-stream' })
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          examples: {
+            default: {
+              value: mockFile,
+            },
+          },
+        },
+      },
+    }
+
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result).toStrictEqual({
+      mode: 'raw',
+      value: mockFile,
+      contentType: 'application/octet-stream',
+    })
+  })
+
+  it('skips form entries with empty names', () => {
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          examples: {
+            default: {
+              value: [
+                { name: '', value: 'should_be_skipped' },
+                { name: '{{fieldName}}', value: 'test_value' },
+                { name: 'normal_field', value: '{{envValue}}' },
+              ],
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    expect(result?.value.length).toBe(2)
+    expect(result?.value?.[0]).toBeDefined()
+    assert(result?.value?.[0])
+    expect(result.value[0].key).toBe('{{fieldName}}')
+    expect(result.value[0].value).toBe('test_value')
+    assert(result.value[1])
+    expect(result.value[1].key).toBe('normal_field')
+    expect(result.value[1].value).toBe('{{envValue}}')
+  })
+
+  it('returns nested object body as-is when example value is a complex object', () => {
+    const exampleValue = {
+      user: {
+        name: 'John Doe',
+        email: 'john@example.com',
+        preferences: {
+          theme: 'dark',
+          notifications: true,
+        },
+      },
+      metadata: {
+        timestamp: 1234567890,
+        version: '1.0',
+      },
+    }
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            default: {
+              value: exampleValue,
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+    expect(result?.value).toBe(JSON.stringify(exampleValue))
+    assert(result?.value === JSON.stringify(exampleValue))
+  })
+
+  it('returns array of objects stringified when example value is an array', () => {
+    const exampleValue = [
+      { id: 1, name: 'Item 1', active: true },
+      { id: 2, name: 'Item 2', active: false },
+      { id: 3, name: 'Item 3', active: true },
+    ]
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            default: {
+              value: exampleValue,
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+    expect(result?.value).toBe(JSON.stringify(exampleValue))
+    assert(result?.value === JSON.stringify(exampleValue))
+  })
+
+  it('uses x-scalar-selected-content-type when specified', () => {
+    const requestBody = {
+      'x-scalar-selected-content-type': {
+        default: 'application/xml',
+      },
+      content: {
+        'application/json': {
+          examples: {
+            default: {
+              value: '{"name": "json"}',
+            },
+          },
+        },
+        'application/xml': {
+          examples: {
+            default: {
+              value: '<name>xml</name>',
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+    expect(result?.value).toBe('<name>xml</name>')
+    assert(result?.value === '<name>xml</name>')
+  })
+
+  it('falls back to first content type when x-scalar-selected-content-type is not set', () => {
+    const requestBody = {
+      content: {
+        'application/xml': {
+          examples: {
+            default: {
+              value: '<name>xml</name>',
+            },
+          },
+        },
+        'application/json': {
+          examples: {
+            default: {
+              value: '{"name": "json"}',
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+    expect(result?.value).toBe('<name>xml</name>')
+    assert(result?.value === '<name>xml</name>')
+  })
+
+  it('handles primitive number JSON values correctly', () => {
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            default: {
+              value: '42',
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+    expect(result?.value).toBe('42')
+    assert(result?.value === '42')
+    expect(typeof result?.value).toBe('string')
+  })
+
+  it('handles primitive boolean JSON values correctly', () => {
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            default: {
+              value: 'true',
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+    expect(result?.value).toBe('true')
+    assert(result?.value === 'true')
+    expect(typeof result?.value).toBe('string')
+  })
+
+  it('handles primitive null JSON values correctly', () => {
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            default: {
+              value: 'null',
+            },
+          },
+        },
+      },
+    }
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('raw')
+    assert(result?.mode === 'raw')
+    expect(result?.value).toBe('null')
+    assert(result?.value === 'null')
+    expect(typeof result?.value).toBe('string')
+  })
+
+  it('regroups dotted multipart rows back into a single JSON-stringified text part', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              file: { type: 'string' },
+              props: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  description: { type: 'string' },
+                  created_at: { type: 'string' },
+                  note: { type: 'string' },
+                },
+              },
+            },
+          },
+          examples: {
+            default: {
+              value: [
+                { name: 'file', value: '@filename' },
+                { name: 'props.name', value: 'Widget' },
+                { name: 'props.description', value: 'A useful widget' },
+                { name: 'props.created_at', value: '2026-01-02T03:04:05Z' },
+                { name: 'props.note', value: 'ignored', isDisabled: true },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    // The wire sends one `props` part (not three `props.*` parts), so the wire shape is
+    // consistent between the initial schema-derived example and edited form rows. The
+    // part is plain text because browser FormData adds a `filename="blob"` header to
+    // every Blob, which generic multipart parsers then misinterpret as a file upload.
+    expect(result.value).toEqual([
+      { type: 'text', key: 'file', value: '@filename' },
+      {
+        type: 'text',
+        key: 'props',
+        value: JSON.stringify({
+          name: 'Widget',
+          description: 'A useful widget',
+          created_at: '2026-01-02T03:04:05Z',
+        }),
+      },
+    ])
+  })
+
+  it('emits the regrouped multipart object at the position of its first dotted row', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              before: { type: 'string' },
+              middle: { type: 'string' },
+              after: { type: 'string' },
+              props: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  description: { type: 'string' },
+                },
+              },
+            },
+          },
+          examples: {
+            default: {
+              value: [
+                { name: 'before', value: 'first' },
+                { name: 'props.name', value: 'Widget' },
+                { name: 'middle', value: 'second' },
+                { name: 'props.description', value: 'A useful widget' },
+                { name: 'after', value: 'third' },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    // The regrouped `props` part stays where the user placed its first dotted row,
+    // so flat rows around it keep their relative order.
+    expect(result.value).toEqual([
+      { type: 'text', key: 'before', value: 'first' },
+      {
+        type: 'text',
+        key: 'props',
+        value: JSON.stringify({ name: 'Widget', description: 'A useful widget' }),
+      },
+      { type: 'text', key: 'middle', value: 'second' },
+      { type: 'text', key: 'after', value: 'third' },
+    ])
+  })
+
+  it('restores leaf types when regrouping dotted multipart rows back into a JSON part', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              jsonField: {
+                type: 'object',
+                properties: {
+                  isSomething: { type: 'boolean' },
+                  mood: { type: 'array', items: { type: 'string' } },
+                  count: { type: 'integer' },
+                  meta: { type: 'object' },
+                },
+              },
+              stringField: { type: 'string' },
+            },
+          },
+          examples: {
+            default: {
+              // The shape the store holds after the user edits a form row: dotted names with
+              // every value stringified for display.
+              value: [
+                { name: 'jsonField.isSomething', value: 'false' },
+                { name: 'jsonField.mood', value: '[]' },
+                { name: 'jsonField.count', value: '3' },
+                { name: 'jsonField.meta', value: '{"a":1}' },
+                { name: 'stringField', value: 'hi' },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    // The nested JSON part keeps the schema-declared types instead of string-typing them.
+    expect(result.value).toEqual([
+      {
+        type: 'text',
+        key: 'jsonField',
+        value: JSON.stringify({ isSomething: false, mood: [], count: 3, meta: { a: 1 } }),
+      },
+      { type: 'text', key: 'stringField', value: 'hi' },
+    ])
+  })
+
+  it('keeps stringy leaf values as strings when the schema allows a string', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              jsonField: {
+                type: 'object',
+                properties: {
+                  // String field whose value happens to look like a boolean.
+                  label: { type: 'string' },
+                  // Union allowing string keeps the raw text rather than guessing a type.
+                  nullableText: { type: ['string', 'null'] },
+                  // Non-string type but the value is not valid JSON for it: stay untouched.
+                  flag: { type: 'boolean' },
+                },
+              },
+            },
+          },
+          examples: {
+            default: {
+              value: [
+                { name: 'jsonField.label', value: 'false' },
+                { name: 'jsonField.nullableText', value: 'true' },
+                { name: 'jsonField.flag', value: 'yes' },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    assert(result?.mode === 'formdata')
+
+    expect(result.value).toEqual([
+      {
+        type: 'text',
+        key: 'jsonField',
+        value: JSON.stringify({ label: 'false', nullableText: 'true', flag: 'yes' }),
+      },
+    ])
+  })
+
+  it('keeps a fractional value as a string for an integer-only leaf but coerces a whole number', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              jsonField: {
+                type: 'object',
+                properties: {
+                  // Integer-only leaf: a whole number coerces, a fractional value does not.
+                  whole: { type: 'integer' },
+                  fractional: { type: 'integer' },
+                  // A leaf allowing `number` accepts the fractional value.
+                  ratio: { type: 'number' },
+                },
+              },
+            },
+          },
+          examples: {
+            default: {
+              value: [
+                { name: 'jsonField.whole', value: '3' },
+                { name: 'jsonField.fractional', value: '3.14' },
+                { name: 'jsonField.ratio', value: '3.14' },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    assert(result?.mode === 'formdata')
+
+    // The fractional value stays a string under the integer-only leaf; the whole number and the
+    // number-typed leaf are coerced.
+    expect(result.value).toEqual([
+      {
+        type: 'text',
+        key: 'jsonField',
+        value: JSON.stringify({ whole: 3, fractional: '3.14', ratio: 3.14 }),
+      },
+    ])
+  })
+
+  it('follows $ref sibling overrides when coercing a regrouped leaf type', () => {
+    // OpenAPI 3.1 allows annotations alongside a $ref, and they take precedence over the
+    // referenced schema. Here the leaf references a boolean schema but a sibling `type: 'string'`
+    // overrides it, so the merged leaf is a string and the stringified value must stay a string
+    // instead of being parsed back into a boolean. Build the body raw so the $ref siblings survive.
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              jsonField: {
+                type: 'object',
+                properties: {
+                  overridden: {
+                    $ref: '#/components/schemas/Flag',
+                    '$ref-value': { type: 'boolean' },
+                    type: 'string',
+                  },
+                },
+              },
+            },
+          },
+          examples: {
+            default: {
+              value: [{ name: 'jsonField.overridden', value: 'false' }],
+            },
+          },
+        },
+      },
+    }
+
+    // The strict reference schema does not model annotations alongside a $ref, so cast the raw
+    // body — real workspace data can carry these siblings, which is what mergeSiblingReferences handles.
+    const result = buildRequestBody(requestBody as Parameters<typeof buildRequestBody>[0], 'default')
+    assert(result?.mode === 'formdata')
+
+    expect(result.value).toEqual([{ type: 'text', key: 'jsonField', value: JSON.stringify({ overridden: 'false' }) }])
+  })
+
+  it('keeps a flat multipart row whose name happens to contain dots (filename)', () => {
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          examples: {
+            default: {
+              value: [
+                {
+                  name: 'scalar.jpeg',
+                  value: new File(['scalar'], 'scalar.jpeg', { type: 'image/jpeg' }),
+                },
+                { name: 'caption', value: 'logo' },
+              ],
+            },
+          },
+        },
+      },
+    }
+
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    expect(result.value).toHaveLength(2)
+    expect(result.value[0]?.type).toBe('file')
+    expect(result.value[0]?.key).toBe('scalar.jpeg')
+    expect(result.value[1]).toEqual({ type: 'text', key: 'caption', value: 'logo' })
+  })
+
+  it('keeps non-File multipart rows whose names contain literal dots when the schema does not declare them as nested objects', () => {
+    const requestBody = {
+      content: {
+        'multipart/form-data': {
+          examples: {
+            default: {
+              value: [
+                { name: 'user.email', value: 'foo@bar.com' },
+                { name: 'config.json', value: '{"k":1}' },
+                { name: 'image.url', value: 'https://example.com/a.png' },
+              ],
+            },
+          },
+        },
+      },
+    }
+
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    // Without a schema declaring `user`/`config`/`image` as nested object properties,
+    // these names are literal and must be sent as-is — not folded into nested objects.
+    expect(result.value).toEqual([
+      { type: 'text', key: 'user.email', value: 'foo@bar.com' },
+      { type: 'text', key: 'config.json', value: '{"k":1}' },
+      { type: 'text', key: 'image.url', value: 'https://example.com/a.png' },
+    ])
+  })
+
+  it('keeps multipart rows with literal dots flat when the schema declares the dotted name as a top-level property', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            properties: {
+              'user.email': { type: 'string' },
+              caption: { type: 'string' },
+            },
+          },
+          examples: {
+            default: {
+              value: [
+                { name: 'user.email', value: 'foo@bar.com' },
+                { name: 'caption', value: 'profile' },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    const result = buildRequestBody(requestBody, 'default')
+    expect(result?.mode).toBe('formdata')
+    assert(result?.mode === 'formdata')
+
+    expect(result.value).toEqual([
+      { type: 'text', key: 'user.email', value: 'foo@bar.com' },
+      { type: 'text', key: 'caption', value: 'profile' },
+    ])
+  })
+  it.each(['object', 'rows'] as const)('builds per-item multipart array parts from %s examples', (format) => {
+    const values = { tags: ['a', 'b'], objects: [{ id: 1 }, { id: 2 }], empty: [] }
+    const value = format === 'object' ? values : Object.entries(values).map(([name, value]) => ({ name, value }))
+    expect(buildRequestBody({ content: { 'multipart/form-data': { examples: { default: { value } } } } })).toEqual({
+      mode: 'formdata',
+      value: [
+        { type: 'text', key: 'tags', value: 'a' },
+        { type: 'text', key: 'tags', value: 'b' },
+        { type: 'text', key: 'objects', value: '{"id":1}', contentType: 'application/json' },
+        { type: 'text', key: 'objects', value: '{"id":2}', contentType: 'application/json' },
+      ],
+    })
+  })
+
+  it('restores saved array rows using the schema while leaving string fields and disabled rows alone', () => {
+    expect(
+      buildRequestBody({
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: { tags: { type: 'array', items: { type: 'string' } }, literal: { type: 'string' } },
+            },
+            examples: {
+              default: {
+                value: [
+                  { name: 'tags', value: '["a","b"]' },
+                  { name: 'literal', value: '["a","b"]' },
+                  { name: 'tags', value: '["hidden"]', isDisabled: true },
+                ],
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      mode: 'formdata',
+      value: [
+        { type: 'text', key: 'tags', value: 'a' },
+        { type: 'text', key: 'tags', value: 'b' },
+        { type: 'text', key: 'literal', value: '["a","b"]' },
+      ],
+    })
+  })
+})

@@ -1,6 +1,6 @@
 {
   "name": "@scalar/express-api-reference",
-  "description": "A middleware for using the Scalar API reference with Express",
+  "description": "Express middleware to serve beautiful, interactive API documentation from OpenAPI/Swagger documents.",
   "license": "MIT",
   "author": "Scalar (https://github.com/scalar)",
   "homepage": "https://github.com/scalar/scalar",
@@ -10,26 +10,22 @@
     "url": "git+https://github.com/scalar/scalar.git",
     "directory": "integrations/express"
   },
-  "version": "0.8.11",
+  "version": "0.10.41",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "build:playground": "cd playground && pnpm build",
-    "dev:doesnt-work": "cd playground && pnpm dev",
+    "dev": "tsx watch playground/index.ts",
     "docker:build": "docker build --build-arg BASE_IMAGE=scalar-base -t express-api-reference -f Dockerfile .",
     "docker:run": "docker run -p 5055:5055 express-api-reference",
-    "format": "scalar-format",
-    "format:check": "scalar-format-check",
-    "lint:check": "scalar-lint-check",
-    "lint:fix": "scalar-lint-fix",
-    "test": "vitest",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
@@ -42,16 +38,31 @@
     "./dist",
     "CHANGELOG.md"
   ],
-  "module": "dist/index.js",
+  "scalarReadme": {
+    "title": "Scalar API Reference Plugin for Express",
+    "badges": [
+      {
+        "type": "npm-version"
+      },
+      {
+        "type": "npm-downloads"
+      },
+      {
+        "type": "npm-license"
+      }
+    ],
+    "documentation": "https://scalar.com/products/api-references/integrations/express"
+  },
   "dependencies": {
-    "@scalar/core": "workspace:*"
+    "@scalar/client-side-rendering": "workspace:*"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
     "@types/express": "catalog:*",
-    "@types/supertest": "^2.0.12",
+    "@types/supertest": "catalog:*",
+    "@types/swagger-jsdoc": "^6.0.4",
     "express": "catalog:*",
-    "supertest": "^6.3.3",
+    "supertest": "catalog:*",
+    "swagger-jsdoc": "^6.3.0",
     "vite": "catalog:*",
     "vitest": "catalog:*"
   }

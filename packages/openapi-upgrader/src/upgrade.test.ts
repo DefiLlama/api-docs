@@ -1,0 +1,919 @@
+import type { OpenAPIV3, OpenAPIV3_1, OpenAPIV3_2 } from '@scalar/openapi-types'
+import type { UnknownObject } from '@scalar/types/utils'
+import { describe, expect, expectTypeOf, it } from 'vitest'
+
+import { type UpgradeOptions, type UpgradeResult, upgrade } from './upgrade'
+import { UpgradeIncompatibilityError } from './upgrade-incompatibility-error'
+
+const upgradeTargets = [
+  ['3.0', (input: UnknownObject): OpenAPIV3.Document => upgrade(input, '3.0')],
+  ['3.1', (input: UnknownObject): OpenAPIV3_1.Document => upgrade(input, '3.1')],
+  ['3.2', (input: UnknownObject): OpenAPIV3_2.Document => upgrade(input, '3.2')],
+] as const
+
+describe('upgrade', () => {
+  it.each(upgradeTargets)(
+    'preserves literal references in shared body x-examples when upgrading to %s',
+    (_target, upgradeDocument) => {
+      const payload = { $ref: '#/parameters/50%', nested: { $ref: '#/parameters/Body' }, type: 'file' }
+      const result = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Pets', version: '1' },
+        consumes: ['application/json'],
+        parameters: {
+          Body: {
+            name: 'body',
+            in: 'body',
+            schema: { type: 'object' },
+            'x-examples': { 'application/json': { pet: { value: payload } } },
+          },
+        },
+        paths: {
+          '/pets': {
+            post: {
+              parameters: [{ $ref: '#/parameters/Body' }],
+              responses: { '200': { description: 'ok' } },
+            },
+          },
+        },
+      })
+
+      expect(result.components?.requestBodies?.Body).toStrictEqual({
+        content: {
+          'application/json': { schema: { type: 'object' }, examples: { pet: { value: payload } } },
+        },
+      })
+      expect(result.paths?.['/pets']?.post).toStrictEqual({
+        requestBody: { $ref: '#/components/requestBodies/Body' },
+        responses: { '200': { description: 'ok' } },
+      })
+    },
+  )
+
+  it.each(upgradeTargets)(
+    'moves shared body references into requestBody when upgrading to %s',
+    (_target, upgradeDocument) => {
+      const result = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Pets', version: '1' },
+        consumes: ['application/json'],
+        parameters: {
+          PetBody: { name: 'body', in: 'body', required: true, schema: { $ref: '#/definitions/Pet' } },
+          Limit: { name: 'limit', in: 'query', type: 'integer' },
+        },
+        definitions: { Pet: { type: 'object', properties: { name: { type: 'string' } } } },
+        paths: {
+          '/pets': {
+            post: {
+              parameters: [{ $ref: '#/parameters/PetBody' }, { $ref: '#/parameters/Limit' }],
+              responses: { '200': { description: 'ok' } },
+            },
+          },
+        },
+      })
+
+      expect(result.paths?.['/pets']?.post).toStrictEqual({
+        parameters: [{ $ref: '#/components/parameters/Limit' }],
+        requestBody: { $ref: '#/components/requestBodies/PetBody' },
+        responses: { '200': { description: 'ok' } },
+      })
+      expect(result.components?.requestBodies?.PetBody).toStrictEqual({
+        required: true,
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/Pet' } } },
+      })
+      expect(result.components?.parameters?.Limit).toStrictEqual({
+        name: 'limit',
+        in: 'query',
+        schema: { type: 'integer' },
+      })
+    },
+  )
+
+  it.each(upgradeTargets)('maps vendor discriminator values when upgrading to %s', (_target, upgradeDocument) => {
+    const input = {
+      swagger: '2.0',
+      info: { title: 'Pets', version: '1' },
+      paths: {},
+      definitions: {
+        Pet: { type: 'object', discriminator: 'kind', properties: { kind: { type: 'string' } } },
+        Mammal: { allOf: [{ $ref: '#/definitions/Pet' }] },
+        'Dog/~ breed': {
+          'x-ms-discriminator-value': 'hound',
+          'x-discriminator-value': 'dog',
+          allOf: [{ $ref: '#/definitions/Mammal' }],
+        },
+        Cat: { 'x-discriminator-value': '', allOf: [{ $ref: '#/definitions/Pet' }] },
+        Plain: { allOf: [{ $ref: '#/definitions/Pet' }] },
+        Unrelated: { 'x-ms-discriminator-value': 'unrelated', type: 'object' },
+      },
+    }
+    const result = upgradeDocument(input)
+    expect((result.components?.schemas?.Pet as OpenAPIV3.SchemaObject | undefined)?.discriminator).toStrictEqual({
+      propertyName: 'kind',
+      mapping: {
+        hound: '#/components/schemas/Dog~1~0%20breed',
+        dog: '#/components/schemas/Dog~1~0%20breed',
+        '': '#/components/schemas/Cat',
+      },
+    })
+    expect(result.components?.schemas?.['Dog/~ breed']).toStrictEqual({
+      'x-ms-discriminator-value': 'hound',
+      'x-discriminator-value': 'dog',
+      allOf: [{ $ref: '#/components/schemas/Mammal' }],
+    })
+  })
+
+  it.each(upgradeTargets)(
+    'keeps authored mappings and ignores ambiguous aliases when upgrading to %s',
+    (_target, upgradeDocument) => {
+      const result = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Pets', version: '1' },
+        paths: {},
+        definitions: {
+          'Pet/~': {
+            type: 'object',
+            required: ['kind'],
+            discriminator: { propertyName: 'kind', mapping: { dog: '#/components/schemas/Existing' } },
+          },
+          Existing: { type: 'object' },
+          Dog: {
+            'x-ms-discriminator-value': 'dog',
+            'x-discriminator-value': '__proto__',
+            allOf: [{ $ref: '#/definitions/Pet~1~0' }],
+          },
+          First: { 'x-ms-discriminator-value': 'ambiguous', allOf: [{ $ref: '#/definitions/Pet~1~0' }] },
+          Second: { 'x-discriminator-value': 'ambiguous', allOf: [{ $ref: '#/definitions/Pet~1~0' }] },
+          Invalid: { 'x-ms-discriminator-value': 42, allOf: [{ $ref: '#/definitions/Pet~1~0' }] },
+          Missing: {
+            'x-ms-discriminator-value': 'missing',
+            allOf: [{ $ref: '#/definitions/Absent' }, { $ref: '#/definitions/%ZZ' }],
+          },
+          External: { 'x-ms-discriminator-value': 'external', allOf: [{ $ref: 'other.json#/definitions/Pet' }] },
+        },
+      })
+      expect(
+        (result.components?.schemas?.['Pet/~'] as OpenAPIV3.SchemaObject | undefined)?.discriminator,
+      ).toStrictEqual({
+        propertyName: 'kind',
+        mapping: { dog: '#/components/schemas/Existing', ['__proto__']: '#/components/schemas/Dog' },
+      })
+    },
+  )
+
+  it.each(upgradeTargets)(
+    'terminates cyclic inheritance while mapping aliases when upgrading to %s',
+    (_target, upgradeDocument) => {
+      const result = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Pets', version: '1' },
+        paths: {},
+        definitions: {
+          Pet: { discriminator: 'kind', allOf: [{ $ref: '#/definitions/Loop' }] },
+          Loop: { allOf: [{ $ref: '#/definitions/Pet' }] },
+          Dog: { 'x-discriminator-value': 'dog', allOf: [{ $ref: '#/definitions/Loop' }] },
+        },
+      })
+      expect((result.components?.schemas?.Pet as OpenAPIV3.SchemaObject | undefined)?.discriminator).toStrictEqual({
+        propertyName: 'kind',
+        mapping: { dog: '#/components/schemas/Dog' },
+      })
+    },
+  )
+
+  it.each(upgradeTargets)(
+    'requires converted discriminator properties when upgrading to %s',
+    (_target, upgradeDocument) => {
+      for (const propertyName of ['petType', '']) {
+        for (const required of [undefined, [], ['name'], [propertyName]]) {
+          const schema = {
+            type: 'object',
+            discriminator: propertyName,
+            properties: { [propertyName]: { type: 'string' }, name: { type: 'string' } },
+            ...(required === undefined ? {} : { required }),
+          }
+          const input = {
+            swagger: '2.0',
+            info: { title: 'Pets', version: '1' },
+            paths: {},
+            definitions: { Pet: schema },
+          }
+          expect(upgradeDocument(structuredClone(input)).components?.schemas?.Pet).toStrictEqual({
+            ...schema,
+            discriminator: { propertyName },
+            required: required?.includes(propertyName) ? required : [...(required ?? []), propertyName],
+          })
+        }
+      }
+    },
+  )
+
+  it.each(upgradeTargets)(
+    'preserves invalid non-string discriminators when upgrading to %s',
+    (_target, upgradeDocument) => {
+      for (const discriminator of [null, false, 42, []]) {
+        const schema = { type: 'object', discriminator }
+        const document = upgradeDocument({
+          swagger: '2.0',
+          info: { title: 'Pets', version: '1' },
+          paths: {},
+          definitions: { Pet: schema },
+        })
+        expect(document.components?.schemas?.Pet).toStrictEqual(schema)
+      }
+    },
+  )
+
+  it.each(upgradeTargets)('converts Swagger discriminators when upgrading to %s', (_target, upgradeDocument) => {
+    const pet = {
+      type: 'object',
+      discriminator: 'petType',
+      required: ['petType'],
+      properties: { petType: { type: 'string' } },
+    }
+    const convertedPet = { ...pet, discriminator: { propertyName: 'petType' } }
+    const document = upgradeDocument({
+      swagger: '2.0',
+      info: { title: 'Pets', version: '1' },
+      paths: {},
+      definitions: {
+        Pet: structuredClone(pet),
+        Dog: { allOf: [{ $ref: '#/definitions/Pet' }, { type: 'object' }] },
+        Container: {
+          type: 'object',
+          properties: {
+            pet: structuredClone(pet),
+            list: { type: 'array', items: structuredClone(pet) },
+            map: { type: 'object', additionalProperties: structuredClone(pet) },
+            composed: { allOf: [structuredClone(pet)] },
+            discriminator: { type: 'string' },
+          },
+        },
+      },
+    })
+
+    expect(document.components?.schemas).toStrictEqual({
+      Pet: convertedPet,
+      Dog: { allOf: [{ $ref: '#/components/schemas/Pet' }, { type: 'object' }] },
+      Container: {
+        type: 'object',
+        properties: {
+          pet: convertedPet,
+          list: { type: 'array', items: convertedPet },
+          map: { type: 'object', additionalProperties: convertedPet },
+          composed: { allOf: [convertedPet] },
+          discriminator: { type: 'string' },
+        },
+      },
+    })
+  })
+
+  it.each(upgradeTargets)(
+    'converts discriminators in request and response schemas when upgrading to %s',
+    (_target, upgradeDocument) => {
+      const pet = {
+        type: 'object',
+        discriminator: 'petType',
+        required: ['petType'],
+        properties: { petType: { type: 'string' } },
+      }
+      const convertedPet = { ...pet, discriminator: { propertyName: 'petType' } }
+      const document = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Pets', version: '1' },
+        parameters: { Pet: { name: 'pet', in: 'body', schema: structuredClone(pet) } },
+        responses: { Pet: { description: 'A pet', schema: structuredClone(pet) } },
+        paths: {
+          '/pets': {
+            post: {
+              parameters: [{ name: 'pet', in: 'body', schema: structuredClone(pet) }],
+              responses: { 200: { description: 'A pet', schema: structuredClone(pet) } },
+            },
+          },
+        },
+      })
+
+      expect(document.paths?.['/pets']?.post?.requestBody?.content?.['application/json']?.schema).toStrictEqual(
+        convertedPet,
+      )
+      expect(document.paths?.['/pets']?.post?.responses?.[200]?.content?.['application/json']?.schema).toStrictEqual(
+        convertedPet,
+      )
+      expect(document.components?.requestBodies?.Pet?.content?.['application/json']?.schema).toStrictEqual(convertedPet)
+      expect(document.components?.responses?.Pet?.content?.['application/json']?.schema).toStrictEqual(convertedPet)
+    },
+  )
+
+  it.each(upgradeTargets)(
+    'preserves discriminator-shaped data and existing objects when upgrading to %s',
+    (target, upgradeDocument) => {
+      const data = { discriminator: 'literal', properties: { nested: { discriminator: 'literal' } } }
+      const discriminator = { propertyName: 'petType', mapping: { Dog: '#/components/schemas/Dog' } }
+      const document = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Pets', version: '1' },
+        paths: {},
+        definitions: {
+          Pet: {
+            type: 'object',
+            discriminator: structuredClone(discriminator),
+            required: ['petType'],
+            properties: { petType: { type: 'string' } },
+            example: structuredClone(data),
+            default: structuredClone(data),
+            'x-data': structuredClone(data),
+          },
+          Plain: { type: 'object' },
+        },
+      })
+
+      expect(document.components?.schemas).toStrictEqual({
+        Pet: {
+          type: 'object',
+          discriminator,
+          required: ['petType'],
+          properties: { petType: { type: 'string' } },
+          ...(target === '3.0' ? { example: data } : { examples: [data] }),
+          default: data,
+          'x-data': data,
+        },
+        Plain: { type: 'object' },
+      })
+    },
+  )
+
+  it.each(upgradeTargets)(
+    'preserves Swagger response header example extensions when upgrading to %s',
+    (target, upgradeDocument) => {
+      const headers = {
+        'X-Single': { type: 'string', 'x-example': '' },
+        'X-Named': {
+          type: 'string',
+          'x-example': 'fallback',
+          'x-examples': {
+            first: 'hello',
+            second: { value: 'world', summary: 'World' },
+          },
+        },
+      }
+      const document = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Headers', version: '1' },
+        paths: { '/': { get: { responses: { 200: { description: 'OK', headers: structuredClone(headers) } } } } },
+        responses: { Shared: { description: 'OK', headers: structuredClone(headers) } },
+      })
+      const expected = {
+        'X-Single': {
+          schema: { type: 'string' },
+          ...(target === '3.0' ? { example: '' } : { examples: { default: { value: '' } } }),
+        },
+        'X-Named': {
+          schema: { type: 'string' },
+          examples: {
+            first: { value: 'hello' },
+            second: { value: 'world', summary: 'World' },
+          },
+        },
+      }
+      expect(document.paths?.['/']?.get?.responses?.[200]?.headers).toStrictEqual(expected)
+      expect(document.components?.responses?.Shared?.headers).toStrictEqual(expected)
+    },
+  )
+
+  it.each(upgradeTargets)('preserves security scheme metadata when upgrading to %s', (_target, upgradeDocument) => {
+    const extensions = {
+      'x-label': 'Authentication',
+      'x-config': { roles: ['reader'] },
+      'x-enabled': false,
+      'x-limit': 0,
+      'x-empty': null,
+    }
+    for (const description of ['Authentication documentation', '', undefined]) {
+      const metadata = { ...extensions, ...(description !== undefined ? { description } : {}) }
+      const securityDefinitions = {
+        basic: { type: 'basic', ...metadata },
+        apiKey: { type: 'apiKey', name: 'X-API-Key', in: 'header', ...metadata },
+        ...Object.fromEntries(
+          ['implicit', 'password', 'application', 'accessCode'].map((flow) => [
+            flow,
+            {
+              type: 'oauth2',
+              flow,
+              ...metadata,
+              scopes: { read: 'Read access' },
+              ...(['implicit', 'accessCode'].includes(flow)
+                ? { authorizationUrl: 'https://example.com/authorize' }
+                : {}),
+              ...(flow !== 'implicit' ? { tokenUrl: 'https://example.com/token' } : {}),
+            },
+          ]),
+        ),
+      }
+      const document = upgradeDocument({
+        swagger: '2.0',
+        info: { title: 'Security metadata', version: '1.0' },
+        paths: {},
+        securityDefinitions,
+      })
+      expect(document.components?.securitySchemes).toStrictEqual({
+        basic: { type: 'http', scheme: 'basic', ...metadata },
+        apiKey: { type: 'apiKey', name: 'X-API-Key', in: 'header', ...metadata },
+        ...Object.fromEntries(
+          Object.entries({
+            implicit: 'implicit',
+            password: 'password',
+            application: 'clientCredentials',
+            accessCode: 'authorizationCode',
+          }).map(([flow, upgradedFlow]) => [
+            flow,
+            {
+              type: 'oauth2',
+              ...metadata,
+              flows: {
+                [upgradedFlow]: {
+                  scopes: { read: 'Read access' },
+                  ...(['implicit', 'accessCode'].includes(flow)
+                    ? { authorizationUrl: 'https://example.com/authorize' }
+                    : {}),
+                  ...(flow !== 'implicit' ? { tokenUrl: 'https://example.com/token' } : {}),
+                },
+              },
+            },
+          ]),
+        ),
+      })
+    }
+  })
+
+  it.each(upgradeTargets)('preserves form-data extensions when upgrading to %s', (target, upgradeDocument) => {
+    const extensions = {
+      'x-label': 'Field',
+      'x-config': { choices: ['a', 'b'] },
+      'x-enabled': false,
+      'x-limit': 0,
+      'x-empty': null,
+    }
+    const parameter = {
+      name: 'field',
+      in: 'formData',
+      type: 'string',
+      required: true,
+      description: 'A field',
+      'x-nullable': true,
+      ...extensions,
+    }
+    const consumes = ['multipart/form-data', 'application/x-www-form-urlencoded']
+    const document = upgradeDocument({
+      swagger: '2.0',
+      info: { title: 'Form extensions', version: '1.0' },
+      consumes,
+      parameters: { Shared: parameter },
+      paths: { '/form': { post: { parameters: [parameter], responses: { 200: { description: 'OK' } } } } },
+    })
+    const expected = {
+      content: Object.fromEntries(
+        consumes.map((mediaType) => [
+          mediaType,
+          {
+            schema: {
+              type: 'object',
+              required: ['field'],
+              properties: {
+                field: {
+                  ...extensions,
+                  description: 'A field',
+                  ...(target === '3.0' ? { type: 'string', nullable: true } : { type: ['string', 'null'] }),
+                },
+              },
+            },
+          },
+        ]),
+      ),
+    }
+    expect(document.components?.requestBodies?.Shared).toStrictEqual(expected)
+    expect(document.paths?.['/form']?.post?.requestBody).toStrictEqual(expected)
+  })
+
+  it('upgrades documents from Swagger 2.0 to OpenAPI 3.1', () => {
+    const document = upgrade(
+      {
+        swagger: '2.0',
+        info: {
+          title: 'Hello World',
+          version: '1.0.0',
+        },
+        paths: {},
+      },
+      '3.1',
+    )
+
+    expect(document?.swagger).toBeUndefined()
+    expect(document?.openapi).toBe('3.1.1')
+  })
+
+  it('changes the version to from 3.0.0 to 3.1.0', () => {
+    const document = upgrade(
+      {
+        openapi: '3.0.0',
+        info: {
+          title: 'Hello World',
+          version: '1.0.0',
+        },
+        paths: {},
+      },
+      '3.1',
+    )
+
+    expect(document?.openapi).toBe('3.1.1')
+  })
+
+  it('changes the version to 3.0.3 to 3.1.0', () => {
+    const document = upgrade(
+      {
+        openapi: '3.0.3',
+        info: {
+          title: 'Hello World',
+          version: '1.0.0',
+        },
+        paths: {},
+      },
+      '3.1',
+    )
+
+    expect(document?.openapi).toBe('3.1.1')
+  })
+
+  it('deals with null', () => {
+    const document = upgrade(null as unknown as UnknownObject, '3.1')
+
+    expect(document).toStrictEqual(null)
+  })
+
+  it.each([{ swagger: '2.0' }, { openapi: '3.0.4' }, { openapi: '3.1.2' }])(
+    'upgrades %j through the public 3.2 pipeline without mutating input',
+    (version) => {
+      const input = { ...version, info: { title: 'API', version: '1' }, paths: {} }
+      const before = structuredClone(input)
+      expect(upgrade(input, '3.2')).toStrictEqual({ openapi: '3.2.0', info: input.info, paths: {} })
+      expect(input).toStrictEqual(before)
+    },
+  )
+
+  it.each(['3.0', '3.1'] as const)('does not apply 3.2 parameter migration when targeting %s', (target) => {
+    const input = {
+      openapi: '3.1.2',
+      info: { title: 'API', version: '1' },
+      paths: {},
+      components: { parameters: { Id: { name: 'id', in: 'path', allowReserved: true } } },
+    }
+    const before = structuredClone(input)
+    expect(target === '3.0' ? upgrade(input, '3.0') : upgrade(input, '3.1')).toStrictEqual(before)
+    expect(input).toStrictEqual(before)
+  })
+
+  it('applies XML and tag migrations through the public API', () => {
+    const input = {
+      openapi: '3.1.2',
+      info: { title: 'API', version: '1' },
+      paths: {},
+      components: {
+        schemas: { Books: { type: 'array', items: { type: 'string' }, xml: { wrapped: true, attribute: false } } },
+      },
+      'x-tagGroups': [{ name: 'Accounts', tags: ['users'] }],
+    }
+    const before = structuredClone(input)
+    expect(upgrade(input, '3.2')).toStrictEqual({
+      ...input,
+      openapi: '3.2.0',
+      components: { schemas: { Books: { type: 'array', items: { type: 'string' }, xml: { nodeType: 'element' } } } },
+      tags: [
+        { name: 'Accounts', kind: 'nav' },
+        { name: 'users', parent: 'Accounts' },
+      ],
+    })
+    expect(input).toStrictEqual(before)
+  })
+
+  it('preserves 3.0 input when the final upgrade step fails', () => {
+    const input = {
+      openapi: '3.0.4',
+      info: { title: 'API', version: '1' },
+      paths: {},
+      servers: [{ url: 'https://{host}/{host}', variables: { host: { default: 'api' } } }],
+    }
+    const before = structuredClone(input)
+    expect(() => upgrade(input, '3.2')).toThrow('#/servers/0/url')
+    expect(input).toStrictEqual(before)
+  })
+
+  it.each(['3.1', '3.1.0-rc1'])('reports malformed version %s through the public API', (openapi) => {
+    const input = { openapi, info: { title: 'API', version: '1' }, paths: {} }
+    expect(() => upgrade(input, '3.2')).toThrow(`invalid OpenAPI version "${openapi}"`)
+    expect(input.openapi).toBe(openapi)
+  })
+
+  it('reports alias expansion limits without modifying the caller document', () => {
+    const leaf = Array.from({ length: 2000 }, () => 'x')
+    const input = { openapi: '3.1.0', 'x-aliases': Array.from({ length: 1001 }, () => leaf) }
+    expect(() => upgrade(input, '3.2')).toThrow('excessive YAML alias expansion')
+    expect(input.openapi).toBe('3.1.0')
+    expect(input['x-aliases'][0]).toBe(leaf)
+  })
+
+  it('preserves existing 3.2 features and literal values', () => {
+    const input = {
+      openapi: '3.2.0',
+      info: { title: 'API', version: '1' },
+      paths: {},
+      'x-custom': { xml: { wrapped: true, attribute: true } },
+    }
+    expect(upgrade(input, '3.2')).toStrictEqual(input)
+  })
+
+  it.each([{ swagger: '2.0' }, { openapi: '3.0.4' }, { openapi: '3.1.2' }, { openapi: '3.2.0' }])(
+    'collects no diagnostics for compatible input %j',
+    (version) => {
+      const input = { ...version, info: { title: 'API', version: '1' }, paths: {} }
+      const original = structuredClone(input)
+      const result = upgrade(input, '3.2', { onIncompatible: 'collect' })
+      expect(result).toStrictEqual({
+        document: { openapi: '3.2.0', info: input.info, paths: {} },
+        diagnostics: [],
+      })
+      expect(result.document).not.toBe(input)
+      expect(input).toStrictEqual(original)
+      expectTypeOf(result).toEqualTypeOf<UpgradeResult>()
+    },
+  )
+
+  it.each(['3.0.4', '3.1.2'])('retains complete 3.1 semantics and all diagnostics for %s', (openapi) => {
+    const input = {
+      openapi,
+      info: { title: 'API', version: '1' },
+      paths: {},
+      servers: [{ url: 'https://{host}/{host}', variables: { host: { default: 'api' } } }],
+      components: {
+        parameters: { Id: { name: 'id', in: 'path', allowReserved: true } },
+        schemas: {
+          Attribute: { type: 'string', xml: { attribute: true } },
+          Pet: { type: 'object', discriminator: { propertyName: 'kind' } },
+        },
+      },
+      'x-tagGroups': [{ name: 'Accounts', tags: ['users'] }],
+    }
+    const original = structuredClone(input)
+    const result = upgrade(input, '3.2', { onIncompatible: 'collect' })
+    expect(result.document).toStrictEqual({ ...original, openapi: openapi === '3.0.4' ? '3.1.1' : openapi })
+    expect(result.diagnostics.map((error) => error.message).sort()).toStrictEqual([
+      'Cannot upgrade to OpenAPI 3.2 at #/components/schemas/Pet/discriminator: An optional discriminating property needs an explicit defaultMapping.',
+      'Cannot upgrade to OpenAPI 3.2 at #/servers/0/url: Template variables must not be repeated. Rename the repeated variable and define it separately.',
+    ])
+    result.document.info.title = 'Changed'
+    expect(input).toStrictEqual(original)
+  })
+
+  it('collects unnamed XML diagnostics without relabeling the description as 3.2', () => {
+    const input = {
+      openapi: '3.1.2',
+      info: { title: 'API', version: '1' },
+      paths: {},
+      components: {
+        responses: { Xml: { description: 'OK', content: { 'application/xml': { schema: { type: 'object' } } } } },
+      },
+    }
+    expect(upgrade(input, '3.2', { onIncompatible: 'collect' })).toStrictEqual({
+      document: input,
+      diagnostics: [
+        new Error(
+          'Cannot upgrade to OpenAPI 3.2 at #/components/responses/Xml/content/application~1xml/schema: An inline XML element needs an explicit xml.name.',
+        ),
+      ],
+    })
+    expect(() => upgrade(input, '3.2')).toThrow(UpgradeIncompatibilityError)
+    expect(() => upgrade(input, '3.2', { onIncompatible: 'throw' })).toThrow(UpgradeIncompatibilityError)
+  })
+
+  it.each([
+    ['collect', '3.1'],
+    ['collect', '3.1.0-rc1'],
+    ['ignore', '3.1'],
+    ['ignore', '3.1.0-rc1'],
+  ] as const)('propagates malformed versions in %s mode: %s', (onIncompatible, openapi) => {
+    expect(() => upgrade({ openapi }, '3.2', { onIncompatible })).toThrow(`invalid OpenAPI version "${openapi}"`)
+  })
+
+  it.each(['collect', 'ignore'] as const)('propagates clone safety errors in %s mode', (onIncompatible) => {
+    const cyclic: UnknownObject = { openapi: '3.1.2' }
+    cyclic.self = cyclic
+    expect(() => upgrade(cyclic, '3.2', { onIncompatible })).toThrow('cyclic objects')
+    const shared = Array.from({ length: 2000 }, () => 'x')
+    const input = { openapi: '3.1.2', 'x-aliases': Array.from({ length: 1001 }, () => shared) }
+    expect(() => upgrade(input, '3.2', { onIncompatible })).toThrow('excessive YAML alias expansion')
+  })
+
+  it.each([{ swagger: '2.0' }, { openapi: '3.0.4' }, { openapi: '3.1.2' }, { openapi: '3.2.0' }])(
+    'returns compatible %j input as a document in ignore mode',
+    (version) => {
+      const input = { ...version, info: { title: 'API', version: '1' }, paths: {} }
+      const original = structuredClone(input)
+      const document = upgrade(input, '3.2', { onIncompatible: 'ignore' })
+
+      expect(document).toStrictEqual({ openapi: '3.2.0', info: input.info, paths: {} })
+      expect(input).toStrictEqual(original)
+      expect(document).not.toBe(input)
+      expectTypeOf(document).toEqualTypeOf<OpenAPIV3_2.Document>()
+    },
+  )
+
+  it.each(['3.0.4', '3.1.2'])('finishes migrations despite incompatibilities in %s input', (openapi) => {
+    const input = {
+      openapi,
+      info: { title: 'API', version: '1' },
+      paths: {},
+      servers: [{ url: 'https://{host}/{host}', variables: { host: { default: 'api' } } }],
+      components: {
+        parameters: { Id: { name: 'id', in: 'path', allowReserved: true } },
+        schemas: {
+          Attribute: { type: 'string', xml: { attribute: true } },
+          Pet: { type: 'object', discriminator: { propertyName: 'kind' } },
+        },
+        responses: { Xml: { description: 'OK', content: { 'application/xml': { schema: { type: 'object' } } } } },
+      },
+      'x-tagGroups': [{ name: 'Accounts', tags: ['users'] }],
+    }
+    const original = structuredClone(input)
+    const document = upgrade(input, '3.2', { onIncompatible: 'ignore' })
+
+    expect(document).toStrictEqual({
+      ...input,
+      openapi: '3.2.0',
+      components: {
+        ...input.components,
+        parameters: { Id: { name: 'id', in: 'path' } },
+        schemas: {
+          Attribute: { type: 'string', xml: { nodeType: 'attribute' } },
+          Pet: input.components.schemas.Pet,
+        },
+      },
+      tags: [
+        { name: 'Accounts', kind: 'nav' },
+        { name: 'users', parent: 'Accounts' },
+      ],
+    })
+    expect(input).toStrictEqual(original)
+    document.info.title = 'Changed'
+    expect(input).toStrictEqual(original)
+    expect(() => upgrade(input, '3.2')).toThrow(UpgradeIncompatibilityError)
+    expect(upgrade(input, '3.2', { onIncompatible: 'collect' }).document).toStrictEqual({
+      ...input,
+      openapi: openapi === '3.0.4' ? '3.1.1' : openapi,
+    })
+  })
+
+  it('uses attribute precedence for conflicting XML flags in ignore mode', () => {
+    const input = {
+      openapi: '3.1.2',
+      info: { title: 'API', version: '1' },
+      paths: {},
+      components: { schemas: { Value: { type: 'string', xml: { wrapped: true, attribute: true } } } },
+    }
+    expect(upgrade(input, '3.2', { onIncompatible: 'ignore' })).toStrictEqual({
+      ...input,
+      openapi: '3.2.0',
+      components: { schemas: { Value: { type: 'string', xml: { nodeType: 'attribute' } } } },
+    })
+    expect(() => upgrade(input, '3.2')).toThrow(UpgradeIncompatibilityError)
+  })
+
+  it('accepts a mode chosen at runtime', () => {
+    const input = { openapi: '3.1.2', info: { title: 'API', version: '1' }, paths: {} }
+    const run = (options: UpgradeOptions): ReturnType<typeof upgrade> => upgrade(input, '3.2', options)
+    expect(run({ onIncompatible: 'collect' })).toStrictEqual({
+      document: { ...input, openapi: '3.2.0' },
+      diagnostics: [],
+    })
+    expect(run({ onIncompatible: 'throw' })).toStrictEqual({ ...input, openapi: '3.2.0' })
+    expect(run({ onIncompatible: 'ignore' })).toStrictEqual({ ...input, openapi: '3.2.0' })
+  })
+
+  it.each(upgradeTargets)('preserves Swagger nullability when upgrading to %s', (version) => {
+    const nullableNumber = { type: 'number', 'x-nullable': true }
+    const data = { type: 'number', 'x-nullable': true }
+    const input = {
+      swagger: '2.0',
+      info: { title: 'Nullable values', version: '1' },
+      paths: {},
+      definitions: {
+        Value: {
+          type: 'object',
+          properties: {
+            value: nullableNumber,
+            requiredValue: { type: 'number', 'x-nullable': false },
+            invalid: { type: 'number', 'x-nullable': 'true' },
+            plain: { type: 'number' },
+            list: { type: 'array', 'x-nullable': true, items: nullableNumber },
+            map: { type: 'object', additionalProperties: nullableNumber },
+            reference: { $ref: '#/definitions/Number', 'x-nullable': true },
+            composed: { allOf: [{ $ref: '#/definitions/Number' }], 'x-nullable': true },
+            example: nullableNumber,
+            default: nullableNumber,
+            'x-nullable': { type: 'boolean' },
+          },
+          example: data,
+          default: data,
+          'x-custom': data,
+        },
+        Number: nullableNumber,
+      },
+    }
+    const document = (() => {
+      if (version === '3.0') {
+        return upgrade(input, '3.0')
+      }
+      return version === '3.1' ? upgrade(input, '3.1') : upgrade(input, '3.2')
+    })()
+    const number = version === '3.0' ? { type: 'number', nullable: true } : { type: ['number', 'null'] }
+    const reference =
+      version === '3.0'
+        ? { $ref: '#/components/schemas/Number', nullable: true }
+        : { anyOf: [{ $ref: '#/components/schemas/Number' }, { type: 'null' }] }
+
+    expect(document.components?.schemas).toStrictEqual({
+      Value: {
+        type: 'object',
+        properties: {
+          value: number,
+          requiredValue: { type: 'number' },
+          invalid: { type: 'number', 'x-nullable': 'true' },
+          plain: { type: 'number' },
+          list: {
+            ...(version === '3.0' ? { type: 'array', nullable: true } : { type: ['array', 'null'] }),
+            items: number,
+          },
+          map: { type: 'object', additionalProperties: number },
+          reference,
+          composed:
+            version === '3.0' ? { allOf: [{ $ref: '#/components/schemas/Number' }], nullable: true } : reference,
+          example: number,
+          default: number,
+          'x-nullable': { type: 'boolean' },
+        },
+        ...(version === '3.0' ? { example: data } : { examples: [data] }),
+        default: data,
+        'x-custom': data,
+      },
+      Number: number,
+    })
+  })
+
+  it.each(upgradeTargets)(
+    'preserves nullability in request, response, parameter and header schemas when upgrading to %s',
+    (version) => {
+      const number = { type: 'number', 'x-nullable': true }
+      const response = { description: 'A value', schema: number, headers: { 'X-Value': number } }
+      const input = {
+        swagger: '2.0',
+        info: { title: 'Nullable values', version: '1' },
+        parameters: { value: { name: 'value', in: 'query', ...number } },
+        responses: { Value: response },
+        paths: {
+          '/values': {
+            post: {
+              parameters: [{ name: 'body', in: 'body', schema: number }],
+              responses: { 200: response },
+            },
+            get: {
+              parameters: [{ name: 'value', in: 'query', ...number }],
+              responses: { 200: { description: 'OK' } },
+            },
+            put: {
+              parameters: [{ name: 'value', in: 'formData', ...number }],
+              responses: { 200: { description: 'OK' } },
+            },
+          },
+        },
+      }
+      const document = (() => {
+        if (version === '3.0') {
+          return upgrade(input, '3.0')
+        }
+        return version === '3.1' ? upgrade(input, '3.1') : upgrade(input, '3.2')
+      })()
+      const schema = version === '3.0' ? { type: 'number', nullable: true } : { type: ['number', 'null'] }
+      expect(document.paths?.['/values']?.post?.requestBody?.content?.['application/json']?.schema).toStrictEqual(
+        schema,
+      )
+      expect(document.paths?.['/values']?.post?.responses?.[200]?.content?.['application/json']?.schema).toStrictEqual(
+        schema,
+      )
+      expect(document.paths?.['/values']?.post?.responses?.[200]?.headers?.['X-Value']?.schema).toStrictEqual(schema)
+      expect(document.paths?.['/values']?.get?.parameters?.[0]?.schema).toStrictEqual(schema)
+      expect(
+        document.paths?.['/values']?.put?.requestBody?.content?.['multipart/form-data']?.schema?.properties?.value,
+      ).toStrictEqual(schema)
+      expect(document.components?.parameters?.value?.schema).toStrictEqual(schema)
+      expect(document.components?.responses?.Value?.content?.['application/json']?.schema).toStrictEqual(schema)
+      expect(document.components?.responses?.Value?.headers?.['X-Value']?.schema).toStrictEqual(schema)
+    },
+  )
+})

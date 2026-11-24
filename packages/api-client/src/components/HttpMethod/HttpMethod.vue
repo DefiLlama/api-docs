@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { cva, cx, ScalarListbox } from '@scalar/components'
+import { ScalarListbox } from '@scalar/components/listbox'
 import {
   getHttpMethodInfo,
   REQUEST_METHODS,
 } from '@scalar/helpers/http/http-info'
-import type { RequestMethod } from '@scalar/oas-utils/entities/spec'
+import { objectEntries } from '@scalar/helpers/object/object-entries'
+import { cva, cx } from '@scalar/use-hooks/useBindCx'
 import { computed } from 'vue'
 
 const props = withDefaults(
@@ -17,17 +18,30 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'change', value: RequestMethod): void
+  (e: 'change', value: string): void
 }>()
 
 const method = computed(() => getHttpMethodInfo(props.method))
-const methodOptions = Object.entries(REQUEST_METHODS).map(([id]) => ({
-  id: id as RequestMethod,
-  label: id.toUpperCase(),
-  color: getHttpMethodInfo(id).colorClass,
-}))
+const methodOptions = computed(() => {
+  const options = objectEntries(REQUEST_METHODS).map(([id]) => ({
+    id: String(id),
+    label: id.toUpperCase(),
+    color: getHttpMethodInfo(id).colorClass,
+  }))
+
+  // Keep document-defined methods selectable without changing their spelling.
+  if (!options.some(({ id }) => id === props.method)) {
+    options.push({
+      id: props.method,
+      label: props.method,
+      color: method.value.colorClass,
+    })
+  }
+
+  return options
+})
 const selectedMethod = computed({
-  get: () => methodOptions.find(({ id }) => id === props.method),
+  get: () => methodOptions.value.find(({ id }) => id === props.method),
   set: (opt) => opt?.id && emit('change', opt.id),
 })
 
@@ -39,7 +53,7 @@ const variants = cva({
       false: 'rounded-full',
     },
     isEditable: {
-      true: 'http-bg-gradient rounded-md border border-r',
+      true: 'http-bg-gradient rounded-md border',
       false: 'cursor-auto',
     },
   },

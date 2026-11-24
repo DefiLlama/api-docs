@@ -1,9 +1,9 @@
 import SwaggerParser from '@apidevtools/swagger-parser'
+import type { AnyObject } from '@scalar/types/utils'
 import { diff } from 'just-diff'
 import { expect, test } from 'vitest'
 
 import { load, normalize } from '../src/index'
-import type { AnyObject } from '../src/types'
 import { dereference } from '../src/utils/dereference'
 
 const expectedErrors = {
@@ -77,8 +77,8 @@ const fetched = await Promise.all(
 
 console.log(`[openapi-parser-diff.test.ts] Successfully fetched ${fetched.length} files to test`)
 
-/** This test suite parses a large number of real-world OpenAPI files */
-test.concurrent.each(fetched)('diff $file', async ({ file, content }) => {
+/** Large API descriptions need extra time when parsed concurrently on slower CI runners. */
+test.concurrent.each(fetched)('diff $file', { timeout: 15_000 }, async ({ file, content }) => {
   const specification = normalize(content)
 
   const oldSchema = (await new Promise((resolve, reject) => {
@@ -98,8 +98,8 @@ test.concurrent.each(fetched)('diff $file', async ({ file, content }) => {
     console.error('[@apidevtools/swagger-parser]', error.message)
   })) as any
 
-  const { filesystem } = await load(structuredClone(specification))
-  const { schema: newSchema, errors } = await dereference(filesystem)
+  const { filesystem } = await load(content)
+  const { schema: newSchema, errors } = dereference(filesystem)
 
   // Errors expected
   if (expectedErrors[file]) {
@@ -111,6 +111,31 @@ test.concurrent.each(fetched)('diff $file', async ({ file, content }) => {
     expect(Object.keys(oldSchema?.paths ?? {}).length).toBeLessThanOrEqual(Object.keys(newSchema?.paths ?? {}).length)
 
     if (oldSchema) {
+      // SwaggerParser dereferences extension data; Scalar intentionally preserves it.
+      if (file === 'oas/files/ablynetcontrol.yaml') {
+        const extensionPaths = [
+          ['components', 'schemas', 'ifttt_rule_patch', 'x-source'],
+          ['components', 'schemas', 'rule_patch', 'oneOf', 1, 'x-source'],
+          [
+            'paths',
+            '/apps/{app_id}/rules/{rule_id}',
+            'patch',
+            'requestBody',
+            'content',
+            'application/json',
+            'schema',
+            'oneOf',
+            1,
+            'x-source',
+          ],
+        ]
+        for (const path of extensionPaths) {
+          const preserved = { $ref: '#/components/schemas/rule_source' }
+          expect(get(newSchema, path)).toStrictEqual(preserved)
+          get(oldSchema, path.slice(0, -1))['x-source'] = preserved
+        }
+      }
+
       // Any difference?
       let result: any[] = []
 

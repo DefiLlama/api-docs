@@ -1,0 +1,93 @@
+import { isObject } from '@scalar/helpers/object/is-object'
+
+import { getResolvedAsyncApiRef } from './get-resolved-async-api-ref'
+
+type MergeContext = 'object' | 'map' | 'data' | 'reference'
+
+const schemaMaps = new Set(['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas'])
+const dataFields = new Set(['example', 'examples', 'default', 'enum', 'const', 'value', 'dataValue'])
+
+/** Select how the next trait field treats schema references and literal data. */
+const getChildContext = (context: MergeContext, key: string): MergeContext => {
+  if (context === 'data') {
+    return 'data'
+  }
+  if (context === 'map') {
+    return 'object'
+  }
+  if (key === 'channel') {
+    return 'reference'
+  }
+  if (dataFields.has(key) || key.startsWith('x-')) {
+    return 'data'
+  }
+  return schemaMaps.has(key) ? 'map' : 'object'
+}
+
+/**
+ * Apply JSON Merge Patch to resolved trait fields. Unlike mergeObjects, null removes a key.
+ * Resolve schema references before merging so a message can extend referenced trait headers.
+ */
+const mergeTraitFields = (
+  target: unknown,
+  patch: unknown,
+  context: MergeContext = 'object',
+  ancestors = new WeakMap<object, unknown>(),
+): unknown => {
+  // Reply channels identify a location in the document, so retain their reference wrappers.
+  if (context === 'reference') {
+    return patch
+  }
+
+  const resolvedPatch =
+    context === 'object' && isObject(patch) && typeof patch.$ref === 'string' ? getResolvedAsyncApiRef(patch) : patch
+  if (!isObject(resolvedPatch)) {
+    return resolvedPatch
+  }
+
+  // Resolved schemas can be recursive. Keep their cycles without changing the source document.
+  if (ancestors.has(resolvedPatch)) {
+    return ancestors.get(resolvedPatch)
+  }
+  const resolvedTarget =
+    context === 'object' && isObject(target) && typeof target.$ref === 'string'
+      ? getResolvedAsyncApiRef(target)
+      : target
+  const result: Record<string, unknown> = isObject(resolvedTarget) ? { ...resolvedTarget } : {}
+  ancestors.set(resolvedPatch, result)
+  for (const [key, value] of Object.entries(resolvedPatch)) {
+    if (value === null) {
+      delete result[key]
+    } else if (value !== undefined) {
+      // Schema names and example data can contain literal $ref keys without being references.
+      const childContext = getChildContext(context, key)
+      // Define an own property even for schema properties named __proto__.
+      Object.defineProperty(result, key, {
+        value: mergeTraitFields(Object.hasOwn(result, key) ? result[key] : undefined, value, childContext, ancestors),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      })
+    }
+  }
+  ancestors.delete(resolvedPatch)
+  return result
+}
+
+/** Merge traits in order, then apply the target's own fields with highest priority. */
+export const resolveTraits = <T extends object>(target: T, traits: readonly object[]): T => {
+  if (traits.length === 0) {
+    return target
+  }
+
+  const inherited = traits.reduce<Record<string, unknown>>((fields, trait) => {
+    const resolved = getResolvedAsyncApiRef(trait)
+    return resolved ? (mergeTraitFields(fields, resolved) as Record<string, unknown>) : fields
+  }, {})
+
+  // Only overlay fields supplied by traits. Unrelated fields keep their references and identity.
+  const overrides = Object.fromEntries(Object.entries(target).filter(([key]) => Object.hasOwn(inherited, key)))
+  const merged = mergeTraitFields(inherited, overrides) as Record<string, unknown>
+  const ownFields = Object.fromEntries(Object.entries(target).filter(([key]) => !Object.hasOwn(inherited, key)))
+  return { ...ownFields, ...merged } as T
+}

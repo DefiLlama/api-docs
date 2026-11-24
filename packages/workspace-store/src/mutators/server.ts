@@ -1,40 +1,371 @@
-import type { ServerObject } from '@/schemas/v3.1/strict/server'
+import { findVariables } from '@scalar/helpers/regex/find-variables'
+import type { AsyncApiServerVariableObject } from '@scalar/types/asyncapi/3.1'
+
+import type { ServerEvents, ServerMeta } from '@/events/definitions/server'
+import { getPathItemOperation } from '@/helpers/for-each-path-item-operation'
+import { getResolvedRef } from '@/helpers/get-resolved-ref'
+import { unpackProxyObject } from '@/helpers/unpack-proxy'
+import { isAsyncApiDocument, isOpenApiDocument } from '@/schemas/type-guards'
+import { coerceValue } from '@/schemas/typebox-coerce'
+import { type ServerObject, ServerObjectSchema } from '@/schemas/v3.2/strict/openapi-document'
+import type { WorkspaceDocument } from '@/schemas/workspace'
 
 /**
- * Provides mutator functions for managing an array of OpenAPI ServerObject entries.
- *
- * @param target - The array of ServerObject to mutate. If not provided, mutators will be no-ops.
- * @returns An object with addServer and deleteServer methods.
+ * Target for server mutators: has a servers array and optional selected-server storage.
+ * Document and (resolved) operation both have this shape.
  */
-export const serverMutators = (target?: ServerObject[]) => {
-  /**
-   * Adds a new ServerObject to the target array.
-   * @param server - The ServerObject to add.
-   * @returns true if the server was added, false if target is undefined.
-   */
-  const addServer = (server: ServerObject): boolean => {
-    if (!target) {
-      return false
-    }
-    target.push(server)
-    return true
+type ServerTarget = {
+  servers?: ServerObject[]
+  'x-scalar-selected-server'?: string
+}
+
+/**
+ * Resolves the server target (document or operation) from meta.
+ * Document-level servers live on the document; operation-level servers on the operation object.
+ */
+const getServerTarget = (document: WorkspaceDocument | null, meta: ServerMeta): ServerTarget | null => {
+  if (!isOpenApiDocument(document)) {
+    return null
+  }
+  if (meta.type === 'document') {
+    return document
+  }
+  return getResolvedRef(getPathItemOperation(document.paths?.[meta.path], meta.method)) ?? null
+}
+
+/**
+ * Initializes the servers for the document or operation based on meta.
+ *
+ * @param document - The document to initialize the servers for
+ * @param meta - Target context (document or operation)
+ */
+export const initializeServers = (
+  document: WorkspaceDocument | null,
+  { meta }: ServerEvents['server:initialize:servers'],
+) => {
+  const target = getServerTarget(document, meta)
+
+  if (!target) {
+    console.error('Target not found', meta)
+    return undefined
+  }
+  target.servers = []
+  return target.servers
+}
+
+/**
+ * Adds a new ServerObject to the document or operation based on meta.
+ *
+ * @param document - The document to add the server to
+ * @returns the new server object or undefined if the target is not found
+ */
+export const addServer = (
+  document: WorkspaceDocument | null,
+  { url, select, meta }: ServerEvents['server:add:server'],
+): ServerObject | undefined => {
+  const target = getServerTarget(document, meta)
+  if (!target) {
+    console.error('Target not found', meta)
+    return undefined
   }
 
-  /**
-   * Deletes a ServerObject at the specified index from the target array.
-   * @param index - The index of the server to delete.
-   * @returns true if the server was deleted, false if target is undefined.
-   */
-  const deleteServer = (index: number): boolean => {
-    if (!target) {
-      return false
-    }
-    target.splice(index, 1)
-    return true
+  const parsed = coerceValue(ServerObjectSchema, { url })
+
+  if (!target.servers) {
+    target.servers = []
+  }
+  target.servers.push(parsed)
+
+  if (select) {
+    target['x-scalar-selected-server'] = parsed.url
   }
 
+  return parsed
+}
+
+/**
+ * Creates a map of variable names to their character positions in a URL.
+ * Used to detect renamed variables by position matching.
+ */
+const getVariablePositions = (url: string, variables: readonly string[]): Record<string, number> => {
+  const positions: Record<string, number> = {}
+
+  for (const varName of variables) {
+    const position = url.indexOf(`{${varName}}`)
+    if (position !== -1) {
+      positions[varName] = position
+    }
+  }
+
+  return positions
+}
+
+type VariableConfig = {
+  description?: string
+  default?: string
+  enum?: string[]
+}
+
+/**
+ * Syncs server variables when the URL changes.
+ *
+ * Preserves variable configurations by:
+ * 1. Keeping variables with matching names
+ * 2. Renaming variables at the same position
+ * 3. Creating new variables with empty defaults
+ */
+const syncVariablesForUrlChange = (
+  newUrl: string,
+  oldUrl: string,
+  existingVariables: Record<string, VariableConfig>,
+): Record<string, VariableConfig> => {
+  // Filter out undefined values from findVariables results
+  const oldVariables = findVariables(oldUrl, { includePath: true, includeEnv: false }).filter(
+    (v): v is string => v !== undefined,
+  )
+  const newVariables = findVariables(newUrl, { includePath: true, includeEnv: false }).filter(
+    (v): v is string => v !== undefined,
+  )
+
+  const oldPositions = getVariablePositions(oldUrl, oldVariables)
+  const newPositions = getVariablePositions(newUrl, newVariables)
+
+  const usedOldVariables = new Set<string>()
+  const syncedVariables: Record<string, VariableConfig> = {}
+
+  for (const newVar of newVariables) {
+    // Case 1: Variable with same name exists - preserve its config
+    if (existingVariables[newVar]) {
+      syncedVariables[newVar] = existingVariables[newVar]
+      usedOldVariables.add(newVar)
+      continue
+    }
+
+    // Case 2: Check for variable at same position (likely a rename)
+    const newVarPosition = newPositions[newVar]
+    const oldVarAtPosition = oldVariables.find(
+      (oldVar) => oldPositions[oldVar] === newVarPosition && !usedOldVariables.has(oldVar),
+    )
+
+    if (oldVarAtPosition && existingVariables[oldVarAtPosition]) {
+      // Rename: transfer the old variable's config to the new name
+      syncedVariables[newVar] = existingVariables[oldVarAtPosition]
+      usedOldVariables.add(oldVarAtPosition)
+      continue
+    }
+
+    // Case 3: New variable - create with empty default
+    syncedVariables[newVar] = { default: '' }
+  }
+
+  return syncedVariables
+}
+
+/**
+ * Updates a ServerObject in the document or operation based on meta.
+ * When the URL changes, intelligently syncs variables by preserving configurations
+ * for renamed variables (detected by position) and existing variables.
+ *
+ * @param document - The document containing the server to update
+ * @param index - The index of the server to update
+ * @param server - The partial server object with fields to update
+ * @param meta - Target context (document or operation)
+ * @returns the updated server object or undefined if the server is not found
+ */
+export const updateServer = (
+  document: WorkspaceDocument | null,
+  { index, server, meta }: ServerEvents['server:update:server'],
+): ServerObject | undefined => {
+  const target = getServerTarget(document, meta)
+  if (!target) {
+    return undefined
+  }
+
+  const oldServer = unpackProxyObject(target.servers?.[index], { depth: 1 })
+  if (!oldServer) {
+    console.error('Server not found at index:', index)
+    return undefined
+  }
+
+  const oldUrl = oldServer.url
+  const updatedServer = coerceValue(ServerObjectSchema, { ...oldServer, ...server })
+
+  const hasUrlChanged = oldUrl && oldUrl !== updatedServer.url
+  if (hasUrlChanged) {
+    const existingVariables = updatedServer.variables ?? {}
+    updatedServer.variables = syncVariablesForUrlChange(updatedServer.url, oldUrl, existingVariables)
+
+    if (target['x-scalar-selected-server'] === oldUrl) {
+      target['x-scalar-selected-server'] = updatedServer.url
+    }
+  }
+
+  if (!target.servers) {
+    target.servers = [updatedServer]
+  } else {
+    target.servers[index] = updatedServer
+  }
+
+  return updatedServer
+}
+
+/**
+ * Deletes a ServerObject at the specified index from the document or operation based on meta.
+ *
+ * @param document - The document to delete the server from
+ * @param index - The index of the server to delete
+ * @param meta - Target context (document or operation)
+ */
+export const deleteServer = (
+  document: WorkspaceDocument | null,
+  { index, meta }: ServerEvents['server:delete:server'],
+) => {
+  const target = getServerTarget(document, meta)
+  if (!target?.servers) {
+    return
+  }
+
+  const url = target.servers[index]?.url
+  target.servers.splice(index, 1)
+
+  if (target['x-scalar-selected-server'] === url) {
+    target['x-scalar-selected-server'] = target.servers[0]?.url ?? undefined
+  }
+}
+
+/**
+ * Clears all servers from the document or operation based on meta.
+ *
+ * @param document - The document to clear the servers from
+ * @param meta - Target context (document or operation)
+ */
+export const clearServers = (document: WorkspaceDocument | null, { meta }: ServerEvents['server:clear:servers']) => {
+  const target = getServerTarget(document, meta)
+  if (!target) {
+    return
+  }
+  // Remove the servers array
+  target.servers = undefined
+  // Clear the selected server
+  target['x-scalar-selected-server'] = undefined
+}
+
+/**
+ * Updates a server variable for the document or operation based on meta.
+ *
+ * @param document - The document to update the server variables in
+ * @param index - The index of the server to update
+ * @param key - The key of the variable to update
+ * @param value - The new value of the variable
+ * @param meta - Target context (document or operation)
+ * @returns the updated variable or undefined if the variable is not found
+ */
+export const updateServerVariables = (
+  document: WorkspaceDocument | null,
+  { index, key, value, meta }: ServerEvents['server:update:variables'],
+) => {
+  const target = getServerTarget(document, meta)
+  const variable = target?.servers?.[index]?.variables?.[key]
+  if (!variable) {
+    console.error('Variable not found', key, index)
+    return
+  }
+
+  variable.default = value
+  return variable
+}
+
+/**
+ * Updates the selected server for the document or operation based on meta.
+ *
+ * @param document - The document to update the selected server in
+ * @param url - The URL of the server to select (or '' to clear)
+ * @param meta - Target context (document or operation)
+ * @returns the url of the selected server or undefined if the target is not found
+ */
+export const updateSelectedServer = (
+  document: WorkspaceDocument | null,
+  { url, meta }: ServerEvents['server:update:selected'],
+): string | undefined => {
+  const target = getServerTarget(document, meta)
+  if (!target) {
+    return
+  }
+
+  if (url === '') {
+    target['x-scalar-selected-server'] = ''
+    return ''
+  }
+
+  target['x-scalar-selected-server'] = target['x-scalar-selected-server'] === url ? '' : url
+  return target['x-scalar-selected-server']
+}
+
+/**
+ * Updates the selected server for an AsyncAPI document.
+ *
+ * AsyncAPI servers are a named map, so the selection is stored as the server
+ * name in `x-scalar-selected-server`. There is always an effective server
+ * (`getSelectedAsyncApiServer` falls back to the first one), so this simply sets
+ * the selection rather than toggling it off.
+ *
+ * @param document - The document to update the selected server in
+ * @param name - The name of the server to select
+ * @returns the name of the selected server or undefined if the document is not AsyncAPI
+ */
+export const updateSelectedAsyncApiServer = (
+  document: WorkspaceDocument | null,
+  { name }: ServerEvents['asyncapi-server:update:selected'],
+): string | undefined => {
+  if (!isAsyncApiDocument(document)) {
+    return undefined
+  }
+
+  document['x-scalar-selected-server'] = name
+  return document['x-scalar-selected-server']
+}
+
+/**
+ * Updates a server variable for an AsyncAPI document, identified by server name.
+ *
+ * @param document - The document to update the server variables in
+ * @param name - The name of the server to update
+ * @param key - The key of the variable to update
+ * @param value - The new value of the variable
+ * @returns the updated variable or undefined if it is not found
+ */
+export const updateAsyncApiServerVariables = (
+  document: WorkspaceDocument | null,
+  { name, key, value }: ServerEvents['asyncapi-server:update:variables'],
+): AsyncApiServerVariableObject | undefined => {
+  if (!isAsyncApiDocument(document)) {
+    return undefined
+  }
+
+  const server = getResolvedRef(document.servers?.[name])
+  const variable = server?.variables?.[key] ? getResolvedRef(server.variables[key]) : undefined
+  if (!variable) {
+    console.error('Variable not found', key, name)
+    return undefined
+  }
+
+  variable.default = value
+  return variable
+}
+
+export const serverMutatorsFactory = ({ document }: { document: WorkspaceDocument | null }) => {
   return {
-    addServer,
-    deleteServer,
+    initializeServers: (payload: ServerEvents['server:initialize:servers']) => initializeServers(document, payload),
+    addServer: (payload: ServerEvents['server:add:server']) => addServer(document, payload),
+    updateServer: (payload: ServerEvents['server:update:server']) => updateServer(document, payload),
+    deleteServer: (payload: ServerEvents['server:delete:server']) => deleteServer(document, payload),
+    clearServers: (payload: ServerEvents['server:clear:servers']) => clearServers(document, payload),
+    updateServerVariables: (payload: ServerEvents['server:update:variables']) =>
+      updateServerVariables(document, payload),
+    updateSelectedServer: (payload: ServerEvents['server:update:selected']) => updateSelectedServer(document, payload),
+    updateSelectedAsyncApiServer: (payload: ServerEvents['asyncapi-server:update:selected']) =>
+      updateSelectedAsyncApiServer(document, payload),
+    updateAsyncApiServerVariables: (payload: ServerEvents['asyncapi-server:update:variables']) =>
+      updateAsyncApiServerVariables(document, payload),
   }
 }

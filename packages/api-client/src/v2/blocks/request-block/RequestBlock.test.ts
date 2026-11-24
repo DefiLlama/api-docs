@@ -1,0 +1,890 @@
+import { type ApiReferenceEvents, createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import type { OperationObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { type VueWrapper, enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { type DefineComponent, defineComponent, markRaw, nextTick } from 'vue'
+
+import RequestBody from '@/v2/blocks/request-block/components/RequestBody.vue'
+import RequestParams from '@/v2/blocks/request-block/components/RequestParams.vue'
+import type { TableRow } from '@/v2/blocks/request-block/components/RequestTableRow.vue'
+import { AuthSelector } from '@/v2/blocks/scalar-auth-selector-block'
+
+import RequestBlock, { type RequestBlockProps } from './RequestBlock.vue'
+
+const defaultProps = {
+  method: 'get' as const,
+  path: 'http://example.com/foo',
+  operation: {
+    summary: '',
+  },
+  layout: 'web' as const,
+  exampleKey: 'example-1',
+  securitySchemes: {},
+  selectedSecurity: { selectedIndex: 0, selectedSchemes: [] },
+  selectedSecuritySchemes: [],
+  securityRequirements: [],
+  environment: {
+    color: 'blue',
+    variables: [],
+    description: 'Test Environment',
+  },
+  authMeta: { type: 'document' as const },
+  server: null,
+  proxyUrl: '',
+  plugins: [],
+  eventBus: createWorkspaceEventBus(),
+  clientOptions: [],
+  selectedClient: 'shell/curl' as const,
+  workspaceCookies: [],
+  documentCookies: [],
+  documentSlug: 'test-document',
+  defaultHeaders: {},
+} satisfies RequestBlockProps
+
+enableAutoUnmount(afterEach)
+
+afterEach(() => {
+  document.body.replaceChildren()
+})
+
+describe('RequestBlock', () => {
+  it('preserves sibling values when editing a selected filter and resets selection across examples, operations, and documents', async () => {
+    const eventBus = createWorkspaceEventBus()
+    const upsert = vi.fn()
+    eventBus.on('operation:upsert:parameter', upsert)
+    const filter = {
+      name: 'filters',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: { type: 'object', properties: { empty: { type: 'string' }, status: { type: 'string' } } },
+      examples: { 'example-1': { value: { status: 'active' } } },
+    } satisfies NonNullable<OperationObject['parameters']>[number]
+    const wrapper = mount(RequestBlock, { props: { ...defaultProps, eventBus, operation: { parameters: [filter] } } })
+    const query = (): VueWrapper<InstanceType<typeof RequestParams>> => {
+      const section = wrapper
+        .findAllComponents(RequestParams)
+        .find((component) => component.props('selectExpandedParameters'))
+      if (!section) {
+        throw new Error('Missing query section')
+      }
+      return section
+    }
+    const select = async (): Promise<void> => {
+      const picker = query().getComponent({ name: 'ScalarCombobox' })
+      picker.vm.$emit('update:modelValue', picker.props('options')[0])
+      await flushPromises()
+    }
+    await select()
+    query()
+      .getComponent({ name: 'RequestTable' })
+      .vm.$emit('upsertRow', 0, { name: 'filters[empty]', value: 'new', isDisabled: false })
+    await vi.waitFor(() =>
+      expect(upsert.mock.calls[0]).toStrictEqual([
+        {
+          type: 'query',
+          payload: {
+            name: 'filters',
+            value: { empty: 'new', status: 'active' },
+            isDisabled: false,
+            propertyState: { path: ['empty'], isDisabled: false },
+          },
+          originalParameter: filter,
+          meta: { method: 'get', path: defaultProps.path, exampleKey: 'example-1' },
+        },
+      ]),
+    )
+    await wrapper.setProps({ exampleKey: 'other' })
+    expect(
+      query()
+        .getComponent({ name: 'RequestTable' })
+        .props('data')
+        .map((row: TableRow) => row.name),
+    ).toStrictEqual([])
+    await select()
+    await wrapper.setProps({ path: '/other' })
+    expect(
+      query()
+        .getComponent({ name: 'RequestTable' })
+        .props('data')
+        .map((row: TableRow) => row.name),
+    ).toStrictEqual([])
+    await select()
+    await wrapper.setProps({ documentSlug: 'other-document' })
+    expect(
+      query()
+        .getComponent({ name: 'RequestTable' })
+        .props('data')
+        .map((row: TableRow) => row.name),
+    ).toStrictEqual([])
+    wrapper.unmount()
+  })
+
+  it('renders a whole-query editor and disables adding named query parameters', () => {
+    const parameter = {
+      name: 'json',
+      in: 'querystring' as const,
+      required: true,
+      content: { 'application/json': { example: { term: 'hello' } } },
+    }
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        operation: { parameters: [parameter] },
+        exampleKey: 'default',
+      },
+    })
+    const querySection = wrapper
+      .findAllComponents(RequestParams)
+      .find((section) => section.props('title') === 'Query String')!
+    expect(querySection.props('showAddRowPlaceholder')).toBe(false)
+    expect(querySection.text()).toContain(
+      'This parameter supplies the entire query string, so additional named parameters cannot be added. Existing named parameters are sent after it; duplicate keys are preserved.',
+    )
+    expect(querySection.props('rows').map((row) => row.value)).toStrictEqual(['%7B%22term%22%3A%22hello%22%7D'])
+    wrapper.unmount()
+  })
+
+  it('renders request name input and emits on change for non-modal layout', async () => {
+    const eventBus = createWorkspaceEventBus()
+    const fn = vi.fn()
+    const wrapper = mount(RequestBlock, {
+      props: { ...defaultProps, eventBus },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    eventBus.on('operation:update:meta', fn)
+
+    const input = wrapper.find('input')
+    expect(input.exists()).toBe(true)
+    // Placeholder falls back to path without protocol when summary is empty
+    expect(input.attributes('placeholder')).toBe('example.com/foo')
+
+    await input.setValue('New Name')
+    await input.trigger('blur')
+
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({
+      payload: { summary: 'New Name' },
+      meta: { method: 'get', path: 'http://example.com/foo', exampleKey: 'example-1' },
+    })
+  })
+
+  it('renders summary as a heading instead of an input in modal layout', () => {
+    const wrapper = mount(RequestBlock, {
+      props: { ...defaultProps, operation: { summary: 'My request' }, layout: 'modal' },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    expect(wrapper.find('h2').text()).toBe('My request')
+  })
+
+  it('omits the summary heading when the operation has no summary', () => {
+    const wrapper = mount(RequestBlock, {
+      props: { ...defaultProps, operation: {}, layout: 'modal' },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    // An empty heading is worse than none, so nothing is announced. The
+    // collapsible sections below render their own headings, so look only for
+    // one holding the (absent) summary.
+    expect(wrapper.findAll('h2').map((heading) => heading.text())).not.toContain('')
+  })
+
+  it('applies aria-label with request summary on the container', () => {
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        operation: { ...(defaultProps.operation as any), summary: 'Summary' },
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    expect(wrapper.attributes('aria-label')).toBe('Request: Summary')
+  })
+
+  it('renders the filter tabs without aria-controls and keeps the tabpanel', () => {
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        operation: { ...(defaultProps.operation as any), summary: 'Summary' },
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const tabs = wrapper.findAll('[role="tab"]')
+    expect(tabs.length).toBeGreaterThan(0)
+    expect(tabs.every((tab) => tab.attributes('aria-controls') === undefined)).toBe(true)
+    expect(wrapper.find('[role="tabpanel"]').exists()).toBe(true)
+  })
+
+  it('shows Auth section opened in modal layout when security is required', () => {
+    const wrapper = mount(RequestBlock, {
+      attachTo: document.body,
+      props: {
+        ...defaultProps,
+        layout: 'modal',
+        securityRequirements: [{ a: [] }],
+        securitySchemes: {
+          a: {
+            type: 'apiKey',
+            'x-scalar-secret-token': '',
+            name: 'X-API-Key',
+            in: 'header',
+          },
+        },
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const auth = wrapper.findComponent(AuthSelector)
+    expect(auth.exists()).toBe(true)
+    expect(auth.isVisible()).toBe(true)
+    expect(auth.findComponent({ name: 'RequestAuthDataTable' }).isVisible()).toBe(true)
+  })
+
+  it('shows Auth section collapsed in modal layout when no security requirement is configured', () => {
+    const wrapper = mount(RequestBlock, {
+      attachTo: document.body,
+      props: {
+        ...defaultProps,
+        layout: 'modal',
+        securitySchemes: {
+          a: {
+            type: 'apiKey',
+            'x-scalar-secret-token': '',
+            name: 'X-API-Key',
+            in: 'header',
+          },
+        },
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const auth = wrapper.findComponent(AuthSelector)
+    expect(auth.exists()).toBe(true)
+    expect(auth.isVisible()).toBe(true)
+    expect(auth.findComponent({ name: 'RequestAuthDataTable' }).exists()).toBe(false)
+  })
+
+  it('hides Auth section in modal layout when no security is configured', () => {
+    const wrapper = mount(RequestBlock, {
+      attachTo: document.body,
+      props: {
+        ...defaultProps,
+        layout: 'modal',
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const auth = wrapper.findComponent(AuthSelector)
+    expect(auth.exists()).toBe(true)
+    // The stub element exists but is hidden via v-show
+    expect(auth.isVisible()).toBe(false)
+  })
+
+  it('shows Auth section when not in modal layout', () => {
+    const wrapper = mount(RequestBlock, {
+      attachTo: document.body,
+      props: { ...defaultProps },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const auth = wrapper.findComponent(AuthSelector)
+    expect(auth.exists()).toBe(true)
+    expect(auth.isVisible()).toBe(true)
+  })
+
+  it('hides request body for methods without a body', () => {
+    const wrapper = mount(RequestBlock, {
+      attachTo: document.body,
+      props: { ...defaultProps, method: 'get' },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const bodyGet = wrapper.findComponent(RequestBody)
+    expect(bodyGet.exists()).toBe(true)
+    expect(bodyGet.isVisible()).toBe(false)
+  })
+
+  it.each(['post', 'query'] as const)('shows the request body for %s', (method) => {
+    const wrapper = mount(RequestBlock, {
+      attachTo: document.body,
+      props: { ...defaultProps, method },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const bodyGet = wrapper.findComponent(RequestBody)
+    expect(bodyGet.exists()).toBe(true)
+    expect(bodyGet.isVisible()).toBe(true)
+  })
+
+  it('re-emits parameter upsert, and delete events with mapped types', () => {
+    const eventBus = createWorkspaceEventBus()
+    const fn = vi.fn()
+    eventBus.on('operation:upsert:parameter', fn)
+    eventBus.on('operation:delete:parameter', fn)
+    const wrapper = mount(RequestBlock, {
+      props: { ...defaultProps, eventBus },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const params = wrapper.findAllComponents({ name: 'RequestParams' })
+    expect(params.length).toBe(4)
+
+    const titleToType: Record<string, string> = {
+      Variables: 'path',
+      Cookies: 'cookie',
+      Headers: 'header',
+      'Query Parameters': 'query',
+    }
+
+    for (const p of params) {
+      const title = (p.props() as any).title as string
+      const expectedType = titleToType[title]
+
+      // Path (Variables) does not support adding new rows
+      if (expectedType !== 'path') {
+        // Add events are debounced, so we need to use fake timers
+        vi.useFakeTimers()
+        // For headers, index 0 is a default header (Accept), so use index 1 to add a new parameter
+        // For cookies and query, index 0 is fine as there are no default parameters
+        const addIndex = expectedType === 'header' ? 1 : 0
+        p.vm.$emit('upsert', addIndex, { name: 'k', value: 'v', isDisabled: false })
+        vi.advanceTimersByTime(400)
+        expect(fn).toHaveBeenCalledTimes(1)
+        expect(fn).toHaveBeenCalledWith({
+          type: expectedType,
+          originalParameter: null,
+          payload: { name: 'k', value: 'v', isDisabled: false },
+          meta: { method: 'get', path: 'http://example.com/foo', exampleKey: 'example-1' },
+        })
+        fn.mockReset()
+        vi.useRealTimers()
+      }
+
+      // Update events are debounced, so we need to use fake timers
+      vi.useFakeTimers()
+      // For headers, index 1 is a default header (Accept), so use index 2 to update a user parameter
+      // For cookies and query, index 1 is fine
+      // Since we don't have actual parameters in the context, originalParameter will be null
+      const updateIndex = expectedType === 'header' ? 2 : 1
+      p.vm.$emit('upsert', updateIndex, { name: 'x', value: 'y', isDisabled: false })
+      vi.advanceTimersByTime(400)
+      expect(fn).toHaveBeenCalledTimes(1)
+      expect(fn).toHaveBeenCalledWith({
+        type: expectedType,
+        originalParameter: null,
+        payload: { name: 'x', value: 'y', isDisabled: false },
+        meta: { method: 'get', path: 'http://example.com/foo', exampleKey: 'example-1' },
+      })
+      fn.mockReset()
+      vi.useRealTimers()
+    }
+  })
+
+  it('renders object query parameters as expanded query rows', () => {
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        operation: {
+          summary: '',
+          parameters: [
+            {
+              name: 'pageable',
+              in: 'query',
+              required: false,
+              schema: {
+                type: 'object',
+                properties: {
+                  page: {
+                    type: 'integer',
+                    format: 'int32',
+                  },
+                  size: {
+                    type: 'integer',
+                    format: 'int32',
+                  },
+                  sort: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                    },
+                  },
+                },
+              },
+            },
+            {
+              name: 'userSpec',
+              in: 'query',
+              required: false,
+              schema: {
+                type: 'object',
+                properties: {
+                  username: {
+                    type: 'string',
+                  },
+                  minAge: {
+                    type: 'integer',
+                    format: 'int32',
+                  },
+                  address: {
+                    type: 'string',
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const queryParams = wrapper
+      .findAllComponents({ name: 'RequestParams' })
+      .find((component) => (component.props() as any).title === 'Query Parameters')
+
+    expect((queryParams?.props() as any)?.rows.map((row: TableRow) => row.name)).toStrictEqual([
+      'page',
+      'size',
+      'sort',
+      'username',
+      'minAge',
+      'address',
+    ])
+  })
+
+  it('keeps deleted expanded query fields available for selection', async () => {
+    const eventBus = createWorkspaceEventBus()
+    const fn = vi.fn()
+    const pageable = {
+      name: 'pageable',
+      in: 'query',
+      required: false,
+      schema: {
+        type: 'object',
+        properties: {
+          page: {
+            type: 'integer',
+            format: 'int32',
+          },
+          size: {
+            type: 'integer',
+            format: 'int32',
+          },
+          sort: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+          },
+        },
+      },
+    } satisfies NonNullable<OperationObject['parameters']>[number]
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        eventBus,
+        operation: {
+          summary: '',
+          parameters: [pageable],
+        },
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    eventBus.on('operation:upsert:parameter', fn)
+
+    const getQueryParams = () => {
+      const queryParams = wrapper
+        .findAllComponents({ name: 'RequestParams' })
+        .find((component) => (component.props() as { title: string }).title === 'Query Parameters')
+
+      if (!queryParams) {
+        throw new Error('Query parameters section not found')
+      }
+
+      return queryParams
+    }
+
+    expect((getQueryParams().props() as { rows: TableRow[] }).rows.map((row) => row.name)).toStrictEqual([
+      'page',
+      'size',
+      'sort',
+    ])
+
+    getQueryParams().vm.$emit('delete', { index: 1 })
+    await nextTick()
+
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({
+      type: 'query',
+      payload: {
+        name: 'pageable',
+        value: {},
+        isDisabled: true,
+        propertyState: { path: ['size'] },
+      },
+      originalParameter: pageable,
+      meta: {
+        method: 'get',
+        path: 'http://example.com/foo',
+        exampleKey: 'example-1',
+      },
+    })
+    expect((getQueryParams().props() as { rows: TableRow[] }).rows.map((row) => row.name)).toStrictEqual([
+      'page',
+      'size',
+      'sort',
+    ])
+  })
+
+  it('clears renamed expanded query rows when the operation changes', async () => {
+    const pageable = {
+      name: 'pageable',
+      in: 'query',
+      required: false,
+      schema: {
+        type: 'object',
+        properties: {
+          page: {
+            type: 'integer',
+            format: 'int32',
+          },
+          size: {
+            type: 'integer',
+            format: 'int32',
+          },
+        },
+      },
+    } satisfies NonNullable<OperationObject['parameters']>[number]
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        operation: {
+          summary: '',
+          parameters: [pageable],
+        },
+      },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const getQueryParams = () => {
+      const queryParams = wrapper
+        .findAllComponents({ name: 'RequestParams' })
+        .find((component) => (component.props() as { title: string }).title === 'Query Parameters')
+
+      if (!queryParams) {
+        throw new Error('Query parameters section not found')
+      }
+
+      return queryParams
+    }
+
+    // Rename the first expanded row ("page" -> "pageX") by committing the key edit on blur.
+    getQueryParams().vm.$emit('upsert', 0, {
+      name: 'pageX',
+      value: '',
+      isDisabled: false,
+      shouldRenameExpandedRow: true,
+    })
+    await nextTick()
+
+    expect((getQueryParams().props() as { rows: TableRow[] }).rows.map((row) => row.name)).toStrictEqual([
+      'pageX',
+      'size',
+    ])
+
+    // Switching to another operation must drop the rename mapping, otherwise it would leak onto a
+    // different request that happens to share the same query parameter name.
+    await wrapper.setProps({ path: 'http://example.com/bar' })
+
+    expect((getQueryParams().props() as { rows: TableRow[] }).rows.map((row) => row.name)).toStrictEqual([
+      'page',
+      'size',
+    ])
+  })
+
+  it('re-emits parameter deleteAll for Cookies with mapped type', () => {
+    const eventBus = createWorkspaceEventBus()
+    const fn = vi.fn()
+    eventBus.on('operation:delete-all:parameters', fn)
+    const wrapper = mount(RequestBlock, {
+      props: { ...defaultProps, eventBus },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const cookies = wrapper
+      .findAllComponents({ name: 'RequestParams' })
+      .find((p) => (p.props() as any).title === 'Cookies')
+    expect(cookies).toBeTruthy()
+    cookies!.vm.$emit('deleteAll')
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({
+      type: 'cookie',
+      meta: { method: 'get', path: 'http://example.com/foo', exampleKey: 'example-1' },
+    })
+  })
+
+  it('re-emits request body events', () => {
+    const eventBus = createWorkspaceEventBus()
+    const fn = vi.fn()
+    eventBus.on('operation:update:requestBody:contentType', fn)
+    eventBus.on('operation:update:requestBody:value', fn)
+    eventBus.on('operation:update:requestBody:formValue', fn)
+    const wrapper = mount(RequestBlock, {
+      props: { ...defaultProps, method: 'post', eventBus },
+      global: {
+        stubs: {
+          RouterLink: true,
+        },
+      },
+    })
+
+    const body = wrapper.findComponent(RequestBody)
+    expect(body.exists()).toBe(true)
+
+    // Reset the mock to clear the initial contentType emission from the watcher
+    fn.mockReset()
+
+    const contentTypePayload = { value: 'application/json' }
+    body.vm.$emit('update:contentType', contentTypePayload)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({
+      payload: { contentType: 'application/json' },
+      meta: { method: 'post', path: 'http://example.com/foo', exampleKey: 'example-1' },
+    })
+    fn.mockReset()
+
+    vi.useFakeTimers()
+    const valuePayload = { payload: 'hello', contentType: 'application/json' }
+    body.vm.$emit('update:value', valuePayload)
+    vi.advanceTimersByTime(400)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({
+      payload: 'hello',
+      contentType: 'application/json',
+      meta: { method: 'post', path: 'http://example.com/foo', exampleKey: 'example-1' },
+    })
+    fn.mockReset()
+
+    // Add form row events are debounced when debounceKeySuffix is provided
+    vi.useFakeTimers()
+    const addFormRowPayload = {
+      payload: [{ name: 'a', value: 'b', isDisabled: false }],
+      contentType: 'application/json',
+      debounceKeySuffix: 'add-0',
+    }
+    body.vm.$emit('update:formValue', addFormRowPayload)
+    vi.advanceTimersByTime(400)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({
+      payload: [{ name: 'a', value: 'b', isDisabled: false }],
+      contentType: 'application/json',
+      meta: { method: 'post', path: 'http://example.com/foo', exampleKey: 'example-1' },
+    })
+    fn.mockReset()
+    vi.useRealTimers()
+
+    // Update form row events are debounced, so we need to use fake timers
+    vi.useFakeTimers()
+    const updateFormRowPayload = {
+      payload: [{ name: 'x', value: 'y', isDisabled: false }],
+      contentType: 'application/json',
+      debounceKeySuffix: '1-name',
+    }
+    body.vm.$emit('update:formValue', updateFormRowPayload)
+    vi.advanceTimersByTime(400)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({
+      payload: [{ name: 'x', value: 'y', isDisabled: false }],
+      contentType: 'application/json',
+      meta: { method: 'post', path: 'http://example.com/foo', exampleKey: 'example-1' },
+    })
+    fn.mockReset()
+    vi.useRealTimers()
+  })
+
+  it('renders plugin component when provided', () => {
+    type ExtensionUpdatePayload = ApiReferenceEvents['operation:update:extension']['payload']
+
+    const PluginRequestComponent = markRaw(
+      defineComponent({
+        template: '<div>Plugin Request Component</div>',
+      }) as DefineComponent<
+        { operation?: OperationObject },
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        { 'operation:update:extension': (payload: ExtensionUpdatePayload) => void }
+      >,
+    )
+
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        plugins: [
+          {
+            components: {
+              request: {
+                component: PluginRequestComponent,
+              },
+            },
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Plugin Request Component')
+  })
+  const operation = {
+    summary: 'Create a user',
+    requestBody: {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object' as const,
+            properties: { name: { type: 'string' as const, examples: ['Ada'] } },
+          },
+          examples: { custom: { value: { name: 'custom' } } },
+        },
+      },
+    },
+  }
+
+  it('creates a new example seeded with the generated body and navigates to it', async () => {
+    const eventBus = createWorkspaceEventBus()
+    const createDraft = vi.fn()
+    const updateContentType = vi.fn()
+    const updateValue = vi.fn()
+    const navigate = vi.fn()
+
+    eventBus.on('operation:create:draft-example', createDraft)
+    eventBus.on('operation:update:requestBody:contentType', updateContentType)
+    eventBus.on('operation:update:requestBody:value', updateValue)
+    eventBus.on('ui:navigate', navigate)
+
+    const wrapper = mount(RequestBlock, {
+      props: { ...defaultProps, method: 'post' as const, eventBus, exampleKey: 'custom', operation },
+    })
+
+    await wrapper.findComponent(RequestBody).vm.$emit('generate:example', { contentType: 'application/json' })
+    await nextTick()
+
+    const meta = { path: defaultProps.path, method: 'post', exampleKey: 'Generated from schema' }
+
+    expect(createDraft).toHaveBeenCalledWith({
+      documentName: 'test-document',
+      meta: { path: defaultProps.path, method: 'post' },
+      exampleName: 'Generated from schema',
+    })
+    expect(updateContentType).toHaveBeenCalledWith({
+      payload: { contentType: 'application/json' },
+      meta,
+    })
+    expect(updateValue).toHaveBeenCalledWith({
+      payload: JSON.stringify({ name: 'Ada' }, null, 2),
+      contentType: 'application/json',
+      meta,
+    })
+    expect(navigate).toHaveBeenCalledWith({
+      page: 'example',
+      documentSlug: 'test-document',
+      path: defaultProps.path,
+      method: 'post',
+      exampleName: 'Generated from schema',
+    })
+  })
+
+  it('picks a free name when a generated example already exists', async () => {
+    const eventBus = createWorkspaceEventBus()
+    const createDraft = vi.fn()
+    eventBus.on('operation:create:draft-example', createDraft)
+
+    const wrapper = mount(RequestBlock, {
+      props: {
+        ...defaultProps,
+        method: 'post' as const,
+        eventBus,
+        exampleKey: 'custom',
+        operation: { ...operation, 'x-draft-examples': ['Generated from schema'] },
+      },
+    })
+
+    await wrapper.findComponent(RequestBody).vm.$emit('generate:example', { contentType: 'application/json' })
+    await nextTick()
+
+    expect(createDraft).toHaveBeenCalledExactlyOnceWith({
+      documentName: 'test-document',
+      meta: { path: defaultProps.path, method: 'post' },
+      exampleName: 'Generated from schema (2)',
+    })
+  })
+})

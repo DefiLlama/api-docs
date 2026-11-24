@@ -1,4 +1,4 @@
-import type { NuxtConfig } from 'nuxt/schema'
+import { type NuxtConfig, defineNuxtConfig } from 'nuxt/config'
 
 export default defineNuxtConfig({
   modules: ['@scalar/nuxt'],
@@ -6,13 +6,13 @@ export default defineNuxtConfig({
   scalar: {
     configurations: [
       {
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=yaml',
         pathRouting: {
           basePath: '/yaml',
         },
       },
       {
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
         pathRouting: {
           basePath: '/json',
         },

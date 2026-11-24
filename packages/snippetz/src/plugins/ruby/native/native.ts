@@ -1,6 +1,75 @@
-import { native } from '@/httpsnippet-lite/esm/targets/ruby/native/client'
-import { convertWithHttpSnippetLite } from '@/utils/convertWithHttpSnippetLite'
 import type { Plugin } from '@scalar/types/snippetz'
+
+import { mergeCookieHeaders } from '@/libs/cookies'
+import { joinUrlAndQuery, normalizeMethod } from '@/libs/http'
+
+/** Escapes a double-quoted Ruby string, including a `#` that would otherwise start `#{}`, `#$` or `#@` interpolation. */
+const escapeRubyDoubleQuoted = (value: string): string =>
+  value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/#(?=[{$@])/g, '\\#')
+
+const escapeRubySingleQuoted = (value: string): string => value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+
+/**
+ * Builds a double-quoted Ruby string literal. JSON string escapes are valid in Ruby, but a `#` followed by
+ * `{`, `$` or `@` would start interpolation, so it is escaped as well.
+ */
+const toRubyStringLiteral = (value: string): string => JSON.stringify(value).replace(/#(?=[{$@])/g, '\\#')
+
+const encodeFormComponent = (value: string): string => encodeURIComponent(value).replace(/'/g, '%27')
+
+const standardMethods = new Set([
+  'GET',
+  'POST',
+  'HEAD',
+  'DELETE',
+  'PATCH',
+  'PUT',
+  'OPTIONS',
+  'COPY',
+  'LOCK',
+  'UNLOCK',
+  'MOVE',
+  'TRACE',
+])
+
+const toRubyMethodClass = (method: string): string =>
+  standardMethods.has(method) ? method.charAt(0) + method.slice(1).toLowerCase() : 'CustomRequest'
+
+const maybeAddCustomMethodClass = (lines: string[], method: string, hasBody: boolean): void => {
+  if (standardMethods.has(method)) {
+    return
+  }
+
+  const methodClass = toRubyMethodClass(method)
+  lines.push(`class Net::HTTP::${methodClass} < Net::HTTPRequest`)
+  lines.push(`  METHOD = '${escapeRubySingleQuoted(method)}'`)
+  lines.push(`  REQUEST_HAS_BODY = '${hasBody ? 'true' : 'false'}'`)
+  lines.push('  RESPONSE_HAS_BODY = true')
+  lines.push('end')
+  lines.push('')
+}
+
+const encodeUrlWithPathPreservedBrackets = (url: string): string => {
+  try {
+    const parsedUrl = new URL(url)
+    // Preserve existing escapes and reserved path characters from the request builder.
+    const encodedPath = parsedUrl.pathname.replace(/%[0-9a-f]{2}|[\s\S]/giu, (character) =>
+      /^%[0-9a-f]{2}$/i.test(character) || character === '[' || character === ']' ? character : encodeURI(character),
+    )
+
+    // Keep legacy behavior from the previous converter: omit trailing slash for origin-only URLs.
+    if (parsedUrl.pathname === '/') {
+      return `${parsedUrl.origin}${parsedUrl.search}${parsedUrl.hash}`
+    }
+
+    return `${parsedUrl.origin}${encodedPath}${parsedUrl.search}${parsedUrl.hash}`
+  } catch {
+    return url
+  }
+}
 
 /**
  * ruby/native
@@ -9,8 +78,94 @@ export const rubyNative: Plugin = {
   target: 'ruby',
   client: 'native',
   title: 'net::http',
-  generate(request) {
-    // TODO: Write an own converter
-    return convertWithHttpSnippetLite(native, request)
+  generate(request, configuration) {
+    const normalizedRequest = {
+      method: 'GET',
+      ...request,
+    }
+
+    normalizedRequest.method = normalizeMethod(normalizedRequest.method)
+
+    const rawUrl = joinUrlAndQuery(normalizedRequest.url ?? '', normalizedRequest.queryString)
+    const encodedUrl = encodeUrlWithPathPreservedBrackets(rawUrl)
+
+    const lines: string[] = ["require 'uri'", "require 'net/http'", '']
+    maybeAddCustomMethodClass(lines, normalizedRequest.method, Boolean(normalizedRequest.postData?.text))
+
+    lines.push(`url = URI("${escapeRubyDoubleQuoted(encodedUrl)}")`, '')
+
+    lines.push('http = Net::HTTP.new(url.host, url.port)')
+    if (encodedUrl.startsWith('https://')) {
+      lines.push('http.use_ssl = true')
+    }
+
+    lines.push('')
+
+    const methodClass = toRubyMethodClass(normalizedRequest.method)
+    lines.push(`request = Net::HTTP::${methodClass}.new(url)`)
+
+    if (configuration?.auth?.username && configuration?.auth?.password) {
+      const username = escapeRubyDoubleQuoted(configuration.auth.username)
+      const password = escapeRubyDoubleQuoted(configuration.auth.password)
+      lines.push(`request.basic_auth("${username}", "${password}")`)
+    }
+
+    for (const header of mergeCookieHeaders(normalizedRequest)) {
+      lines.push(`request["${escapeRubyDoubleQuoted(header.name)}"] = '${escapeRubySingleQuoted(header.value)}'`)
+    }
+
+    if (normalizedRequest.postData) {
+      const { mimeType, text, params } = normalizedRequest.postData
+
+      if (mimeType === 'application/json' && text !== undefined) {
+        try {
+          const parsed = JSON.parse(text)
+          const prettyJson = JSON.stringify(parsed, null, 2)
+          // Quote the delimiter so Ruby keeps backslashes and `#{}` in the JSON as written
+          lines.push("request.body = <<~'JSON'")
+          lines.push(prettyJson)
+          lines.push('JSON')
+        } catch {
+          lines.push(`request.body = ${toRubyStringLiteral(text)}`)
+        }
+      } else if (mimeType === 'application/x-www-form-urlencoded' && params) {
+        const encodedForm = params
+          .map((param) => `${encodeFormComponent(param.name)}=${encodeFormComponent(param.value ?? '')}`)
+          .join('&')
+        lines.push(`request.body = '${escapeRubySingleQuoted(encodedForm)}'`)
+      } else if (mimeType === 'multipart/form-data' && params) {
+        lines.push('form_data = []')
+        params.forEach((param) => {
+          const name = escapeRubySingleQuoted(param.name)
+          if (param.fileName !== undefined) {
+            const fileName = escapeRubySingleQuoted(param.fileName)
+            if (param.contentType) {
+              const contentType = escapeRubySingleQuoted(param.contentType)
+              lines.push(
+                `form_data << ['${name}', File.open('${fileName}', 'rb'), { filename: '${fileName}', content_type: '${contentType}' }]`,
+              )
+            } else {
+              lines.push(`form_data << ['${name}', File.open('${fileName}', 'rb')]`)
+            }
+          } else if (param.contentType) {
+            const value = escapeRubySingleQuoted(param.value ?? '')
+            const contentType = escapeRubySingleQuoted(param.contentType)
+            lines.push(`form_data << ['${name}', '${value}', { content_type: '${contentType}' }]`)
+          } else {
+            const value = escapeRubySingleQuoted(param.value ?? '')
+            lines.push(`form_data << ['${name}', '${value}']`)
+          }
+        })
+        lines.push("request.set_form(form_data, 'multipart/form-data')")
+      } else if (mimeType === 'application/octet-stream') {
+        lines.push(`request.body = ${toRubyStringLiteral(text ?? '')}`)
+      } else if (text !== undefined) {
+        lines.push(`request.body = ${toRubyStringLiteral(text)}`)
+      }
+    }
+
+    lines.push('', 'response = http.request(request)', 'puts response.read_body')
+
+    return lines.join('\n')
   },
 }

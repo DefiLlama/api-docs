@@ -1,4 +1,5 @@
 import type { Plugin } from '@scalar/types/snippetz'
+
 import { requestsLikeGenerate } from '@/plugins/python/requestsLike'
 
 /**
@@ -9,6 +10,6 @@ export const pythonHttpxSync: Plugin = {
   client: 'httpx_sync',
   title: 'HTTPX (Sync)',
   generate(request, configuration) {
-    return requestsLikeGenerate('httpx', request, configuration)
+    return requestsLikeGenerate('httpx', request, configuration, 'httpx')
   },
 }

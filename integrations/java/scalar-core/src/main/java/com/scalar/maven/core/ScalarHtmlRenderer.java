@@ -1,0 +1,168 @@
+package com.scalar.maven.core;
+
+import com.scalar.maven.core.config.ScalarPathRouting;
+import com.scalar.maven.core.internal.JacksonJsonSerializer;
+import com.scalar.maven.core.internal.ScalarConfiguration;
+import com.scalar.maven.core.internal.ScalarConfigurationMapper;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+
+/**
+ * Static utility class for rendering HTML content for the Scalar API Reference interface.
+ *
+ * <p>
+ * This class is framework-agnostic and provides the core HTML rendering
+ * functionality. It loads the HTML template, serializes the configuration to JSON,
+ * and replaces placeholders with actual values.
+ * </p>
+ */
+public final class ScalarHtmlRenderer {
+
+    private static final String HTML_TEMPLATE_PATH = "/META-INF/resources/webjars/scalar/index.html";
+    private static final String JS_BUNDLE_PATH = "/META-INF/resources/webjars/scalar/" + ScalarConstants.JS_FILENAME;
+
+    private ScalarHtmlRenderer() {
+        // Utility class - prevent instantiation
+    }
+
+    /**
+     * Normalizes the base path by returning the default path if the provided
+     * base path is null or empty.
+     *
+     * @param basePath the base path to normalize
+     * @return the normalized base path, or {@link ScalarConstants#DEFAULT_PATH} if null or empty
+     */
+    private static String normalizeBasePath(String basePath) {
+        if (basePath == null || basePath.isEmpty()) {
+            return ScalarConstants.DEFAULT_PATH;
+        }
+        return basePath;
+    }
+
+    /**
+     * Renders the complete HTML content for the Scalar API Reference interface.
+     *
+     * @param properties the configuration properties for the Scalar integration
+     * @return the rendered HTML content
+     * @throws IOException if the HTML template cannot be loaded
+     */
+    public static String render(ScalarProperties properties) throws IOException {
+        return render(properties, "");
+    }
+
+    /**
+     * Renders HTML using the request context path for nested navigation and bundle URLs.
+     *
+     * @param properties the Scalar configuration
+     * @param contextPath the application context path, or an empty string
+     * @return the rendered HTML
+     * @throws IOException if the template cannot be loaded
+     */
+    public static String render(ScalarProperties properties, String contextPath) throws IOException {
+        return render(properties, contextPath, true);
+    }
+
+    /**
+     * Renders the actuator page without application path routing. Actuator has its
+     * own URL space and may run on a separate management server.
+     *
+     * @param properties the Scalar configuration
+     * @return the rendered HTML
+     * @throws IOException if the template cannot be loaded
+     */
+    public static String renderForActuator(ScalarProperties properties) throws IOException {
+        return render(properties, "", false);
+    }
+
+    private static String render(ScalarProperties properties, String contextPath, boolean pathRouting) throws IOException {
+        Objects.requireNonNull(properties, "properties must not be null");
+
+        String basePath = normalizeBasePath(properties.getPath());
+
+        // Load the template HTML
+        InputStream templateStream = ScalarHtmlRenderer.class.getResourceAsStream(HTML_TEMPLATE_PATH);
+        if (templateStream == null) {
+            throw new IOException("HTML template not found at: " + HTML_TEMPLATE_PATH);
+        }
+
+        String html;
+        try (InputStream inputStream = templateStream) {
+            html = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        // Build the JS bundle URL from the base path
+        String bundleUrl = !pathRouting || properties.getPathRouting() == null
+                ? buildJsBundleUrl(basePath)
+                : contextPath + (basePath.endsWith("/") ? basePath : basePath + "/") + ScalarConstants.JS_FILENAME;
+        String pageTitle = Objects.requireNonNullElse(properties.getPageTitle(), "Scalar API Reference");
+
+        // Serialize configuration to JSON
+        String configurationJson = buildConfigurationJson(properties, contextPath, pathRouting);
+
+        // Replace placeholders
+        return html
+                .replace("__JS_BUNDLE_URL__", bundleUrl.replace("&", "&amp;").replace("\"", "&quot;")
+                        .replace("'", "&#39;").replace("<", "&lt;").replace(">", "&gt;"))
+                .replace("__PAGE_TITLE__", pageTitle.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+                .replace("__CONFIGURATION__", configurationJson);
+    }
+
+    /**
+     * Builds the URL for the Scalar JavaScript bundle based on the base path.
+     * Uses only the last path segment so the relative URL resolves correctly
+     * when the page is at basePath (avoids duplicate segments for multi-segment
+     * paths) and when deployed behind a reverse proxy with a context path.
+     *
+     * @param basePath the base path
+     * @return the relative path for the JavaScript bundle
+     */
+    private static String buildJsBundleUrl(String basePath) {
+        // Remove trailing slash to avoid double slashes when concatenating
+        String path = basePath;
+        if (path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+
+        int lastSlash = path.lastIndexOf('/');
+        String lastSegment = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+        return lastSegment + "/" + ScalarConstants.JS_FILENAME;
+    }
+
+    /**
+     * Builds the configuration JSON for the Scalar API Reference.
+     *
+     * @param properties the properties to serialize
+     * @return the configuration JSON as a string
+     */
+    private static String buildConfigurationJson(ScalarProperties properties, String contextPath, boolean pathRouting) {
+        ScalarConfiguration config = ScalarConfigurationMapper.map(properties);
+        if (pathRouting && properties.getPathRouting() != null) {
+            ScalarPathRouting routing = new ScalarPathRouting();
+            String path = Objects.requireNonNull(properties.getPathRouting().getBasePath(), "pathRouting.basePath is required");
+            routing.setBasePath(contextPath + path);
+            config.setPathRouting(routing);
+        }
+        // Inline API descriptions may contain HTML, including closing script tags.
+        return JacksonJsonSerializer.serialize(config).replace("<", "\\u003c");
+    }
+
+    /**
+     * Gets the JavaScript bundle content.
+     *
+     * @return the JavaScript bundle content as bytes
+     * @throws IOException if the JavaScript file cannot be loaded
+     */
+    public static byte[] getScalarJsContent() throws IOException {
+        InputStream jsStream = ScalarHtmlRenderer.class.getResourceAsStream(JS_BUNDLE_PATH);
+        if (jsStream == null) {
+            throw new IOException("JavaScript bundle not found at: " + JS_BUNDLE_PATH);
+        }
+
+        try (InputStream inputStream = jsStream) {
+            return inputStream.readAllBytes();
+        }
+    }
+}

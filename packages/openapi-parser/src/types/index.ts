@@ -1,4 +1,8 @@
-import type { OpenAPI } from '@scalar/openapi-types'
+import type { Document as OpenApiDocumentV2 } from '@scalar/openapi-types/2.0'
+import type { Document as OpenApiDocumentV3 } from '@scalar/openapi-types/3.0'
+import type { Document as OpenApiDocumentV3_1 } from '@scalar/openapi-types/3.1'
+import type { Document as OpenApiDocumentV3_2 } from '@scalar/openapi-types/3.2'
+import type { UnknownObject } from '@scalar/types/utils'
 
 import type { ERRORS, OpenApiVersion } from '@/configuration'
 
@@ -6,38 +10,47 @@ import type { ERRORS, OpenApiVersion } from '@/configuration'
 /**
  * Merge types with each other
  */
-export type Merge<A, B> = A & Omit<B, keyof A>
-
-export type AnyObject = Record<string, any>
-
-export type UnknownObject = Record<string, unknown>
+type Merge<A, B> = A & Omit<B, keyof A>
 
 /**
  * JSON, YAML or object representation of an OpenAPI API definition
  */
-export type AnyApiDefinitionFormat = string | AnyObject
+export type AnyApiDefinitionFormat = string | UnknownObject | Filesystem
+
+export type StrictOpenApiDocument = OpenApiDocumentV2 | OpenApiDocumentV3 | OpenApiDocumentV3_1 | OpenApiDocumentV3_2
+
+type OpenApiDocument = StrictOpenApiDocument
 
 export type LoadResult = {
   filesystem: Filesystem
-  specification: AnyObject
+  specification: UnknownObject | null
   errors?: ErrorObject[]
 }
 
-export type ValidateResult = {
-  valid: boolean
-  specification?: OpenAPI.Document
-  version?: OpenApiVersion
-  errors?: ErrorObject[]
-  schema?: OpenAPI.Document
-}
+export type ValidateResult =
+  | {
+      valid: true
+      specification: StrictOpenApiDocument
+      version: OpenApiVersion
+      errors?: ErrorObject[]
+      schema: StrictOpenApiDocument
+    }
+  | {
+      valid: false
+      specification?: UnknownObject
+      version?: OpenApiVersion
+      errors: ErrorObject[]
+      schema?: UnknownObject
+    }
 
-export type UpgradeResult<T extends OpenAPI.Document = OpenAPI.Document> = {
-  specification: T
-  version: '3.1'
+export type UpgradeResult<T extends OpenApiDocument = OpenApiDocument> = {
+  specification: T | null
+  /** The resulting version, absent when the input has no supported version. */
+  version?: '3.1' | '3.2'
 }
 
 export type FilterResult = {
-  specification: AnyObject
+  specification: UnknownObject
 }
 
 export type DetailsResult = {
@@ -48,18 +61,15 @@ export type DetailsResult = {
 
 export type DereferenceResult = {
   version?: OpenApiVersion
-  specification?: OpenAPI.Document
-  schema?: OpenAPI.Document
+  specification?: UnknownObject
+  schema?: UnknownObject
   errors?: ErrorObject[]
 }
 
 export type ErrorObject = {
+  path?: string | string[]
   message: string
   code?: keyof typeof ERRORS | string
-}
-
-export type AjvOptions = {
-  strict?: boolean | 'log'
 }
 
 /**
@@ -76,7 +86,7 @@ export type FilesystemEntry = {
   isEntrypoint: boolean
   references: string[]
   filename: string
-  specification: AnyObject
+  specification: UnknownObject
 }
 
 /**
@@ -107,7 +117,7 @@ export type Queue<T extends readonly Task[] = readonly Task[]> = {
   /** The original input, can be a JSON or YAML string or an object */
   input: AnyApiDefinitionFormat
   /** The current OpenAPI document, but as an object */
-  specification: AnyObject
+  specification: UnknownObject
   /** Global options */
   options?: OpenApiOptions
   /** Queued tasks */
@@ -119,9 +129,9 @@ export type Queue<T extends readonly Task[] = readonly Task[]> = {
  */
 export type Task = Commands[keyof Commands]['task']
 
-export type EmptyCommandChainResult = {
+type EmptyCommandChainResult = {
   filesystem: Filesystem
-  specification: AnyObject
+  specification: UnknownObject
 }
 
 /**

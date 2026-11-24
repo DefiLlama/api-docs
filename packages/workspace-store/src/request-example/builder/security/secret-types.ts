@@ -1,0 +1,136 @@
+import type { SecuritySchemeOpenIdConnect } from '@scalar/types/api-reference'
+
+import type { AuthSecretField } from '@/helpers/auth-secret-fields'
+import type { EncryptionSchemeType, SaslSchemeType } from '@/request-example/builder/security/broker-scheme-types'
+import type {
+  XScalarAuthUrl,
+  XScalarCredentialsLocation,
+  XScalarSecretClientCertificate,
+  XScalarSecretClientId,
+  XScalarSecretClientSecret,
+  XScalarSecretHTTP,
+  XScalarSecretPrivateKey,
+  XScalarSecretRedirectUri,
+  XScalarSecretRefreshToken,
+  XScalarSecretServiceName,
+  XScalarSecretToken,
+  XScalarTokenUrl,
+} from '@/schemas/extensions/security'
+import type {
+  OAuthFlowAuthorizationCode,
+  OAuthFlowClientCredentials,
+  OAuthFlowDeviceAuthorization,
+  OAuthFlowImplicit,
+  OAuthFlowPassword,
+} from '@/schemas/v3.2/strict/oauth-flow'
+import type {
+  ApiKeyObject,
+  HttpObject,
+  MutualTlsObject,
+  OAuth2Object,
+  OpenIdConnectObject,
+} from '@/schemas/v3.2/strict/security-scheme'
+
+/**
+ * Derived while merging the auth store with the document and configuration: the value each field
+ * returns to when its stored override is reset. Fields without a non-empty default are left out.
+ * It is never persisted and never sent with a request; it only tells the auth UI whether Reset
+ * would restore anything.
+ */
+export type XScalarSecretDefaults = {
+  'x-scalar-secret-defaults'?: Partial<Record<AuthSecretField, string>>
+}
+
+type OAuthFlowCommonSecret = XScalarSecretClientId &
+  XScalarSecretToken &
+  XScalarSecretRefreshToken &
+  XScalarAuthUrl &
+  XScalarTokenUrl &
+  XScalarSecretDefaults & {
+    /** Explicit clears are carried to the auth UI to prevent default prefill after remount. */
+    'x-scalar-secret-cleared-fields'?: string[]
+  }
+
+export type OAuthFlowImplicitSecret = OAuthFlowImplicit & OAuthFlowCommonSecret & XScalarSecretRedirectUri
+
+export type OAuthFlowPasswordSecret = OAuthFlowPassword &
+  OAuthFlowCommonSecret &
+  XScalarSecretHTTP &
+  XScalarSecretClientSecret &
+  XScalarCredentialsLocation
+
+export type OAuthFlowClientCredentialsSecret = OAuthFlowClientCredentials &
+  OAuthFlowCommonSecret &
+  XScalarSecretClientSecret &
+  XScalarCredentialsLocation
+
+export type OAuthFlowAuthorizationCodeSecret = OAuthFlowAuthorizationCode &
+  OAuthFlowCommonSecret &
+  XScalarSecretClientSecret &
+  XScalarSecretRedirectUri &
+  XScalarCredentialsLocation
+
+/** Device authorization credentials and tokens shared by the auth UI and request builder. */
+export type OAuthFlowDeviceAuthorizationSecret = OAuthFlowDeviceAuthorization &
+  OAuthFlowCommonSecret &
+  XScalarSecretClientSecret
+
+export type OAuthFlowsObjectSecret = {
+  deviceAuthorization?: OAuthFlowDeviceAuthorizationSecret
+  implicit?: OAuthFlowImplicitSecret
+  password?: OAuthFlowPasswordSecret
+  clientCredentials?: OAuthFlowClientCredentialsSecret
+  authorizationCode?: OAuthFlowAuthorizationCodeSecret
+}
+
+/** AsyncAPI API keys occupy broker credentials instead of an HTTP parameter. */
+export type BrokerApiKeyObject = {
+  type: 'apiKey'
+  in: 'user' | 'password'
+  name?: string
+  description?: string
+}
+
+export type ApiKeyObjectSecret = (ApiKeyObject | BrokerApiKeyObject) & XScalarSecretToken & XScalarSecretDefaults
+export type HttpObjectSecret = HttpObject & XScalarSecretHTTP & XScalarSecretToken & XScalarSecretDefaults
+/** Mutual TLS: the client certificate is presented at the TLS layer, so there is no secret to enter. */
+export type MutualTlsObjectSecret = MutualTlsObject
+export type OAuth2ObjectSecret = Omit<OAuth2Object, 'flows'> & { flows: OAuthFlowsObjectSecret }
+export type OpenIdConnectObjectSecret = OpenIdConnectObject & {
+  flows?: OAuthFlowsObjectSecret
+  /** Configuration is kept separate so defaults cannot bypass discovery. */
+  configuredFlows?: SecuritySchemeOpenIdConnect['flows']
+  'x-default-scopes'?: string[]
+}
+
+/**
+ * Base shape for AsyncAPI broker-only security schemes. These types live outside the strict
+ * OpenAPI `SecuritySchemeObject` union (they are AsyncAPI-only), so only the shared fields are modeled.
+ */
+type AsyncApiBrokerScheme<T extends string> = {
+  type: T
+  description?: string
+}
+
+/** SASL-style AsyncAPI broker schemes: authenticate with a username + password pair. */
+export type SaslObjectSecret = AsyncApiBrokerScheme<SaslSchemeType> & XScalarSecretHTTP
+
+/** AsyncAPI X509 scheme: a client certificate + private key pair (PEM). */
+export type X509ObjectSecret = AsyncApiBrokerScheme<'X509'> & XScalarSecretClientCertificate & XScalarSecretPrivateKey
+
+/** AsyncAPI encryption schemes: a single key value, stored in the shared token slot. */
+export type EncryptionObjectSecret = AsyncApiBrokerScheme<EncryptionSchemeType> & XScalarSecretToken
+
+/** AsyncAPI GSSAPI (Kerberos) scheme: the service name the client authenticates against. */
+export type GssapiObjectSecret = AsyncApiBrokerScheme<'gssapi'> & XScalarSecretServiceName
+
+export type SecuritySchemeObjectSecret =
+  | ApiKeyObjectSecret
+  | HttpObjectSecret
+  | MutualTlsObjectSecret
+  | OpenIdConnectObjectSecret
+  | OAuth2ObjectSecret
+  | SaslObjectSecret
+  | X509ObjectSecret
+  | EncryptionObjectSecret
+  | GssapiObjectSecret

@@ -3,3 +3,46 @@
 body {
   margin: 0;
 }
+
+/*
+ * DefiLlama look for Scalar's x-badges (API Plan, Beta), matching the badges we had before the
+ * Scalar upgrade: coloured bold text on a light tint, instead of Scalar's solid fill.
+ * The colours come from spec-transform.ts, which sets --badge-color on each badge.
+ */
+.scalar-app .badge[style*="--badge-color"] {
+  background: color-mix(in srgb, var(--badge-color), transparent 90%);
+  color: var(--badge-color);
+  border-color: transparent;
+  font-weight: var(--scalar-bold);
+  font-size: var(--scalar-micro);
+}
+
+/* The sidebar only ever showed the Beta badge, as small purple caps. API Plan stays out of it. */
+.scalar-app .sidebar-badge:not([style*="9333ea"]) {
+  display: none;
+}
+.scalar-app .sidebar-badge[style*="9333ea"] {
+  /* Pinned under the GET badge on the right, where it sat before the Scalar upgrade */
+  position: absolute;
+  top: 26px;
+  right: 8px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #9333ea;
+  font-size: 9px;
+  font-weight: var(--scalar-bold);
+  line-height: 1;
+  text-transform: uppercase;
+}
+.scalar-app a:has(.sidebar-badge[style*="9333ea"]) {
+  position: relative;
+  min-height: 40px;
+}
+
+/* Deprecated operations keep a readable title. The red Deprecated badge already says it. */
+.scalar-app .operation-title.deprecated,
+.scalar-app .operation-title.deprecated * {
+  text-decoration: none;
+}

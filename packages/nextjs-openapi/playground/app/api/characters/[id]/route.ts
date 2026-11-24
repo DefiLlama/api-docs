@@ -1,25 +1,23 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
-export type Troothy = boolean
-
 /**
  * Get a simpsons character
- * @desc Hits up the sampleapis simpsons characters and narrows it down by id
+ * @desc Hits up the sample apis simpsons characters and narrows it down by id
  */
-export async function GET(
+export const GET = async (
   _request: NextRequest,
   {
     params,
   }: {
-    params: {
+    params: Promise<{
       /** Some jsDoc */
       id: string
-    }
+    }>
   },
-) {
+): Promise<Response> => {
   const error = false
 
-  console.log(params)
+  console.log(await params)
 
   if (error) {
     return Response.json({ error: { message: 'There was a validation error' } }, { status: 400 })

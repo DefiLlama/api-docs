@@ -1,14 +1,18 @@
 import json
+from html.parser import HTMLParser
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from fastapi.responses import HTMLResponse
 
 from scalar_fastapi import (
+    add_scalar_reference,
     get_scalar_api_reference,
     Layout,
+    OpenAPISource,
+    AgentScalarConfig,
     SearchHotKey,
-    Theme,  # Add Theme to imports
+    Theme,
 )
 
 
@@ -58,6 +62,39 @@ class TestTheme:
 
 
 class TestGetScalarApiReference:
+    @pytest.mark.parametrize(
+        "options",
+        [{}, {"show_badges_in_sidebar": False}, {"show_badges_in_sidebar": True}],
+    )
+    def test_show_badges_in_sidebar(self, options):
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json", show_sidebar=False, **options
+        )
+        configuration, _ = json.JSONDecoder().raw_decode(
+            response.body.decode().split('Scalar.createApiReference("#app", ', 1)[1]
+        )
+
+        assert configuration["showSidebar"] is False
+        if options.get("show_badges_in_sidebar", False):
+            assert configuration["showBadgesInSidebar"] is True
+        else:
+            assert "showBadgesInSidebar" not in configuration
+
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_show_default_clients_with_sdk_installation(self, enabled):
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="Test API",
+            show_default_clients_with_sdk_installation=enabled,
+        )
+        configuration, _ = json.JSONDecoder().raw_decode(
+            response.body.decode().split('Scalar.createApiReference("#app", ', 1)[1]
+        )
+        if enabled:
+            assert configuration["showDefaultClientsWithSdkInstallation"] is True
+        else:
+            assert "showDefaultClientsWithSdkInstallation" not in configuration
+
     def test_basic_functionality(self):
         """Test basic functionality with minimal parameters"""
         response = get_scalar_api_reference(
@@ -70,12 +107,12 @@ class TestGetScalarApiReference:
         assert "text/html" in response.headers["content-type"]
 
         html_content = response.body.decode()
-        assert "<!DOCTYPE html>" in html_content
+        assert "<!doctype html>" in html_content
         assert "<title>Test API</title>" in html_content
-        assert 'data-url="/openapi.json"' in html_content
+        assert 'Scalar.createApiReference("#app"' in html_content
 
     def test_default_parameters(self):
-        """Test that default parameters are correctly set"""
+        """Test that default parameters are not included in config"""
         response = get_scalar_api_reference(
             openapi_url="/openapi.json",
             title="Test API"
@@ -83,23 +120,37 @@ class TestGetScalarApiReference:
 
         html_content = response.body.decode()
 
-        # Check default values
-        assert 'data-proxy-url=""' in html_content
+        # Check that only the URL is included in config (default value)
+        assert '"url": "/openapi.json"' in html_content
+
+        # Check that default values are NOT included in the config
+        # Look specifically in the JSON configuration, not in the entire HTML
+        config_start = html_content.find('Scalar.createApiReference("#app", {')
+        config_end = html_content.find('})', config_start)
+        config_section = html_content[config_start:config_end]
+
+        assert 'proxyUrl' not in config_section
+        assert 'layout' not in config_section
+        assert 'showSidebar' not in config_section
+        assert 'hideDownloadButton' not in config_section
+        assert 'hideModels' not in config_section
+        assert 'darkMode' not in config_section
+        assert 'searchHotKey' not in config_section
+        assert 'hiddenClients' not in config_section
+        assert 'servers' not in config_section
+        assert 'defaultOpenAllTags' not in config_section
+        assert 'orderSchemaPropertiesBy' not in config_section
+        assert 'authentication' not in config_section
+        assert 'hideClientButton' not in config_section
+        assert 'multipartNaming' not in config_section
+        assert "showDefaultClientsWithSdkInstallation" not in config_section
+        assert '_integration' in config_section
+        assert 'theme' not in config_section
+        assert 'agent' not in config_section
+
+        # Check other HTML elements
         assert 'href="https://fastapi.tiangolo.com/img/favicon.png"' in html_content
         assert 'src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"' in html_content
-        assert 'layout: "modern"' in html_content
-        assert 'showSidebar: true' in html_content
-        assert 'hideDownloadButton: false' in html_content
-        assert 'hideModels: false' in html_content
-        assert 'darkMode: true' in html_content
-        assert 'searchHotKey: "k"' in html_content
-        assert 'hiddenClients: []' in html_content
-        assert 'servers: []' in html_content
-        assert 'defaultOpenAllTags: false' in html_content
-        assert 'authentication: {}' in html_content
-        assert 'hideClientButton: false' in html_content
-        assert '_integration: "fastapi"' in html_content
-        assert 'theme: "default"' in html_content  # Add theme default check
 
     def test_custom_parameters(self):
         """Test custom parameter values"""
@@ -116,35 +167,69 @@ class TestGetScalarApiReference:
             dark_mode=False,
             search_hot_key=SearchHotKey.S,
             hidden_clients=["client1", "client2"],
-            servers=[{"name": "Production", "url": "https://api.example.com"}],
+            servers=[{"url": "https://api.example.com", "description": "Production"}],
             default_open_all_tags=True,
+            order_schema_properties_by="preserve",
             authentication={"apiKey": "test-key"},
             hide_client_button=True,
+            multipart_naming="indexed-dot",
             integration="custom",
-            theme=Theme.MOON  # Add theme parameter
+            theme=Theme.MOON
         )
 
         html_content = response.body.decode()
 
-        # Check custom values
-        assert 'data-url="/custom/openapi.json"' in html_content
+        # Check custom values in the config
+        assert '"url": "/custom/openapi.json"' in html_content
+        assert '"proxyUrl": "https://proxy.example.com"' in html_content
+        assert '"layout": "classic"' in html_content
+        assert '"showSidebar": false' in html_content
+        assert '"hideDownloadButton": true' in html_content
+        assert '"hideModels": true' in html_content
+        assert '"darkMode": false' in html_content
+        assert '"searchHotKey": "s"' in html_content
+        assert '"hiddenClients": ["client1", "client2"]' in html_content
+        assert '"servers": [{"url": "https://api.example.com", "description": "Production"}]' in html_content
+        assert '"defaultOpenAllTags": true' in html_content
+        assert '"orderSchemaPropertiesBy": "preserve"' in html_content
+        assert '"authentication": {"apiKey": "test-key"}' in html_content
+        assert '"multipartNaming": "indexed-dot"' in html_content
+        assert '"hideClientButton": true' in html_content
+        assert '"_integration": "custom"' in html_content
+        assert '"theme": "moon"' in html_content
+
+        # Check other HTML elements
         assert "<title>Custom API</title>" in html_content
         assert 'src="https://custom.cdn.com/scalar.js"' in html_content
-        assert 'data-proxy-url="https://proxy.example.com"' in html_content
         assert 'href="https://example.com/favicon.ico"' in html_content
-        assert 'layout: "classic"' in html_content
-        assert 'showSidebar: false' in html_content
-        assert 'hideDownloadButton: true' in html_content
-        assert 'hideModels: true' in html_content
-        assert 'darkMode: false' in html_content
-        assert 'searchHotKey: "s"' in html_content
-        assert 'hiddenClients: ["client1", "client2"]' in html_content
-        assert 'servers: [{"name": "Production", "url": "https://api.example.com"}]' in html_content
-        assert 'defaultOpenAllTags: true' in html_content
-        assert 'authentication: {"apiKey": "test-key"}' in html_content
-        assert 'hideClientButton: true' in html_content
-        assert '_integration: "custom"' in html_content
-        assert 'theme: "moon"' in html_content  # Check theme value
+
+    def test_top_level_agent_disabled_in_config(self):
+        """Test that top-level agent=AgentScalarConfig(disabled=True) is serialized in config"""
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="Test",
+            agent=AgentScalarConfig(disabled=True),
+        )
+        html_content = response.body.decode()
+        assert '"agent"' in html_content
+        assert '"disabled": true' in html_content
+
+    def test_per_source_agent_in_config(self):
+        """Test that OpenAPISource with agent is serialized in sources config"""
+        response = get_scalar_api_reference(
+            sources=[
+                OpenAPISource(
+                    title="API",
+                    url="/openapi.json",
+                    agent=AgentScalarConfig(key="my-key"),
+                ),
+            ],
+            title="Test",
+        )
+        html_content = response.body.decode()
+        assert '"sources"' in html_content
+        assert '"agent"' in html_content
+        assert '"key": "my-key"' in html_content
 
     def test_theme_parameter_all_values(self):
         """Test all theme enum values work correctly"""
@@ -156,7 +241,16 @@ class TestGetScalarApiReference:
             )
 
             html_content = response.body.decode()
-            assert f'theme: "{theme.value}"' in html_content
+
+            # Look specifically in the JSON configuration
+            config_start = html_content.find('Scalar.createApiReference("#app", {')
+            config_end = html_content.find('})', config_start)
+            config_section = html_content[config_start:config_end]
+
+            if theme != Theme.DEFAULT:
+                assert f'"theme": "{theme.value}"' in config_section
+            else:
+                assert 'theme' not in config_section
             assert f"<title>Test API - {theme.value}</title>" in html_content
 
     def test_theme_with_other_parameters(self):
@@ -172,21 +266,28 @@ class TestGetScalarApiReference:
 
         html_content = response.body.decode()
 
-        # Check that theme is included with other parameters
-        assert 'theme: "purple"' in html_content
-        assert 'layout: "classic"' in html_content
-        assert 'darkMode: false' in html_content
-        assert 'showSidebar: false' in html_content
+        # Check that theme and other custom parameters are included
+        assert '"theme": "purple"' in html_content
+        assert '"layout": "classic"' in html_content
+        assert '"darkMode": false' in html_content
+        assert '"showSidebar": false' in html_content
 
     def test_theme_default_value(self):
-        """Test that the default theme is 'default'"""
+        """Test that the default theme is not included in config"""
         response = get_scalar_api_reference(
             openapi_url="/openapi.json",
             title="Test API",
         )
 
         html_content = response.body.decode()
-        assert 'theme: "default"' in html_content
+
+        # Look specifically in the JSON configuration
+        config_start = html_content.find('Scalar.createApiReference("#app", {')
+        config_end = html_content.find('})', config_start)
+        config_section = html_content[config_start:config_end]
+
+        # Default theme should not be in config
+        assert 'theme' not in config_section
 
     def test_theme_none_value(self):
         """Test the 'none' theme value"""
@@ -197,7 +298,7 @@ class TestGetScalarApiReference:
         )
 
         html_content = response.body.decode()
-        assert 'theme: "none"' in html_content
+        assert '"theme": "none"' in html_content
 
     def test_theme_in_configuration_object(self):
         """Test that theme is properly included in the configuration object"""
@@ -210,9 +311,8 @@ class TestGetScalarApiReference:
         html_content = response.body.decode()
 
         # Check that theme is in the configuration object
-        assert 'var configuration = {' in html_content
-        assert 'theme: "solarized"' in html_content
-        assert 'document.getElementById(\'api-reference\').dataset.configuration =' in html_content
+        assert 'Scalar.createApiReference("#app"' in html_content
+        assert '"theme": "solarized"' in html_content
 
     def test_hidden_clients_dict_format(self):
         """Test hidden_clients parameter with dictionary format"""
@@ -230,25 +330,25 @@ class TestGetScalarApiReference:
 
         html_content = response.body.decode()
         expected_json = json.dumps(hidden_clients)
-        assert f'hiddenClients: {expected_json}' in html_content
+        assert f'"hiddenClients": {expected_json}' in html_content
 
     def test_servers_parameter(self):
-        """Test servers parameter with multiple servers"""
+        """Test servers parameter with OpenAPI Server Object format"""
         servers = [
-            {"name": "Production", "url": "https://api.example.com"},
-            {"name": "Staging", "url": "https://staging-api.example.com"},
-            {"name": "Development", "url": "http://localhost:8000"}
+            {"url": "https://api.example.com", "description": "Production"},
+            {"url": "https://staging-api.example.com", "description": "Staging"},
+            {"url": "http://localhost:8000", "description": "Development"},
         ]
 
         response = get_scalar_api_reference(
             openapi_url="/openapi.json",
             title="Test API",
-            servers=servers
+            servers=servers,
         )
 
         html_content = response.body.decode()
         expected_json = json.dumps(servers)
-        assert f'servers: {expected_json}' in html_content
+        assert f'"servers": {expected_json}' in html_content
 
     def test_authentication_parameter(self):
         """Test authentication parameter with complex configuration"""
@@ -272,25 +372,7 @@ class TestGetScalarApiReference:
 
         html_content = response.body.decode()
         expected_json = json.dumps(auth_config)
-        assert f'authentication: {expected_json}' in html_content
-
-    def test_custom_theme(self):
-        """Test custom theme CSS"""
-        custom_theme = """
-        .custom-theme {
-            --scalar-color-1: #ff0000;
-            --scalar-color-accent: #00ff00;
-        }
-        """
-
-        response = get_scalar_api_reference(
-            openapi_url="/openapi.json",
-            title="Test API",
-            scalar_theme=custom_theme
-        )
-
-        html_content = response.body.decode()
-        assert custom_theme in html_content
+        assert f'"authentication": {expected_json}' in html_content
 
     def test_integration_none(self):
         """Test setting integration to None"""
@@ -301,10 +383,14 @@ class TestGetScalarApiReference:
         )
 
         html_content = response.body.decode()
-        assert '_integration: null' in html_content
+        # When integration is None, it should not be included in config
+        config_start = html_content.find('Scalar.createApiReference("#app", {')
+        config_end = html_content.find('})', config_start)
+        config_section = html_content[config_start:config_end]
+        assert '_integration' not in config_section
 
     def test_html_structure(self):
-        """Test that the generated HTML has proper structure"""
+        """Test that the HTML structure is correct"""
         response = get_scalar_api_reference(
             openapi_url="/openapi.json",
             title="Test API"
@@ -312,24 +398,17 @@ class TestGetScalarApiReference:
 
         html_content = response.body.decode()
 
-        # Check essential HTML elements
-        assert "<!DOCTYPE html>" in html_content
+        # Check basic HTML structure
+        assert "<!doctype html>" in html_content
         assert "<html>" in html_content
         assert "<head>" in html_content
         assert "<body>" in html_content
-        assert "</html>" in html_content
-
-        # Check meta tags
-        assert '<meta charset="utf-8"/>' in html_content
-        assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in html_content
-
-        # Check script tags
-        assert 'id="api-reference"' in html_content
+        assert "<title>Test API</title>" in html_content
+        assert '<div id="app"></div>' in html_content
         assert '<script src=' in html_content
 
-        # Check noscript tag
-        assert "<noscript>" in html_content
-        assert "Scalar requires Javascript to function" in html_content
+        # Check Scalar initialization
+        assert 'Scalar.createApiReference("#app"' in html_content
 
     def test_configuration_script(self):
         """Test that the configuration script is properly generated"""
@@ -341,9 +420,28 @@ class TestGetScalarApiReference:
         html_content = response.body.decode()
 
         # Check that configuration script exists
-        assert 'var configuration = {' in html_content
-        assert 'document.getElementById(\'api-reference\').dataset.configuration =' in html_content
-        assert 'JSON.stringify(configuration)' in html_content
+        assert 'Scalar.createApiReference("#app"' in html_content
+        # The new implementation uses json.dumps(config, indent=2) which produces formatted JSON
+        # We should check for the actual JSON structure, not the Python code
+        assert '"url": "/openapi.json"' in html_content
+    
+    def test_developer_tools_visibility(self):
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="Test API",
+            show_developer_tools="never"
+        )
+        html_content = response.body.decode()
+        assert '"showDeveloperTools": "never"' in html_content
+
+    def test_order_schema_properties_by_preserve(self):
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="Test API",
+            order_schema_properties_by="preserve",
+        )
+        html_content = response.body.decode()
+        assert '"orderSchemaPropertiesBy": "preserve"' in html_content
 
 
 class TestFastAPIIntegration:
@@ -372,9 +470,9 @@ class TestFastAPIIntegration:
         assert "text/html" in response.headers["content-type"]
 
         html_content = response.text
-        assert "<!DOCTYPE html>" in html_content
+        assert "<!doctype html>" in html_content
         assert f"<title>{app.title} - Scalar</title>" in html_content
-        assert f'data-url="{app.openapi_url}"' in html_content
+        assert '"url": "/openapi.json"' in html_content
 
     def test_fastapi_with_custom_config(self):
         """Test FastAPI integration with custom configuration"""
@@ -396,9 +494,9 @@ class TestFastAPIIntegration:
         assert response.status_code == 200
 
         html_content = response.text
-        assert 'layout: "classic"' in html_content
-        assert 'darkMode: false' in html_content
-        assert 'hideDownloadButton: true' in html_content
+        assert '"layout": "classic"' in html_content
+        assert '"darkMode": false' in html_content
+        assert '"hideDownloadButton": true' in html_content
 
 
 class TestEdgeCases:
@@ -416,11 +514,11 @@ class TestEdgeCases:
 
         assert isinstance(response, HTMLResponse)
         html_content = response.body.decode()
-        assert 'data-url=""' in html_content
-        assert "<title></title>" in html_content
+        assert '"url": ""' in html_content
+        assert "<title>Scalar</title>" in html_content
 
-    def test_special_characters_in_title(self):
-        """Test with special characters in title"""
+    def test_special_characters_in_title_are_escaped(self):
+        """Special characters in the title are HTML-escaped to prevent injection"""
         title_with_special_chars = "API & Documentation <script>alert('xss')</script>"
         response = get_scalar_api_reference(
             openapi_url="/openapi.json",
@@ -428,8 +526,84 @@ class TestEdgeCases:
         )
 
         html_content = response.body.decode()
-        # The title should be properly escaped in the HTML
-        assert title_with_special_chars in html_content
+        # The raw script payload must not survive into the output ...
+        assert "<script>alert('xss')</script>" not in html_content
+        # ... it should be escaped instead.
+        assert "API &amp; Documentation" in html_content
+        assert "&lt;script&gt;" in html_content
+
+    @pytest.mark.parametrize(
+        "parameter, tag, attribute",
+        [
+            ("scalar_js_url", "script", "src"),
+            ("scalar_favicon_url", "link", "href"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://cdn.example.com/resource?v=1&theme=dark",
+            "https://example.com/\" onload=\"alert('xss')",
+            "https://example.com/\"></script><script>alert('xss')</script><img src=\"",
+            "",
+        ],
+    )
+    def test_resource_urls_remain_single_attributes(self, parameter, tag, attribute, url):
+        """URL values cannot add attributes or elements to the generated page."""
+        class ElementParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.elements = []
+
+            def handle_starttag(self, tag, attrs):
+                self.elements.append((tag, dict(attrs)))
+
+        baseline = ElementParser()
+        baseline.feed(get_scalar_api_reference().body.decode())
+        actual = ElementParser()
+        actual.feed(get_scalar_api_reference(**{parameter: url}).body.decode())
+
+        expected = [
+            (name, {**attrs, attribute: url})
+            if name == tag and attribute in attrs else (name, attrs)
+            for name, attrs in baseline.elements
+        ]
+        assert actual.elements == expected
+
+    @pytest.mark.parametrize("as_string", [False, True], ids=["dictionary", "json"])
+    @pytest.mark.parametrize("in_sources", [False, True], ids=["content", "sources"])
+    @pytest.mark.parametrize(
+        "title",
+        ["</ScRiPt><script>alert(1)</script>", "<!--<script>"],
+        ids=["script-breakout", "script-tokenizer"],
+    )
+    def test_openapi_content_stays_inside_initializer(self, as_string, in_sources, title):
+        document = {
+            "openapi": "3.1.0",
+            "info": {"title": title, "version": "1.0.0"},
+            "paths": {},
+        }
+        content = json.dumps(document) if as_string else document
+        options = (
+            {"sources": [OpenAPISource(content=content)]}
+            if in_sources
+            else {"content": content}
+        )
+        html_content = get_scalar_api_reference(**options).body.decode()
+        _, initializer, script_and_tail = html_content.partition(
+            'Scalar.createApiReference("#app", '
+        )
+        assert initializer
+        config_json, closing_script, tail = script_and_tail.partition("</script>")
+        assert closing_script
+        assert "</body>" in tail
+        assert "<script" not in tail.lower()
+        assert "<" not in config_json
+        config = json.loads(config_json.strip().removesuffix(")"))
+        actual_content = (
+            config["sources"][0]["content"] if in_sources else config["content"]
+        )
+        assert actual_content == content
 
     def test_complex_json_in_configuration(self):
         """Test with complex JSON structures in configuration"""
@@ -459,3 +633,216 @@ class TestEdgeCases:
         # The complex JSON should be properly serialized
         assert "oauth2" in html_content
         assert "authorizationCode" in html_content
+
+
+class TestAddScalarReference:
+    """Test the one-line add_scalar_reference helper"""
+
+    def test_registers_route_and_serves_html(self):
+        """The helper mounts /scalar and fills in title and openapi_url from the app"""
+        app = FastAPI(title="My API")
+        add_scalar_reference(app)
+
+        client = TestClient(app)
+        response = client.get("/scalar")
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+        html_content = response.text
+        assert "<title>My API</title>" in html_content
+        assert '"url": "/openapi.json"' in html_content
+
+    def test_custom_route_and_passthrough_kwargs(self):
+        """A custom route works and extra kwargs reach get_scalar_api_reference"""
+        app = FastAPI(title="My API")
+        add_scalar_reference(app, route="/docs/scalar", theme=Theme.KEPLER, title="Docs")
+
+        client = TestClient(app)
+
+        # The default route is not registered when a custom one is used.
+        assert client.get("/scalar").status_code == 404
+
+        response = client.get("/docs/scalar")
+        assert response.status_code == 200
+        assert '"theme": "kepler"' in response.text
+        assert "<title>Docs</title>" in response.text
+
+    def test_route_is_hidden_from_schema_by_default(self):
+        """The reference route does not clutter the OpenAPI schema"""
+        app = FastAPI()
+        add_scalar_reference(app)
+
+        client = TestClient(app)
+        schema = client.get("/openapi.json").json()
+
+        assert "/scalar" not in schema["paths"]
+
+    def test_returns_the_app_for_chaining(self):
+        """The helper returns the app so calls can be chained"""
+        app = FastAPI()
+        assert add_scalar_reference(app) is app
+
+
+class TestPlainStringValues:
+    """Plain strings work anywhere an enum is accepted"""
+
+    def test_string_values_are_accepted(self):
+        """Passing string values behaves the same as passing enum members"""
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="Test API",
+            layout="classic",
+            theme="moon",
+            search_hot_key="s",
+            document_download_type="json",
+        )
+
+        html_content = response.body.decode()
+        assert '"layout": "classic"' in html_content
+        assert '"theme": "moon"' in html_content
+        assert '"searchHotKey": "s"' in html_content
+        assert '"documentDownloadType": "json"' in html_content
+
+    def test_default_string_values_are_omitted(self):
+        """Default values passed as strings are still left out of the config"""
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="Test API",
+            layout="modern",
+            theme="default",
+            search_hot_key="k",
+        )
+
+        html_content = response.body.decode()
+        config_start = html_content.find('Scalar.createApiReference("#app", {')
+        config_end = html_content.find('})', config_start)
+        config_section = html_content[config_start:config_end]
+
+        assert 'layout' not in config_section
+        assert 'theme' not in config_section
+        assert 'searchHotKey' not in config_section
+
+    def test_default_theme_string_still_injects_styles(self):
+        """The default theme styles are injected whether the value is an enum or a string"""
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="Test API",
+            theme="default",
+        )
+
+        html_content = response.body.decode()
+        # The bundled default theme CSS is present.
+        assert "--scalar-color-accent" in html_content
+
+    def test_string_and_enum_produce_identical_output(self):
+        """A string and its matching enum member yield the same HTML"""
+        from_string = get_scalar_api_reference(
+            openapi_url="/openapi.json", title="Test API", theme="kepler"
+        ).body.decode()
+        from_enum = get_scalar_api_reference(
+            openapi_url="/openapi.json", title="Test API", theme=Theme.KEPLER
+        ).body.decode()
+
+        assert from_string == from_enum
+
+
+class TestHtmlEscaping:
+    @pytest.mark.parametrize(
+        "field, js_field",
+        [
+            ("openapi_url", "url"),
+            ("content", "content"),
+            ("custom_css", "customCss"),
+            ("sources", "sources"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "</script><script>window.SCALAR_TITLE_PROBE=1</script>",
+            "</ScRiPt><script>window.SCALAR_TITLE_PROBE=1</script>",
+            '<!--<script> & "quotes" \u2028\u2029日本語',
+        ],
+    )
+    def test_configuration_remains_inside_script(self, field, js_field, payload):
+        """Embedded JSON preserves values without allowing HTML parser breakouts."""
+        value = (
+            [OpenAPISource(title=payload, url="/openapi.json")]
+            if field == "sources"
+            else payload
+        )
+        response = get_scalar_api_reference(
+            **{"openapi_url": "/openapi.json", "title": "Test API", field: value}
+        )
+
+        class ScriptParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.scripts = []
+                self.in_script = False
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "script":
+                    self.scripts.append("")
+                    self.in_script = True
+
+            def handle_endtag(self, tag):
+                if tag == "script":
+                    self.in_script = False
+
+            def handle_data(self, data):
+                if self.in_script:
+                    self.scripts[-1] += data
+
+        parser = ScriptParser()
+        parser.feed(response.body.decode())
+        baseline = ScriptParser()
+        baseline.feed(
+            get_scalar_api_reference(
+                openapi_url="/openapi.json", title="Test API"
+            ).body.decode()
+        )
+        assert len(parser.scripts) == len(baseline.scripts)
+        prefix = 'Scalar.createApiReference("#app", '
+        initializations = [
+            script.strip()
+            for script in parser.scripts
+            if script.strip().startswith(prefix)
+        ]
+        assert len(initializations) == 1
+        initialization = initializations[0]
+        assert initialization.endswith(")")
+        config_json = initialization[len(prefix) : -1]
+        # Also prevent HTML comment/script sequences from changing parser state.
+        assert "<" not in config_json
+        decoded = json.loads(config_json)
+        if field == "sources":
+            assert decoded[js_field][0]["title"] == payload
+            assert decoded[js_field][0]["url"] == "/openapi.json"
+        else:
+            assert decoded[js_field] == value
+
+
+class TestSelectedClientPersistence:
+    @pytest.mark.parametrize("options", [{}, {"persist_selected_client": True}])
+    def test_keeps_frontend_default_when_enabled(self, options):
+        response = get_scalar_api_reference(openapi_url="/openapi.json", **options)
+        assert '"persistSelectedClient"' not in response.body.decode()
+
+    def test_serializes_disabled_selection_with_auth_enabled(self):
+        response = get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            persist_selected_client=False,
+            persist_auth=True,
+        )
+        html = response.body.decode()
+        assert '"persistSelectedClient": false' in html
+        assert '"persistAuth": true' in html
+
+    def test_route_helper_forwards_disabled_selection(self):
+        app = FastAPI()
+        add_scalar_reference(app, persist_selected_client=False)
+        response = TestClient(app).get("/scalar")
+        assert response.status_code == 200
+        assert '"persistSelectedClient": false' in response.text

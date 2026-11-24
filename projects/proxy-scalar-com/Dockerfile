@@ -1,17 +1,23 @@
 # Build image
-FROM golang:1.22-alpine as build
+FROM golang:1.27.4-alpine AS build
 WORKDIR /app
 
-COPY ./main.go ./
+ARG COMMIT_SHA=dev
+
+COPY ./go.mod ./*.go ./
 COPY ./public ./public
 
-RUN go build main.go
+RUN sed -i "s/__COMMIT_SHA__/${COMMIT_SHA}/" public/openapi.yaml
+
+RUN go build -o main .
 
 # Build distroless image
-FROM gcr.io/distroless/static-debian11
+FROM gcr.io/distroless/static-debian12
 WORKDIR /app
 
 ENV PORT=9033
+
+EXPOSE $PORT
 
 # Copy the compiled app binary and public directory
 COPY --from=build --chown=1001:1001 /app/main /app/

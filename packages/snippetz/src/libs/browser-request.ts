@@ -1,0 +1,85 @@
+import type { HarRequest, PluginConfiguration } from '@scalar/types/snippetz'
+import { Base64 } from 'js-base64'
+
+import { buildFormData, formDataHeaders } from './form-data'
+import { joinUrlAndQuery, normalizeMethod } from './http'
+import type { Raw } from './javascript'
+
+/** Move cookies into the browser store because browsers forbid setting the Cookie header. */
+export const prepareBrowserCookies = (
+  request: Partial<HarRequest>,
+): {
+  headers: HarRequest['headers']
+  setup: string[]
+  withCredentials: boolean
+} => {
+  // Browsers forbid setting Cookie directly. Header values are already serialized,
+  // so preserve their escaping when transferring them to the browser cookie store.
+  const headerCookies = (request.headers ?? [])
+    .filter(({ name }) => name.toLowerCase() === 'cookie')
+    .flatMap(({ value }) => value.split(';').map((cookie) => cookie.trim()))
+    .filter(Boolean)
+  const cookieValues = [
+    ...(request.cookies ?? []).map(({ name, value }) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`),
+    ...headerCookies.filter((cookie) => cookie.includes('=')),
+  ]
+  const headers = (request.headers ?? []).filter(({ name }) => name.toLowerCase() !== 'cookie')
+  const setup = headerCookies
+    .filter((cookie) => !cookie.includes('='))
+    .map((cookie) => `// Cannot set Cookie entry without "=": ${JSON.stringify(cookie)}`)
+  if (cookieValues.length) {
+    setup.push("// Run on the request origin; document.cookie writes cookies for the current page's domain.")
+    for (const cookie of cookieValues) {
+      setup.push(`document.cookie = ${JSON.stringify(`${cookie}; path=/`)};`)
+    }
+  }
+  return { headers, setup, withCredentials: Boolean(cookieValues.length) }
+}
+
+/** Builds browser request values without collapsing repeated headers or form fields. */
+export const prepareBrowserRequest = (
+  request: Partial<HarRequest> = {},
+  configuration?: PluginConfiguration,
+): {
+  url: string
+  method: string
+  headers: { name: string; value: string | Raw }[]
+  setup: string[]
+  body: string
+  withCredentials: boolean
+} => {
+  const { headers, setup, withCredentials } = prepareBrowserCookies(request)
+  if (configuration?.auth?.username && configuration.auth.password) {
+    headers.push({
+      name: 'Authorization',
+      value: `Basic ${Base64.encode(`${configuration.auth.username}:${configuration.auth.password}`)}`,
+    })
+  }
+  const postData = request.postData
+  const multipart = postData?.mimeType === 'multipart/form-data' && postData.params
+  const form = postData?.mimeType === 'application/x-www-form-urlencoded' && postData.params
+  if (multipart) {
+    setup.push(...buildFormData(multipart, 'js', 'body'))
+  } else if (form) {
+    setup.push('const body = new URLSearchParams();')
+    for (const param of form) {
+      setup.push(`body.append(${JSON.stringify(param.name)}, ${JSON.stringify(param.value ?? '')});`)
+    }
+  }
+  if (postData?.mimeType && !multipart && !headers.some(({ name }) => name.toLowerCase() === 'content-type')) {
+    headers.push({ name: 'Content-Type', value: postData.mimeType })
+  }
+  const textBody = postData ? JSON.stringify(postData.text ?? '') : 'null'
+  const formBody = form ? 'body.toString()' : textBody
+  return {
+    url: joinUrlAndQuery(request.url ?? '', request.queryString),
+    method: normalizeMethod(request.method),
+    // The browser must supply the boundary matching its FormData serialization.
+    headers: formDataHeaders({ ...request, headers }, 'body') ?? [],
+    setup,
+    // This intentionally includes explicit Cookie headers, even without cookie-style parameters.
+    // Cross-origin use additionally requires credentialed CORS and eligible stored cookies.
+    withCredentials,
+    body: multipart ? 'body' : formBody,
+  }
+}

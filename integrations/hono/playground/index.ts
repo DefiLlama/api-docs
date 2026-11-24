@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
 import { createMarkdownFromOpenApi } from '@scalar/openapi-to-markdown'
 import { cors } from 'hono/cors'
+
 import { Scalar } from '../src/index'
 
 const PORT = Number(process.env.PORT) || 5054
@@ -29,7 +30,7 @@ app.openapi(
       },
     },
   }),
-  (c): Response => {
+  (c) => {
     return c.json({
       message: 'hello',
     })
@@ -62,7 +63,7 @@ app.openapi(
       },
     },
   }),
-  (c): Response => {
+  (c) => {
     return c.json({
       posts: [
         {
@@ -109,7 +110,7 @@ app.openapi(
       },
     },
   }),
-  (c): Response => {
+  (c) => {
     return c.json({
       id: 123,
       title: 'My Blog Post',
@@ -155,7 +156,7 @@ app.openapi(
       },
     },
   }),
-  (c): Response => {
+  (c) => {
     return c.json({
       status: 'OK',
       message: 'Post deleted',
@@ -189,10 +190,24 @@ app.get(
       },
       {
         title: 'Scalar Galaxy',
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
       },
     ],
     pageTitle: 'Hono API Reference Demo',
+  }),
+)
+
+// One line to serve the reference and the OpenAPI document together.
+// Renders the reference at `/scalar` and the document at `/scalar/openapi.json`.
+app.route(
+  '/scalar',
+  Scalar.serve({
+    document: () =>
+      app.getOpenAPI31Document({
+        openapi: '3.1.0',
+        info: { title: 'Example', version: 'v1' },
+      }),
+    pageTitle: 'Hono API Reference (Scalar.serve)',
   }),
 )
 
@@ -204,9 +219,7 @@ const content = app.getOpenAPI31Document({
 
 const markdown = await createMarkdownFromOpenApi(JSON.stringify(content))
 
-app.get('/llms.txt', async (c) => {
-  return c.text(markdown)
-})
+app.get('/llms.txt', (c) => c.text(markdown))
 
 // Listen
 serve(

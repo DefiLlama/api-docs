@@ -1,5 +1,528 @@
 # @scalar/hono-api-reference
 
+## 0.12.24
+
+### Patch Changes
+
+- [#11146](https://github.com/scalar/scalar/pull/11146): Update compatible npm dependencies for AI chat, encoding, analytics, date handling, HTTP serving, and application query caching.
+
+## 0.12.23
+
+No changes in this release.
+
+## 0.12.22
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.12.21
+
+No changes in this release.
+
+## 0.12.20
+
+No changes in this release.
+
+## 0.12.19
+
+## 0.12.18
+
+## 0.12.17
+
+## 0.12.16
+
+## 0.12.15
+
+## 0.12.14
+
+## 0.12.13
+
+### Patch Changes
+
+- [#10629](https://github.com/scalar/scalar/pull/10629): Document AsyncAPI support in the Hono integration and use format-neutral types and JSDoc for Scalar.serve().
+
+## 0.12.12
+
+### Patch Changes
+
+- [#10529](https://github.com/scalar/scalar/pull/10529): Align import and export ordering with the Biome checks.
+- [#10520](https://github.com/scalar/scalar/pull/10520): Sort imports and exports to satisfy the Biome checks.
+- [#10526](https://github.com/scalar/scalar/pull/10526): Align import and export ordering with the repository CI checks.
+
+## 0.12.11
+
+### Patch Changes
+
+- [#10493](https://github.com/scalar/scalar/pull/10493): Floating surfaces now paint their own background, border, and shadow instead of using an absolutely positioned backdrop layer. The `#backdrop` slot on `ScalarDropdown`, `ScalarPopover`, `ScalarListbox`, and `ScalarCombobox` is removed; style the floating element with `class` instead. `ScalarFloatingBackdrop`, `--scalar-lifted-brightness`, and the `brightness-lifted` utility are deprecated in favor of `bg-b-1 dark:bg-b-1.5`. `ScalarFloatingBackdrop` itself now uses the same surface styles, so it no longer clips its slot or draws a real border. A new `inset-shadow-border` utility draws the hairline border so it can stack with `shadow-*` without taking up layout space; Tailwind's default `inset-shadow-*` sizes are reset, matching the other theme namespaces.
+
+## 0.12.10
+
+## 0.12.9
+
+## 0.12.8
+
+## 0.12.7
+
+### Patch Changes
+
+- [#10375](https://github.com/scalar/scalar/pull/10375): Raise muted text, code-string blue and the deprecated schema row to the 4.5:1 text contrast minimum across the shipped themes
+
+  An accessibility audit turned up text that is legible in the default theme but not in several of the presets, which pair the default greys and blues with an off-white page background. Nine presets and four integration themes get a hue-preserving nudge:
+  - Light `--scalar-color-2` now clears 4.5:1 on both the page background and the grey card background in every preset. That covers `alternate`, `bluePlanet`, `mars` and `saturn`, which paired the default grey with an off-white page, and `custom-theme-starter`, `deepSpace`, `elysiajs`, `fastify`, `kepler` and `purple`, which copied the default grey and were left behind when the default moved.
+  - Light `--scalar-color-blue`, which colours code strings, now clears 4.5:1 on the grey example background in `alternate`, `bluePlanet`, `deepSpace`, `elysiajs`, `fastify`, `kepler` and `moon`, and in the Docusaurus, NestJS, Next.js and SvelteKit themes.
+  - Dark `--scalar-color-blue` now clears 4.5:1 in `purple` and `saturn`, and in the Hono and Docusaurus dark themes.
+  - Deprecated schema rows no longer fade their contents to 75% opacity, which had dropped their muted text to 3.0:1. The diagonal stripes, the strikethrough on the property name and the Deprecated badge still mark the row.
+  - The AsyncAPI send and receive pills blend their label further toward the body text colour, so they read against the tinted fill in every preset but `laserwave`.
+  - `--scalar-focus-color` sits further from the accent so a keyboard focus ring clears 3:1 on `--scalar-background-3` as well, which some presets use for the selected sidebar item.
+
+  `laserwave` still misses in light mode, where it reuses its dark accents unchanged; bringing it up is a redesign of the preset rather than a nudge.
+
+## 0.12.6
+
+## 0.12.5
+
+## 0.12.4
+
+### Patch Changes
+
+- [#10290](https://github.com/scalar/scalar/pull/10290): Update Hono and its Node.js server, WebSocket, and OpenAPI integration dependencies.
+
+  Replace the deprecated `@hono/node-ws` adapter with Node server v2 WebSocket support. `createAsyncApiMockServer()` now returns `websocket` instead of `injectWebSocket`. Start the server with `serve({ fetch: app.fetch, websocket })` instead of calling `injectWebSocket(server)`.
+
+  AsyncAPI callers must upgrade to `@hono/node-server` v2. Node server v1 ignores the `websocket` option, so WebSocket channels will silently stop accepting connections if the server dependency is not upgraded.
+
+## 0.12.3
+
+## 0.12.2
+
+## 0.12.1
+
+## 0.12.0
+
+### Minor Changes
+
+- [#9976](https://github.com/scalar/scalar/pull/9976): Add `Scalar.serve()` to render the API reference and serve its OpenAPI document from a single mount. Instead of wiring a separate document route and keeping the reference's `url` in sync, mount it once with `app.route('/scalar', Scalar.serve({ document }))`. `document` accepts an OpenAPI object or a function that returns one (for example `() => app.getOpenAPI31Document(...)` from Zod OpenAPI Hono), and the JSON path is configurable via `documentPath`.
+
+## 0.11.16
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.11.15
+
+## 0.11.14
+
+## 0.11.13
+
+## 0.11.12
+
+## 0.11.11
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.11.10
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.11.9
+
+## 0.11.8
+
+## 0.11.7
+
+## 0.11.6
+
+## 0.11.5
+
+## 0.11.4
+
+## 0.11.3
+
+## 0.11.2
+
+## 0.11.1
+
+## 0.11.0
+
+### Minor Changes
+
+- [#9422](https://github.com/scalar/scalar/pull/9422): Add a `nonce` option for Content Security Policy support.
+
+  When you pass a `nonce`, the rendered HTML stamps it onto the inline `<script>` and the CDN `<script>` tag (and Scalar's own `<style>` tags, plus a matching `<meta property="csp-nonce">`). This lets the API Reference run under a strict `script-src` with no `unsafe-inline` and no `unsafe-eval`.
+
+  ```ts
+  ApiReference({
+    url: '/openapi.json',
+    // Match this value in your `script-src` CSP directive.
+    nonce: 'r4nd0m',
+  })
+  ```
+
+  Note: `style-src` still needs `'unsafe-inline'`. The reference renders inline `style="…"` attributes, which a CSP nonce can never authorize (nonces only apply to `<script>`, `<style>` and `<link>` elements), so a nonce-only `style-src` is not possible. The win is a fully strict `script-src`.
+
+## 0.10.20
+
+## 0.10.19
+
+## 0.10.18
+
+## 0.10.17
+
+## 0.10.16
+
+## 0.10.15
+
+## 0.10.14
+
+## 0.10.13
+
+## 0.10.12
+
+## 0.10.11
+
+## 0.10.10
+
+## 0.10.9
+
+### Patch Changes
+
+- [#8873](https://github.com/scalar/scalar/pull/8873): refactor: migrate integrations to client-side rendering package
+
+## 0.10.8
+
+## 0.10.7
+
+## 0.10.6
+
+## 0.10.5
+
+## 0.10.4
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.10.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.3**
+
+## 0.10.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.2**
+
+## 0.10.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.1**
+
+## 0.10.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.9.48
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.45**
+
+## 0.9.47
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.44**
+
+## 0.9.46
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.43**
+
+## 0.9.45
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.42**
+
+## 0.9.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.41**
+
+## 0.9.43
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.40**
+
+## 0.9.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.39**
+
+## 0.9.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.38**
+
+## 0.9.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.37**
+
+## 0.9.39
+
+### Patch Changes
+
+- [#7968](https://github.com/scalar/scalar/pull/7968): fix: export `apiReference` directly from index, removing the `Scalar` alias
+- [#7968](https://github.com/scalar/scalar/pull/7968): fix: remove `export` from internal `customTheme`
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.36**
+
+## 0.9.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.35**
+
+## 0.9.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.34**
+
+## 0.9.36
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.33**
+
+## 0.9.35
+
+### Patch Changes
+
+- [#7810](https://github.com/scalar/scalar/pull/7810): docs: update documentation domain
+
+## 0.9.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.32**
+
+## 0.9.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.31**
+
+## 0.9.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.30**
+
+## 0.9.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.29**
+
+## 0.9.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.28**
+
+## 0.9.29
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.27
+
+## 0.9.28
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.26
+
+## 0.9.27
+
+### Patch Changes
+
+- Updated dependencies [[`daa5df4`](https://github.com/scalar/scalar/commit/daa5df45386fa2305275fbf0a7bbcede6bcf9edc)]:
+  - @scalar/core@0.3.25
+
+## 0.9.26
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.24
+
+## 0.9.25
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.23
+
+## 0.9.24
+
+### Patch Changes
+
+- [#7241](https://github.com/scalar/scalar/pull/7241) [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d) Thanks [@hanspagel](https://github.com/hanspagel)! - chore: use "current" not "latest" scalar registry url
+
+- Updated dependencies [[`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d)]:
+  - @scalar/core@0.3.22
+
+## 0.9.23
+
+### Patch Changes
+
+- [#7170](https://github.com/scalar/scalar/pull/7170) [`5d2a740`](https://github.com/scalar/scalar/commit/5d2a74098cc51acb4bdc88758f35bf5d2ac3839f) Thanks [@renovate](https://github.com/apps/renovate)! - Bump dependency to patch GHSA-q7jf-gf43-6x6p
+
+- Updated dependencies []:
+  - @scalar/core@0.3.21
+
+## 0.9.22
+
+### Patch Changes
+
+- @scalar/core@0.3.20
+
+## 0.9.21
+
+### Patch Changes
+
+- Updated dependencies [1e01464]
+  - @scalar/core@0.3.19
+
+## 0.9.20
+
+### Patch Changes
+
+- @scalar/core@0.3.18
+
+## 0.9.19
+
+### Patch Changes
+
+- Updated dependencies [fd2c4ba]
+  - @scalar/core@0.3.17
+
+## 0.9.18
+
+### Patch Changes
+
+- @scalar/core@0.3.16
+
+## 0.9.17
+
+### Patch Changes
+
+- @scalar/core@0.3.15
+
+## 0.9.16
+
+### Patch Changes
+
+- @scalar/core@0.3.14
+
+## 0.9.15
+
+### Patch Changes
+
+- 5f022b5: feat: use registry.scalar.com URLs as example
+- Updated dependencies [5f022b5]
+  - @scalar/core@0.3.13
+
+## 0.9.14
+
+### Patch Changes
+
+- Updated dependencies [7dfbe9e]
+  - @scalar/core@0.3.12
+
+## 0.9.13
+
+### Patch Changes
+
+- 7031d9c: fix(api-reference): reference theme and style fixes
+  - @scalar/core@0.3.11
+
+## 0.9.12
+
+### Patch Changes
+
+- @scalar/core@0.3.10
+
 ## 0.9.11
 
 ### Patch Changes

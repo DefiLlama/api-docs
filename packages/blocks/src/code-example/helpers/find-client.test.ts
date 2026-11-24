@@ -1,0 +1,408 @@
+import type { AvailableClients } from '@scalar/snippetz'
+import { describe, expect, it } from 'vitest'
+
+import type { ClientOption, ClientOptionGroup, CustomClientOptionGroup } from '../types'
+import { findClient } from './find-client'
+import { getClients } from './get-clients'
+
+describe('findClient', () => {
+  // Test data setup
+  const mockClientGroups: ClientOptionGroup[] = [
+    {
+      label: 'JavaScript',
+      key: 'js',
+      options: [
+        {
+          id: 'js/fetch',
+          label: 'Fetch API',
+          lang: 'js',
+          title: 'Fetch API',
+          targetKey: 'js',
+          targetTitle: 'JavaScript',
+          clientKey: 'fetch',
+        },
+        {
+          id: 'js/axios',
+          label: 'Axios',
+          lang: 'js',
+          title: 'Axios',
+          targetKey: 'js',
+          targetTitle: 'JavaScript',
+          clientKey: 'axios',
+        },
+        {
+          id: 'js/jquery',
+          label: 'jQuery',
+          lang: 'js',
+          title: 'jQuery',
+          targetKey: 'js',
+          targetTitle: 'JavaScript',
+          clientKey: 'jquery',
+        },
+      ],
+    },
+    {
+      label: 'Python',
+      key: 'python',
+      options: [
+        {
+          id: 'python/requests',
+          label: 'Requests',
+          lang: 'python',
+          title: 'Requests',
+          targetKey: 'python',
+          targetTitle: 'Python',
+          clientKey: 'requests',
+        },
+        {
+          id: 'python/httpx_sync',
+          label: 'HTTPX Sync',
+          lang: 'python',
+          title: 'HTTPX Sync',
+          targetKey: 'python',
+          targetTitle: 'Python',
+          clientKey: 'httpx_sync',
+        },
+      ],
+    },
+    {
+      label: 'Shell',
+      key: 'shell',
+      options: [
+        {
+          id: 'shell/curl',
+          label: 'cURL',
+          lang: 'shell',
+          title: 'cURL',
+          targetKey: 'shell',
+          targetTitle: 'Shell',
+          clientKey: 'curl',
+        },
+        {
+          id: 'shell/httpie',
+          label: 'HTTPie',
+          lang: 'shell',
+          title: 'HTTPie',
+          targetKey: 'shell',
+          targetTitle: 'Shell',
+          clientKey: 'httpie',
+        },
+      ],
+    },
+  ]
+
+  describe('when clientId is provided and found', () => {
+    it('returns the exact client when found', () => {
+      const result = findClient(mockClientGroups, 'js/fetch')
+      expect(result).toEqual(mockClientGroups[0]?.options[0])
+    })
+
+    it('returns the exact client when found in different groups', () => {
+      const result = findClient(mockClientGroups, 'python/requests')
+      expect(result).toEqual(mockClientGroups[1]?.options[0])
+    })
+  })
+
+  describe('when clientId is provided but not found', () => {
+    it('returns default client when clientId does not exist', () => {
+      const result = findClient(mockClientGroups, 'nonexistent/client' as AvailableClients[number])
+      expect(result).toEqual(mockClientGroups[2]?.options[0])
+    })
+  })
+
+  describe('when clientId is not provided', () => {
+    it('returns default client when clientId is undefined', () => {
+      const result = findClient(mockClientGroups)
+      expect(result).toEqual(mockClientGroups[2]?.options[0])
+    })
+  })
+
+  describe('edge cases', () => {
+    it('handles single group with single option', () => {
+      const singleGroup: ClientOptionGroup[] = [
+        {
+          label: 'Test',
+          key: 'js',
+          options: [
+            {
+              id: 'js/fetch',
+              label: 'Test Client',
+              lang: 'js',
+              title: 'Test Client',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'fetch',
+            },
+          ],
+        },
+      ]
+
+      const result = findClient(singleGroup, 'js/fetch')
+
+      expect(result).toEqual(singleGroup[0]?.options[0])
+    })
+
+    it('returns first option when searching in single group without clientId', () => {
+      const singleGroup: ClientOptionGroup[] = [
+        {
+          label: 'Test',
+          key: 'js',
+          options: [
+            {
+              id: 'js/fetch',
+              label: 'Test Client',
+              lang: 'js',
+              title: 'Test Client',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'fetch',
+            },
+          ],
+        },
+      ]
+
+      const result = findClient(singleGroup)
+
+      expect(result).toEqual(singleGroup[0]?.options[0])
+    })
+
+    it('handles group with empty options array', () => {
+      const groupsWithEmpty: ClientOptionGroup[] = [
+        {
+          label: 'Empty Group',
+          key: 'js',
+          options: [],
+        },
+        {
+          label: 'Valid Group',
+          key: 'js',
+          options: [
+            {
+              id: 'js/fetch',
+              label: 'Valid Client',
+              lang: 'js',
+              title: 'Valid Client',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'fetch',
+            },
+          ],
+        },
+      ]
+
+      const result = findClient(groupsWithEmpty, 'js/fetch')
+
+      expect(result).toEqual(groupsWithEmpty[1]?.options[0])
+    })
+
+    it('returns undefined when first group has empty options and no default found', () => {
+      const groupsWithEmpty: ClientOptionGroup[] = [
+        {
+          label: 'Empty Group',
+          key: 'js',
+          options: [],
+        },
+        {
+          label: 'Valid Group',
+          key: 'js',
+          options: [
+            {
+              id: 'js/fetch',
+              label: 'Valid Client',
+              lang: 'js',
+              title: 'Valid Client',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'fetch',
+            },
+          ],
+        },
+      ]
+
+      const result = findClient(groupsWithEmpty)
+
+      expect(result).toBeUndefined()
+    })
+  })
+
+  describe('custom client handling', () => {
+    it('returns first option when first option is custom', () => {
+      const customGroups: CustomClientOptionGroup[] = [
+        {
+          label: 'Custom',
+          key: 'custom',
+          options: [
+            {
+              id: 'custom/example',
+              label: 'Custom Client',
+              lang: 'js',
+              title: 'Custom Client',
+            } as unknown as ClientOption,
+            {
+              id: 'js/fetch',
+              label: 'Fetch API',
+              lang: 'js',
+              title: 'Fetch API',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'fetch',
+            },
+          ],
+        },
+      ]
+
+      const result = findClient(customGroups)
+
+      expect(result).toEqual({
+        id: 'custom/example',
+        label: 'Custom Client',
+        lang: 'js',
+        title: 'Custom Client',
+      })
+    })
+
+    it('returns default client when first option is not custom', () => {
+      const nonCustomGroups: ClientOptionGroup[] = [
+        {
+          label: 'JavaScript',
+          key: 'js',
+          options: [
+            {
+              id: 'js/fetch',
+              label: 'Fetch API',
+              lang: 'js',
+              title: 'Fetch API',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'fetch',
+            },
+            {
+              id: 'js/axios',
+              label: 'Axios',
+              lang: 'js',
+              title: 'Axios',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'axios',
+            },
+          ],
+        },
+        {
+          label: 'Shell',
+          key: 'shell',
+          options: [
+            {
+              id: 'shell/curl',
+              label: 'cURL',
+              lang: 'shell',
+              title: 'cURL',
+              targetKey: 'shell',
+              targetTitle: 'Shell',
+              clientKey: 'curl',
+            },
+          ],
+        },
+      ]
+
+      const result = findClient(nonCustomGroups)
+
+      expect(result).toEqual({
+        id: 'shell/curl',
+        label: 'cURL',
+        lang: 'shell',
+        title: 'cURL',
+        targetKey: 'shell',
+        targetTitle: 'Shell',
+        clientKey: 'curl',
+      })
+    })
+
+    it('returns first option when default client is not found', () => {
+      const groupsWithoutDefault: ClientOptionGroup[] = [
+        {
+          label: 'JavaScript',
+          key: 'js',
+          options: [
+            {
+              id: 'js/fetch',
+              label: 'Fetch API',
+              lang: 'js',
+              title: 'Fetch API',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'fetch',
+            },
+            {
+              id: 'js/axios',
+              label: 'Axios',
+              lang: 'js',
+              title: 'Axios',
+              targetKey: 'js',
+              targetTitle: 'JavaScript',
+              clientKey: 'axios',
+            },
+          ],
+        },
+      ]
+
+      const result = findClient(groupsWithoutDefault)
+
+      expect(result).toEqual({
+        id: 'js/fetch',
+        label: 'Fetch API',
+        lang: 'js',
+        title: 'Fetch API',
+        targetKey: 'js',
+        targetTitle: 'JavaScript',
+        clientKey: 'fetch',
+      })
+    })
+  })
+
+  describe('global custom sample selection', () => {
+    // Build the fixture the way the app does: a custom group prepended to the built-in groups
+    const groupsWithCustom = getClients(
+      [
+        { lang: 'python', source: 'client.list()' },
+        { lang: 'typescript', source: 'await client.list()' },
+      ],
+      mockClientGroups,
+    )
+
+    it('selects the matching custom sample when a custom id is selected', () => {
+      const result = findClient(groupsWithCustom, 'custom/typescript')
+      expect(result?.id).toBe('custom/typescript')
+    })
+
+    it('stays on a custom sample when the selected language is absent on this operation', () => {
+      const result = findClient(groupsWithCustom, 'custom/ruby')
+      // Falls back to the first custom sample so the selection feels global
+      expect(result?.id).toBe('custom/python')
+    })
+
+    it('prefers a custom sample by default over the default client', () => {
+      const result = findClient(groupsWithCustom)
+      expect(result?.id).toBe('custom/python')
+    })
+
+    it('lets a deliberate cURL selection win over custom samples', () => {
+      // shell/curl is the default client, but it only reaches findClient through a
+      // real selection, so picking it must stick instead of snapping back to custom
+      const result = findClient(groupsWithCustom, 'shell/curl')
+      expect(result?.id).toBe('shell/curl')
+    })
+
+    it('lets an explicit, non-default built-in client win over custom samples', () => {
+      const result = findClient(groupsWithCustom, 'js/fetch')
+      expect(result?.id).toBe('js/fetch')
+    })
+
+    it('falls back to the first custom sample for a legacy index-based custom id', () => {
+      // Ids used to be index-based (custom/0, custom/1) before switching to the
+      // language-keyed form. A stale stored id no longer matches any option, so we
+      // keep showing a custom sample instead of erroring out.
+      const result = findClient(groupsWithCustom, 'custom/1')
+      expect(result?.id).toBe('custom/python')
+    })
+  })
+})

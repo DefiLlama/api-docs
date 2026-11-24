@@ -1,0 +1,99 @@
+import { describe, expect, it } from 'vitest'
+
+import { isPluginDocument } from './plugin-document'
+import { getDocumentType, isAsyncApiDocument, isOpenApiDocument } from './type-guards'
+import type { WorkspaceDocument } from './workspace'
+
+describe('type-guards', () => {
+  const openApiDocument = {
+    openapi: '3.1.0',
+    info: { title: 'Pet Store', version: '1.0.0' },
+  } as unknown as WorkspaceDocument
+
+  const asyncApiDocument = {
+    asyncapi: '3.0.0',
+    info: { title: 'Streetlights', version: '1.0.0' },
+  } as unknown as WorkspaceDocument
+
+  describe('isOpenApiDocument', () => {
+    it('returns true for an OpenAPI document', () => {
+      expect(isOpenApiDocument(openApiDocument)).toBe(true)
+    })
+
+    it('returns false for an AsyncAPI document', () => {
+      expect(isOpenApiDocument(asyncApiDocument)).toBe(false)
+    })
+
+    it('returns false for undefined and null', () => {
+      expect(isOpenApiDocument(undefined)).toBe(false)
+      expect(isOpenApiDocument(null)).toBe(false)
+    })
+
+    it('narrows the type when used as a guard', () => {
+      const document: WorkspaceDocument = openApiDocument
+
+      if (isOpenApiDocument(document)) {
+        // Should compile: `openapi` field is accessible after narrowing.
+        const version: string = document.openapi
+        expect(version).toBe('3.1.0')
+      }
+    })
+  })
+
+  describe('getDocumentType', () => {
+    it('returns "openapi" for an OpenAPI document', () => {
+      expect(getDocumentType(openApiDocument)).toBe('openapi')
+    })
+
+    it('returns "asyncapi" for an AsyncAPI document', () => {
+      expect(getDocumentType(asyncApiDocument)).toBe('asyncapi')
+    })
+
+    it('returns undefined when the value matches neither shape', () => {
+      expect(getDocumentType({ info: { title: 'No version' } })).toBeUndefined()
+      expect(getDocumentType(undefined)).toBeUndefined()
+      expect(getDocumentType(null)).toBeUndefined()
+    })
+  })
+
+  describe('plugin documents', () => {
+    it('are not OpenAPI or AsyncAPI documents, even when they carry those fields', () => {
+      const document = { openapi: '3.1.0', asyncapi: '3.0.0', 'x-scalar-document-type': 'custom', info: {} }
+
+      expect(isPluginDocument(document)).toBe(true)
+      expect(isOpenApiDocument(document)).toBe(false)
+      expect(isAsyncApiDocument(document)).toBe(false)
+    })
+
+    it('are only documents tagged with a document type', () => {
+      expect(isPluginDocument(openApiDocument)).toBe(false)
+      expect(isPluginDocument(asyncApiDocument)).toBe(false)
+      expect(isPluginDocument(undefined)).toBe(false)
+    })
+  })
+
+  describe('isAsyncApiDocument', () => {
+    it('returns true for an AsyncAPI document', () => {
+      expect(isAsyncApiDocument(asyncApiDocument)).toBe(true)
+    })
+
+    it('returns false for an OpenAPI document', () => {
+      expect(isAsyncApiDocument(openApiDocument)).toBe(false)
+    })
+
+    it('returns false for undefined and null', () => {
+      expect(isAsyncApiDocument(undefined)).toBe(false)
+      expect(isAsyncApiDocument(null)).toBe(false)
+    })
+
+    it('narrows the type when used as a guard', () => {
+      const document: WorkspaceDocument = asyncApiDocument
+
+      if (isAsyncApiDocument(document)) {
+        // Should compile: `asyncapi` field is accessible after narrowing.
+        const version: string = document.asyncapi
+        expect(version).toBe('3.0.0')
+      }
+    })
+  })
+})

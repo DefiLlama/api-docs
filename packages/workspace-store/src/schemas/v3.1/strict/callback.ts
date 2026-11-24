@@ -1,14 +1,14 @@
-import { Type, type TSchema } from '@sinclair/typebox'
-import { ExtensionsSchema } from '@/schemas/v3.1/strict/extensions'
-import { compose } from '@/schemas/compose'
-import { ReferenceObjectSchema } from '@/schemas/v3.1/strict/reference'
+import { Type } from '@scalar/typebox'
 
-export const callbackObjectSchemaBuilder = <P extends TSchema>(pathItem: P) =>
-  compose(
-    Type.Record(
-      Type.String(),
-      /** A Path Item Object used to define a callback request and expected responses. A complete example is available. */
-      Type.Union([pathItem, ReferenceObjectSchema]),
-    ),
-    ExtensionsSchema,
-  )
+import type { PathItemObject } from './path-item'
+import { PathItemObjectRef } from './ref-definitions'
+import { type ReferenceType, reference } from './reference'
+
+export const CallbackObjectSchemaDefinition = Type.Record(
+  Type.String(),
+  /** A Path Item Object used to define a callback request and expected responses. A complete example is available. */
+  Type.Union([PathItemObjectRef, reference(PathItemObjectRef)]),
+)
+
+/** A Path Item Object used to define a callback request and expected responses. A complete example is available. */
+export type CallbackObject = Record<string, ReferenceType<PathItemObject>>

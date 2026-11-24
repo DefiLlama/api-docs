@@ -1,0 +1,195 @@
+import { ScriptTarget, createProgram, createSourceFile } from 'typescript'
+import { describe, expect, it } from 'vitest'
+
+import { getPathSchema } from './path'
+
+describe('path', () => {
+  const program = createProgram([], {})
+
+  it('recognizes a variable with an HTTP method identifier', () => {
+    const source = createSourceFile('route.ts', 'export const GET = () => {}', ScriptTarget.Latest, true)
+
+    expect(getPathSchema(source, program)).toStrictEqual({
+      get: {
+        summary: 'use to set the summary',
+        description: 'use jsdoc tag to set the description',
+        parameters: [],
+        responses: {},
+      },
+    })
+  })
+
+  it.each(['export const { GET } = handlers', 'export const [GET] = handlers', 'export const config = {}'])(
+    'ignores unsupported variable names: %s',
+    (code) => {
+      const source = createSourceFile('route.ts', code, ScriptTarget.Latest, true)
+
+      expect(getPathSchema(source, program)).toStrictEqual({})
+    },
+  )
+
+  it.each([
+    'async (_request: Request, { params }: { params: { id: string } }) => { return Response.json("created", { status: 201 }) }',
+    '(_request: Request, { params }: { params: { id: string } }) => Response.json("created", { status: 201 })',
+    'async function (_request: Request, { params }: { params: { id: string } }) { return Response.json("created", { status: 201 }) }',
+    'function handler(_request: Request, { params }: { params: { id: string } }) { return NextResponse.json("created", { status: 201 }) }',
+  ])('extracts parameters and responses from a variable handler: %s', (handler) => {
+    const source = createSourceFile(
+      'route.ts',
+      `/**
+       * Create a resource
+       * @description Creates the requested resource.
+       */
+      export const POST = ${handler}`,
+      ScriptTarget.Latest,
+      true,
+    )
+
+    expect(getPathSchema(source, program)).toStrictEqual({
+      post: {
+        summary: 'Create a resource',
+        description: 'Creates the requested resource.',
+        parameters: [{ name: 'id', schema: { type: 'string' }, in: 'path', required: true }],
+        responses: {
+          '201': {
+            description: 'TODO: grab this from jsdoc and add a default',
+            content: { 'application/json': { schema: { type: 'string', example: 'created' } } },
+          },
+        },
+      },
+    })
+  })
+
+  it.each([
+    'export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) { return Response.json(await params) }',
+    'export const GET = async (_request: Request, { params }: { params: Promise<{ id: string }> }) => Response.json(await params)',
+    'export const GET = async function (_request: Request, { params }: { params: Promise<{ id: string }> }) { return Response.json(await params) }',
+  ])('preserves path parameters for asynchronous route contexts: %s', (code) => {
+    const source = createSourceFile('route.ts', code, ScriptTarget.Latest, true)
+
+    expect(getPathSchema(source, program).get?.parameters).toStrictEqual([
+      { name: 'id', schema: { type: 'string' }, in: 'path', required: true },
+    ])
+  })
+
+  it.each([
+    'type Params = { id: string }; export function GET(_request: Request, context: { params: Promise<Params> }) {}',
+    "export const GET = async (_request: Request, context: RouteContext<'/characters/[id]'>) => {}",
+    'export const GET = function (_request: Request, context: Context) {}',
+    'export function GET() {}',
+    'export const GET = handlers.get',
+  ])('uses the route path when parameter types cannot be extracted: %s', (code) => {
+    const source = createSourceFile('route.ts', code, ScriptTarget.Latest, true)
+
+    expect(getPathSchema(source, program, '/characters/{id}').get?.parameters).toStrictEqual([
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+    ])
+  })
+
+  it('preserves inferred schemas and fills missing parameters for each operation', () => {
+    const source = createSourceFile(
+      'route.ts',
+      `export function GET(_request: Request, context: { params: Promise<{ id: number }> }) {}
+       export const DELETE = () => {}`,
+      ScriptTarget.Latest,
+      true,
+    )
+    const schema = getPathSchema(source, program, '/groups/{groupId}/characters/{id}')
+
+    expect(schema.get?.parameters).toStrictEqual([
+      { name: 'id', schema: { type: 'number' }, in: 'path', required: true },
+      { name: 'groupId', in: 'path', required: true, schema: { type: 'string' } },
+    ])
+    expect(schema.delete?.parameters).toStrictEqual([
+      { name: 'groupId', in: 'path', required: true, schema: { type: 'string' } },
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+    ])
+  })
+
+  it('does not infer parameters for static paths', () => {
+    const source = createSourceFile('route.ts', 'export function GET() {}', ScriptTarget.Latest, true)
+
+    expect(getPathSchema(source, program, '/characters').get?.parameters).toStrictEqual([])
+  })
+
+  it.each(['Array<{ id: string }>', 'Promise<string>', 'Promise'])(
+    'ignores unsupported params types: %s',
+    (paramsType) => {
+      const source = createSourceFile(
+        'route.ts',
+        `export function GET(_request: Request, { params }: { params: ${paramsType} }) {}`,
+        ScriptTarget.Latest,
+        true,
+      )
+
+      expect(getPathSchema(source, program).get?.parameters).toStrictEqual([])
+    },
+  )
+
+  it('extracts each method independently when a statement declares multiple variables', () => {
+    const source = createSourceFile(
+      'route.ts',
+      `export const config = {}, GET = () => Response.json("read"),
+        POST = function () { return Response.json("written", { status: 201 }) }`,
+      ScriptTarget.Latest,
+      true,
+    )
+
+    expect(getPathSchema(source, program)).toStrictEqual({
+      get: {
+        summary: 'use to set the summary',
+        description: 'use jsdoc tag to set the description',
+        parameters: [],
+        responses: {
+          '200': {
+            description: 'TODO: grab this from jsdoc and add a default',
+            content: { 'application/json': { schema: { type: 'string', example: 'read' } } },
+          },
+        },
+      },
+      post: {
+        summary: 'use to set the summary',
+        description: 'use jsdoc tag to set the description',
+        parameters: [],
+        responses: {
+          '201': {
+            description: 'TODO: grab this from jsdoc and add a default',
+            content: { 'application/json': { schema: { type: 'string', example: 'written' } } },
+          },
+        },
+      },
+    })
+  })
+
+  it('keeps function declarations equivalent to variable handlers', () => {
+    const source = createSourceFile(
+      'route.ts',
+      'export function GET() { return Response.json("read") }',
+      ScriptTarget.Latest,
+      true,
+    )
+    const variableSource = createSourceFile(
+      'route.ts',
+      'export const GET = () => Response.json("read")',
+      ScriptTarget.Latest,
+      true,
+    )
+
+    expect(getPathSchema(source, program)).toStrictEqual(getPathSchema(variableSource, program))
+  })
+
+  it.each(['export const GET = handlers.get', 'export const GET = createHandler()', 'export let GET'])(
+    'preserves metadata for handlers whose implementation is not inline: %s',
+    (code) => {
+      const source = createSourceFile('route.ts', code, ScriptTarget.Latest, true)
+
+      expect(getPathSchema(source, program)).toStrictEqual({
+        get: {
+          summary: 'use to set the summary',
+          description: 'use jsdoc tag to set the description',
+          responses: {},
+        },
+      })
+    },
+  )
+})

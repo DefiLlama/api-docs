@@ -2,11 +2,12 @@ import type { Element, Root } from 'hast'
 import type { LanguageFn } from 'highlight.js'
 import rehypeParse from 'rehype-parse'
 import rehypeStringify from 'rehype-stringify'
-import { unified, type Plugin } from 'unified'
+import { type Plugin, unified } from 'unified'
 import { visit } from 'unist-util-visit'
 
 import { lowlightLanguageMappings } from '@/constants'
 import { rehypeHighlight } from '@/rehype-highlight'
+import { getSharedLowlight } from '@/rehype-highlight/shared-lowlight'
 
 import { codeBlockLinesPlugin } from './line-numbers'
 
@@ -37,6 +38,7 @@ export function syntaxHighlight(
   // Classname is used by lowlight to select the language model
   const className = `language-${lowlightLanguageMappings[options.lang] ?? options.lang}`
 
+  // biome-ignore lint/suspicious/noEmptyBlockStatements: empty plugin
   const nullPlugin = (() => {}) satisfies Plugin
 
   const html = unified()
@@ -47,7 +49,7 @@ export function syntaxHighlight(
     .use(injectRawCodeStringPlugin(codeString))
     // Syntax highlighting
     .use(rehypeHighlight, {
-      languages: options.languages,
+      lowlight: options.languages ? getSharedLowlight(options.languages) : undefined,
     })
     .use(options?.lineNumbers ? codeBlockLinesPlugin : nullPlugin)
     // Converts the HTML AST to a string

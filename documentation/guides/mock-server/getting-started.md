@@ -1,0 +1,578 @@
+# Mock Server
+<div class="flex gap-2">
+<a href="https://www.npmjs.com/@scalar/mock-server" aria-label="View @scalar/mock-server on NPM"><img alt="NPM Version" src="https://img.shields.io/npm/v/@scalar/mock-server"></a>
+<a href="https://www.npmjs.com/@scalar/mock-server" aria-label="View NPM downloads for @scalar/mock-server"><img alt="NPM Downloads" src="https://img.shields.io/npm/dm/@scalar/mock-server"></a>
+<a href="https://discord.gg/scalar" aria-label="Join Scalar community on Discord"><img alt="Discord" src="https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2"></a>
+</div>
+
+A powerful Node.js mock server that automatically generates realistic API responses from your API documents. It creates fully-functional endpoints with mock data, handles authentication, and respects content types - making it perfect for frontend development, API prototyping, and integration testing.
+
+## Features
+
+- Perfect for frontend development and testing
+- Creates endpoints automatically from your API documents
+- Generates realistic mock data based on your schemas
+- Handles authentication and responds with defined HTTP headers
+- Supports Swagger 2.0 and OpenAPI 3.x documents
+- Mocks event-driven APIs from AsyncAPI 3.1 documents over WebSocket and SSE
+- Streams `text/event-stream` responses as real Server-Sent Events
+- Write custom JavaScript handlers for dynamic responses
+- Automatically seed initial data on server startup
+- Validates incoming requests against your OpenAPI contract
+
+## Quickstart
+
+The easiest way to get started is through [our Scalar CLI](../cli/getting-started.md).
+You can have a mock server up and running in seconds:
+
+```bash
+npx @scalar/cli document mock openapi.json --watch
+```
+
+### Docker
+
+Alternatively, you can run the mock server in a Docker container. See the [Docker documentation](docker.md) for more details.
+
+## Installation
+
+For advanced use cases, you can integrate the mock server directly into your Node.js application for full control:
+
+```bash
+npm install @scalar/mock-server
+```
+
+## Usage
+
+```typescript
+import { serve } from '@hono/node-server'
+import { createMockServer } from '@scalar/mock-server'
+
+// Your OpenAPI document
+const document = {
+  openapi: '3.1.1',
+  info: {
+    title: 'Hello World',
+    version: '1.0.0',
+  },
+  paths: {
+    '/foobar': {
+      get: {
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                example: {
+                  foo: 'bar',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+}
+
+// Create the mocked routes
+const app = await createMockServer({
+  document,
+  // Custom logging
+  onRequest({ context, operation }) {
+    console.log(context.req.method, context.req.path)
+  },
+})
+
+// Start the server
+serve(
+  {
+    fetch: app.fetch,
+    port: 3000,
+  },
+  (info) => {
+    console.log(`Listening on http://localhost:${info.port}`)
+  },
+)
+```
+
+### Authentication
+
+You can define security schemes in your OpenAPI document and the mock server will validate the authentication. On startup it prints instructions on how to authenticate, which you can turn off — see [Silencing startup logging](#silencing-startup-logging):
+
+```typescript
+import { serve } from '@hono/node-server'
+import { createMockServer } from '@scalar/mock-server'
+
+// Your OpenAPI document
+const document = {
+  openapi: '3.1.1',
+  info: {
+    title: 'Hello World',
+    version: '1.0.0',
+  },
+  paths: {
+    '/secret': {
+      get: {
+        security: [
+          {
+            bearerAuth: [],
+          },
+          {
+            apiKey: [],
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                example: {
+                  foo: 'bar',
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Unauthorized',
+            content: {
+              'application/json': {
+                example: {
+                  error: 'Unauthorized',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+      apiKey: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-API-Key',
+      },
+    },
+  },
+}
+
+// Create the mocked routes
+const app = await createMockServer({
+  document,
+  // Custom logging
+  onRequest({ context, operation }) {
+    console.log(context.req.method, context.req.path)
+  },
+})
+
+// Start the server
+serve(
+  {
+    fetch: app.fetch,
+    port: 3000,
+  },
+  (info) => {
+    console.log(`Listening on http://localhost:${info.port}`)
+  },
+)
+```
+
+### OpenAPI endpoints
+
+The given OpenAPI document is automatically exposed:
+
+- `/openapi.json` and `/openapi.yaml`
+
+### Already loaded documents
+
+When passing a parsed object or inline JSON/YAML with relative references, set `origin` to its source file path or URL. The mock server uses that location to resolve references without reading the root document again.
+
+```ts
+const app = await createMockServer({
+  document,
+  origin: 'https://example.com/openapi.json',
+})
+```
+
+For file and URL inputs, the JSON and YAML export routes return the loaded, bundled API description. Inline inputs without `origin` keep their original format version.
+
+### Overlapping paths
+
+When more than one path matches a request, the most concrete one answers it, as the OpenAPI specification asks. It does not matter which one the document declares first:
+
+```yaml
+paths:
+  /pets/{petId}: … # answers /pets/42
+  /pets/mine: … # answers /pets/mine
+```
+
+Paths are compared segment by segment from the left, and the first segment that differs decides. A literal segment beats one that mixes a parameter with literal text (`{jobId}:cancel`), which beats a bare parameter (`{jobId}`). A mixed segment that is routed as a whole-segment parameter, such as `{name}.json`, matches any value and so ranks like a bare parameter. So `/a/literal/{y}` answers `/a/literal/b` ahead of `/a/{x}/b`. Paths that rank the same keep the order the document declares them in.
+
+### Path keys with a query string
+
+Some documents describe a variant of an operation by putting a query string in the path key:
+
+```yaml
+paths:
+  /v1/messages: …
+  /v1/messages?beta=true: …
+```
+
+Both keys are routed. The variant answers only requests that actually send every query parameter it pins (`?beta=true` here), and the plain key answers everything else. A key that pins a name without a value (`?beta`) matches any value.
+
+Everything else in a path key is matched literally, so a path such as `/users:batchGet` or `/reports*` is served as written.
+
+A segment that mixes a path parameter with literal text of that kind (`/v1/jobs/{jobId}:cancel`) routes to the right operation, but `jobId` is not bound by name — a single path segment can only carry one parameter. Request validation reads it as missing, so a document that describes such a path has to run the mock server with `validateRequest: false`, which turns validation off for every operation in it.
+
+### Server base paths
+
+Every operation is served under the path of each of its servers as well as at its bare path key:
+
+```yaml
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /pets/{petId}: … # answers /v1/pets/42 and /pets/42
+```
+
+OpenAPI 2.0 `basePath` and relative server URLs work the same way. A relative server URL uses the HTTP retrieval URL of the document that declares it when available and the mock server root otherwise. Every enum value of a variable in the server path is served, including combinations of multiple variables, and the default is used when there is no enum. Host variables do not create extra routes. Operation and path item `servers` take precedence over the servers of the document. An explicit empty `servers` array at either level leaves the affected operations available only at their bare path keys. Routes under a base path are ranked together with the bare path keys, so the most concrete one answers a request, and on a tie the path key the document declares wins.
+
+When an operation and a built-in OAuth route share an HTTP method and URL, the built-in OAuth route answers the request. The operation still answers at its bare path key when that path is distinct.
+
+Dotted hostnames such as `api.example.com:8443/v1` can omit the scheme. Use a scheme for single-label hosts such as `http://localhost:8443/v1`.
+
+An OpenAPI description can use up to 4,096 server URL combinations and 10,000 generated operation routes. If either limit is exceeded, the mock logs a startup diagnostic and serves the bare operation routes.
+
+### Selecting responses
+
+By default the mock server picks a response (and its status code) for you and returns the first example it can find. You can override both with the standard [`Prefer` header](https://www.rfc-editor.org/rfc/rfc7240), just like [Stoplight Prism](https://github.com/stoplightio/prism).
+
+Use `code=<status>` to request a specific response status:
+
+```bash
+# Returns the 404 response defined for the operation
+curl http://localhost:3000/users/1 -H 'Prefer: code=404'
+```
+
+Use `example=<name>` to pick a named example from the `examples` map:
+
+```bash
+# Returns the `bob` example from the response
+curl http://localhost:3000/users -H 'Prefer: example=bob'
+```
+
+Both directives are independent and can be combined. `code=` picks the response, then `example=` picks the example within it:
+
+```bash
+curl http://localhost:3000/users -H 'Prefer: code=422, example=missingEmail'
+```
+
+Unknown values fall back to the default behavior, so an undefined status code or example name never errors.
+
+To define multiple examples, use the `examples` map on the response media type:
+
+```typescript
+const document = {
+  openapi: '3.1.1',
+  info: {
+    title: 'Hello World',
+    version: '1.0.0',
+  },
+  paths: {
+    '/users': {
+      get: {
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                examples: {
+                  alice: {
+                    value: { name: 'Alice' },
+                  },
+                  bob: {
+                    value: { name: 'Bob' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+## Advanced Features
+
+### Request Validation
+
+The mock server enforces your OpenAPI contract by default. Each request is validated against the matched operation before a mock response is generated:
+
+- **Path, query, header, and cookie parameters** declared in the operation are validated against their schema. Values arrive as strings, so `type: integer`/`boolean` are coerced before validation (for example `?limit=10` becomes the number `10`). Required parameters are enforced. Header names are matched case-insensitively, and the `Accept`, `Content-Type`, and `Authorization` headers are ignored as parameters because OpenAPI defines them elsewhere.
+- **Array parameters** are deserialized according to their `style` and `explode` before validation. Exploded `form` arrays read repeated query keys (`?ids=1&ids=2`), while `form` (non-exploded), `spaceDelimited`, and `pipeDelimited` query arrays, `simple` path and header arrays, `form` cookie arrays, and the `label` (`/.1.2.3`) and `matrix` (`/;ids=1;ids=2`) path styles are split on their delimiter.
+- **Object parameters** are deserialized too: `deepObject` (`?filter[min]=1&filter[max]=9`), exploded `form` (properties as top-level keys, `?r=100&g=200`), `form`/`simple`/`label`/`matrix` in both explode modes (for example `r,100,g,200`, `r=100,g=200`, or `;point=x,1,y,2`).
+- **Parameters declared with `content`** use the declared media type. JSON is parsed and validated with its original types. Plain text is validated against its schema with string coercion. Other media types enforce requiredness and reject supplied values when the schema is `false`.
+- **JSON request bodies** sent as `application/json` or a media type with a `+json` suffix are validated against the schema of the most specific `requestBody.content` entry that matches `Content-Type`. If the header is absent, the mock server prefers bare `application/json`, then a parameterized `application/json` entry, then the first declared `+json` entry. The server enforces `requestBody.required` independently.
+- **Recursive schemas** (a schema that references itself, directly or through another schema) are validated down to the point where the cycle is cut. Values at and below that recursion point are accepted as they are, and a `not`, `if`, `oneOf`, or `contains` that depends on the recursion is not enforced — nor are the keywords that only qualify them, such as `unevaluatedProperties`, `unevaluatedItems`, or `additionalProperties` — so validation stays on the forgiving side.
+
+When a request violates the contract, the server responds with `422 Unprocessable Entity` and a `application/problem+json` body listing every violation, instead of a mock response.
+
+To turn this off and always return a mock response regardless of the request, set `validateRequest: false`:
+
+```ts
+import { createMockServer } from '@scalar/mock-server'
+
+const app = await createMockServer({
+  document,
+  // Opt out of request validation
+  validateRequest: false,
+})
+```
+
+A failing request (for example a missing required `limit` query parameter and a wrong-typed body field) returns:
+
+```http
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/problem+json
+```
+
+```json
+{
+  "error": "Request validation failed",
+  "violations": [
+    { "location": "query", "path": "/limit", "message": "limit must be integer" },
+    { "location": "body", "path": "/age", "message": "must be integer" }
+  ]
+}
+```
+
+Each violation reports its `location` (`path`, `query`, `header`, `cookie`, or `body`), a `path` pointing at the offending value, and a human-readable `message`. All violations are returned at once, not just the first.
+
+> This validates path, query, header, and cookie parameters (across every OpenAPI serialization style, including array and object values), plus JSON request bodies. Response validation, non-JSON bodies, and proxy mode are planned follow-ups.
+
+### Server-Sent Events
+
+When `text/event-stream` is the negotiated response media type, the response is streamed as real Server-Sent Events: every event goes out as a `data:` line terminated by a blank line, and the stream closes when the last event is written.
+
+```typescript
+const document = {
+  openapi: '3.1.1',
+  info: {
+    title: 'Hello World',
+    version: '1.0.0',
+  },
+  paths: {
+    '/events': {
+      get: {
+        responses: {
+          '200': {
+            description: 'Server-Sent Events stream. Emits a summary event, then one row event.',
+            content: {
+              'text/event-stream': {
+                examples: {
+                  summary: {
+                    value: { total_rows: 2 },
+                  },
+                  row: {
+                    value: { count: 42 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+```bash
+curl http://localhost:3000/events -H 'Accept: text/event-stream'
+```
+
+```text
+data: {"total_rows":2}
+
+data: {"count":42}
+```
+
+How the events are picked:
+
+- Named `examples` are read as the sequence of events the endpoint emits, in declaration order. `Prefer: example=<name>` still works and pins the stream to that one example.
+- An array example is read as the event sequence too, one event per item.
+- An example that already spells out the wire format — `data:` and `event:` lines, or a `:` comment heartbeat — is written as its own framing, with only its terminating blank line normalized, instead of being wrapped in a second `data:` line. Examples like that describe a whole stream, so a map of them lists alternatives: the first one is served, and `Prefer: example=<name>` picks another.
+- When the response only has a schema, the generated payload is sent three times, so a client's read loop sees more than one event before the stream ends. A schema that already generates a sequence — an `array` with more than one item, or a string that spells the wire format out — is sent once, not repeated.
+
+### XML generation errors
+
+If an XML example cannot be generated, the mock response includes an `X-Scalar-XML-Error` header with the first diagnostic code, such as `limit-exceeded` or `unresolved-reference`. The declared response status is preserved and the body is empty. This also applies when a custom handler returns `undefined` and falls back to a response example.
+
+Resolve missing schema references or supply a complete XML payload with an Example Object's `serializedValue` field in an OpenAPI 3.2 API description to bypass generation limits.
+
+### Error Responses
+
+When mocking a request fails in a way nothing else handles — a declared response header name that is not a valid HTTP header name, an example that cannot be serialized — the server responds with `500 Internal Server Error` and a JSON body naming the operation that failed:
+
+```json
+{
+  "error": "Internal Server Error",
+  "message": "Headers.set: \"X Invalid Name\" is an invalid header name.",
+  "operation": {
+    "method": "GET",
+    "path": "/pets/{petId}",
+    "operationId": "getPet"
+  }
+}
+```
+
+`operation` reports the HTTP method and the OpenAPI path key of the matched operation, plus its `operationId` when the document declares one. It is left out when the request did not match a mocked operation, for example on a route you added to the returned app yourself. Either way, the error is also logged to the console, so the stack trace stays available.
+
+Failures that are already handled elsewhere never reach this handler, so they keep their own shape and carry no `operation` key:
+
+- **`x-handler` errors** — an extension that throws responds with `{ "error": "Handler execution failed", "message": … }`.
+- **Operations with no response** — an operation whose `responses` are empty responds with `{ "error": "No response defined for this operation." }`.
+- **Errors that carry a response** — an error such as Hono's `HTTPException` keeps the status and body it chose, and is not logged.
+
+### Observing and changing responses
+
+Pass `onResponse` to see every response before it is sent, or to send a different one. It is called once per request, after the mock server has produced its response, with:
+
+- `context` — the Hono context of the request, the same one `onRequest` receives.
+- `operation` — the OpenAPI operation that answered the request, or `undefined` when no operation did: the `/openapi.json` and `/openapi.yaml` exports, the authentication routes, routes you add to the returned app, and `404 Not Found` responses.
+- `response` — the `Response` about to be sent.
+
+Return a `Response` to send it instead, or return nothing to keep the mock response. Async callbacks are awaited.
+
+A mock server serves the same example on every request, so a list endpoint that says `has_more: true` sends an auto-paginating client around forever. Rewrite it into the last page:
+
+```ts
+import { createMockServer } from '@scalar/mock-server'
+
+const app = await createMockServer({
+  document,
+  async onResponse({ operation, response }) {
+    // Only rewrite the paginated list, and leave every other response untouched
+    if (operation?.operationId !== 'listItems') {
+      return
+    }
+
+    const page = await response.json()
+
+    return Response.json({ ...page, has_more: false }, { status: response.status })
+  },
+})
+```
+
+A few things to know:
+
+- **Every response reaches it**, including authentication failures, `422` [request validation](#request-validation) responses and `500` [error responses](#error-responses). CORS preflight (`OPTIONS`) requests are answered before it runs. A `HEAD` request reaches it with the `GET` response, and the body is dropped afterwards either way.
+- **Streams keep streaming.** The mock server never reads the body, so a `text/event-stream` or JSON Lines response is still streaming when it reaches the callback. Reading the body consumes it, so a callback that reads it has to return a replacement — or read `response.clone()` instead.
+- **Headers.** The replacement is sent with its own headers. The CORS headers the server adds are carried over onto it, unless it sets them itself; the mock response's other headers are not, so copy them from `response.headers` when you want to keep them.
+- **Errors.** If the callback throws or its promise rejects, the server responds with a `500` that names the operation, as described in [Error Responses](#error-responses). That response is not passed to the callback again.
+
+`onResponse` only applies to OpenAPI documents. For AsyncAPI documents, use `onMessage` to observe channel messages.
+
+### HTTP authentication
+
+Basic and Bearer schemes accept case-insensitive scheme names. Basic checks for a base64-encoded `username:password`; Bearer checks for a non-empty token. API keys must be present in their declared header, query parameter, or cookie. These are mock credential-shape checks, not password, token-signature, expiry, or scope validation.
+
+Digest authentication returns an MD5 challenge with `qop=auth`. Any username and password can be used to construct the response. The mock checks required directives, response shape, nonce, and request URI; it does not verify the password hash or implement replay protection.
+
+### Mutual TLS
+
+A `mutualTLS` scheme requires a peer certificate verified by the Node HTTPS adapter. Configure the HTTPS server to request certificates and trust your development CA:
+
+```ts
+import { readFileSync } from 'node:fs'
+import { createServer } from 'node:https'
+import { serve } from '@hono/node-server'
+import { createMockServer } from '@scalar/mock-server'
+
+const app = await createMockServer({ document })
+serve({
+  fetch: app.fetch,
+  createServer,
+  port: 3000,
+  serverOptions: {
+    key: readFileSync('server.key'),
+    cert: readFileSync('server.crt'),
+    ca: readFileSync('development-ca.crt'),
+    requestCert: true,
+    // Let the mock return an HTTP 401 for missing or untrusted certificates.
+    rejectUnauthorized: false,
+  },
+})
+```
+
+Use `rejectUnauthorized: true` to reject unauthorized clients during the TLS handshake instead. On plain HTTP or adapters without verified peer-certificate information, the security requirement is unsatisfied. Client-supplied certificate headers never satisfy it.
+
+### OpenID Connect
+
+Declaring an `openIdConnect` scheme starts a development identity provider on the mock origin. Discovery advertises:
+
+- `/oauth/authorize` for the authorization-code flow.
+- `/oauth/token` for form-encoded code exchange and refresh.
+- `/oauth/jwks` for the public RS256 verification key.
+- `/oauth/userinfo` for the identity associated with an issued access token.
+
+Start authorization with `scope=openid`, `client_id`, `redirect_uri`, and `response_type=code`. The consent page returns a single-use code. Exchange it with the same client ID and redirect URI. Optional S256 PKCE is supported; the token request must then include the matching `code_verifier`.
+
+ID tokens include `iss`, `sub`, `aud`, `iat`, `exp`, and the original `nonce` when supplied. The identity is always `scalar-mock-user`. UserInfo checks the issued bearer token and returns profile and email claims only when their scopes were granted. Codes expire after five minutes, access and ID tokens after one hour, and refresh tokens after one day. Refresh tokens rotate after each use; scopes can be reduced, not expanded.
+
+Keys and tokens are held in memory and reset when the mock restarts. This provider uses public clients (`token_endpoint_auth_methods_supported: [none]`) and does not implement client-secret authentication, implicit/hybrid identity flows, logout, or a user database. Ordinary OAuth2 mocks continue to accept arbitrary credentials and return example tokens.
+
+### Silencing startup logging
+
+When the document declares security schemes, the mock server prints instructions on how to authenticate as it starts up. That is handy in a terminal, but it is just noise when the server runs inside a test suite or another program. Pass `logger: false` to silence it:
+
+```ts
+import { createMockServer } from '@scalar/mock-server'
+
+const app = await createMockServer({
+  document,
+  // Do not print the authentication instructions
+  logger: false,
+})
+```
+
+Pass a function instead to send the lines somewhere other than the console — a test logger, a file, a buffer:
+
+```ts
+const lines: string[] = []
+
+const app = await createMockServer({
+  document,
+  logger: (line) => lines.push(line),
+})
+```
+
+Diagnostics are not affected, so real problems still surface: warnings and errors about security schemes the mock server cannot handle, request validator compilation errors, and `x-seed` errors are printed either way.
+
+`createMockServer` with an AsyncAPI document takes the same `logger` option for its transport lifecycle lines, but it is silent by default — pass `logger: true` to print them.
+
+### Custom Request Handlers
+
+Use the `x-handler` extension to write custom JavaScript code for handling requests. This gives you access to a `store` helper for data persistence, `faker` for generating realistic data, and full access to request/response objects.
+
+[Learn more about custom request handlers →](custom-request-handler.md)
+
+### Data Seeding
+
+Use the `x-seed` extension on your schemas to automatically populate initial data when the server starts. Perfect for having realistic test data available immediately.
+
+[Learn more about data seeding →](data-seeding.md)
+
+### AsyncAPI Mocking
+
+Point the mock server at an AsyncAPI 3.1 document to mock event-driven APIs. Channels are served over WebSocket and Server-Sent Events, and messages are generated from each message's payload schema. Additional protocols can be plugged in through the `transports` extension point.
+
+[Learn more about AsyncAPI mocking →](asyncapi.md)

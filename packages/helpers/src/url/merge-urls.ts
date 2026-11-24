@@ -1,6 +1,7 @@
 import { REGEX } from '@/regex/regex-helpers'
-import { isRelativePath } from './is-relative-path'
+
 import { ensureProtocol } from './ensure-protocol'
+import { isRelativePath } from './is-relative-path'
 
 /**
  * Merges multiple URLSearchParams objects, preserving multiple values per param
@@ -52,92 +53,39 @@ export const combineUrlAndPath = (url: string, path: string) => {
 }
 
 /**
- * Places an API key in a pro API path.
- * The key normally goes right after the host (/{key}/api/...), but DefiLlama's usage
- * endpoint takes it as its last segment instead (/usage/{key}). Without this, the usage
- * call became /{key}/usage/{placeholder} and failed.
- * The key is used as given, so callers can pass an encoded key or a placeholder like <API-KEY>.
- */
-export const placeApiKeyInPath = (path: string, apiKey: string): string =>
-  /^\/usage\/[^/]*$/.test(path) ? `/usage/${apiKey}` : `/${apiKey}${path}`
-
-/**
- * Injects an API key as a path segment into a URL
- * Only injects if the base URL actually requires API key injection
- *
- * @param baseUrl - The base URL
- * @param apiKey - The API key to inject
- * @param path - The path to append after the API key
- * @param shouldInject - Whether the URL requires API key injection
- * @returns The URL with API key injected or original URL combination
- */
-export const injectApiKeyInPath = (
-  baseUrl: string,
-  apiKey: string,
-  path: string,
-  shouldInject: boolean = true,
-): string => {
-  if (!shouldInject || !apiKey) {
-    return combineUrlAndPath(baseUrl, path)
-  }
-
-  // Ensure baseUrl doesn't end with slash
-  const cleanBaseUrl = baseUrl.replace(/\/$/, '')
-  // Ensure path starts with slash for consistency
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`
-
-  return `${cleanBaseUrl}${placeApiKeyInPath(normalizedPath, encodeURIComponent(apiKey))}`
-}
-
-/**
  * Creates a URL from the path and server
  * also optionally merges query params if you include urlSearchParams
  * This was re-written without using URL to support variables in the scheme
  */
-export function mergeUrls(url: string, path: string, urlParams?: URLSearchParams, disableOriginPrefix?: boolean): string
-export function mergeUrls(
-  url: string,
-  path: string,
-  urlParams?: URLSearchParams,
-  disableOriginPrefix?: boolean,
-  apiKey?: string,
-  shouldInjectApiKey?: boolean,
-): string
-export function mergeUrls(
+export const mergeUrls = (
   url: string,
   path: string,
   urlParams: URLSearchParams = new URLSearchParams(),
   /** To disable prefixing the url with the origin or a scheme*/
-  disableOriginPrefix: boolean = false,
-  /** Optional API key to inject as path segment */
-  apiKey?: string,
-  /** Whether this URL requires API key injection */
-  shouldInjectApiKey: boolean = false,
-): string {
+  disableOriginPrefix = false,
+) => {
   // Extract and merge all query params
   if (url && (!isRelativePath(url) || typeof window !== 'undefined')) {
     /** Prefix the url with the origin if it is relative and we wish to */
-    const base = disableOriginPrefix
-      ? url
-      : isRelativePath(url)
-        ? combineUrlAndPath(window.location.origin, url)
-        : ensureProtocol(url)
+    let base = url
+    if (!disableOriginPrefix) {
+      base = isRelativePath(url) ? combineUrlAndPath(window.location.origin, url) : ensureProtocol(url)
+    }
 
     // Extract search params from base URL if any
-    const [baseUrl = '', baseQuery] = base.split('?')
+    const baseQueryIndex = base.indexOf('?')
+    const baseUrl = baseQueryIndex === -1 ? base : base.slice(0, baseQueryIndex)
+    const baseQuery = baseQueryIndex === -1 ? '' : base.slice(baseQueryIndex + 1)
     const baseParams = new URLSearchParams(baseQuery || '')
 
     // Extract search params from path if any
-    const [pathWithoutQuery = '', pathQuery] = path.split('?')
+    const pathQueryIndex = path.indexOf('?')
+    const pathWithoutQuery = pathQueryIndex === -1 ? path : path.slice(0, pathQueryIndex)
+    const pathQuery = pathQueryIndex === -1 ? '' : path.slice(pathQueryIndex + 1)
     const pathParams = new URLSearchParams(pathQuery || '')
 
-    // Merge the baseUrl and path, optionally injecting API key
-    const mergedUrl =
-      url === path
-        ? baseUrl
-        : apiKey && shouldInjectApiKey
-          ? injectApiKeyInPath(baseUrl, apiKey, pathWithoutQuery, shouldInjectApiKey)
-          : combineUrlAndPath(baseUrl, pathWithoutQuery)
+    // Merge the baseUrl and path
+    const mergedUrl = url === path ? baseUrl : combineUrlAndPath(baseUrl, pathWithoutQuery)
 
     // Merge all search params
     const mergedSearchParams = mergeSearchParams(baseParams, pathParams, urlParams)

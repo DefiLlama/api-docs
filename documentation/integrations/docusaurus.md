@@ -1,6 +1,8 @@
-# Scalar API Reference for Docusaurus
+# API Reference for Docusaurus
 
-Docusaurus helps you to ship a beautiful documentation site in no time. For everyone who wants to make their API reference part of a Docusaurus website, we've built a Scalar API Reference plugin. Here is how you can integrate it in your project:
+Docusaurus helps you to ship a beautiful documentation site in no time. For everyone who wants to make their API reference part of a Docusaurus website, we've built an API Reference plugin.
+
+![Screenshot of the Docusaurus integration](../assets/screenshots/docusaurus.png)
 
 ## Installation
 
@@ -12,7 +14,7 @@ npm install @scalar/docusaurus
 
 Simply add to the plugins section of your Docusaurus config. If you are using Typescript you can import the type options type as well.
 
-```ts
+```typescript
 import type { ScalarOptions } from '@scalar/docusaurus'
 
 plugins: [
@@ -23,20 +25,22 @@ plugins: [
       route: '/scalar',
       showNavLink: true, // optional, default is true
       configuration: {
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=yaml',
       },
     } as ScalarOptions,
   ],
 ],
 ```
 
-We wrote a [detailed integration guide for Docusaurus](https://github.com/scalar/scalar/tree/main/documentation/integrations/docusaurus.md).
+### Multiple API references
 
-### Multiple API descriptions
+Is it possible to show multiple API references? Yes, it is! :)
 
-Is it possible to show multiple API descriptions? Yes, it is! :)
+You can either display each API reference in its own page, or display multiple API references on a single page.
 
-```ts
+#### Create a page for each API reference
+
+```typescript
 import type { ScalarOptions } from '@scalar/docusaurus'
 
 plugins: [
@@ -50,7 +54,7 @@ plugins: [
       route: '/scalar',
       showNavLink: true, // optional, default is true
       configuration: {
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
       },
     } as ScalarOptions,
   ],
@@ -65,6 +69,36 @@ plugins: [
       showNavLink: true, // optional, default is true
       configuration: {
         url: 'https://petstore3.swagger.io/api/v3/openapi.json',
+      },
+    } as ScalarOptions,
+  ],
+],
+```
+
+#### Create a page that contains multiple API references
+
+```typescript
+import type { ScalarOptions } from '@scalar/docusaurus'
+plugins: [
+  [
+    '@scalar/docusaurus',
+    {
+      id: 'api-reference',
+      label: 'API Reference',
+      route: '/api-reference',
+      showNavLink: true, // optional, default is true
+      configuration: {
+        sources: [
+          {
+            // This title will appear in the top left corner of your new API reference page.
+            title: 'Scalar Galaxy API',
+            url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
+          },
+          {
+            title: 'Petstore',
+            url: 'https://petstore3.swagger.io/api/v3/openapi.json',
+          },
+        ],
       },
     } as ScalarOptions,
   ],
@@ -146,7 +180,7 @@ pnpm add @scalar/docusaurus
 
 There's just one more step required: Adding the plugin to your Docusaurus configuration.
 
-```ts
+```typescript
 // docusaurus.config.js
 
 // …
@@ -161,7 +195,7 @@ const config = {
         route: '/scalar',
         configuration: {
           // Put the URL to your OpenAPI document here:
-          url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+          url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
         },
       },
     ],
@@ -175,7 +209,7 @@ That's it, you made it! This should render our Scalar Galaxy example on <http://
 
 Hey, big TypeScript fans here. If you're one, too, here's the Docusaurus configuration in TypeScript:
 
-```ts
+```typescript
 // docusaurus.config.ts
 import type { Config } from '@docusaurus/types'
 import type { ScalarOptions } from '@scalar/docusaurus'
@@ -192,10 +226,14 @@ const config: Config = {
         route: '/scalar',
         configuration: {
           // Put the URL to your OpenAPI document here:
-          url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+          url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
         },
       } as ScalarOptions,
     ],
   ],
 }
 ```
+
+## CDN compatibility
+
+Scalar loads only when an API reference route mounts. Sites that call `window.Scalar.createApiReference` on other pages must load the CDN bundle themselves. When pinning `cdn` to an older bundle, upgrade to a release with standalone style cleanup and `Scalar.releaseUnusedStyles`; older bundles can leave styles active after navigation, including when navigation interrupts loading.

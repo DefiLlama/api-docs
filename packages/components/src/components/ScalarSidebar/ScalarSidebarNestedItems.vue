@@ -18,26 +18,29 @@
 export default {}
 </script>
 <script setup lang="ts">
-import {
-  ScalarIconArrowRight,
-  ScalarIconCaretLeft,
-  ScalarIconListDashes,
-} from '@scalar/icons'
-import { Transition, nextTick, ref, useTemplateRef, watch } from 'vue'
+import { ScalarIconArrowRight, ScalarIconCaretLeft } from '@scalar/icons'
+import { nextTick, ref, useTemplateRef } from 'vue'
 
-import { ScalarIconLegacyAdapter } from '../ScalarIcon'
+import { findScrollContainer } from './findScrollContainer'
 import ScalarSidebarButton from './ScalarSidebarButton.vue'
 import ScalarSidebarItems from './ScalarSidebarItems.vue'
+import ScalarSidebarLoading from './ScalarSidebarLoading.vue'
 import ScalarSidebarSpacer from './ScalarSidebarSpacer.vue'
-import { findScrollContainer } from './findScrollContainer'
-import type { ScalarSidebarItemProps } from './types'
+import type { ScalarSidebarGroupProps } from './types'
 import { useSidebarGroups } from './useSidebarGroups'
 import { useSidebarNestedItem } from './useSidebarNestedItems'
 
-const { icon = ScalarIconListDashes } = defineProps<ScalarSidebarItemProps>()
+const { controlled } = defineProps<ScalarSidebarGroupProps>()
 
-const open = defineModel<boolean>({ default: false })
-useSidebarNestedItem(open)
+const emit = defineEmits<{
+  /** Emitted when the nested item button is clicked */
+  (e: 'click', event: MouseEvent): void
+  /** Emitted when the back button is clicked */
+  (e: 'back', event: MouseEvent): void
+}>()
+
+const open = defineModel<boolean>('open', { default: false })
+useSidebarNestedItem(() => open.value)
 
 defineSlots<{
   /** The text content of the button */
@@ -79,6 +82,10 @@ function onOpen() {
       ?.focus({ preventScroll: true }),
   )
 }
+function onOpened() {
+  /** Reset the scroll position of the scroll container after opening */
+  findScrollContainer(el.value).scrollTop = 0
+}
 function onClose() {
   nextTick(() => {
     el.value?.querySelector('button')?.focus({ preventScroll: true })
@@ -87,6 +94,26 @@ function onClose() {
 }
 
 defineOptions({ inheritAttrs: false })
+
+/** Handle the click event for the nested items button */
+const handleClick = (event: MouseEvent) => {
+  // Bubble up the click event
+  emit('click', event)
+  if (!controlled) {
+    // Only toggle the open state if the group is uncontrolled
+    open.value = true
+  }
+}
+
+/** Handle the back button click event */
+const handleBack = (event: MouseEvent) => {
+  // Bubble up the back event
+  emit('back', event)
+  if (!controlled) {
+    // Only toggle the open state if the group is uncontrolled
+    open.value = false
+  }
+}
 </script>
 <template>
   <li
@@ -97,53 +124,78 @@ defineOptions({ inheritAttrs: false })
     <slot name="button">
       <ScalarSidebarButton
         is="button"
-        class="text-c-1 font-sidebar-active"
         :aria-expanded="open"
+        :disabled
+        :icon
         :indent="level"
         :selected
-        :disabled
-        @click="open = true">
-        <template #icon>
-          <slot name="icon">
-            <ScalarIconLegacyAdapter
-              :icon="icon"
-              weight="bold" />
-          </slot>
+        v-bind="$attrs"
+        @click="handleClick">
+        <template
+          v-if="$slots.icon"
+          #icon>
+          <slot name="icon" />
         </template>
         <slot />
         <template #aside>
           <slot name="aside">
-            <ScalarIconArrowRight class="size-4 text-c-2" />
+            <ScalarIconArrowRight class="text-sidebar-c-2 size-4" />
           </slot>
         </template>
       </ScalarSidebarButton>
     </slot>
     <!-- Make sure the div is around for the entire transition -->
     <Transition
+      :duration="300"
+      enterActiveClass="top-(--nested-items-offset)!"
+      leaveActiveClass="top-(--nested-items-offset)!"
+      @afterEnter="onOpened"
       @enter="onOpen"
-      @leave="onClose"
-      enter-active-class="top-(--nested-items-offset)"
-      leave-active-class="top-(--nested-items-offset)"
-      :duration="300">
+      @leave="onClose">
       <div
         v-if="open"
         class="absolute inset-0 translate-x-full">
         <ScalarSidebarItems v-bind="$attrs">
-          <slot name="back">
-            <ScalarSidebarButton
-              is="button"
-              @click="open = false"
-              class="text-c-1 font-sidebar-active">
-              <template #icon>
-                <ScalarIconCaretLeft class="size-4 -m-px text-c-2" />
-              </template>
-              <slot name="back-label">Back</slot>
-            </ScalarSidebarButton>
-          </slot>
-          <ScalarSidebarSpacer class="h-3" />
-          <slot name="items" />
+          <div
+            class="bg-sidebar-b-1 animate-sidebar-border-bottom border-b-sidebar-border sticky top-(--scalar-sidebar-sticky-offset,0) z-1 -mx-(--scalar-sidebar-padding) -mt-(--scalar-sidebar-padding) flex flex-col gap-px px-(--scalar-sidebar-padding) pt-(--scalar-sidebar-padding)">
+            <slot name="back">
+              <ScalarSidebarButton
+                is="button"
+                class="text-sidebar-c-1 font-sidebar-active hover:text-sidebar-c-1"
+                @click="handleBack">
+                <template #icon>
+                  <ScalarIconCaretLeft class="text-sidebar-c-2 -m-px size-4" />
+                </template>
+                <slot name="back-label">Back</slot>
+              </ScalarSidebarButton>
+            </slot>
+            <ScalarSidebarSpacer class="h-3" />
+          </div>
+          <ScalarSidebarLoading v-if="loading" />
+          <slot
+            v-else
+            name="items" />
         </ScalarSidebarItems>
       </div>
     </Transition>
   </li>
 </template>
+
+<style>
+@reference "../../style.css";
+
+.animate-sidebar-border-bottom {
+  animation: border-bottom forwards;
+  animation-timeline: scroll();
+  animation-range-end: 1px;
+}
+
+@keyframes border-bottom {
+  from {
+    border-bottom-width: 0;
+  }
+  to {
+    border-bottom-width: var(--scalar-border-width);
+  }
+}
+</style>

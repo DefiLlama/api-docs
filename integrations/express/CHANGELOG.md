@@ -1,5 +1,483 @@
 # @scalar/express-api-reference
 
+## 0.10.41
+
+No changes in this release.
+
+## 0.10.40
+
+No changes in this release.
+
+## 0.10.39
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.10.38
+
+No changes in this release.
+
+## 0.10.37
+
+No changes in this release.
+
+## 0.10.36
+
+## 0.10.35
+
+## 0.10.34
+
+## 0.10.33
+
+## 0.10.32
+
+## 0.10.31
+
+## 0.10.30
+
+## 0.10.29
+
+## 0.10.28
+
+## 0.10.27
+
+## 0.10.26
+
+## 0.10.25
+
+## 0.10.24
+
+## 0.10.23
+
+## 0.10.22
+
+## 0.10.21
+
+## 0.10.20
+
+## 0.10.19
+
+## 0.10.18
+
+## 0.10.17
+
+## 0.10.16
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.10.15
+
+## 0.10.14
+
+## 0.10.13
+
+## 0.10.12
+
+## 0.10.11
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.10.10
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.10.9
+
+## 0.10.8
+
+## 0.10.7
+
+## 0.10.6
+
+## 0.10.5
+
+## 0.10.4
+
+## 0.10.3
+
+## 0.10.2
+
+## 0.10.1
+
+## 0.10.0
+
+### Minor Changes
+
+- [#9422](https://github.com/scalar/scalar/pull/9422): Add a `nonce` option for Content Security Policy support.
+
+  When you pass a `nonce`, the rendered HTML stamps it onto the inline `<script>` and the CDN `<script>` tag (and Scalar's own `<style>` tags, plus a matching `<meta property="csp-nonce">`). This lets the API Reference run under a strict `script-src` with no `unsafe-inline` and no `unsafe-eval`.
+
+  ```ts
+  ApiReference({
+    url: '/openapi.json',
+    // Match this value in your `script-src` CSP directive.
+    nonce: 'r4nd0m',
+  })
+  ```
+
+  Note: `style-src` still needs `'unsafe-inline'`. The reference renders inline `style="…"` attributes, which a CSP nonce can never authorize (nonces only apply to `<script>`, `<style>` and `<link>` elements), so a nonce-only `style-src` is not possible. The win is a fully strict `script-src`.
+
+## 0.9.20
+
+## 0.9.19
+
+## 0.9.18
+
+## 0.9.17
+
+## 0.9.16
+
+## 0.9.15
+
+## 0.9.14
+
+## 0.9.13
+
+## 0.9.12
+
+## 0.9.11
+
+## 0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- [#8873](https://github.com/scalar/scalar/pull/8873): refactor: migrate integrations to client-side rendering package
+
+## 0.9.8
+
+## 0.9.7
+
+## 0.9.6
+
+## 0.9.5
+
+## 0.9.4
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.9.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.3**
+
+## 0.9.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.2**
+
+## 0.9.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.1**
+
+## 0.9.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.4.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.8.48
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.45**
+
+## 0.8.47
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.44**
+
+## 0.8.46
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.43**
+
+## 0.8.45
+
+### Patch Changes
+
+- [#8248](https://github.com/scalar/scalar/pull/8248): fix(express): remove unused `customTheme`
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.42**
+
+## 0.8.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.41**
+
+## 0.8.43
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.40**
+
+## 0.8.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.39**
+
+## 0.8.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.38**
+
+## 0.8.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.37**
+
+## 0.8.39
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.36**
+
+## 0.8.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.35**
+
+## 0.8.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.34**
+
+## 0.8.36
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.33**
+
+## 0.8.35
+
+### Patch Changes
+
+- [#7810](https://github.com/scalar/scalar/pull/7810): docs: update documentation domain
+
+## 0.8.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.32**
+
+## 0.8.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.31**
+
+## 0.8.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.30**
+
+## 0.8.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.29**
+
+## 0.8.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/core@0.3.28**
+
+## 0.8.29
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.27
+
+## 0.8.28
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.26
+
+## 0.8.27
+
+### Patch Changes
+
+- Updated dependencies [[`daa5df4`](https://github.com/scalar/scalar/commit/daa5df45386fa2305275fbf0a7bbcede6bcf9edc)]:
+  - @scalar/core@0.3.25
+
+## 0.8.26
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.24
+
+## 0.8.25
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.23
+
+## 0.8.24
+
+### Patch Changes
+
+- [#7241](https://github.com/scalar/scalar/pull/7241) [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d) Thanks [@hanspagel](https://github.com/hanspagel)! - chore: use "current" not "latest" scalar registry url
+
+- Updated dependencies [[`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d)]:
+  - @scalar/core@0.3.22
+
+## 0.8.23
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/core@0.3.21
+
+## 0.8.22
+
+### Patch Changes
+
+- @scalar/core@0.3.20
+
+## 0.8.21
+
+### Patch Changes
+
+- Updated dependencies [1e01464]
+  - @scalar/core@0.3.19
+
+## 0.8.20
+
+### Patch Changes
+
+- @scalar/core@0.3.18
+
+## 0.8.19
+
+### Patch Changes
+
+- Updated dependencies [fd2c4ba]
+  - @scalar/core@0.3.17
+
+## 0.8.18
+
+### Patch Changes
+
+- @scalar/core@0.3.16
+
+## 0.8.17
+
+### Patch Changes
+
+- @scalar/core@0.3.15
+
+## 0.8.16
+
+### Patch Changes
+
+- @scalar/core@0.3.14
+
+## 0.8.15
+
+### Patch Changes
+
+- 5f022b5: feat: use registry.scalar.com URLs as example
+- Updated dependencies [5f022b5]
+  - @scalar/core@0.3.13
+
+## 0.8.14
+
+### Patch Changes
+
+- Updated dependencies [7dfbe9e]
+  - @scalar/core@0.3.12
+
+## 0.8.13
+
+### Patch Changes
+
+- 7031d9c: fix(api-reference): reference theme and style fixes
+  - @scalar/core@0.3.11
+
+## 0.8.12
+
+### Patch Changes
+
+- @scalar/core@0.3.10
+
 ## 0.8.11
 
 ### Patch Changes

@@ -1,0 +1,228 @@
+<script lang="ts" setup>
+import { Badge } from '@scalar/blocks/shared'
+import { sanitizeUrl } from '@scalar/helpers/url/is-safe-url'
+import type { ApiReferenceConfiguration } from '@scalar/types/api-reference'
+import { type WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { computed } from 'vue'
+
+import { useLocalization } from '@/features/localization'
+
+const {
+  eventBus,
+  documentDownloadType,
+  documentUrl,
+  documentType = 'openapi',
+} = defineProps<{
+  /** The document download type. */
+  documentDownloadType: ApiReferenceConfiguration['documentDownloadType']
+  /** The event bus for the handling all events. */
+  eventBus: WorkspaceEventBus
+  /**
+   * URL of the OpenAPI document. Required when documentDownloadType is 'direct'
+   * so the link can point to the document.
+   */
+  documentUrl?: string
+  /** The kind of document being rendered. Drives the button label. */
+  documentType?: 'openapi' | 'asyncapi'
+}>()
+const { translate } = useLocalization()
+
+const label = computed(() =>
+  documentType === 'asyncapi'
+    ? translate('download.asyncapi')
+    : translate('download.openapi'),
+)
+
+/**
+ * Both format buttons carry the same visible text and the format badge stays
+ * hidden until hover, so without an explicit name assistive technology reads
+ * out two identical buttons with no way to tell them apart.
+ */
+const formatLabel = (format: 'JSON' | 'YAML'): string =>
+  translate('download.asFormat', { label: label.value, format })
+
+/**
+ * The document URL can be supplied by whoever controls the rendered document, so a protocol like
+ * `javascript:` would execute script on click. Drop the direct link in that case.
+ */
+const safeDocumentUrl = computed(() => sanitizeUrl(documentUrl))
+
+// The id is retrieved at the layout level.
+const handleDownloadClick = (format: 'json' | 'yaml') => {
+  eventBus.emit('ui:download:document', { format })
+}
+</script>
+<template>
+  <div
+    v-if="
+      ['yaml', 'json', 'both'].includes(documentDownloadType) ||
+      (documentDownloadType === 'direct' && safeDocumentUrl)
+    "
+    class="download-container group"
+    :class="{
+      'download-both': documentDownloadType === 'both',
+    }">
+    <!-- Direct link to the document -->
+    <a
+      v-if="documentDownloadType === 'direct' && safeDocumentUrl"
+      class="download-link download-button"
+      :href="safeDocumentUrl">
+      <span>{{ label }}</span>
+    </a>
+
+    <!-- JSON  -->
+    <button
+      v-if="documentDownloadType === 'json' || documentDownloadType === 'both'"
+      :aria-label="formatLabel('JSON')"
+      class="download-button"
+      type="button"
+      @click.prevent="() => handleDownloadClick('json')">
+      <span>{{ label }}</span>
+      <Badge class="extension hidden group-hover:flex">json</Badge>
+    </button>
+
+    <!-- YAML -->
+    <button
+      v-if="documentDownloadType === 'yaml' || documentDownloadType === 'both'"
+      :aria-label="formatLabel('YAML')"
+      class="download-button"
+      type="button"
+      @click.prevent="() => handleDownloadClick('yaml')">
+      <span>{{ label }}</span>
+      <Badge class="extension hidden group-hover:flex">yaml</Badge>
+    </button>
+  </div>
+</template>
+
+<style scoped>
+@reference '@/style.css';
+
+.download-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 0.5px 8px;
+  position: relative;
+  width: fit-content;
+  z-index: 1;
+}
+
+.download-container:has(:focus-visible)::before,
+.download-container.download-both:hover::before {
+  content: '';
+  width: calc(100% + 24px);
+  height: 90px;
+  position: absolute;
+  top: -11px;
+  left: -12px;
+  border-radius: var(--scalar-radius-lg);
+  box-shadow: var(--scalar-shadow-2);
+  pointer-events: none;
+  background: var(--scalar-background-1);
+}
+
+.download-button {
+  color: var(--scalar-link-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: fit-content;
+  padding: 0;
+  position: relative;
+  white-space: nowrap !important;
+
+  outline: none;
+}
+
+.download-button::before {
+  border-radius: var(--scalar-radius);
+  content: '';
+  height: calc(100% + 16px);
+  left: -9px;
+  position: absolute;
+  top: -8px;
+  width: calc(100% + 18px);
+}
+
+.download-button:last-of-type::before {
+  width: calc(100% + 15px);
+}
+
+.download-button:hover::before {
+  background: var(--scalar-background-2);
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+}
+
+.download-button:focus-visible::before {
+  background: var(--scalar-background-2);
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+  @apply outline;
+}
+
+.download-button span {
+  --font-color: var(--scalar-link-color, var(--scalar-color-accent));
+  --font-visited: var(--scalar-link-color-visited, var(--scalar-color-2));
+
+  text-decoration: var(--scalar-text-decoration);
+  color: var(--font-color);
+  font-weight: var(--scalar-link-font-weight, var(--scalar-semibold));
+  text-underline-offset: 0.25rem;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--font-color) 30%, transparent);
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  line-height: 1.625;
+  z-index: 1;
+}
+
+.download-button:hover span {
+  text-decoration-color: var(--scalar-color-1, currentColor);
+  color: var(--scalar-link-color-hover, var(--scalar-color-accent));
+  -webkit-text-decoration: var(--scalar-text-decoration-hover);
+  text-decoration: var(--scalar-text-decoration-hover);
+}
+
+/* Second button displayed when hovering over the download container */
+.download-button:nth-of-type(2) {
+  @apply sr-only;
+}
+
+.download-container:has(:focus-visible) .download-button:nth-of-type(2),
+.download-container:hover .download-button:nth-of-type(2) {
+  @apply not-sr-only;
+
+  position: absolute;
+  top: 42px;
+}
+
+/* Scoped to `.badge.extension` so the accent colors override the badge base styles. */
+.badge.extension {
+  z-index: 1;
+  background: var(--scalar-link-color, var(--scalar-color-accent));
+  color: var(--scalar-background-1);
+}
+.download-container:has(:focus-visible) .extension,
+.download-container:hover .extension {
+  opacity: 1;
+}
+
+.download-link {
+  --font-color: var(--scalar-link-color, var(--scalar-color-accent));
+  --font-visited: var(--scalar-link-color-visited, var(--scalar-color-2));
+
+  text-decoration: var(--scalar-text-decoration);
+  color: var(--font-color);
+  font-weight: var(--scalar-link-font-weight, var(--scalar-semibold));
+  text-underline-offset: 0.25rem;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--font-color) 30%, transparent);
+}
+
+.download-link:hover {
+  --font-color: var(--scalar-link-color, var(--scalar-color-accent));
+  text-decoration-color: var(--font-color);
+}
+</style>

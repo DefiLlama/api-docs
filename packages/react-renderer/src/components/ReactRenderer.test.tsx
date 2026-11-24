@@ -1,23 +1,21 @@
 // @vitest-environment jsdom
-import { mount } from '@vue/test-utils'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import type { FC } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
 import { ReactConnector } from './ReactConnector'
 import ReactRenderer from './ReactRenderer.vue'
 
-describe('ReactRenderer', () => {
-  let TestComponent: FC<{ message?: string }>
+enableAutoUnmount(afterEach)
+
+/**
+ * Those tests are a bit flaky, so we're retrying them 3 times.
+ */
+describe('ReactRenderer', { retry: 3 }, () => {
+  const TestComponent: FC<{ message?: string }> = ({ message = 'Default message' }) => (
+    <div data-testid="react-test">{message}</div>
+  )
   let wrapper: ReturnType<typeof mount>
-
-  beforeEach(() => {
-    TestComponent = ({ message = 'Default message' }) => <div data-testid="react-test">{message}</div>
-  })
-
-  afterEach(() => {
-    if (wrapper) {
-      wrapper.unmount()
-    }
-  })
 
   it('renders the React component', async () => {
     wrapper = mount(ReactRenderer, {
@@ -100,7 +98,7 @@ describe('ReactRenderer', () => {
   })
 })
 
-describe('ReactConnector', () => {
+describe('ReactConnector', { retry: 3 }, () => {
   let container: HTMLDivElement
   let connectors: ReactConnector[] = []
 
@@ -117,8 +115,7 @@ describe('ReactConnector', () => {
     document.body.removeChild(container)
   })
 
-  // This test is too flaky
-  it.skip('creates a root and renders a React component', async () => {
+  it('creates a root and renders a React component', async () => {
     const TestComponent: FC<{ message: string }> = ({ message }) => <div data-testid="test">{message}</div>
     const connector = new ReactConnector(container, TestComponent)
     connectors.push(connector)

@@ -1,0 +1,130 @@
+import { describe, expect, it } from 'vitest'
+
+import { prepareBrowserRequest } from './browser-request'
+import { Raw } from './javascript'
+
+describe('browser-request', () => {
+  it('moves raw Cookie headers into the cookie store without decoding or encoding them', () => {
+    const request = {
+      headers: [
+        { name: 'cOoKiE', value: 'greeting=Hello%2C%20world!; token=a+b==; empty=' },
+        { name: 'X-Test', value: 'kept' },
+      ],
+      cookies: [{ name: 'legacy', value: 'a b' }],
+    }
+    const prepared = prepareBrowserRequest(request)
+    expect(prepared.headers).toStrictEqual([{ name: 'X-Test', value: 'kept' }])
+    expect(prepared.withCredentials).toBe(true)
+    expect(prepared.setup).toStrictEqual([
+      "// Run on the request origin; document.cookie writes cookies for the current page's domain.",
+      'document.cookie = "legacy=a%20b; path=/";',
+      'document.cookie = "greeting=Hello%2C%20world!; path=/";',
+      'document.cookie = "token=a+b==; path=/";',
+      'document.cookie = "empty=; path=/";',
+    ])
+    expect(request.headers).toStrictEqual([
+      { name: 'cOoKiE', value: 'greeting=Hello%2C%20world!; token=a+b==; empty=' },
+      { name: 'X-Test', value: 'kept' },
+    ])
+  })
+
+  it('enables credentials for a Cookie header without structured cookies', () => {
+    const prepared = prepareBrowserRequest({
+      url: 'https://example.com',
+      headers: [{ name: 'Cookie', value: 'session=a%20b; token=c+d==' }],
+    })
+
+    expect(prepared.headers).toStrictEqual([])
+    expect(prepared.withCredentials).toBe(true)
+    expect(prepared.setup).toStrictEqual([
+      "// Run on the request origin; document.cookie writes cookies for the current page's domain.",
+      'document.cookie = "session=a%20b; path=/";',
+      'document.cookie = "token=c+d==; path=/";',
+    ])
+  })
+
+  it('explains header entries that cannot be assigned as browser cookie pairs', () => {
+    const prepared = prepareBrowserRequest({
+      headers: [{ name: 'Cookie', value: 'bare; valid=value; ; another' }],
+    })
+    expect(prepared.headers).toStrictEqual([])
+    expect(prepared.withCredentials).toBe(true)
+    expect(prepared.setup).toStrictEqual([
+      '// Cannot set Cookie entry without "=": "bare"',
+      '// Cannot set Cookie entry without "=": "another"',
+      "// Run on the request origin; document.cookie writes cookies for the current page's domain.",
+      'document.cookie = "valid=value; path=/";',
+    ])
+  })
+
+  it('leaves requests without cookies uncredentialed', () => {
+    const prepared = prepareBrowserRequest({ headers: [{ name: 'X-Test', value: 'kept' }] })
+
+    expect(prepared.headers).toStrictEqual([{ name: 'X-Test', value: 'kept' }])
+    expect(prepared.withCredentials).toBe(false)
+    expect(prepared.setup).toStrictEqual([])
+  })
+
+  it('uses the browser cookie store and enables credentialed requests', () => {
+    const prepared = prepareBrowserRequest({ cookies: [{ name: 'a;b', value: 'c d' }] })
+    expect(prepared.headers).toStrictEqual([])
+    expect(prepared.withCredentials).toBe(true)
+    expect(prepared.setup).toStrictEqual([
+      "// Run on the request origin; document.cookie writes cookies for the current page's domain.",
+      'document.cookie = "a%3Bb=c%20d; path=/";',
+    ])
+  })
+
+  it('serializes duplicate form fields with native URLSearchParams', () => {
+    const prepared = prepareBrowserRequest({
+      postData: {
+        mimeType: 'application/x-www-form-urlencoded',
+        params: [{ name: 'a&b', value: 'x+y z' }, { name: 'a&b', value: '' }, { name: 'empty' }],
+      },
+    })
+    const body: unknown = new Function(`${prepared.setup.join('\n')}\nreturn ${prepared.body};`)()
+    expect(body).toBe('a%26b=x%2By+z&a%26b=&empty=')
+  })
+
+  it('serializes typed multipart text without a filename', async () => {
+    const prepared = prepareBrowserRequest({
+      headers: [{ name: 'CONTENT-TYPE', value: 'multipart/form-data' }],
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          { name: 'field', value: 'one' },
+          { name: 'field', value: 'two' },
+          { name: 'props', value: '{"hello":"world"}', contentType: 'application/vnd.api+json' },
+          { name: 'file', value: 'file contents', fileName: 'test.txt', contentType: 'text/plain' },
+        ],
+      },
+    })
+    const body: Blob = new Function(`${prepared.setup.join('\n')}\nreturn ${prepared.body};`)()
+    const parsed = await new Response(body).formData()
+    expect(prepared.headers).toStrictEqual([{ name: 'Content-Type', value: new Raw('body.type') }])
+    expect(parsed.getAll('field')).toStrictEqual(['one', 'two'])
+    const props = parsed.get('props')
+    const file = parsed.get('file')
+    expect(props).toBe('{"hello":"world"}')
+    expect(file instanceof File).toBe(true)
+    if (!(file instanceof File)) {
+      throw new Error('Expected typed multipart parts')
+    }
+    expect(await body.text()).toContain('name="props"\r\nContent-Type: application/vnd.api+json\r\n\r\n')
+    expect(file.name).toBe('test.txt')
+    expect(file.type).toBe('text/plain')
+    expect(await file.text()).toBe('file contents')
+  })
+
+  it('reads selected files when HAR supplies a filename without contents', () => {
+    const prepared = prepareBrowserRequest({
+      postData: { mimeType: 'multipart/form-data', params: [{ name: 'file', fileName: 'test.txt' }] },
+    })
+    expect(prepared.setup).toStrictEqual([
+      'const body = new FormData();',
+      '// Select upload files with an <input type="file" multiple> element first.',
+      `const files = document.querySelector('input[type="file"]').files;`,
+      'body.append("file", new File([files[0]], "test.txt", { type: "application/octet-stream" }));',
+    ])
+  })
+})

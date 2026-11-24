@@ -1,20 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+
+import type { TagsMap } from '@/navigation/types'
+import { coerceValue } from '@/schemas/typebox-coerce'
+import type { OpenApiDocument } from '@/schemas/v3.2/strict/openapi-document'
+import { OpenAPIDocumentSchema } from '@/schemas/v3.2/strict/openapi-document'
+
 import { traverseSchemas } from './traverse-schemas'
-import type { TagsMap, TraverseSpecOptions } from '@/navigation/types'
-import type { OpenApiDocument } from '@/schemas/v3.1/strict/openapi-document'
 
 describe('traverseSchemas', () => {
-  // Mock getModelId function
-  const mockGetModelId: TraverseSpecOptions['getModelId'] = (params) => {
-    if (!params) {
-      return 'model'
-    }
-    return `model-${params.name}`
-  }
-
-  // Mock titlesMap
-  const mockTitlesMap = new Map<string, string>()
-
   let mockTagsMap: TagsMap
 
   beforeEach(() => {
@@ -23,6 +16,8 @@ describe('traverseSchemas', () => {
       [
         'default',
         {
+          id: 'tag/default',
+          parentId: 'doc-1',
           tag: { name: 'default' },
           entries: [],
         },
@@ -30,6 +25,8 @@ describe('traverseSchemas', () => {
       [
         'users',
         {
+          id: 'tag/users',
+          parentId: 'doc-1',
           tag: { name: 'users' },
           entries: [],
         },
@@ -37,6 +34,8 @@ describe('traverseSchemas', () => {
       [
         'products',
         {
+          id: 'tag/products',
+          parentId: 'doc-1',
           tag: { name: 'products' },
           entries: [],
         },
@@ -45,20 +44,35 @@ describe('traverseSchemas', () => {
   })
 
   it('should return empty array when no schemas exist', () => {
-    const content: OpenApiDocument = {
+    const document: OpenApiDocument = {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
         version: '1.0.0',
       },
+      'x-scalar-original-document-hash': '',
     }
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
     expect(result).toEqual([])
   })
 
   it('should create entries for valid schemas', () => {
-    const content: OpenApiDocument = {
+    const content = coerceValue(OpenAPIDocumentSchema, {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
@@ -82,35 +96,45 @@ describe('traverseSchemas', () => {
           },
         },
       },
-    }
+    })
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
 
     expect(result).toHaveLength(2)
     expect(result).toEqual([
       {
         type: 'model',
-        ref: '#/content/components/schemas/User',
+        ref: '#/components/schemas/User',
         id: 'model-User',
         title: 'User',
         name: 'User',
       },
       {
         type: 'model',
-        ref: '#/content/components/schemas/Product',
+        ref: '#/components/schemas/Product',
         id: 'model-Product',
         title: 'Product',
         name: 'Product',
       },
     ])
-
-    // Verify titlesMap was populated
-    expect(mockTitlesMap.get('model-User')).toBe('User')
-    expect(mockTitlesMap.get('model-Product')).toBe('Product')
   })
 
   it('should skip schemas with x-internal flag', () => {
-    const content: OpenApiDocument = {
+    const content = coerceValue(OpenAPIDocumentSchema, {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
@@ -133,16 +157,30 @@ describe('traverseSchemas', () => {
           },
         },
       },
-    }
+    })
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
 
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('PublicUser')
+    expect(result[0]?.title).toBe('PublicUser')
   })
 
   it('should skip schemas with x-scalar-ignore flag', () => {
-    const content: OpenApiDocument = {
+    const content = coerceValue(OpenAPIDocumentSchema, {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
@@ -165,16 +203,30 @@ describe('traverseSchemas', () => {
           },
         },
       },
-    }
+    })
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
 
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('ValidSchema')
+    expect(result[0]?.title).toBe('ValidSchema')
   })
 
   it('should handle schemas with no properties', () => {
-    const content: OpenApiDocument = {
+    const content = coerceValue(OpenAPIDocumentSchema, {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
@@ -187,14 +239,28 @@ describe('traverseSchemas', () => {
           },
         },
       },
-    }
+    })
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
 
     expect(result).toHaveLength(1)
     expect(result[0]).toEqual({
       type: 'model',
-      ref: '#/content/components/schemas/EmptySchema',
+      ref: '#/components/schemas/EmptySchema',
       id: 'model-EmptySchema',
       title: 'EmptySchema',
       name: 'EmptySchema',
@@ -202,7 +268,7 @@ describe('traverseSchemas', () => {
   })
 
   it('should handle schemas with special characters in names', () => {
-    const content: OpenApiDocument = {
+    const content = coerceValue(OpenAPIDocumentSchema, {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
@@ -218,17 +284,31 @@ describe('traverseSchemas', () => {
           },
         },
       },
-    }
+    })
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
 
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('User-Profile')
-    expect(result[0].id).toBe('model-User-Profile')
+    expect(result[0]?.title).toBe('User-Profile')
+    expect(result[0]?.id).toBe('model-User-Profile')
   })
 
   it('should handle multiple filtering conditions', () => {
-    const content: OpenApiDocument = {
+    const content = coerceValue(OpenAPIDocumentSchema, {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
@@ -258,16 +338,130 @@ describe('traverseSchemas', () => {
           },
         },
       },
-    }
+    })
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
 
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('ValidSchema')
+    expect(result[0]?.title).toBe('ValidSchema')
+  })
+
+  it('skips $ref wrapper schemas with x-internal sibling extension', () => {
+    // The wrapper has x-internal as a sibling to $ref. The resolved target does not.
+    // See: https://github.com/scalar/scalar/issues/9114
+    const content = coerceValue(OpenAPIDocumentSchema, {
+      openapi: '3.1.0',
+      info: {
+        title: 'Test API',
+        version: '1.0.0',
+      },
+      components: {
+        schemas: {
+          'Method.v1_users_search_output': {
+            'x-internal': true,
+            $ref: '#/components/schemas/Resource.User',
+            '$ref-value': {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+              },
+            },
+          },
+          'Resource.User': {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+            },
+          },
+        },
+      },
+    })
+
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.name).toBe('Resource.User')
+  })
+
+  it('skips $ref wrapper schemas with x-scalar-ignore sibling extension', () => {
+    const content = coerceValue(OpenAPIDocumentSchema, {
+      openapi: '3.1.0',
+      info: {
+        title: 'Test API',
+        version: '1.0.0',
+      },
+      components: {
+        schemas: {
+          'Method.v1_users_search_output': {
+            'x-scalar-ignore': true,
+            $ref: '#/components/schemas/Resource.User',
+            '$ref-value': {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+              },
+            },
+          },
+          'Resource.User': {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+            },
+          },
+        },
+      },
+    })
+
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.name).toBe('Resource.User')
   })
 
   it('uses the title attribute of the schema', () => {
-    const content: OpenApiDocument = {
+    const content = coerceValue(OpenAPIDocumentSchema, {
       openapi: '3.1.0',
       info: {
         title: 'Test API',
@@ -298,17 +492,31 @@ describe('traverseSchemas', () => {
           },
         },
       },
-    }
+    })
 
-    const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+    const result = traverseSchemas({
+      document: content,
+      tagsMap: mockTagsMap,
+      documentId: 'doc-1',
+      generateId: (props) => {
+        if (props.type === 'model') {
+          if (props.name) {
+            return `model-${props.name}`
+          }
+          return 'model'
+        }
+
+        return 'unknown-id'
+      },
+    })
 
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('Foobar')
+    expect(result[0]?.title).toBe('Foobar')
   })
 
   describe('x-tags', () => {
     it('should handle schemas with x-tags', () => {
-      const content: OpenApiDocument = {
+      const content = coerceValue(OpenAPIDocumentSchema, {
         openapi: '3.1.0',
         info: {
           title: 'Test API',
@@ -340,9 +548,23 @@ describe('traverseSchemas', () => {
             },
           },
         },
-      }
+      })
 
-      const result = traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+      const result = traverseSchemas({
+        document: content,
+        tagsMap: mockTagsMap,
+        documentId: 'doc-1',
+        generateId: (props) => {
+          if (props.type === 'model') {
+            if (props.name) {
+              return `model-${props.name}`
+            }
+            return 'model'
+          }
+
+          return 'unknown-id'
+        },
+      })
 
       // Verify the schemas are in the correct tags
       expect(mockTagsMap.get('users')?.entries).toHaveLength(1)
@@ -372,7 +594,7 @@ describe('traverseSchemas', () => {
     })
 
     it('should handle schemas with multiple x-tags', () => {
-      const content: OpenApiDocument = {
+      const content = coerceValue(OpenAPIDocumentSchema, {
         openapi: '3.1.0',
         info: {
           title: 'Test API',
@@ -391,9 +613,23 @@ describe('traverseSchemas', () => {
             },
           },
         },
-      }
+      })
 
-      traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+      traverseSchemas({
+        document: content,
+        tagsMap: mockTagsMap,
+        documentId: 'doc-1',
+        generateId: (props) => {
+          if (props.type === 'model') {
+            if (props.name) {
+              return `model-${props.name}`
+            }
+            return 'model'
+          }
+
+          return 'unknown-id'
+        },
+      })
 
       // Verify the schema is in both tags
       expect(mockTagsMap.get('users')?.entries).toHaveLength(1)
@@ -415,8 +651,53 @@ describe('traverseSchemas', () => {
       })
     })
 
+    it('uses the title attribute of schemas with x-tags', () => {
+      const content = coerceValue(OpenAPIDocumentSchema, {
+        openapi: '3.1.0',
+        info: {
+          title: 'Test API',
+          version: '1.0.0',
+        },
+        components: {
+          schemas: {
+            TextBlock: {
+              title: 'Text',
+              type: 'object',
+              properties: {
+                content: { type: 'string' },
+              },
+              'x-tags': ['users'],
+            },
+          },
+        },
+      })
+
+      traverseSchemas({
+        document: content,
+        tagsMap: mockTagsMap,
+        documentId: 'doc-1',
+        generateId: (props) => {
+          if (props.type === 'model') {
+            if (props.name) {
+              return `model-${props.name}`
+            }
+            return 'model'
+          }
+
+          return 'unknown-id'
+        },
+      })
+
+      expect(mockTagsMap.get('users')?.entries[0]).toMatchObject({
+        id: 'model-TextBlock',
+        title: 'Text',
+        name: 'TextBlock',
+        ref: '#/components/schemas/TextBlock',
+      })
+    })
+
     it('should handle schemas with non-existent x-tags', () => {
-      const content: OpenApiDocument = {
+      const content = coerceValue(OpenAPIDocumentSchema, {
         openapi: '3.1.0',
         info: {
           title: 'Test API',
@@ -433,9 +714,23 @@ describe('traverseSchemas', () => {
             },
           },
         },
-      }
+      })
 
-      traverseSchemas(content, mockTagsMap, mockTitlesMap, mockGetModelId)
+      traverseSchemas({
+        document: content,
+        tagsMap: mockTagsMap,
+        documentId: 'doc-1',
+        generateId: (props) => {
+          if (props.type === 'model') {
+            if (props.name) {
+              return `model-${props.name}`
+            }
+            return 'model'
+          }
+
+          return 'unknown-id'
+        },
+      })
 
       // Verify the entry in the default tag
       expect(mockTagsMap.get('non-existent-tag')?.entries).toHaveLength(1)

@@ -1,0 +1,755 @@
+# API Reference for .NET ASP.NET Core
+
+The `Scalar.AspNetCore` NuGet package provides an easy way to render beautiful API References based on OpenAPI documents.
+
+## Basic Setup
+
+1. **Install the package**
+
+```shell
+dotnet add package Scalar.AspNetCore
+```
+
+2. **Add the using directive**
+
+```csharp
+using Scalar.AspNetCore;
+```
+
+3. **Configure your application**
+
+Add the following to `Program.cs` based on your OpenAPI generator:
+
+For `Microsoft.AspNetCore.OpenApi`:
+
+```csharp
+builder.Services.AddOpenApi();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+}
+```
+
+For `Swashbuckle.AspNetCore.SwaggerGen`:
+
+```csharp
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapSwagger("/openapi/{documentName}.json");
+    app.MapScalarApiReference();
+}
+```
+
+For `NSwag.AspNetCore`:
+
+```csharp
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddOpenApiDocument();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseOpenApi(options =>
+    {
+        options.Path = "/openapi/{documentName}.json";
+    });
+    app.MapScalarApiReference();
+}
+```
+
+For `FastEndpoints`:
+
+```csharp
+builder.Services.SwaggerDocument();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwaggerGen(options =>
+    {
+        options.Path = "/openapi/{documentName}.json";
+    });
+    app.MapScalarApiReference();
+}
+```
+
+You're all set! 🎉 Navigate to `/scalar` to view your API Reference.
+
+> [!NOTE]
+> For multiple OpenAPI documents, see [Multiple OpenAPI Documents](#multiple-openapi-documents).
+
+## MapScalarApiReference Overloads
+
+The `MapScalarApiReference` method provides several overloads to customize the route and configuration:
+
+### Basic Usage
+
+```csharp
+// Accessible at /scalar (default route)
+app.MapScalarApiReference();
+```
+
+### Custom Route
+
+```csharp
+app.MapScalarApiReference("/api-docs");
+app.MapScalarApiReference("/docs");
+```
+
+### With Configuration
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options.WithTitle("My API");
+});
+```
+
+### Custom Route + Configuration
+
+```csharp
+app.MapScalarApiReference("/docs", options =>
+{
+    options.WithTitle("My API Documentation");
+});
+```
+
+### Dynamic Configuration
+
+```csharp
+// Access HttpContext for dynamic configuration
+app.MapScalarApiReference((options, httpContext) =>
+{
+    var isAdmin = httpContext.User.IsInRole("Admin");
+    options.WithTitle(isAdmin ? "Admin API" : "Public API");
+});
+
+// Custom route with HttpContext access
+app.MapScalarApiReference("/docs", (options, httpContext) =>
+{
+    options.WithTitle($"API for {httpContext.User.Identity?.Name}");
+});
+```
+
+## MapScalarApiReference Async Overloads
+
+The `MapScalarApiReference` method provides several overloads to allow for asynchronous code in the `configureOptions` parameter.
+
+### Basic Async Example
+
+```csharp
+app.MapScalarApiReference(async options =>
+{
+    options.HeaderContent = await File.ReadAllTextAsync("header.html");
+});
+```
+
+## Configuration Options
+
+The `options` parameter provides a fluent API to customize Scalar. The fluent methods make configuration more intuitive and readable:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options.WithTitle("E-Commerce API")
+           .WithClassicLayout()
+           .ForceDarkMode()
+           .HideSearch()
+           .ShowOperationId()
+           .ExpandAllTags()
+           .SortTagsAlphabetically()
+           .SortOperationsByMethod()
+           .PreserveSchemaPropertyOrder()
+           .WithProxy("https://api-gateway.company.com")
+           .AddServer("https://api.company.com", "Production")
+           .AddServer("https://staging-api.company.com", "Staging");
+});
+```
+
+### OpenAPI Document Route
+
+Customize where Scalar looks for your OpenAPI document:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    // Custom local path
+    options.WithOpenApiRoutePattern("/api-spec/{documentName}.json");
+
+    // External URL
+    options.WithOpenApiRoutePattern("https://api.example.com/openapi/{documentName}.json");
+
+    // Static external URL (no placeholder)
+    options.WithOpenApiRoutePattern("https://registry.scalar.com/@scalar/apis/galaxy?format=json");
+});
+```
+
+### Multiple OpenAPI Documents
+
+Scalar allows you to configure multiple OpenAPI documents using the `AddDocument` or `AddDocuments` methods. By default, the document name `v1` will be used. Each document can have its own custom route pattern for accessing the OpenAPI specification.
+
+#### Add a Single Document
+
+```csharp
+// Simple document name (uses default route pattern)
+app.MapScalarApiReference(options => options.AddDocument("v1"));
+
+// With custom title
+app.MapScalarApiReference(options => options.AddDocument("v1", "Production API"));
+
+// With custom route pattern
+app.MapScalarApiReference(options => options.AddDocument("v1",
+    routePattern: "api-specs/{documentName}/openapi.json"));
+
+// Complete configuration
+app.MapScalarApiReference(options => options.AddDocument("v1",
+    "Production API", "api-specs/v1/openapi.json"));
+
+// External OpenAPI document
+app.MapScalarApiReference(options => options.AddDocument("galaxy",
+    "Galaxy API", "https://registry.scalar.com/@scalar/apis/galaxy?format=json"));
+```
+
+#### Add Multiple Documents
+
+```csharp
+// Chain multiple documents
+app.MapScalarApiReference(options =>
+{
+    options.AddDocument("v1", "Production API", "api/v1/openapi.json")
+           .AddDocument("v2-beta", "Beta API", "api/v2-beta/openapi.json", isDefault: true)
+           .AddDocument("internal", "Internal API", "internal/openapi.json");
+});
+
+// From string array
+string[] versions = ["v1", "v2", "v3"];
+app.MapScalarApiReference(options => options.AddDocuments(versions));
+
+// From ScalarDocument objects
+var documents = new[]
+{
+    new ScalarDocument("v1", "Production API", "api/v1/openapi.json"),
+    new ScalarDocument("v2-beta", "Beta API", "api/v2-beta/openapi.json", true),
+    new ScalarDocument("galaxy", "Galaxy API", "https://registry.scalar.com/@scalar/apis/galaxy?format=json")
+};
+app.MapScalarApiReference(options => options.AddDocuments(documents));
+```
+
+The `routePattern` parameter in `AddDocument` allows you to customize the URL path where the OpenAPI document is served. If not specified, it uses the global `OpenApiRoutePattern` from the options. The pattern can include the `{documentName}` placeholder which will be replaced with the document name.
+
+The `isDefault` parameter allows you to specify which document should be selected by default when the API Reference loads. If no document is marked as default, the first document in the list will be used.
+
+You can also specify a document name directly in the URL path (e.g., `/scalar/v1`). However, this will override the document names specified in the `AddDocument` or `AddDocuments` methods.
+
+> [!NOTE]
+> **Note on case sensitivity**: Scalar forwards document names to the OpenAPI generator exactly as they appear in the URL path or as they are defined, preserving the case. The behavior depends on whether your OpenAPI generator treats document names as case-sensitive. To avoid issues, use consistent casing for document names (e.g., lowercase `"v1"`).
+
+### AsyncAPI Documents
+
+Scalar can render AsyncAPI documents alongside your OpenAPI documents in the same API Reference. Use the `AddAsyncApiDocument` or `AddAsyncApiDocuments` methods to register them. AsyncAPI documents are served from a separate default route pattern (`/asyncapi/{documentName}.json`), which you can customize with `WithAsyncApiRoutePattern`.
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    // Simple document name (uses the default /asyncapi/{documentName}.json pattern)
+    options.AddAsyncApiDocument("events");
+
+    // With a custom title
+    options.AddAsyncApiDocument("events", "Event Stream");
+
+    // With a custom route pattern
+    options.AddAsyncApiDocument("events", routePattern: "/messaging/{documentName}.json");
+
+    // External AsyncAPI document
+    options.AddAsyncApiDocument("payments",
+        "Payments Events", "https://api.example.com/asyncapi/payments.json");
+});
+```
+
+You can add several AsyncAPI documents at once and mix them freely with OpenAPI documents — both types are rendered together in a single API Reference:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options
+        .AddDocument("v1", "REST API")
+        .AddAsyncApiDocument("events", "Event Stream");
+
+    // Or add multiple AsyncAPI documents by name
+    options.AddAsyncApiDocuments("events", "commands");
+});
+```
+
+You can also pass `ScalarDocument` objects. They are always registered as AsyncAPI documents, regardless of the `DocumentType` set on the object:
+
+```csharp
+var documents = new[]
+{
+    new ScalarDocument("events", "Event Stream"),
+    new ScalarDocument("commands", "Commands", "/messaging/{documentName}.json")
+};
+
+app.MapScalarApiReference(options => options.AddAsyncApiDocuments(documents));
+```
+
+To change the default route pattern for all AsyncAPI documents that do not specify their own:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options.WithAsyncApiRoutePattern("/messaging/{documentName}.json");
+});
+```
+
+The `routePattern` parameter on `AddAsyncApiDocument` works like its OpenAPI counterpart: if not specified, it falls back to the global `AsyncApiRoutePattern`, and the pattern can include the `{documentName}` placeholder.
+
+### Agent
+
+Agent adds an AI chat interface to your API reference. It is enabled by default on localhost with a limited free tier (10 messages). For production, you need an [Agent key](../../guides/agent/key.md).
+
+To set an Agent key globally:
+
+```csharp
+app.MapScalarApiReference(options => options
+    .WithAgentKey("your-agent-scalar-key"));
+```
+
+To disable Agent:
+
+```csharp
+app.MapScalarApiReference(options => options.DisableAgent());
+```
+
+To set an Agent key per document (e.g., when using multiple OpenAPI documents):
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddDocument("v1", "API v1", agentKey: "your-key")
+    .AddDocument("v2", "API v2"));
+```
+
+For more details, see [Agent](../../configuration.md#agent) and [How to get an Agent key](../../guides/agent/key.md).
+
+### Authentication
+
+Scalar allows you to pre-configure authentication details for your API, making it easier for developers to test your endpoints. Scalar supports API Key, OAuth2, and HTTP authentication schemes.
+
+
+> [!WARNING]
+> **Before you start**: Your OpenAPI document must already include authentication security schemes for Scalar to work with them. Scalar can only pre-fill authentication details for schemes that are already defined in your OpenAPI specification.
+>
+> The security schemes are added by your OpenAPI generator (`NSwag.AspNetCore`, `Swashbuckle.AspNetCore.SwaggerGen`, or `Microsoft.AspNetCore.OpenApi`). If you don't see authentication options in Scalar, check your OpenAPI generator's documentation to learn how to properly define security schemes.
+
+> [!CAUTION]
+> **Security Notice**: Pre-filled authentication details are visible in the browser and should **never** be used in production environments. Only use this feature for development and testing.
+
+
+#### API Key Authentication
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("ApiKey")
+    .AddApiKeyAuthentication("ApiKey", apiKey =>
+    {
+        apiKey.Value = "sk-demo-key-12345";
+    }));
+```
+
+#### Bearer Token Authentication
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("BearerAuth")
+    .AddHttpAuthentication("BearerAuth", auth =>
+    {
+        auth.Token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
+    }));
+```
+
+#### Basic Authentication
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("BasicAuth")
+    .AddHttpAuthentication("BasicAuth", auth =>
+    {
+        auth.Username = "demo-user";
+        auth.Password = "demo-password";
+    }));
+```
+
+#### OpenID Connect Authentication
+
+Declare an `openIdConnect` security scheme with an `openIdConnectUrl` in your API description, then configure defaults using the same scheme name:
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OpenIdConnect")
+    .AddOpenIdConnectAuthentication("OpenIdConnect", scheme =>
+    {
+        scheme.Flows = new ScalarFlows
+        {
+            AuthorizationCode = new AuthorizationCodeFlow
+            {
+                ClientId = "scalar",
+                Pkce = Pkce.Sha256,
+                SelectedScopes = ["openid", "profile", "email"]
+            }
+        };
+    }));
+```
+
+You can also assign a `ScalarOpenIdConnectSecurityScheme` directly in `Authentication.SecuritySchemes`. After **Fetch Configuration**, matching discovered flows use these defaults. Configuring exactly one supported flow selects it initially while keeping other discovered flows available. With multiple configured flows, or an unsupported configured flow, the existing flow order is used. User edits take precedence over defaults.
+
+These options configure the API reference, not authentication on your server. They do not add flows to the API description or bypass discovery. Selected scopes must be available on the discovered flow. Credentials configured here are sent to the browser.
+
+#### OAuth2 Authentication
+
+Scalar provides convenience methods for each OAuth2 flow type to pre-fill authentication details in the API reference interface:
+
+##### Authorization Code Flow
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OAuth2")
+    .AddAuthorizationCodeFlow("OAuth2", flow =>
+    {
+        flow.ClientId = "scalar-demo-client";
+        flow.ClientSecret = "scalar-demo-secret";
+        flow.Pkce = Pkce.Sha256;
+        flow.SelectedScopes = ["read", "write", "admin"];
+    }));
+```
+
+##### Client Credentials Flow
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OAuth2")
+    .AddClientCredentialsFlow("OAuth2", flow =>
+    {
+        flow.ClientId = "service-client-12345";
+        flow.ClientSecret = "service-secret-67890";
+        flow.SelectedScopes = ["api.read", "api.write"];
+    }));
+```
+
+##### Password Flow
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OAuth2")
+    .AddPasswordFlow("OAuth2", flow =>
+    {
+        flow.ClientId = "password-client";
+        flow.Username = "demo@example.com";
+        flow.Password = "demo-password-123";
+        flow.SelectedScopes = ["profile", "email"];
+    }));
+```
+
+##### Implicit Flow
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OAuth2")
+    .AddImplicitFlow("OAuth2", flow =>
+    {
+        flow.ClientId = "spa-client-abc123";
+        flow.SelectedScopes = ["openid", "profile", "email"];
+    }));
+```
+
+##### Device Authorization Flow
+
+Pre-fill the device authorization flow for an OAuth2 security scheme:
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("DeviceOAuth")
+    .AddDeviceAuthorizationFlow("DeviceOAuth", flow => flow
+        .WithDeviceAuthorizationUrl("https://auth.example.com/device")
+        .WithTokenUrl("https://auth.example.com/token")
+        .WithClientId("example-client")
+        .WithSelectedScopes("read")));
+```
+
+The scheme name must match the OAuth2 security scheme in your API description. Device authorization is a standard flow in OpenAPI 3.2. These options pre-fill or override the reference configuration; they do not change the API description or configure authentication on your server.
+
+You can also configure `ScalarFlows.DeviceAuthorization` directly or call `WithDeviceAuthorization` inside `AddOAuth2Flows`. The flow supports `WithClientSecret`, `WithCredentialsLocation`, and the common OAuth helpers for refresh URLs, tokens, and additional query and body parameters. Client secrets and tokens configured here are sent to the browser, so only use example credentials suitable for public documentation.
+
+##### Advanced OAuth2 Configuration
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddAuthorizationCodeFlow("OAuth2", flow =>
+    {
+        flow.ClientId = "advanced-client-id";
+
+        // Custom query parameters for authorization request
+        flow.AddQueryParameter("audience", "https://api.example.com")
+            .AddQueryParameter("resource", "https://graph.microsoft.com");
+
+        // Custom body parameters for token request
+        flow.AddBodyParameter("custom_param", "custom_value");
+
+        // Specify credentials location
+        flow.WithCredentialsLocation(CredentialsLocation.Header);
+    }));
+```
+
+##### Multiple OAuth2 Flows
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OAuth2")
+    .AddOAuth2Flows("OAuth2", flows =>
+    {
+        flows.AuthorizationCode = new AuthorizationCodeFlow
+        {
+            ClientId = "web-client-12345",
+            AuthorizationUrl = "https://auth.example.com/oauth2/authorize",
+            TokenUrl = "https://auth.example.com/oauth2/token"
+        };
+
+        flows.ClientCredentials = new ClientCredentialsFlow
+        {
+            ClientId = "service-client-67890",
+            ClientSecret = "service-secret",
+            TokenUrl = "https://auth.example.com/oauth2/token"
+        };
+    })
+    .AddDefaultScopes("OAuth2", ["read", "write"]));
+```
+
+#### Multiple Security Schemes
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OAuth2", "ApiKey")
+
+    // Configure OAuth2
+    .AddAuthorizationCodeFlow("OAuth2", flow =>
+    {
+        flow.ClientId = "multi-auth-client";
+        flow.SelectedScopes = ["read", "write"];
+    })
+
+    // Configure API Key
+    .AddApiKeyAuthentication("ApiKey", apiKey =>
+    {
+        apiKey.Value = "sk-demo-key-12345";
+    })
+
+    // Configure Basic Auth
+    .AddHttpAuthentication("BasicAuth", auth =>
+    {
+        auth.Username = "demo-user";
+        auth.Password = "demo-password";
+    }));
+```
+
+#### Persisting Authentication
+
+```csharp
+app.MapScalarApiReference(options => options
+    .AddPreferredSecuritySchemes("OAuth2")
+    .AddAuthorizationCodeFlow("OAuth2", flow =>
+    {
+        flow.ClientId = "persistent-client-id";
+    })
+    .EnablePersistentAuthentication());
+```
+
+> [!CAUTION]
+> Persisting authentication information in the browser's local storage may present security risks. Use with caution.
+
+### Nested multipart uploads
+
+For endpoints that bind nested objects or arrays with `[FromForm]`, opt in to indexed multipart field names.
+
+```csharp
+app.MapScalarApiReference(options =>
+    options.WithMultipartNaming(ScalarMultipartNaming.IndexedDot));
+```
+
+Scalar uses names such as `profile.file` and `certificates[0].file` in the request editor, sent requests, and generated code samples. The option applies to named multipart forms across that API Reference. See [multipartNaming](../../configuration.md#multipartnaming) for details.
+
+### Custom HTTP Client
+
+Set a default HTTP client for code samples:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options.WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
+});
+```
+
+Choose which clients appear as tabs in the **Client Libraries** block, in order:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options.WithFeaturedClients(
+        new(ScalarTarget.Java, ScalarClient.NetHttp),
+        new(ScalarTarget.Shell, ScalarClient.Curl));
+});
+```
+
+Leave `FeaturedClients` unset to keep the default tabs. Call `WithFeaturedClients()` with no arguments to put all clients under **More**. Clients excluded by `EnabledClients` or `EnabledTargets` are skipped. This controls the tab row; use `WithDefaultHttpClient` separately to choose the initial selection.
+
+To show built-in HTTP clients alongside SDK installation tabs from `info.x-scalar-sdk-installation`, enable:
+
+```csharp
+app.MapScalarApiReference(options => options.WithDefaultClientsWithSdkInstallation());
+```
+
+This sets `ShowDefaultClientsWithSdkInstallation` to `true`. The default is `false`, which shows only SDK tabs when installation instructions are available. The same option and fluent method are available in Aspire, Azure Functions, and AWS Lambda.
+
+### Sidebar badges
+
+To show `x-badges` next to sidebar titles, enable:
+
+```csharp
+app.MapScalarApiReference(options => options.WithBadgesInSidebar());
+```
+
+You can also set `options.ShowBadgesInSidebar = true`. Badges are hidden by default; use `WithBadgesInSidebar(false)` to disable them explicitly. The same option and fluent method are available in Aspire, Azure Functions, and AWS Lambda.
+
+### Selected client persistence
+
+The selected code sample client is saved and restored using local storage by default. To keep the selection on the current page only:
+
+```csharp
+app.MapScalarApiReference(options => options.DisableSelectedClientPersistence());
+```
+
+You can also set `options.PersistSelectedClient = false`. The same option and fluent method are available in Aspire, AWS Lambda, and Azure Functions. Authentication persistence is configured separately.
+
+### Localization
+
+Translate the API Reference interface and embedded API Client:
+
+```csharp
+app.MapScalarApiReference(options => options.WithLocalization(new ScalarLocalizationOptions
+{
+    Locale = "de"
+}));
+```
+
+Use `Direction = TextDirection.Auto` to derive text direction from the locale, or override it with `TextDirection.LeftToRight` or `TextDirection.RightToLeft`. Omitted direction also follows the locale. Regional locale values use the browser's fallback rules; unknown locales fall back to English.
+
+Override individual labels using a `System.Text.Json.Nodes.JsonObject`. For example:
+
+```csharp
+options.WithLocalization(new ScalarLocalizationOptions
+{
+    Locale = "de",
+    Translations = new System.Text.Json.Nodes.JsonObject
+    {
+        ["operation"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["testRequest"] = "Anfrage ausprobieren"
+        }
+    }
+});
+```
+
+Overrides merge with the selected locale and English fallback. Embedded client overrides go under `apiClient`. This translates interface labels, not the content of your API description. See [Localization](../../localization.md) for supported locales and translation keys.
+
+### Specification Extensions
+
+Display selected extension keys on operations, parameters, response headers, and schema fields:
+
+```csharp
+app.MapScalarApiReference(options => options.WithShowExtensions("x-scopes", "x-internal"));
+```
+
+Keys must start with `x-`. They appear in configuration order and missing keys are omitted. Unset or empty lists display no extensions. Values render as text, including `false`, `0`, and `null`. Extensions on the API description root, tags, and response objects are not displayed. Existing plugin components take precedence. This does not change authentication or access control.
+
+### Schema Display
+
+Configure schema labels, request body truncation, and initial expansion:
+
+```csharp
+app.MapScalarApiReference(options => options
+    .WithHideModelNames()
+    .WithMaxVisibleRequestBodyProperties(0)
+    .WithExpandAllParameters(false)
+    .WithExpandAllSchemaProperties());
+```
+
+Unset options retain the API Reference defaults: model names are visible, up to 12 top-level request body properties are shown, parameter details are expanded, and nested schema properties are collapsed. A property limit of `0` shows all top-level properties; negative values fall back to `12`. Expanding nested properties can slow rendering for large API descriptions. Hiding model names keeps the Models section and composition selector names visible.
+
+### Assets
+
+Scalar uses local assets by default. To load assets from a different location:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options.WithBundleUrl("https://cdn.jsdelivr.net/npm/@scalar/api-reference");
+});
+```
+
+> [!NOTE]
+> Fonts are loaded from a CDN by default. To disable this, use `DisableDefaultFonts()`.
+
+### Custom JavaScript Configuration
+
+Extend Scalar's functionality with a custom JavaScript configuration module:
+
+```csharp
+app.MapScalarApiReference(options =>
+{
+    options.WithJavaScriptConfiguration("/scalar/config.js");
+});
+```
+
+Create a JavaScript module in your static files directory (e.g. `wwwroot/scalar/config.js`) that exports a default object with your custom configuration:
+
+```javascript
+// wwwroot/scalar/config.js
+export default {
+  // Custom slug generation for operations
+  generateOperationSlug: (operation) => `custom-${operation.method.toLowerCase()}${operation.path}`,
+
+  // Hook into document selection events
+  onDocumentSelect: () => console.log('Document changed'),
+
+  // Add any other custom configuration options supported by Scalar
+  // Checkout https://scalar.com/products/api-references/configuration
+}
+```
+
+> [!NOTE]
+> Make sure to expose the directory that contains your JavaScript module through static file middleware using `app.MapStaticAssets()` or `app.UseStaticFiles()`.
+
+### Dependency Injection
+
+Configuration options can also be set via dependency injection:
+
+```csharp
+builder.Services.Configure<ScalarOptions>(options => options.Title = "My API");
+// or
+builder.Services.AddOptions<ScalarOptions>().BindConfiguration("Scalar");
+```
+
+> [!NOTE]
+> Options set via `MapScalarApiReference` override those set through dependency injection.
+
+## Additional Information
+
+The `MapScalarApiReference` method returns an `IEndpointConventionBuilder`, allowing you to use minimal API features:
+
+```csharp
+app.MapScalarApiReference().AllowAnonymous();
+```
+
+Scalar for ASP.NET Core aligns with the [official Microsoft .NET support policy](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
+
+For all available configuration properties and their default values, check out the [`ScalarOptions`](https://github.com/scalar/scalar/blob/main/integrations/dotnet/aspnetcore/src/Scalar.AspNetCore/Options/ScalarOptions.cs) and [`ScalarOptionsExtensions`](https://github.com/scalar/scalar/blob/main/integrations/dotnet/aspnetcore/src/Scalar.AspNetCore/Extensions/ScalarOptionsExtensions.cs).

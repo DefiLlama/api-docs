@@ -1,0 +1,173 @@
+import { isObjectLike } from '@scalar/helpers/object/is-object'
+import type { HarRequest, Plugin, PluginConfiguration } from '@scalar/types/snippetz'
+
+import { mergeCookieHeaders } from '@/libs/cookies'
+import { normalizeMethod, reduceQueryParams } from '@/libs/http'
+
+/** Quotes a value as an R string literal, escaping backslashes and double quotes. */
+const toRString = (value: string): string => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+
+/**
+ * Formats JSON text as an R list structure
+ */
+const jsonToRList = (text: string, indent: string): string => {
+  try {
+    const obj = JSON.parse(text)
+    return formatRValue(obj, indent)
+  } catch {
+    return toRString(text)
+  }
+}
+
+/**
+ * Recursively formats a JS value as R syntax
+ */
+const formatRValue = (value: unknown, indent: string): string => {
+  if (value === null || value === undefined) {
+    return 'NULL'
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'TRUE' : 'FALSE'
+  }
+  if (typeof value === 'number') {
+    return String(value)
+  }
+  if (typeof value === 'string') {
+    return toRString(value)
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return 'list()'
+    }
+    const items = value.map((v) => `${indent}  ${formatRValue(v, indent + '  ')}`).join(',\n')
+    return `list(\n${items}\n${indent})`
+  }
+  if (isObjectLike(value)) {
+    const entries = Object.entries(value)
+    if (entries.length === 0) {
+      return 'list()'
+    }
+    const items = entries.map(([k, v]) => `${indent}  ${k} = ${formatRValue(v, indent + '  ')}`).join(',\n')
+    return `list(\n${items}\n${indent})`
+  }
+  return String(value)
+}
+
+/**
+ * r/httr2
+ */
+export const rHttr2: Plugin = {
+  target: 'r',
+  client: 'httr2',
+  title: 'httr2',
+  generate(request?: Partial<HarRequest>, configuration?: PluginConfiguration): string {
+    const normalizedRequest = {
+      url: 'https://example.com',
+      method: 'GET',
+      ...request,
+    }
+
+    const method = normalizeMethod(normalizedRequest.method)
+    const lines: string[] = ['library(httr2)', '']
+
+    // Start the pipe chain
+    lines.push(`response <- request(${toRString(normalizedRequest.url)}) |>`)
+
+    // Collect pipe steps
+    const steps: string[] = []
+
+    // Method (GET is default, so only add for non-GET)
+    if (method !== 'GET') {
+      steps.push(`  req_method(${toRString(method)})`)
+    }
+
+    // Headers
+    const headers: Record<string, string> = {}
+
+    for (const header of mergeCookieHeaders(normalizedRequest)) {
+      headers[header.name] = header.value
+    }
+
+    // Auth
+    if (configuration?.auth?.username && configuration?.auth?.password) {
+      steps.push(
+        `  req_auth_basic(${toRString(configuration.auth.username)}, ${toRString(configuration.auth.password)})`,
+      )
+    }
+
+    if (Object.keys(headers).length) {
+      const headerEntries = Object.entries(headers)
+      if (headerEntries.length === 1) {
+        const [name, value] = headerEntries[0]!
+        steps.push(`  req_headers(${toRString(name)} = ${toRString(value)})`)
+      } else {
+        const headerLines = headerEntries
+          .map(([name, value]) => `    ${toRString(name)} = ${toRString(value)}`)
+          .join(',\n')
+        steps.push(`  req_headers(\n${headerLines}\n  )`)
+      }
+    }
+
+    // Query parameters
+    if (normalizedRequest.queryString?.length) {
+      const params = reduceQueryParams(normalizedRequest.queryString)
+      const entries = Object.entries(params)
+      const formatValue = (value: string | string[]): string =>
+        Array.isArray(value) ? `c(${value.map(toRString).join(', ')})` : toRString(value)
+      // httr2 rejects vectors in req_url_query() by default, so repeated parameters need
+      // `.multi = "explode"` to be sent as `name=a&name=b`.
+      const multi = entries.some(([, value]) => Array.isArray(value)) ? '.multi = "explode"' : ''
+
+      if (entries.length === 1) {
+        const [name, value] = entries[0]!
+        const args = [`${toRString(name)} = ${formatValue(value)}`, multi].filter(Boolean).join(', ')
+        steps.push(`  req_url_query(${args})`)
+      } else {
+        const paramLines = [...entries.map(([name, value]) => `${toRString(name)} = ${formatValue(value)}`), multi]
+          .filter(Boolean)
+          .map((line) => `    ${line}`)
+          .join(',\n')
+        steps.push(`  req_url_query(\n${paramLines}\n  )`)
+      }
+    }
+
+    // Body
+    if (normalizedRequest.postData) {
+      const { mimeType, text, params } = normalizedRequest.postData
+
+      if (mimeType === 'application/json' && text) {
+        const rList = jsonToRList(text, '  ')
+        steps.push(`  req_body_json(${rList})`)
+      } else if (mimeType === 'multipart/form-data' && params) {
+        const paramLines = params
+          .map((p) => {
+            if (p.fileName !== undefined) {
+              return `    ${JSON.stringify(p.name)} = curl::form_file(${JSON.stringify(p.fileName)}${p.contentType ? `, type = ${JSON.stringify(p.contentType)}` : ''})`
+            }
+            return p.contentType
+              ? `    ${JSON.stringify(p.name)} = curl::form_data(${JSON.stringify(p.value ?? '')}, type = ${JSON.stringify(p.contentType)})`
+              : `    ${JSON.stringify(p.name)} = ${JSON.stringify(p.value ?? '')}`
+          })
+          .join(',\n')
+        steps.push(`  req_body_multipart(\n${paramLines}\n  )`)
+      } else if (mimeType === 'application/x-www-form-urlencoded' && params) {
+        const paramLines = params.map((p) => `    ${toRString(p.name)} = ${toRString(p.value ?? '')}`).join(',\n')
+        steps.push(`  req_body_form(\n${paramLines}\n  )`)
+      } else if (text) {
+        steps.push(`  req_body_raw(${toRString(text)}, type = ${toRString(mimeType ?? 'application/octet-stream')})`)
+      }
+    }
+
+    // Always end with req_perform
+    steps.push('  req_perform()')
+
+    // Join steps with pipe operator
+    lines[lines.length - 1] = `response <- request(${toRString(normalizedRequest.url)}) |>`
+    lines.push(steps.join(' |>\n'))
+
+    lines.push('')
+    lines.push('resp_body_string(response)')
+
+    return lines.join('\n')
+  },
+}

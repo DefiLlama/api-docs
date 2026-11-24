@@ -1,44 +1,49 @@
-import type { LibraryIconDefinition } from './types'
-import type { Component } from 'vue'
+import { type Component, markRaw } from 'vue'
 
-const iconsImported: Record<string, Component> = import.meta.glob('./icons/*.svg', {
-  eager: true,
+import type { LibraryIconDefinition } from './types'
+
+const iconLoaders: Record<string, () => Promise<Component>> = import.meta.glob('./icons/*.svg', {
+  eager: false,
 })
 
-function mapLocalIcons(imported: Record<string, Component>) {
-  const formatted = Object.entries(imported).map(([filename, rawData]) => {
-    // Create a name from the import path
-    const name = filename.replace('./icons/', '').replace('.svg', '')
+// Eagerly bundle the default fallback icon. The sidebar uses this for every
+// item without a custom `x-scalar-icon` — i.e. the vast majority of items in
+// the typical API document — so it's always wanted at first paint and not
+// worth the per-item HTTP request that the dynamic glob otherwise produces.
+const defaultIconModule = import.meta.glob<{ default: Component }>('./icons/interface-content-folder.svg', {
+  eager: true,
+})['./icons/interface-content-folder.svg']
 
-    const icon: LibraryIconDefinition = {
-      // Prefix the src with the group so that the final flat icon map has unique keys
-      src: name,
-      title: name.replaceAll('-', ' '),
-      tags: [],
-    }
-    return {
-      icon,
-      rawData,
-    }
-  })
-
-  const iconDefinitionList = formatted.map((e) => e.icon)
-
-  const iconDataMap = Object.fromEntries<Component>(formatted.map((e) => [e.icon.src, e.rawData]))
-  return {
-    iconDefinitionList,
-    iconDataMap,
-  }
-}
-
-const icons = mapLocalIcons(iconsImported)
+const iconNames = Object.keys(iconLoaders).map((filename) => filename.replace('./icons/', '').replace('.svg', ''))
 
 /** Icon list for icon selector */
-export const libraryIcons: LibraryIconDefinition[] = icons.iconDefinitionList
+export const libraryIcons: LibraryIconDefinition[] = iconNames.map((name) => ({
+  src: name,
+  title: name.replaceAll('-', ' '),
+  tags: [],
+}))
 
-/** Raw SVG strings */
-const iconData: Record<string, Component> = icons.iconDataMap
+const iconCache = new Map<string, Component>()
 
-export const getLibraryIcon = (src: string): Component | undefined => {
-  return iconData[src]
+// Pre-populate the cache for the eagerly-bundled default icon so the first
+// `getLibraryIcon('interface-content-folder')` resolves synchronously.
+if (defaultIconModule?.default) {
+  iconCache.set('interface-content-folder', markRaw(defaultIconModule.default))
+}
+
+export async function getLibraryIcon(src: string): Promise<Component | undefined> {
+  const cached = iconCache.get(src)
+  if (cached) {
+    return cached
+  }
+
+  const loader = iconLoaders[`./icons/${src}.svg`]
+  if (!loader) {
+    return undefined
+  }
+
+  const mod = await loader()
+  const component = markRaw((mod as Record<string, Component>).default ?? mod)
+  iconCache.set(src, component)
+  return component
 }

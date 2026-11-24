@@ -1,12 +1,12 @@
-# Scalar API Reference with HTML/JS
+# API Reference with HTML/JS
 
-To get started, you can use a simple HTML file. It's the easiest, and probably also the quickest way to get up and running, literally in seconds.
+To get started, load the ESM build from our CDN in a simple HTML file. No package installation or build step is required.
 
 ```html
 <!doctype html>
 <html>
   <head>
-    <title>Scalar API Reference</title>
+    <title>API Reference</title>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -16,14 +16,12 @@ To get started, you can use a simple HTML file. It's the easiest, and probably a
   <body>
     <div id="app"></div>
 
-    <!-- Load the Script -->
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script type="module">
+      import { createApiReference } from 'https://cdn.jsdelivr.net/npm/@scalar/api-reference/esm.js'
 
-    <!-- Initialize the Scalar API Reference -->
-    <script>
-      Scalar.createApiReference('#app', {
-        // The URL of the OpenAPI/Swagger document
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+      createApiReference('#app', {
+        // The URL of the OpenAPI document
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
         // Avoid CORS issues
         proxyUrl: 'https://proxy.scalar.com',
       })
@@ -38,6 +36,36 @@ This renders our `@scalar/galaxy` OpenAPI example, using the latest version of `
 
 Check out the [Configuration](../configuration.md) page to learn more about customizing your API reference.
 
+## Content Security Policy (CSP)
+
+If your page enforces a strict [Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP), the inline initialization script needs a nonce or a hash unless you allow `unsafe-inline`.
+
+To authorize the inline module without `unsafe-inline`, generate a per-request nonce and put it on the module script. Allow `https://cdn.jsdelivr.net` in `script-src` so the browser can load the imported module and its chunks:
+
+```html
+<head>
+  <!-- The reference also injects styles at runtime; this lets them carry the same nonce -->
+  <meta property="csp-nonce" content="r4nd0m" />
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- script-src 'nonce-r4nd0m' https://cdn.jsdelivr.net — no unsafe-inline, no unsafe-eval -->
+  <script type="module" nonce="r4nd0m">
+    import { createApiReference } from 'https://cdn.jsdelivr.net/npm/@scalar/api-reference/esm.js'
+
+    createApiReference('#app', {
+      url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
+    })
+  </script>
+</body>
+```
+
+> [!NOTE]
+> **`style-src` still needs `'unsafe-inline'`.** The reference renders inline `style="…"` attributes, and a CSP nonce can never authorize inline style attributes — only `<script>`, `<style>` and `<link>` elements. So a strict, nonce-only `style-src` is not possible today; keep `style-src 'unsafe-inline'`. The win here is `script-src`, which can stay fully strict.
+
+If you render the HTML through one of our server integrations (Next.js, Express, Fastify, NestJS, Hono, SvelteKit, Astro), pass a `nonce` to the configuration and the script tags and meta tag are added for you.
+
 ## Version
 
 It's recommended to use the latest version from jsdelivr. You'll get continuous updates, fixes and other improvements and that's also the one we're testing and monitoring continuously.
@@ -45,26 +73,32 @@ It's recommended to use the latest version from jsdelivr. You'll get continuous 
 If you really want to stick to a specific version, that's possible, too. You can just add the version to the URL of the script:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.28.5"></script>
+<script type="module">
+  import { createApiReference } from 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.69.2/esm.js'
+
+  createApiReference('#app', {
+    url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
+  })
+</script>
 ```
 
 ## JavaScript API
 
-The HTML sample above showed how to integrate Scalar using automatic mounting and an ID selector. More information on the JavaScript API is provided below.
+The HTML sample above showed how to integrate Scalar using automatic mounting and an ID selector. The following examples use `createApiReference` imported in that module script.
 
 ### Automatic Mounting
 
-```ts
-Scalar.createApiReference('#app', {
-  url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+```typescript
+createApiReference('#app', {
+  url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
 })
 ```
 
 ### Manual Mounting
 
-```ts
-const app = Scalar.createApiReference({
-  url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+```typescript
+const app = createApiReference({
+  url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
 })
 
 // Mounting
@@ -73,17 +107,17 @@ app.mount('#app')
 
 By the way, you don't have to pass a string. You can pass a HTML element:
 
-```ts
-const element = getElementById('app')
+```typescript
+const element = document.getElementById('app')
 
 app.mount(element)
 ```
 
 ### Update the Configuration
 
-```ts
-const app = Scalar.createApiReference('#app', {
-  url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+```typescript
+const app = createApiReference('#app', {
+  url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
 })
 
 // Updating the configuration
@@ -94,27 +128,22 @@ app.updateConfiguration({
 
 ### Unmount
 
-```ts
-const app = Scalar.createApiReference('#app', {
-  url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+```typescript
+const app = createApiReference('#app', {
+  url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
 })
 
 app.destroy()
 ```
 
-### ESM
+### Using a Bundler
 
-When using the package in (modern) ECMAScript environment, you can just import the `createApiReference` method from the
-package.
+If your project uses a bundler, install `@scalar/api-reference` and import `createApiReference` from the package instead of the CDN URL:
 
-Omit the `Scalar.` prefix then, that's only necessary when importing the JS from the jsdelivr CDN.
-
-Here is an example:
-
-```ts
+```typescript
 import { createApiReference } from '@scalar/api-reference'
 
 createApiReference('#app', {
-  url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+  url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
 })
 ```

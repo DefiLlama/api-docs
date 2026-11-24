@@ -1,3 +1,15 @@
+<script lang="ts">
+/**
+ * Scalar Menu Team Picker component
+ *
+ * A sub-menu within ScalarMenu that lets users switch between teams
+ * or create a new team.
+ *
+ * @example
+ * <ScalarMenuTeamPicker :teams="teams" :team="currentTeam" @update:team="setTeam" />
+ */
+export default {}
+</script>
 <script setup lang="ts">
 import {
   ScalarIconCaretRight,
@@ -15,11 +27,17 @@ import {
 import { ScalarMenuLink, type ScalarMenuTeamOption } from './'
 import ScalarMenuTeamProfile from './ScalarMenuTeamProfile.vue'
 
-const props = defineProps<{
+const {
+  team,
+  teams,
+  allowAddTeam = true,
+} = defineProps<{
   /** The currently selected team */
   team?: ScalarMenuTeamOption | undefined
   /** The list of teams to choose from */
   teams: ScalarMenuTeamOption[]
+  /** Whether to disable the "Add team" button */
+  allowAddTeam?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,11 +49,11 @@ const emit = defineEmits<{
 
 /** A model that tracks the team id */
 const model = computed<string | undefined>({
-  get: () => props.team?.id,
+  get: () => team?.id,
   set: (v) =>
     emit(
       'update:team',
-      props.teams.find((t) => t.id === v),
+      teams.find((t) => t.id === v),
     ),
 })
 
@@ -44,12 +62,12 @@ defineOptions({ inheritAttrs: false })
 <template>
   <DropdownMenu.Sub>
     <ScalarMenuLink
-      :is="DropdownMenu.SubTrigger"
       :icon="ScalarIconUserSwitch"
+      submenu
       v-bind="$attrs">
       <div>Change team</div>
       <ScalarIconCaretRight
-        class="ml-auto text-c-2 -mr-0.25 size-3"
+        class="text-c-2 -mr-px ml-auto size-3"
         weight="bold" />
     </ScalarMenuLink>
     <DropdownMenu.Portal>
@@ -64,10 +82,10 @@ defineOptions({ inheritAttrs: false })
             v-for="t in teams"
             :key="t.id"
             :as="ScalarDropdownButton"
-            class="group/item"
+            class="group/item flex items-center"
             :value="t.id">
             <ScalarMenuTeamProfile
-              class="-ml-0.75 flex-1 min-w-0"
+              class="-ml-0.75 min-w-0 flex-1"
               :label="t.label"
               :src="t.src" />
             <ScalarListboxCheckbox
@@ -76,10 +94,12 @@ defineOptions({ inheritAttrs: false })
           </DropdownMenu.RadioItem>
         </DropdownMenu.RadioGroup>
         <DropdownMenu.Item
+          v-if="allowAddTeam"
           :as="ScalarDropdownButton"
+          class="flex items-center"
           @click="emit('add')">
           <ScalarIconPlus
-            class="bg-b-3 -ml-0.75 rounded p-1 size-5 text-c-3"
+            class="bg-b-3 text-c-3 -ml-0.75 size-5 rounded p-1"
             weight="bold" />
           Create new team
         </DropdownMenu.Item>

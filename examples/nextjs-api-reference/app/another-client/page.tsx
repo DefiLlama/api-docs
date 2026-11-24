@@ -1,16 +1,16 @@
 import Link from 'next/link'
 
-import { Button, ClientWrapper } from '../client/components'
+import { Button } from '../client/components/Button'
 
 const Page = () => {
   return (
-    <ClientWrapper>
+    <>
       <Button
-        method="POST"
+        method="post"
         path="/auth/token"
       />
       <Link href="/client">Go to client</Link>
-    </ClientWrapper>
+    </>
   )
 }
 

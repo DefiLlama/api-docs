@@ -1,12 +1,20 @@
 {
-  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
-  "include": ["src/renderer/src/env.d.ts", "src/renderer/src/**/*", "src/renderer/src/**/*.vue", "src/preload/*.d.ts"],
+  "extends": "../../tsconfig.json",
+  "include": ["src/**/*.ts", "src/**/*.vue", "entrypoints/**/*.ts", "entrypoints/**/*.vue"],
   "compilerOptions": {
+    "types": ["vite/client"],
     "composite": true,
-    "baseUrl": ".",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "bundler",
     "paths": {
-      "@renderer/*": ["src/renderer/src/*"]
-    }
+      "@/*": ["./src/*"],
+      "@electron/*": ["./entrypoints/electron/*"],
+      "@web/*": ["./entrypoints/web/src/*"]
+    },
+    // Below Copied from electron-vite tsconfig
+    "jsx": "preserve",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": true
   }
 }

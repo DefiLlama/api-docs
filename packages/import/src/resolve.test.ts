@@ -1,21 +1,98 @@
+import { format } from 'node:util'
+
+import { renderApiReference } from '@scalar/client-side-rendering'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resolve } from './resolve'
 
-global.fetch = vi.fn()
-
-function createFetchResponse(data: string, headers: Record<string, string> = {}) {
-  return {
-    ok: true,
-    text: () => new Promise((r) => r(data)),
+function createFetchResponse(data: string, headers: Record<string, string> = {}): Response {
+  return new Response(data, {
     headers: new Headers(headers),
-  }
+  })
 }
 
+const globalFetchSpy = vi.spyOn(global, 'fetch').mockImplementation(vi.fn())
+
 describe('resolve', () => {
+  it('rejects excessive alias expansion in a fetched YAML document', async () => {
+    const yaml = [
+      'openapi: 3.1.0',
+      'l0: &l0 value',
+      ...Array.from(
+        { length: 5 },
+        (_, index) => `l${index + 1}: &l${index + 1} [${Array(10).fill(`*l${index}`).join(', ')}]`,
+      ),
+    ].join('\n')
+
+    expect(await resolve('https://example.com/api', { fetch: async () => new Response(yaml) })).toBeUndefined()
+  })
+
+  it.each(['document', 'script', 'configuration'] as const)(
+    'imports alias-heavy YAML from %s content',
+    async (source) => {
+      const yaml = [
+        'openapi: 3.1.0',
+        'info: { title: Example, version: 1.0.0 }',
+        'x-shared: &shared { description: Shared }',
+        ...Array.from({ length: 200 }, (_, index) => `x-item${index}: *shared`),
+      ].join('\n')
+      const body = {
+        document: yaml,
+        script: `<script id="api-reference">${yaml}</script>`,
+        configuration: `<script id="api-reference" data-configuration='${JSON.stringify({ content: yaml })}'></script>`,
+      }[source]
+      const url = 'https://example.com/api'
+      const result = await resolve(url, { fetch: async () => new Response(body) })
+
+      if (source === 'document') {
+        expect(result).toBe(url)
+      } else {
+        expect(typeof result === 'object' && result?.['x-item199']).toStrictEqual({ description: 'Shared' })
+      }
+    },
+  )
+
   beforeEach(() => {
-    // @ts-expect-error
-    global.fetch.mockReset()
+    globalFetchSpy.mockClear()
+  })
+
+  it.each(['%d', '%s', '%c', '%j', 'ordinary'])('preserves %s in failed-fetch logs', async (token) => {
+    const url = `https://example.com/${token}`
+    const error = new Error('Connection failed')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const result = await resolve(url, { fetch: vi.fn().mockRejectedValue(error) })
+
+      expect(result).toBeUndefined()
+      expect(errorSpy.mock.calls.map((args) => format(...args))).toStrictEqual([
+        `[@scalar/import] Failed to fetch ${url} ${format(error)}`,
+      ])
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('preserves URL format tokens when page configuration parsing fails', async () => {
+    const url = 'https://example.com/%d'
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const result = await resolve(url, {
+        fetch: vi
+          .fn()
+          .mockResolvedValue(createFetchResponse('<script id="api-reference" data-configuration="{broken}"></script>')),
+      })
+
+      expect(result).toBeUndefined()
+      expect(errorSpy.mock.calls.length).toBe(1)
+      const args = errorSpy.mock.calls[0] ?? []
+      const error = args.at(-1)
+      expect(error).toBeInstanceOf(SyntaxError)
+      expect(format(...args)).toBe(`[@scalar/import] Failed to fetch ${url} ${format(error)}`)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   it('returns JSON urls', async () => {
@@ -62,8 +139,7 @@ describe('resolve', () => {
   </body>
 </html>`
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -88,8 +164,7 @@ describe('resolve', () => {
   </body>
 </html>`
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -115,8 +190,7 @@ describe('resolve', () => {
   </body>
 </html>`
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -142,8 +216,7 @@ describe('resolve', () => {
   </body>
 </html>`
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(
+    globalFetchSpy.mockResolvedValueOnce(
       createFetchResponse(html, {
         'X-Forwarded-Host': 'https://example.com/somewhere/else/',
       }),
@@ -177,8 +250,7 @@ describe('resolve', () => {
   </body>
 </html>`
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -200,8 +272,7 @@ describe('resolve', () => {
   </body>
 </html>`
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -222,8 +293,7 @@ describe('resolve', () => {
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -264,8 +334,7 @@ describe('resolve', () => {
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -307,8 +376,7 @@ describe('resolve', () => {
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -329,8 +397,7 @@ describe('resolve', () => {
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -351,8 +418,7 @@ describe('resolve', () => {
         </body>
       </html>`
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -384,8 +450,7 @@ describe('resolve', () => {
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -410,8 +475,7 @@ describe('resolve', () => {
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -443,8 +507,7 @@ info:
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -466,8 +529,7 @@ info:
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -495,8 +557,7 @@ info:
 </html>
     `
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(html))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
 
     const result = await resolve('https://example.com/reference')
 
@@ -513,8 +574,7 @@ info:
       paths: {},
     }
 
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(createFetchResponse(JSON.stringify(openApiDoc)))
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(JSON.stringify(openApiDoc)))
 
     const result = await resolve('https://example.com/swagger/json')
 
@@ -522,8 +582,7 @@ info:
   })
 
   it('finds the URL in an escaped JS object', async () => {
-    // @ts-expect-error Mocking types are missing
-    fetch.mockResolvedValue(
+    globalFetchSpy.mockResolvedValueOnce(
       createFetchResponse(
         `<html>\\"$L8e\\",null,{\\"configuration\\":{\\"spec\\":{\\"url\\":\\"https://raw.githubusercontent.com/Foo/Bar/main/api/foobar.json\\"}},\\"initialRequest`,
       ),
@@ -532,5 +591,78 @@ info:
     const result = await resolve('https://example.com/foo')
 
     expect(result).toBe('https://raw.githubusercontent.com/Foo/Bar/main/api/foobar.json')
+  })
+  it.each([true, false])('finds the document URL in rendered references (ESM: %s)', async (bundle) => {
+    const html = renderApiReference({
+      config: { url: '/openapi.json' },
+      bundle,
+    })
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
+
+    expect(await resolve('http://localhost:3000/reference')).toBe('http://localhost:3000/openapi.json')
+  })
+
+  it('decodes serialized URLs and resolves relative paths', async () => {
+    const html = renderApiReference({ config: { url: './openapi.json?tag=<example>&version=1' } })
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
+
+    expect(await resolve('http://localhost:3000/docs/reference')).toBe(
+      'http://localhost:3000/docs/openapi.json?tag=%3Cexample%3E&version=1',
+    )
+  })
+
+  it.each([
+    { type: '"application/ld+json"', configuration: "{ url: '/openapi.json' }" },
+    { type: "'application/ld+json'", configuration: '{ "url": "/openapi.json" }' },
+    { type: 'application/ld+json', configuration: "{ 'url': '/openapi.json' }" },
+  ])('ignores JSON-LD metadata before reference configuration ($type)', async ({ type, configuration }) => {
+    const html = `<html>
+      <head>
+        <script type=${type}>{"@type":"WebSite","url":"https://example.com/"}</script>
+      </head>
+      <body><script>Scalar.createApiReference('#app', ${configuration})</script></body>
+    </html>`
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
+
+    expect(await resolve('https://example.com/reference')).toBe('https://example.com/openapi.json')
+  })
+
+  it('ignores JSON-LD metadata before an API description link', async () => {
+    const html = `<html>
+      <script TYPE = "application/ld+json">{"url":"https://example.com/"}</script>
+      <a href="/openapi.yaml">Download API description</a>
+    </html>`
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
+
+    expect(await resolve('https://example.com/reference')).toBe('https://example.com/openapi.yaml')
+  })
+
+  it('does not join surrounding text when excluding JSON-LD metadata', async () => {
+    const html = `<html>
+      <script>const config = { u<script type="application/ld+json">{"url":"https://example.com/"}</script>rl: '/wrong.json' }</script>
+      <a href="/openapi.json">Download API description</a>
+    </html>`
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
+
+    expect(await resolve('https://example.com/reference')).toBe('https://example.com/openapi.json')
+  })
+
+  it.each([
+    '<a href="/openapi.json">Download API description</a>',
+    String.raw`<script>\"spec\":{\"url\":\"/openapi.json\"}</script>`,
+  ])('continues discovery after a URL with JS-only escapes (%s)', async (fallback) => {
+    const html = String.raw`<html><script>const config = { url: "\x2Fopenapi.json" }</script>${fallback}</html>`
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
+
+    expect(await resolve('https://example.com/reference')).toBe('https://example.com/openapi.json')
+  })
+
+  it('ignores configuration keys ending in url', async () => {
+    const html = `<html><script>
+      const config = { baseUrl: '/base', serverUrl: '/server', url: '/openapi.json' }
+    </script></html>`
+    globalFetchSpy.mockResolvedValueOnce(createFetchResponse(html))
+
+    expect(await resolve('https://example.com/reference')).toBe('https://example.com/openapi.json')
   })
 })

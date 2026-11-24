@@ -1,0 +1,63 @@
+<script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
+import {
+  ScalarListbox,
+  type ScalarListboxOption,
+} from '@scalar/components/listbox'
+import { ScalarIconCaretDown } from '@scalar/icons'
+import type { MediaTypeObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed } from 'vue'
+
+import { getExampleSummary } from '../../schema/helpers/get-rendered-example'
+
+const { examples = {} } = defineProps<{
+  examples?: MediaTypeObject['examples'] | Record<string, string>
+}>()
+
+const selectedExampleKey = defineModel<string>({
+  required: true,
+})
+
+defineOptions({ inheritAttrs: false })
+
+const exampleOptions = computed<ScalarListboxOption[]>(() =>
+  Object.entries(examples).map(([key, example]) => ({
+    id: key,
+    label: getExampleSummary(example) || key,
+  })),
+)
+
+const selectedExample = computed<ScalarListboxOption | undefined>({
+  get: () =>
+    exampleOptions.value.find(({ id }) => id === selectedExampleKey.value),
+  set: (v) => (selectedExampleKey.value = v?.id ?? ''),
+})
+</script>
+
+<template>
+  <ScalarListbox
+    v-slot="{ open }"
+    v-model="selectedExample"
+    class="w-fit min-w-32"
+    :options="exampleOptions"
+    placement="bottom-start"
+    teleport>
+    <ScalarButton
+      class="text-c-2 hover:text-c-1 flex h-full w-fit min-w-0 gap-1.5 px-1.5 py-0.75 text-base font-normal"
+      data-testid="example-picker"
+      variant="ghost"
+      v-bind="$attrs">
+      <div class="min-w-0 flex-1 truncate">
+        {{ selectedExample?.label ?? 'Select an example' }}
+      </div>
+      <!--
+        Follow this listbox's own state. The `ui-open:` variant also matches any open
+        Headless UI ancestor, such as an expanded operation in the classic layout.
+      -->
+      <ScalarIconCaretDown
+        class="mt-0.25 size-3 transition-transform duration-100"
+        :class="{ 'rotate-180': open }"
+        weight="bold" />
+    </ScalarButton>
+  </ScalarListbox>
+</template>

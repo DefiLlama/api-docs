@@ -1,0 +1,33 @@
+{
+  "name": "@scalar-internal/changelog-generator",
+  "version": "1.0.0",
+  "description": "Custom changelog generator for Scalar packages",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit",
+    "version:packages": "node dist/version.js"
+  },
+  "dependencies": {
+    "@changesets/get-github-info": "^1.0.1",
+    "@changesets/types": "^7.0.0"
+  },
+  "devDependencies": {
+    "vite": "catalog:*"
+  },
+  "private": true,
+  "license": "MIT"
+}

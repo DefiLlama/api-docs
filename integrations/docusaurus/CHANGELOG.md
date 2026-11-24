@@ -1,5 +1,517 @@
 # @scalar/docusaurus
 
+## 0.8.63
+
+No changes in this release.
+
+## 0.8.62
+
+No changes in this release.
+
+## 0.8.61
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.8.60
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Support TypeScript 6 builds and compiler API consumers while preserving runtime output and public handler types. Keep Nuxt build tooling on its supported TypeScript 5 compiler.
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.8.59
+
+No changes in this release.
+
+## 0.8.58
+
+No changes in this release.
+
+## 0.8.57
+
+### Patch Changes
+
+- [#10908](https://github.com/scalar/scalar/pull/10908): Load Scalar only on API reference routes and destroy its instances when leaving, preventing standalone styles from affecting other Docusaurus pages.
+
+  The CDN bundle is no longer injected on every page. Sites using `window.Scalar.createApiReference` outside an API reference route must load the bundle explicitly. Upgrade pinned CDN bundles to a release with `Scalar.releaseUnusedStyles` for cleanup when navigation interrupts loading.
+
+## 0.8.56
+
+## 0.8.55
+
+## 0.8.54
+
+## 0.8.53
+
+## 0.8.52
+
+## 0.8.51
+
+## 0.8.50
+
+### Patch Changes
+
+- [#10505](https://github.com/scalar/scalar/pull/10505): Apply formatting and lint compatibility changes for Biome 2.5.15.
+- [#10549](https://github.com/scalar/scalar/pull/10549): Order theme overrides by specificity while preserving existing styles.
+
+## 0.8.49
+
+## 0.8.48
+
+## 0.8.47
+
+## 0.8.46
+
+## 0.8.45
+
+### Patch Changes
+
+- [#10375](https://github.com/scalar/scalar/pull/10375): Raise muted text, code-string blue and the deprecated schema row to the 4.5:1 text contrast minimum across the shipped themes
+
+  An accessibility audit turned up text that is legible in the default theme but not in several of the presets, which pair the default greys and blues with an off-white page background. Nine presets and four integration themes get a hue-preserving nudge:
+  - Light `--scalar-color-2` now clears 4.5:1 on both the page background and the grey card background in every preset. That covers `alternate`, `bluePlanet`, `mars` and `saturn`, which paired the default grey with an off-white page, and `custom-theme-starter`, `deepSpace`, `elysiajs`, `fastify`, `kepler` and `purple`, which copied the default grey and were left behind when the default moved.
+  - Light `--scalar-color-blue`, which colours code strings, now clears 4.5:1 on the grey example background in `alternate`, `bluePlanet`, `deepSpace`, `elysiajs`, `fastify`, `kepler` and `moon`, and in the Docusaurus, NestJS, Next.js and SvelteKit themes.
+  - Dark `--scalar-color-blue` now clears 4.5:1 in `purple` and `saturn`, and in the Hono and Docusaurus dark themes.
+  - Deprecated schema rows no longer fade their contents to 75% opacity, which had dropped their muted text to 3.0:1. The diagonal stripes, the strikethrough on the property name and the Deprecated badge still mark the row.
+  - The AsyncAPI send and receive pills blend their label further toward the body text colour, so they read against the tinted fill in every preset but `laserwave`.
+  - `--scalar-focus-color` sits further from the accent so a keyboard focus ring clears 3:1 on `--scalar-background-3` as well, which some presets use for the selected sidebar item.
+
+  `laserwave` still misses in light mode, where it reuses its dark accents unchanged; bringing it up is a redesign of the preset rather than a nudge.
+
+- [#10373](https://github.com/scalar/scalar/pull/10373): fix(api-reference): correct selected state, focus ring, target size and reflow of reference controls
+  - Client library tabs no longer announce a featured tab as selected while a client picked from "More" is active
+  - The response card "Copy example value" button shows a keyboard focus ring again
+  - The schema tree toggle keeps its 24px hit box in narrow layouts
+  - The schema property copy-link button gets a 24px hit box without changing its layout
+  - Heading copy-link buttons no longer widen the page in narrow layouts
+
+  Rename the always-present layout container class and CSS container name from `narrow-references-container` to `references-container`.
+
+## 0.8.44
+
+## 0.8.43
+
+## 0.8.42
+
+## 0.8.41
+
+## 0.8.40
+
+### Patch Changes
+
+- [#10139](https://github.com/scalar/scalar/pull/10139): Use the Docusaurus route type for the API reference configuration.
+
+## 0.8.39
+
+## 0.8.38
+
+## 0.8.37
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.8.36
+
+## 0.8.35
+
+## 0.8.34
+
+## 0.8.33
+
+## 0.8.32
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.8.31
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.8.30
+
+## 0.8.29
+
+## 0.8.28
+
+### Patch Changes
+
+- [#9588](https://github.com/scalar/scalar/pull/9588): Fix function-valued configuration options (like `onBeforeRequest` and the request hooks) being dropped in the Docusaurus integration. Docusaurus JSON-serializes route props, which silently strips functions, so the config is now serialized to JavaScript in the plugin and injected as a script. Exposes a reusable `serializeConfigToJs` helper from `@scalar/client-side-rendering`.
+
+## 0.8.27
+
+## 0.8.26
+
+## 0.8.25
+
+## 0.8.24
+
+## 0.8.23
+
+## 0.8.22
+
+## 0.8.21
+
+## 0.8.20
+
+## 0.8.19
+
+## 0.8.18
+
+## 0.8.17
+
+## 0.8.16
+
+## 0.8.15
+
+## 0.8.14
+
+## 0.8.13
+
+## 0.8.12
+
+## 0.8.11
+
+## 0.8.10
+
+## 0.8.9
+
+## 0.8.8
+
+## 0.8.7
+
+## 0.8.6
+
+## 0.8.5
+
+## 0.8.4
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.8.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.3**
+
+## 0.8.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.2**
+
+## 0.8.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.1**
+  - [#8381](https://github.com/scalar/scalar/pull/8381): feat: add mcp config support
+
+## 0.8.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.7.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.10**
+
+## 0.7.43
+
+### Patch Changes
+
+- [#8295](https://github.com/scalar/scalar/pull/8295): fix(docusaurus): remove extra elements around in markdown summary components
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.9**
+
+## 0.7.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.8**
+  - [#8274](https://github.com/scalar/scalar/pull/8274): feat(agent): add config to hide search api
+
+## 0.7.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.7**
+
+## 0.7.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.6**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+## 0.7.39
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.5**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+## 0.7.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.4**
+  - [#8174](https://github.com/scalar/scalar/pull/8174): feat: add `createAnySecurityScheme` config option to control generic auth scheme creation
+
+## 0.7.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.3**
+
+## 0.7.36
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.2**
+
+## 0.7.35
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.1**
+  - [#8000](https://github.com/scalar/scalar/pull/8000): fix(agent): change enabled flag to disabled
+  - [#7995](https://github.com/scalar/scalar/pull/7995): feat: enable/disable agent scalar
+
+## 0.7.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+## 0.7.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.10**
+
+## 0.7.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.9**
+  - [#7866](https://github.com/scalar/scalar/pull/7866): chore: expose har types
+
+## 0.7.31
+
+### Patch Changes
+
+- [#7810](https://github.com/scalar/scalar/pull/7810): docs: update documentation domain
+
+## 0.7.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.8**
+
+## 0.7.29
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.7**
+
+## 0.7.28
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+## 0.7.27
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+## 0.7.26
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.4**
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+## 0.7.25
+
+### Patch Changes
+
+- Updated dependencies [[`bb52d9a`](https://github.com/scalar/scalar/commit/bb52d9a21e53628270bab93c0f03b5731c9c97c6)]:
+  - @scalar/types@0.5.3
+
+## 0.7.24
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/types@0.5.2
+
+## 0.7.23
+
+### Patch Changes
+
+- Updated dependencies [[`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03)]:
+  - @scalar/types@0.5.1
+
+## 0.7.22
+
+### Patch Changes
+
+- Updated dependencies [[`44aeef0`](https://github.com/scalar/scalar/commit/44aeef01073801165e339163462378b7b62ff68d), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47)]:
+  - @scalar/types@0.5.0
+
+## 0.7.21
+
+### Patch Changes
+
+- [#7129](https://github.com/scalar/scalar/pull/7129) [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a) Thanks [@geoffgscott](https://github.com/geoffgscott)! - Simplify ApiReferences state management and migrate to new shared sidebar component. Eliminates the useSidebar and useNav hooks in favour of event bubbling and centralized state management in ApiReference.vue
+
+- Updated dependencies [[`eb022f2`](https://github.com/scalar/scalar/commit/eb022f2c8f93c84a04c0093fefe8a1e05d6ec80d), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461)]:
+  - @scalar/types@0.4.0
+
+## 0.7.20
+
+### Patch Changes
+
+- 6accdf9: fix(docusaurus): add style resets for Docusaurus issues
+- Updated dependencies [f3e17d8]
+  - @scalar/types@0.3.2
+
+## 0.7.19
+
+### Patch Changes
+
+- Updated dependencies [1e01464]
+  - @scalar/types@0.3.1
+
+## 0.7.18
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/types@0.3.0
+
+## 0.7.17
+
+### Patch Changes
+
+- 947a844: Fixed a bug where baseURL was not included when adding a route.
+
+## 0.7.16
+
+### Patch Changes
+
+- Updated dependencies [005fba9]
+  - @scalar/types@0.2.16
+
+## 0.7.15
+
+### Patch Changes
+
+- Updated dependencies [abe3842]
+  - @scalar/types@0.2.15
+
+## 0.7.14
+
+### Patch Changes
+
+- Updated dependencies [792c937]
+  - @scalar/types@0.2.14
+
+## 0.7.13
+
+### Patch Changes
+
+- Updated dependencies [50032be]
+  - @scalar/types@0.2.13
+
+## 0.7.12
+
+### Patch Changes
+
+- Updated dependencies [6a88108]
+  - @scalar/types@0.2.12
+
+## 0.7.11
+
+### Patch Changes
+
+- 7031d9c: fix(api-reference): reference theme and style fixes
+- Updated dependencies [ccf875a]
+- Updated dependencies [94d6d0c]
+  - @scalar/types@0.2.11
+
+## 0.7.10
+
+### Patch Changes
+
+- Updated dependencies [fb62e1b]
+  - @scalar/types@0.2.10
+
 ## 0.7.9
 
 ### Patch Changes

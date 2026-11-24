@@ -1,6 +1,6 @@
 {
   "name": "@scalar/nestjs-api-reference",
-  "description": "A middleware for using the Scalar API reference with NestJS",
+  "description": "NestJS module to serve beautiful, interactive API documentation from OpenAPI/Swagger documents.",
   "license": "MIT",
   "author": "Scalar (https://github.com/scalar)",
   "homepage": "https://github.com/scalar/scalar",
@@ -10,27 +10,24 @@
     "url": "git+https://github.com/scalar/scalar.git",
     "directory": "integrations/nestjs"
   },
-  "version": "0.5.10",
+  "version": "1.2.41",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsup ./src/index.ts --format esm,cjs --dts",
     "build:express": "cd playground/nestjs-api-reference-express && pnpm build",
     "build:fastify": "cd playground/nestjs-api-reference-fastify && pnpm build",
-    "dev:express": "cd playground/nestjs-api-reference-express && pnpm dev",
-    "dev:fastify": "cd playground/nestjs-api-reference-fastify && pnpm dev",
-    "docker:build-express": "docker build --build-arg BASE_IMAGE=scalar-base -t nestjs-api-reference-express -f playground/nestjs-api-reference-express/Dockerfile .",
-    "docker:build-fastify": "docker build --build-arg BASE_IMAGE=scalar-base -t nestjs-api-reference-fastify -f playground/nestjs-api-reference-fastify/Dockerfile .",
-    "docker:run-express": "docker run -p 5056:5056 nestjs-api-reference-express",
-    "docker:run-fastify": "docker run -p 5057:5057 nestjs-api-reference-fastify",
-    "lint:check": "eslint .",
-    "lint:fix": "eslint .  --fix",
-    "test": "vitest",
-    "types:check": "tsc --noEmit"
+    "dev:express": "cd playground/nestjs-api-reference-express && pnpm run dev",
+    "dev:fastify": "cd playground/nestjs-api-reference-fastify && pnpm run dev",
+    "lint:check": "biome ci --diagnostic-level=error",
+    "lint:fix": "biome check --write",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.cts",
   "exports": {
     ".": {
@@ -47,22 +44,36 @@
   "files": [
     "dist"
   ],
-  "module": "dist/index.js",
+  "scalarReadme": {
+    "title": "Scalar API Reference Plugin for NestJS",
+    "badges": [
+      {
+        "type": "npm-version"
+      },
+      {
+        "type": "npm-downloads"
+      },
+      {
+        "type": "npm-license"
+      }
+    ],
+    "documentation": "https://scalar.com/products/api-references/integrations/nestjs"
+  },
   "dependencies": {
-    "@scalar/types": "workspace:*"
+    "@scalar/client-side-rendering": "workspace:*"
   },
   "devDependencies": {
-    "@nestjs/common": "^10.0.0",
-    "@nestjs/platform-fastify": "^10.3.8",
-    "@nestjs/testing": "^10.0.0",
-    "@scalar/api-reference": "workspace:*",
+    "@nestjs/common": "catalog:*",
+    "@nestjs/core": "catalog:*",
+    "@nestjs/platform-express": "catalog:*",
+    "@nestjs/platform-fastify": "catalog:*",
+    "@nestjs/testing": "catalog:*",
     "@types/express": "catalog:*",
-    "@types/supertest": "^2.0.12",
+    "@types/supertest": "catalog:*",
     "express": "catalog:*",
-    "fastify": "^4.26.2",
-    "supertest": "^6.3.3",
-    "tsup": "^8.3.5",
-    "vite": "catalog:*",
+    "fastify": "^5.12.8",
+    "supertest": "catalog:*",
+    "tsup": "^9.0.0",
     "vitest": "catalog:*"
   }
 }

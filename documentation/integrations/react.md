@@ -1,4 +1,4 @@
-# Scalar API Reference for React
+# API Reference for React
 
 [React](https://react.dev/) is one of the most popular libraries for web and native user interfaces. If you plan to render an API reference in React, we've got great news for you: There's a React integration of our package to render OpenAPI documents and here's how you can use it:
 
@@ -12,10 +12,10 @@ npm install @scalar/api-reference-react
 
 The API Reference package is written in Vue. That shouldn't stop you from using it in React, though. We have created a client side wrapper in React:
 
-> [!WARNING]\
+> [!WARNING]
 > This is untested on SSR/SSG!
 
-```ts
+```typescript
 import { ApiReferenceReact } from '@scalar/api-reference-react'
 import '@scalar/api-reference-react/style.css'
 
@@ -23,7 +23,7 @@ function App() {
   return (
     <ApiReferenceReact
       configuration={{
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=yaml',
       }}
     />
   )
@@ -31,8 +31,6 @@ function App() {
 
 export default App
 ```
-
-We wrote a [detailed integration guide for React](https://github.com/scalar/scalar/tree/main/documentation/integrations/react.md), too.
 
 ### Example
 
@@ -44,8 +42,7 @@ ApiReference only takes one prop which is the configuration object.
 
 ### configuration: ReferenceProps
 
-You can find the full configuration options under
-[packages/api-reference](https://github.com/scalar/scalar/tree/main/packages/api-reference).
+[Read more about the available configuration options.](../configuration.md)
 
 ## Guide
 
@@ -53,9 +50,8 @@ You can find the full configuration options under
 
 There are [tons of ways to set up a new React project](https://react.dev/learn/start-a-new-react-project). Here is an easy one using [Vite](https://vitejs.dev/) to get you started:
 
-:::scalar-callout{ type=info }
-We're using [pnpm](https://pnpm.io/installation) here. You can also just use npm, yarn or whatever you're used to. ✌️
-:::
+> [!NOTE]
+> We're using [pnpm](https://pnpm.io/installation) here. You can also just use npm, yarn or whatever you're used to. ✌️
 
 ```bash
 pnpm create vite my-awesome-app
@@ -105,25 +101,49 @@ Cool, you've got your (existing) React project and want to render an API referen
 pnpm add @scalar/api-reference-react
 ```
 
-And then, add a new component or just replace the `App.jsx` with the following content:
+And then, add a new component or just replace the `main.jsx` with the following content:
 
 ```jsx
-// src/App.jsx
-import { ApiReferenceReact } from '@scalar/api-reference-react'
+// src/main.jsx
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
 
+import { ApiReferenceReact } from '@scalar/api-reference-react'
 import '@scalar/api-reference-react/style.css'
 
-function App() {
-  return (
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
     <ApiReferenceReact
       configuration={{
-        url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.yaml',
+        url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=yaml',
       }}
     />
-  )
-}
-
-export default App
+  </StrictMode>,
+)
 ```
 
 Open <http://localhost:5173/> and you should see your API reference. Done!
+
+## Using with Tailwind CSS
+
+If your React project uses Tailwind CSS v4, Scalar's CSS layers may conflict with Tailwind's layer ordering. To fix this, declare the layer order in your main CSS file *before* importing Tailwind:
+
+```css
+/* src/index.css */
+@layer scalar-base, scalar-theme, scalar-config, theme, base, components, utilities;
+@import "tailwindcss";
+```
+
+This ensures Tailwind's utility classes always take priority over Scalar's styles.
+
+You can also map Scalar's CSS variables to your Tailwind theme to make the API Reference match the rest of your app:
+
+```css
+:root {
+  --scalar-background-1: var(--color-background);
+  --scalar-color-1: var(--color-foreground);
+  --scalar-color-accent: var(--color-primary);
+}
+```
+
+For full details, see [Embedding with CSS Frameworks](../themes.md#embedding-with-css-frameworks).

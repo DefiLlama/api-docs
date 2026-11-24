@@ -1,66 +1,127 @@
-<script setup lang="ts">
+<script lang="ts">
+/**
+ * Scalar Combobox component
+ *
+ * A searchable select input with support for filtering, option groups,
+ * and custom option rendering.
+ *
+ * @example
+ * <ScalarCombobox v-model="selected" :options="options">
+ *   <ScalarButton>{{ selected?.label ?? 'Select' }}</ScalarButton>
+ * </ScalarCombobox>
+ */
+export default {}
+</script>
+
+<!-- prettier-ignore-attribute generic -->
+<script
+  setup
+  lang="ts"
+  generic="O extends Option = Option, G extends OptionGroup<O> = OptionGroup<O>">
 import type { ScalarFloatingOptions } from '../ScalarFloating'
+import type { LoadingState } from '../ScalarLoading'
 import ComboboxOptions from './ScalarComboboxOptions.vue'
 import ComboboxPopover from './ScalarComboboxPopover.vue'
-import type { Option, OptionGroup } from './types'
+import type {
+  ComboboxEmits,
+  ComboboxSlots,
+  FilterFunction,
+  Option,
+  OptionGroup,
+  OptionsOrGroups,
+} from './types'
 
-type Props = {
-  options: Option[] | OptionGroup[]
-  modelValue?: Option
-  placeholder?: string
-} & ScalarFloatingOptions
+defineProps<
+  {
+    /** The options to display in the combobox */
+    options: OptionsOrGroups<O, G>
+    /** The placeholder text to display in the combobox */
+    placeholder?: string
+    /** An accessible label for the search input */
+    inputLabel?: string
+    /** The message to display when filtering returns no options */
+    noResults?: string
+    /** A function to filter the options based on a query,
+     * if not provided, the options will be filtered by option label
+     *
+     * Pass `(_, options) => options` when the caller searches the options itself (e.g. on a
+     * server) using the `query` model, so results the server already matched are shown as given.
+     *
+     * @see {@link FilterFunction} for more information
+     */
+    filterFn?: FilterFunction<O, G>
+    /**
+     * The loading state of the options, see `useLoadingState`
+     *
+     * Shows a spinner at the end of the search input while active, or an X when the state is
+     * invalidated (e.g. a failed request).
+     */
+    loader?: LoadingState
+  } & ScalarFloatingOptions
+>()
 
-type SlotProps = {
-  /** Whether or not the combobox is open */
-  open: boolean
-}
+const emit = defineEmits<ComboboxEmits>()
 
-defineProps<Props>()
+const model = defineModel<O>()
 
-defineEmits<{
-  (e: 'update:modelValue', v: Option): void
-}>()
+/** The search query, bind it to search the options yourself */
+const query = defineModel<string>('query', { default: '' })
 
-defineSlots<{
-  /** The reference element for the combobox */
-  default(props: SlotProps): unknown
-  /** A slot for contents before the combobox options */
-  before?(props: SlotProps): unknown
-  /** A slot for contents after the combobox options */
-  after?(props: SlotProps): unknown
-}>()
+defineSlots<ComboboxSlots<O, G>>()
 </script>
 <template>
   <ComboboxPopover
-    :middleware="middleware"
-    :offset="offset"
+    :middleware
+    :offset
     :placement="placement ?? 'bottom-start'"
-    :resize="resize"
-    :target="target"
-    :teleport="teleport">
+    :resize
+    :target
+    :teleport>
     <template #default="{ open }">
-      <slot :open="open" />
+      <slot :open />
     </template>
     <template #popover="{ open, close }">
       <ComboboxOptions
-        :modelValue="modelValue ? [modelValue] : []"
-        :open="open"
-        :options="options"
-        :placeholder="placeholder"
-        @update:modelValue="(v) => (close(), $emit('update:modelValue', v[0]))">
+        v-model:query="query"
+        :close
+        :filterFn
+        :inputLabel
+        :loader
+        :modelValue="model ? [model] : []"
+        :noResults
+        :open
+        :options
+        :placeholder
+        @add="() => (close(), emit('add'))"
+        @update:modelValue="(v) => (close(), (model = v[0]))">
+        <!-- Pass through the combobox slots -->
         <template
-          v-if="$slots.before"
-          #before>
+          v-if="$slots['search-end']"
+          #search-end="props">
           <slot
-            name="before"
-            :open="open" />
+            name="search-end"
+            v-bind="props" />
         </template>
         <template
-          v-if="$slots.after"
-          #after>
+          v-if="$slots.option"
+          #option="props">
           <slot
-            name="after"
-            :open="open" />
+            name="option"
+            v-bind="props" />
+        </template>
+        <template
+          v-if="$slots.group"
+          #group="props">
+          <slot
+            name="group"
+            v-bind="props" />
+        </template>
+        <template
+          v-if="$slots.add"
+          #add="props">
+          <slot
+            name="add"
+            v-bind="props" />
         </template>
       </ComboboxOptions>
     </template>

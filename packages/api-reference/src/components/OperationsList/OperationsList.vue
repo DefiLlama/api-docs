@@ -1,0 +1,68 @@
+<script setup lang="ts">
+import { ScreenReader } from '@scalar/blocks/shared'
+import {
+  ScalarCard,
+  ScalarCardHeader,
+  ScalarCardSection,
+} from '@scalar/components/card'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import type { TraversedTag } from '@scalar/workspace-store/schemas/navigation'
+import { computed } from 'vue'
+
+import { useLocalization } from '@/features/localization'
+
+import OperationsListItem from './OperationsListItem.vue'
+
+const { tag } = defineProps<{
+  tag: TraversedTag
+  eventBus: WorkspaceEventBus | null
+}>()
+const { translate } = useLocalization()
+
+const operationsAndWebhooks = computed(() => {
+  return (
+    tag.children?.filter(
+      (child) => child.type === 'operation' || child.type === 'webhook',
+    ) ?? []
+  )
+})
+</script>
+
+<template>
+  <template v-if="operationsAndWebhooks.length > 0">
+    <ScalarCard class="endpoints-card">
+      <ScalarCardHeader muted>
+        <ScreenReader>{{ tag.title }}</ScreenReader>
+        {{
+          tag.isWebhooks
+            ? translate('navigation.webhooks')
+            : translate('navigation.operations')
+        }}
+      </ScalarCardHeader>
+      <ScalarCardSection class="custom-scroll max-h-[60vh]">
+        <ul
+          :aria-label="translate('navigation.endpoints', { name: tag.title })"
+          class="endpoints">
+          <OperationsListItem
+            v-for="operationOrWebhook in operationsAndWebhooks"
+            :key="operationOrWebhook.id"
+            :eventBus="eventBus"
+            :operation="operationOrWebhook" />
+        </ul>
+      </ScalarCardSection>
+    </ScalarCard>
+  </template>
+</template>
+
+<style scoped>
+.endpoints-card {
+  position: sticky;
+  top: calc(var(--refs-viewport-offset) + 24px);
+  font-size: var(--scalar-font-size-3);
+}
+.endpoints {
+  overflow: auto;
+  padding: 10px 12px;
+  width: 100%;
+}
+</style>

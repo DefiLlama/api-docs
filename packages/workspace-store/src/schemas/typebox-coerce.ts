@@ -1,5 +1,5 @@
-import type { TSchema } from '@sinclair/typebox'
-import { Value } from '@sinclair/typebox/value'
+import type { TSchema } from '@scalar/typebox'
+import { Value } from '@scalar/typebox/value'
 
 /**
  * Coerces a value to match the provided TypeBox schema by first converting and then casting the value.
@@ -22,6 +22,4 @@ import { Value } from '@sinclair/typebox/value'
  * const value = "true"
  * const coerced = coerceValue(schema, value) // Returns true
  */
-export const coerceValue = <T extends TSchema>(schema: T, value: unknown) => {
-  return Value.Cast(schema, Value.Convert(schema, value))
-}
+export const coerceValue = <T extends TSchema>(schema: T, value: unknown) => Value.Cast(schema, value)

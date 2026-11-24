@@ -1,0 +1,6 @@
+# Maven build output
+target/
+scalar.js
+
+.idea/
+.flattened-pom.xml

@@ -3,6 +3,20 @@ import { describe, expect, it } from 'vitest'
 import { shellCurl } from './curl'
 
 describe('shellCurl', () => {
+  it('preserves whole-query percent encoding when appending named parameters', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com/search?%7b%22a%22%3a1%7d',
+      queryString: [{ name: 'token', value: 'secret' }],
+    })
+    expect(result).toBe(`curl 'https://example.com/search?%7b%22a%22%3a1%7d&token=secret'`)
+  })
+
+  it('preserves a custom method in the generated request', () => {
+    expect(shellCurl.generate({ url: 'https://example.com', method: 'customMethod' })).toContain(
+      '--request customMethod',
+    )
+  })
+
   it('returns a basic request', () => {
     const result = shellCurl.generate({
       url: 'https://example.com',
@@ -87,6 +101,28 @@ describe('shellCurl', () => {
     })
 
     expect(result).toBe(`curl 'https://example.com?foo=bar&bar=foo'`)
+  })
+
+  it('joins query string parameters with & when the URL already has a query string', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com/api?existing=1',
+      queryString: [
+        {
+          name: 'foo',
+          value: 'bar',
+        },
+      ],
+    })
+
+    expect(result).toBe(`curl 'https://example.com/api?existing=1&foo=bar'`)
+  })
+
+  it('quotes a URL whose query string has no other special characters', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com/api?param1=value1&param2=value2',
+    })
+
+    expect(result).toBe(`curl 'https://example.com/api?param1=value1&param2=value2'`)
   })
 
   it('has cookies', () => {
@@ -229,6 +265,133 @@ describe('shellCurl', () => {
   --form 'field=value'`)
   })
 
+  it('handles multipart form data content types on string parts', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'user',
+            value: '{"name":"scalar"}',
+            contentType: 'application/json;charset=utf-8',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --form 'user={
+  "name": "scalar"
+};type=application/json;charset=utf-8'`)
+  })
+
+  it('pretty-prints JSON multipart parts alongside file parts', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com/widget/v1/widgets',
+      method: 'POST',
+      headers: [
+        {
+          name: 'Content-Type',
+          value: 'multipart/form-data',
+        },
+      ],
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            fileName: 'filename',
+          },
+          {
+            name: 'props',
+            value: '{"name":"","description":"","created_at":null}',
+            contentType: 'application/json',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com/widget/v1/widgets \\
+  --request POST \\
+  --header 'Content-Type: multipart/form-data' \\
+  --form 'file=@filename' \\
+  --form 'props={
+  "name": "",
+  "description": "",
+  "created_at": null
+};type=application/json'`)
+  })
+
+  it('leaves non-JSON multipart values untouched when contentType claims JSON', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'props',
+            value: 'not json',
+            contentType: 'application/json',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --form 'props=not json;type=application/json'`)
+  })
+
+  it('handles multipart form data content types on files', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            fileName: 'test.txt',
+            contentType: 'text/plain',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --form 'file=@test.txt;type=text/plain'`)
+  })
+
+  it('handles multipart form data with single quotes in parameter name', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: "field'name",
+            value: 'value',
+          },
+          {
+            name: "file'name",
+            fileName: 'test.txt',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --form 'field'\\''name=value' \\
+  --form 'file'\\''name=@test.txt'`)
+  })
+
   it('handles multipart form data with JSON payload', () => {
     const result = shellCurl.generate({
       url: 'https://example.com',
@@ -275,6 +438,26 @@ describe('shellCurl', () => {
   --data-urlencode 'special%20chars!%40%23=value'`)
   })
 
+  it('handles url-encoded form data with single quotes in parameter name', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'application/x-www-form-urlencoded',
+        params: [
+          {
+            name: "field'name",
+            value: 'value',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --data-urlencode 'field'\\''name=value'`)
+  })
+
   it('handles binary data flag', () => {
     const result = shellCurl.generate({
       url: 'https://example.com',
@@ -311,7 +494,8 @@ describe('shellCurl', () => {
       url: 'https://example.com/path with spaces/[brackets]',
     })
 
-    expect(result).toBe(`curl 'https://example.com/path with spaces/[brackets]'`)
+    expect(result).toBe(`curl 'https://example.com/path with spaces/[brackets]' \\
+  --globoff`)
   })
 
   it('handles special characters in query parameters', () => {
@@ -521,5 +705,147 @@ describe('shellCurl', () => {
     })
 
     expect(result).toBe(`curl 'https://example.com/api$v1/prices?amount=%2450.00'`)
+  })
+
+  it.each(['application/jsonl', 'application/x-ndjson; charset=utf-8'])(
+    'preserves stream framing for %s',
+    (mimeType) => {
+      const result = shellCurl.generate({
+        url: 'https://example.com',
+        postData: { mimeType, text: '{"message":"Hello stream"}\n' },
+      })
+
+      expect(result).toContain('--data-binary \'{"message":"Hello stream"}\n\'')
+    },
+  )
+
+  it('pretty-prints --data bodies whose mimeType uses a +json suffix', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'application/vnd.api+json',
+        text: JSON.stringify({ a: 1 }),
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --data '{
+  "a": 1
+}'`)
+  })
+
+  it('pretty-prints --data bodies whose mimeType includes a charset parameter', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'application/json;charset=utf-8',
+        text: JSON.stringify({ a: 1 }),
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --data '{
+  "a": 1
+}'`)
+  })
+
+  it('pretty-prints --form parts whose contentType uses a +json suffix', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'props',
+            value: '{"a":1}',
+            contentType: 'application/vnd.custom+json',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`curl https://example.com \\
+  --request POST \\
+  --form 'props={
+  "a": 1
+};type=application/vnd.custom+json'`)
+  })
+
+  it('escapes single quotes in JSON body', () => {
+    const result = shellCurl.generate({
+      url: 'https://editor.scalar.com/test',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'application/json' }],
+      postData: {
+        mimeType: 'application/json',
+        text: '"hell\'o"',
+      },
+    })
+
+    expect(result).toContain(`--data '"hell'\\''o"'`)
+  })
+
+  it('encodes bracket notation in a query parameter name', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com/api/users',
+      queryString: [
+        {
+          name: 'filter[user_id]',
+          value: 'me',
+        },
+      ],
+    })
+
+    expect(result).toBe(`curl 'https://example.com/api/users?filter%5Buser_id%5D=me'`)
+  })
+
+  it('leaves a path placeholder alone', () => {
+    const result = shellCurl.generate({
+      url: 'https://galaxy.scalar.com/planets/{planetId}',
+    })
+
+    expect(result).toBe(`curl 'https://galaxy.scalar.com/planets/{planetId}'`)
+  })
+
+  it('encodes a curly-brace set in a query value', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com/api',
+      queryString: [
+        {
+          name: 'ids',
+          value: '{1,2,3}',
+        },
+      ],
+    })
+
+    expect(result).toBe(`curl 'https://example.com/api?ids=%7B1%2C2%2C3%7D'`)
+  })
+
+  it('leaves a path placeholder alone even with a query string', () => {
+    const result = shellCurl.generate({
+      url: 'https://galaxy.scalar.com/planets/{planetId}',
+      queryString: [
+        {
+          name: 'limit',
+          value: '10',
+        },
+      ],
+    })
+
+    expect(result).toBe(`curl 'https://galaxy.scalar.com/planets/{planetId}?limit=10'`)
+  })
+
+  it('turns off globbing for braces already present in the URL query', () => {
+    const result = shellCurl.generate({
+      url: 'https://example.com/api?ids={1,2,3}',
+    })
+
+    expect(result).toBe(`curl 'https://example.com/api?ids={1,2,3}' \\
+  --globoff`)
   })
 })

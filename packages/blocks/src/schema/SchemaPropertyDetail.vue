@@ -1,0 +1,64 @@
+<script lang="ts" setup>
+defineProps<{
+  truncate?: boolean
+  code?: boolean
+}>()
+</script>
+<template>
+  <span
+    class="property-detail"
+    :class="{ 'property-detail-truncate': truncate }">
+    <div
+      v-if="$slots.prefix"
+      class="property-detail-prefix">
+      <slot name="prefix" />&nbsp;
+    </div>
+    <code
+      v-if="code"
+      class="property-detail-value">
+      <slot />
+    </code>
+    <span
+      v-else
+      class="property-detail-value">
+      <slot />
+    </span>
+  </span>
+</template>
+<style scoped>
+.property-detail {
+  display: inline-flex;
+}
+.property-detail + .property-detail:before {
+  display: block;
+  content: '·';
+  margin: 0 0.5ch;
+}
+.property-detail-truncate {
+  overflow: hidden;
+}
+
+.property-detail-truncate > .property-detail-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.property-detail-prefix {
+  color: var(--scalar-color-2);
+}
+
+code.property-detail-value {
+  font-family: var(--scalar-font-code);
+  font-size: var(--scalar-font-size-3);
+  color: var(--scalar-color-2);
+  background: color-mix(
+    in srgb,
+    var(--scalar-background-2),
+    var(--scalar-background-1)
+  );
+  padding: 0 4px;
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+  border-radius: var(--scalar-radius);
+}
+</style>

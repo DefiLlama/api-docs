@@ -1,5 +1,206 @@
 # @scalar/code-highlight
 
+## 0.4.16
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.4.15
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.4.14
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+
+## 0.4.13
+
+### Patch Changes
+
+- [#10923](https://github.com/scalar/scalar/pull/10923): Update the bundled mdast-util-to-hast to 13.2.1 to fix CVE-2025-66400 (unsanitized class attribute).
+
+## 0.4.12
+
+### Patch Changes
+
+- [#10742](https://github.com/scalar/scalar/pull/10742): Restore the 1.4 default for highlighted code block containers after the highlighter migration, including plain text and blank lines, while allowing Markdown to retain its own spacing.
+- [#10849](https://github.com/scalar/scalar/pull/10849): Make code block containers own line spacing so highlighted text, plain text, blank lines, and line numbers use the same height. ScalarCodeBlock defaults to 1.4 and Markdown fenced code defaults to 1.5; override either with --scalar-code-line-height on the component or an ancestor. The shared highlighting stylesheet preserves the 1.4 default for direct consumers with a zero-specificity container rule, so existing container overrides still take precedence.
+
+## 0.4.11
+
+### Patch Changes
+
+- [#9939](https://github.com/scalar/scalar/pull/9939): Fix a code line rendering shorter than its neighbours when nothing on it is highlighted
+
+  `line-height` was declared on `:where(code.hljs) *`, which reaches elements and never text nodes. A highlighter emits a token span only where it has a scope to give, so a line of entirely unscoped text — the content between two JSX tags, for example — carried no element, fell back to the surrounding line height, and rendered about two pixels shorter than the lines around it.
+
+  Line numbers hid this. That mode wraps every line in `span.line`, which is an element, so the same block rendered evenly with a gutter and unevenly without one. The declaration now sits on `code.hljs` itself, so it sets the line box for every line and the spans inherit it.
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.4.10
+
+### Patch Changes
+
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 0.4.9
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+- [#10506](https://github.com/scalar/scalar/pull/10506): Organize imports consistently with the checks enforced in CI.
+
+## 0.4.8
+
+### Patch Changes
+
+- [#10459](https://github.com/scalar/scalar/pull/10459): Share one lowlight instance per language registry between `syntaxHighlight` and `htmlFromMarkdown` instead of registering and compiling every grammar for each code block, and replace it after a grammar fails to compile so later blocks that embed that grammar keep their text
+
+## 0.4.7
+
+### Patch Changes
+
+- [#10212](https://github.com/scalar/scalar/pull/10212): Improve type safety for schema display metadata, schema property merging, deprecated configuration migration, and cyclic test fixtures. Load Vite declarations for raw playground imports.
+
+## 0.4.6
+
+### Patch Changes
+
+- [#10074](https://github.com/scalar/scalar/pull/10074): perf(code-highlight): reuse the markdown processor and skip the pipeline for plain paragraphs
+
+  `htmlFromMarkdown` rebuilt its twelve-plugin unified chain on every call, and each of those rebuilds ran `createLowlight(standardLanguages)`, re-registering all 57 syntax grammars before rendering. Rendering a single API description paid for a whole highlighter. Profiling an API reference schema put 34-44% of the time in markdown, roughly 70% of it in construction rather than parsing.
+
+  Two changes. One lazily created lowlight instance is now shared through `rehypeHighlight`'s `lowlight` option, and the processor is frozen and cached per option set (sorted `removeTags`, sorted `allowTags`, transform type). Calls that pass a `transform` callback still build per call, because the callback receives the AST. Separately, a description that is a single plain line with no markdown, HTML or collapsible whitespace now returns the paragraph the pipeline would have produced, without running it.
+
+  Output is unchanged. Every unique description in the Stripe OpenAPI document (5,167 of them), plus targeted probes across seven option sets and 40,000 random strings drawn from an alphabet of the excluded metacharacters, render byte-identically before and after.
+
+  Two caches now live for the process lifetime: the grammar registry and the processor map. Both are immutable once built, and the registry is only mutated through an `aliases` option this package never passes.
+
+## 0.4.5
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.4.4
+
+### Patch Changes
+
+- [#9913](https://github.com/scalar/scalar/pull/9913): Add Julia (HTTP.jl) as a code example target. The new `julia/http` client generates HTTP.jl snippets, including headers, query parameters, cookies, basic auth, JSON bodies (as `Dict`s serialized with `JSON.json`), url-encoded bodies and `HTTP.Form` multipart uploads. Julia syntax highlighting and a Julia icon are included, so the client shows up in the code example picker like any other language.
+
+## 0.4.3
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.4.2
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.4.1
+
+### Patch Changes
+
+- [#9659](https://github.com/scalar/scalar/pull/9659): fix: keep rendering Markdown when a code block fails to highlight
+
+  Syntax highlighting is now best-effort: if a highlight.js grammar throws at runtime (for example a Unicode regex that a production minifier mangles), the code block falls back to plain text instead of the error taking down the whole Markdown section.
+
+## 0.4.0
+
+### Minor Changes
+
+- [#9590](https://github.com/scalar/scalar/pull/9590): Add syntax highlighting for the Mojo programming language
+
+## 0.3.6
+
+### Patch Changes
+
+- [#9508](https://github.com/scalar/scalar/pull/9508): Fix Python code samples appearing mostly unstyled by highlighting function and method call sites
+- [#9506](https://github.com/scalar/scalar/pull/9506): Add Scalar scrollbar styling to highlighted Markdown code blocks.
+
+## 0.3.5
+
+### Patch Changes
+
+- [#9451](https://github.com/scalar/scalar/pull/9451): Bundle runtime dependencies into the build so CommonJS-only packages (like `extend` and `debug`) no longer leak to consumers and break Vite dev under pnpm
+
+## 0.3.4
+
+### Patch Changes
+
+- [#8964](https://github.com/scalar/scalar/pull/8964): fix markdown inside HTML text tags like `<p>` so inline formatting is rendered.
+
+## 0.3.3
+
+### Patch Changes
+
+- [#8735](https://github.com/scalar/scalar/pull/8735): fix: replace direct cjs mime and curl dependencies with local implementations
+
+## 0.3.2
+
+### Patch Changes
+
+- [#8664](https://github.com/scalar/scalar/pull/8664): refactor: replace wildcard export barrels with explicit named re-exports
+
+## 0.3.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.3.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.2.4
+
+### Patch Changes
+
+- [#8248](https://github.com/scalar/scalar/pull/8248): feat: slugs for headings with nested content
+
+## 0.2.3
+
+### Patch Changes
+
+- [#8081](https://github.com/scalar/scalar/pull/8081): feat(components): improve ScalarCodeBlock copy UI
+
+## 0.2.2
+
+### Patch Changes
+
+- [#7527](https://github.com/scalar/scalar/pull/7527) [`93ffb63`](https://github.com/scalar/scalar/commit/93ffb63e9d97c7a4ea810d9eeb95cc416c368806) Thanks [@amritk](https://github.com/amritk)! - feat: allow all classes in markdown
+
+## 0.2.1
+
+### Patch Changes
+
+- [#7441](https://github.com/scalar/scalar/pull/7441) [`781f264`](https://github.com/scalar/scalar/commit/781f2648bc758a251435c3a1e2b126a37f20e44f) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(code-highlight): remove `highlightjs-vue` unused dependency
+
+- [#7441](https://github.com/scalar/scalar/pull/7441) [`781f264`](https://github.com/scalar/scalar/commit/781f2648bc758a251435c3a1e2b126a37f20e44f) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(code-highlight): remove unused languages
+
+## 0.2.0
+
+### Minor Changes
+
+- 0aa6d26: feat: add ~45 new highlight.js languages + alias maps and new grouped exports (mediumLanguages, specializedLanguages, allLanguages)
+
+## 0.1.9
+
+### Patch Changes
+
+- d4cb86b: fix: removes inline block display to keep caret in empty code input usage
+
 ## 0.1.8
 
 ### Patch Changes

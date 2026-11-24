@@ -1,0 +1,34 @@
+{
+  "name": "@scalar-internal/build-scripts",
+  "version": "1.0.0",
+  "description": "Scalar OSS Scripts. Packaged for easy dependency installation.",
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "test": "vitest --run ."
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "ansis": "catalog:*",
+    "commander": "catalog:*",
+    "picomatch": "catalog:*",
+    "semver": "catalog:*",
+    "yaml": "catalog:*",
+    "zod": "catalog:*",
+    "concurrently": "catalog:*",
+    "typescript-native": "npm:typescript@7.0.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:*",
+    "@types/picomatch": "catalog:*",
+    "@types/semver": "catalog:*",
+    "vite": "catalog:*",
+    "vitest": "catalog:*"
+  },
+  "bin": {
+    "tsgo": "./tsgo.mjs"
+  }
+}
