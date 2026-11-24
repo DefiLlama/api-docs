@@ -63,18 +63,15 @@ const codeSamples = computed(
     operation['x-custom-examples'],
 )
 
-// Store the actual selected state
-const localSelectedClientState = ref(
-  codeSamples.value?.length
-    ? {
-        targetKey: 'custom',
-        clientKey: codeSamples.value[0]?.lang,
-      }
-    : {
-        targetKey: workspace.selectedHttpClient?.targetKey ?? 'js',
-        clientKey: workspace.selectedHttpClient?.clientKey ?? 'fetch',
-      },
-)
+/**
+ * Store the actual selected state. Start on the workspace's client (shell/curl by default) even when the
+ * operation has custom code samples: curl shows the full URL with host and key placement, which an SDK
+ * sample hides. The custom samples stay in the dropdown, and picking one sticks (see localSelectedClient).
+ */
+const localSelectedClientState = ref({
+  targetKey: workspace.selectedHttpClient?.targetKey ?? 'js',
+  clientKey: workspace.selectedHttpClient?.clientKey ?? 'fetch',
+})
 
 /**
  * Returns selected security schemes for the request
