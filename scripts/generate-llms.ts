@@ -96,10 +96,17 @@ function formatParam(p: Parameter): string {
   return `  - \`${p.name}\` (${p.in}, ${type}, ${req})${desc}${enumValues}${example}`
 }
 
-function formatEndpoint(e: Endpoint): string {
+function formatEndpoint(e: Endpoint, proPath?: string): string {
   const lines: string[] = []
   lines.push(`### GET ${e.path}`)
   lines.push(`**Base URL:** \`${e.baseUrl}\``)
+  /**
+   * Agents that land on the free docs copy the free URL even when the user has a key, so paying
+   * users end up rate limited on the free host. Putting the keyed URL right next to it fixes that.
+   */
+  if (proPath) {
+    lines.push(`**With an API key:** \`https://pro-api.llama.fi/{YOUR_API_KEY}${proPath}\``)
+  }
   lines.push(`${e.summary}`)
 
   if (e.parameters.length > 0) {
@@ -153,12 +160,27 @@ function formatTagName(tag: string): string {
 }
 
 /**
+ * Goes at the top of all three files. Paying users churned because their agents read the free docs,
+ * kept calling the free hosts (which never read a key) and hit the free rate limit.
+ * "Pro" is ambiguous: the $49 DefiLlama Pro plan has no API key, the $300 API plan does.
+ */
+const HAVE_A_KEY = `## Have an API key? Use pro-api.llama.fi for every request
+
+If you or your user has a DefiLlama API key, send every request to \`https://pro-api.llama.fi/{YOUR_API_KEY}/...\`. That includes TVL, token prices, stablecoins, yields, volumes and fees, which also have free hosts.
+
+- The free hosts (\`api.llama.fi\`, \`coins.llama.fi\`, \`stablecoins.llama.fi\`, \`yields.llama.fi\`) never read a key. Requests there are free tier and rate limited, even for paying users. A 429 from a free host means the request belongs on pro-api.llama.fi.
+- The key goes in the URL path, right after the host. Headers and \`?apikey=\` are not read.
+- Paths on pro-api.llama.fi have a prefix: \`/protocols\` becomes \`/api/protocols\`, \`/prices/current/{coins}\` becomes \`/coins/prices/current/{coins}\`, \`/stablecoins\` becomes \`/stablecoins/stablecoins\`, \`/pools\` becomes \`/yields/pools\`.
+- The key comes with the DefiLlama API plan ($300/mo). If a user says they have "DefiLlama Pro" and gives you a key, it is this key: use pro-api.llama.fi. The $49 DefiLlama Pro plan on its own has no API key.
+- Use the free hosts only when there is no key.`
+
+/**
  * Shared by llms.txt and llms-pro.txt so agents get the same auth rules from either file.
  * Agents kept sending the key as ?apikey= to api.llama.fi and reading the 402 as a lapsed plan.
  */
 const PRO_AUTH = `## Pro API authentication
 
-Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (\`?apikey=\`) or header. Do NOT put it in \`api.llama.fi\` URLs.
+Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (\`?apikey=\`) or header: pro-api.llama.fi does not read either and answers \`500 {"error":"API Key is wrong"}\`. Do NOT put it in \`api.llama.fi\` URLs.
 
 \`\`\`
 WRONG  https://pro-api.llama.fi/api/overview/derivatives?apikey={YOUR_API_KEY}
@@ -182,6 +204,8 @@ function generateIndex(freeEndpoints: Endpoint[], proEndpoints: Endpoint[], mapp
   return `# DefiLlama API
 
 > DefiLlama provides free, open-source DeFi analytics data. There are two separate APIs with different base URLs and authentication. Do NOT mix them.
+
+${HAVE_A_KEY}
 
 ## Important: Free API vs Pro API
 
@@ -239,13 +263,19 @@ ${Array.from(proGroups.entries())
 `
 }
 
-function generateDetailedFile(title: string, baseUrl: string, auth: string, endpoints: Endpoint[]): string {
+function generateDetailedFile(
+  title: string,
+  baseUrl: string,
+  auth: string,
+  endpoints: Endpoint[],
+  proPaths: ReadonlyMap<string, string> = new Map(),
+): string {
   const groups = groupByTag(endpoints)
 
   const sections = Array.from(groups.entries())
     .map(([tag, eps]) => {
       const header = `## ${formatTagName(tag)}`
-      const entries = eps.map(formatEndpoint).join('\n\n')
+      const entries = eps.map((e) => formatEndpoint(e, proPaths.get(e.path))).join('\n\n')
       return `${header}\n\n${entries}`
     })
     .join('\n\n---\n\n')
@@ -271,7 +301,7 @@ function buildFreeToProMapping(
   const proPaths = new Set(allProEndpoints.map((e) => e.path))
   const mappings: { freePath: string; proPath: string; summary: string }[] = []
 
-  const prefixes = ['/api/', '/coins/', '/stablecoins/', '/yields/']
+  const prefixes = ['/api/', '/coins/', '/stablecoins/', '/yields/', '/yields/v1/']
 
   for (const free of freeEndpoints) {
     for (const prefix of prefixes) {
@@ -319,12 +349,17 @@ function main(): void {
 
   const llmsIndex = generateIndex(freeEndpoints, proOnlyEndpoints, mappingTable)
   const llmsFree = generateDetailedFile(
-    'DefiLlama Free API',
+    'DefiLlama Free API (no API key)',
     'https://api.llama.fi',
-    'Free API — no authentication required. Endpoints are served from several hosts, use the base URL listed on each endpoint.',
+    `Free API, for users with no API key. Endpoints are served from several hosts, use the base URL listed on each endpoint. Users with a key use the "With an API key" URL on each endpoint instead, or [llms-pro.txt](/llms-pro.txt).
+
+${HAVE_A_KEY}`,
     freeEndpoints,
+    new Map(freeToProMapping.map((m) => [m.freePath, m.proPath])),
   )
   const proNote = `Pro API — requires a paid API key ($300/mo). The pro-only endpoints below are NOT available on the free API.
+
+${HAVE_A_KEY}
 
 ${PRO_AUTH}
 

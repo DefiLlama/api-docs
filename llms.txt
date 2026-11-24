@@ -2,6 +2,16 @@
 
 > DefiLlama provides free, open-source DeFi analytics data. There are two separate APIs with different base URLs and authentication. Do NOT mix them.
 
+## Have an API key? Use pro-api.llama.fi for every request
+
+If you or your user has a DefiLlama API key, send every request to `https://pro-api.llama.fi/{YOUR_API_KEY}/...`. That includes TVL, token prices, stablecoins, yields, volumes and fees, which also have free hosts.
+
+- The free hosts (`api.llama.fi`, `coins.llama.fi`, `stablecoins.llama.fi`, `yields.llama.fi`) never read a key. Requests there are free tier and rate limited, even for paying users. A 429 from a free host means the request belongs on pro-api.llama.fi.
+- The key goes in the URL path, right after the host. Headers and `?apikey=` are not read.
+- Paths on pro-api.llama.fi have a prefix: `/protocols` becomes `/api/protocols`, `/prices/current/{coins}` becomes `/coins/prices/current/{coins}`, `/stablecoins` becomes `/stablecoins/stablecoins`, `/pools` becomes `/yields/pools`.
+- The key comes with the DefiLlama API plan ($300/mo). If a user says they have "DefiLlama Pro" and gives you a key, it is this key: use pro-api.llama.fi. The $49 DefiLlama Pro plan on its own has no API key.
+- Use the free hosts only when there is no key.
+
 ## Important: Free API vs Pro API
 
 The Free API and Pro API are entirely separate services.
@@ -15,7 +25,7 @@ The Free API and Pro API are entirely separate services.
 
 ## Pro API authentication
 
-Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (`?apikey=`) or header. Do NOT put it in `api.llama.fi` URLs.
+Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (`?apikey=`) or header: pro-api.llama.fi does not read either and answers `500 {"error":"API Key is wrong"}`. Do NOT put it in `api.llama.fi` URLs.
 
 ```
 WRONG  https://pro-api.llama.fi/api/overview/derivatives?apikey={YOUR_API_KEY}
