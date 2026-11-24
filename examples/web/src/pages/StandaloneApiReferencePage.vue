@@ -59,6 +59,11 @@ const currentBaseUrl = ref<string>('https://api.llama.fi')
 const configuration = ref(
   apiReferenceConfigurationSchema.parse({
     isEditable: false,
+    /**
+     * Without this, Scalar opens on the first custom code sample (the JavaScript SDK). curl shows the
+     * full URL, so readers and agents see exactly which host and key placement to use.
+     */
+    defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
     // Add path routing option
     ...(window.location.pathname.startsWith('/path-routing')
       ? {

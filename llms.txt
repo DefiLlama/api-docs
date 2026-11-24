@@ -2,6 +2,22 @@
 
 > DefiLlama provides free, open-source DeFi analytics data. There are two separate APIs with different base URLs and authentication. Do NOT mix them.
 
+## Have an API key? Use pro-api.llama.fi for every request
+
+If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/{YOUR_API_KEY}/...`. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
+
+```
+RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/coingecko:ethereum
+WRONG  https://coins.llama.fi/prices/current/coingecko:ethereum                      (free host: ignores the key, rate limited)
+WRONG  https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum?apikey={YOUR_API_KEY}   (key not in the path)
+```
+
+- The free hosts (`api.llama.fi`, `coins.llama.fi`, `stablecoins.llama.fi`, `yields.llama.fi`) never read a key, so a 429 there means the request belongs on pro-api.llama.fi. A 402 there means the endpoint needs pro-api, not that the plan expired.
+- The key goes in the path, right after the host. Headers and `?apikey=` are not read: pro-api answers `500 {"error":"API Key is wrong"}`.
+- Paths on pro-api have a prefix: `/protocols` becomes `/api/protocols`, `/prices/current/{coins}` becomes `/coins/prices/current/{coins}`, `/stablecoins` becomes `/stablecoins/stablecoins`, `/pools` becomes `/yields/v1/pools`. Every free path is mapped in [llms.txt](https://api-docs.defillama.com/llms.txt), and the pro-only endpoints are in [llms-pro.txt](https://api-docs.defillama.com/llms-pro.txt).
+- One key unlocks every endpoint. There are no add-ons or separate keys.
+- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
+
 ## Important: Free API vs Pro API
 
 The Free API and Pro API are entirely separate services.
@@ -11,32 +27,11 @@ The Free API and Pro API are entirely separate services.
 | Base URL | https://api.llama.fi for most endpoints, see the host of each group below | https://pro-api.llama.fi/{KEY} |
 | Auth Required | No | Yes ($300/mo) |
 | Rate Limit | Standard | Higher |
-| Endpoints | 31 | 38 exclusive + 31 free with prefix |
-
-## Pro API authentication
-
-Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (`?apikey=`) or header. Do NOT put it in `api.llama.fi` URLs.
-
-```
-WRONG  https://pro-api.llama.fi/api/overview/derivatives?apikey={YOUR_API_KEY}
-RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives
-```
-
-There are only two tiers: free (no key) and the API plan. One API plan key unlocks every Pro endpoint. There are no add-ons or separate keys for volumes, derivatives, or other data.
-
-## Troubleshooting
-
-A 200 from `/protocols` or `/overview/fees` on `api.llama.fi` does not validate your API key. Those endpoints require no authentication. A 402 from `api.llama.fi` does not prove your subscription expired. It means the endpoint needs the Pro API.
-
-1. Check the host and key placement: `https://pro-api.llama.fi/{YOUR_API_KEY}/...`, not `api.llama.fi` and not `?apikey=`.
-2. Call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns your remaining credits, like `{"creditsLeft": 1000000}`.
-3. Retry the keyed URL: `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives`.
-
-**Pro users accessing free endpoints:** Pro API key holders can also call free endpoints on `pro-api.llama.fi` for higher rate limits. Use the exact path mappings below.
+| Endpoints | 31 | 105 exclusive + 31 free with prefix |
 
 ## Free-to-Pro Path Mapping
 
-Pro users: to call free endpoints with higher rate limits, use `https://pro-api.llama.fi/{YOUR_API_KEY}` with the pro path below.
+With a key, call these on `https://pro-api.llama.fi/{YOUR_API_KEY}` with the pro path.
 
 | Free path | Pro path (pro-api.llama.fi) | Description |
 |---|---|---|
@@ -59,8 +54,8 @@ Pro users: to call free endpoints with higher rate limits, use `https://pro-api.
 | `/stablecoin/{asset}` | `/stablecoins/stablecoin/{asset}` | Get historical mcap and historical chain distribution of a stablecoin |
 | `/stablecoinchains` | `/stablecoins/stablecoinchains` | Get current mcap sum of all stablecoins on each chain |
 | `/stablecoinprices` | `/stablecoins/stablecoinprices` | Get historical prices of all stablecoins |
-| `/pools` | `/yields/pools` | Retrieve the latest data for all pools, including enriched information such as predictions |
-| `/chart/{pool}` | `/yields/chart/{pool}` | Get historical APY and TVL of a pool |
+| `/pools` | `/yields/v1/pools` | Retrieve the latest data for all pools, including enriched information such as predictions |
+| `/chart/{pool}` | `/yields/v1/chart/{pool}` | Get historical APY and TVL of a pool |
 | `/overview/dexs` | `/api/overview/dexs` | List all dexs along with summaries of their volumes and dataType history data |
 | `/overview/dexs/{chain}` | `/api/overview/dexs/{chain}` | List all dexs along with summaries of their volumes and dataType history data filtering by chain |
 | `/summary/dexs/{protocol}` | `/api/summary/dexs/{protocol}` | Get summary of dex volume with historical data |
@@ -97,15 +92,20 @@ Full documentation: [llms-pro.txt](/llms-pro.txt)
 
 Requires API key. Base URL: `https://pro-api.llama.fi/{YOUR_API_KEY}`
 
-- **TVL**: `/api/tokenProtocols/{symbol}`, `/api/inflows/{protocol}/{timestamp}`, `/api/chainAssets`
-- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
+- **TVL**: `/api/tokenProtocols/{symbol}`, `/api/inflows/{protocol}/{timestamp}`, `/api/chainAssets`, `/api/v2/metrics/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/tvl/protocol/{protocol}/token-breakdown`
 - **Token Unlocks**: `/api/emissions`, `/api/emission/{protocol}`
 - **Protocol Analytics**: `/api/categories`, `/api/forks`, `/api/oracles`, `/api/hacks`, `/api/raises`, `/api/treasuries`, `/api/entities`
 - **Token Liquidity**: `/api/historicalLiquidity/{token}`
-- **Yields & APY**: `/yields/poolsOld`, `/yields/poolsBorrow`, `/yields/chartLendBorrow/{pool}`, `/yields/perps`, `/yields/lsdRates`
+- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
+- **Treasury**: `/api/v2/metrics/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/treasury/protocol/{protocol}/token-breakdown`
+- **Oracles**: `/api/v2/metrics/oracle`, `/api/v2/chart/oracle`, `/api/v2/chart/oracle/chain-breakdown`, `/api/v2/chart/oracle/protocol-breakdown`, `/api/v2/chart/oracle/protocol/{protocol}`, `/api/v2/chart/oracle/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/oracle/chain/{chain}`, `/api/v2/chart/oracle/chain/{chain}/protocol-breakdown`
+- **Forks**: `/api/v2/metrics/fork`, `/api/v2/chart/fork/protocol-breakdown`, `/api/v2/chart/fork/protocol/{protocol}`
+- **Dimensions**: `/api/v2/metrics/{metric}`, `/api/v2/chart/{metric}`, `/api/v2/chart/{metric}/chain-breakdown`, `/api/v2/chart/{metric}/protocol-breakdown`, `/api/v2/metrics/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}/protocol-breakdown`, `/api/v2/metrics/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/version-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/label-breakdown`, `/api/v2/metrics/{metric}/categories`, `/api/v2/metrics/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}/chain-breakdown`, `/api/v2/chart/{metric}/category/{category}/protocol-breakdown`, `/api/v2/metrics/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown`
+- **Financial Statements**: `/api/v2/metrics/financial-statement/protocol/{protocol}`
+- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
+- **Yields & APY**: `/yields/v1/poolsBorrow`, `/yields/v1/chartLendBorrow/{pool}`, `/yields/v2/earn`, `/yields/v2/earn/query`, `/yields/v2/earn/{id}/history`, `/yields/v2/earn/verified`, `/yields/v2/earn/verified/{id}`, `/yields/v2/earn/verified/{id}/history`, `/yields/v2/borrow/markets`, `/yields/v2/borrow/markets/{id}/history`, `/yields/v2/borrow/routes`, `/yields/v2/loops`, `/api/perpFundingRates`, `/api/lstRates`
 - **ETFs**: `/etfs/snapshot`, `/etfs/flows`
 - **Narratives**: `/fdv/performance/{period}`
-- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
 - **Bridges**: `/bridges/bridges`, `/bridges/bridge/{id}`, `/bridges/bridgevolume/{chain}`, `/bridges/bridgedaystats/{timestamp}/{chain}`, `/bridges/transactions/{id}`
 - **API Key Management**: `/usage/{YOUR_API_KEY}`
 - **Digital Asset Treasury**: `/dat/institutions`, `/dat/institutions/{symbol}`

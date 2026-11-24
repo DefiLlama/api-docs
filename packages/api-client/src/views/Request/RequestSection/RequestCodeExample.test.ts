@@ -136,6 +136,41 @@ describe('RequestCodeExample.vue', () => {
     wrapper.unmount()
   })
 
+  describe('with custom code samples', () => {
+    const operationWithSamples = operationSchema.parse({
+      uid: 'mockOperationWithSamplesUid',
+      method: 'get',
+      security: [],
+      'x-codeSamples': [{ lang: 'javascript', label: 'JavaScript SDK', source: 'client.tvl.getProtocols()' }],
+    })
+    const curlWorkspace = workspaceSchema.parse({
+      uid: 'mockWorkspaceUid',
+      selectedHttpClient: { targetKey: 'shell', clientKey: 'curl' },
+    })
+
+    // An SDK sample hides the host and key placement, so the modal must not open on it.
+    it('starts on the workspace client, not the first custom sample', () => {
+      const wrapper = mount(RequestCodeExample, {
+        props: { ...props, operation: operationWithSamples, workspace: curlWorkspace },
+      })
+
+      expect((wrapper.vm as any).localSelectedClient).toEqual({ targetKey: 'shell', clientKey: 'curl' })
+      wrapper.unmount()
+    })
+
+    it('keeps a custom sample once the user picks it', async () => {
+      const wrapper = mount(RequestCodeExample, {
+        props: { ...props, operation: operationWithSamples, workspace: curlWorkspace },
+      })
+
+      await (wrapper.vm as any).selectClient({ id: 'custom,javascript', label: 'JavaScript SDK' })
+
+      expect((wrapper.vm as any).localSelectedClient).toEqual({ targetKey: 'custom', clientKey: 'javascript' })
+      expect(mockWorkspaceMutators.edit).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
+  })
+
   it('filters security schemes correctly', async () => {
     const scheme = securitySchemeSchema.parse({
       uid: 'authUid',

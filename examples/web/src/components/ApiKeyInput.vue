@@ -94,7 +94,7 @@ const switchToFreeApi = () => {
   <div class="api-key-input">
     <div class="header">
       <div class="title-section">
-        <h3>DefiLlama Pro API Key</h3>
+        <h3>DefiLlama API Key (API plan)</h3>
         <div class="header-actions">
           <button
             v-if="isProUser"
@@ -122,7 +122,8 @@ const switchToFreeApi = () => {
         Your API key will be injected into requests to
         <b><code>https://pro-api.llama.fi</code></b> endpoints.
         <br />
-        When your API key is set, free endpoints will be changed to pro version to bypass rate limits"
+        When your API key is set, free endpoints switch to their pro-api.llama.fi
+        versions and use the API plan’s higher rate limits.
       </p>
     </div>
   </div>
