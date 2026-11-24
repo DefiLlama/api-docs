@@ -322,19 +322,14 @@ function main(): void {
   const allProEndpoints = loadEndpoints(proSpec)
 
   /** Pro-only endpoints: those marked x-api-plan-only OR not present in free spec */
-  const freePaths = new Set(freeEndpoints.map((e) => e.path))
-  const proOnlyEndpoints = allProEndpoints.filter((e) => {
-    if (e.proOnly) return true
-    /** Also exclude endpoints that mirror free ones (like /api/protocols mirrors /protocols) */
-    const strippedPath = e.path
-      .replace(/^\/api\//, '/')
-      .replace(/^\/coins\//, '/')
-      .replace(/^\/stablecoins\//, '/')
-      .replace(/^\/yields\//, '/')
-    return !freePaths.has(strippedPath) && !freePaths.has(e.path)
-  })
-
   const freeToProMapping = buildFreeToProMapping(freeEndpoints, allProEndpoints)
+
+  /**
+   * Pro-only = every pro path that is not the pro twin of a free endpoint. Twins are excluded even when
+   * flagged x-api-plan-only (the deprecated free yields have /yields/v1/ twins), so they are not counted twice.
+   */
+  const mappedProPaths = new Set(freeToProMapping.map((m) => m.proPath))
+  const proOnlyEndpoints = allProEndpoints.filter((e) => !mappedProPaths.has(e.path))
   const mappingTable = formatMappingTable(freeToProMapping)
 
   const llmsIndex = generateIndex(freeEndpoints, proOnlyEndpoints, mappingTable)

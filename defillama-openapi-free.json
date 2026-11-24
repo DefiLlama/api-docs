@@ -1138,7 +1138,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "List all stablecoins along with their circulating amounts",
-        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoins` instead. This host does not read keys and is rate limited.\n\n**Response:** `peggedAssets[]`. Each asset's circulating supply in USD is `circulating.peggedUSD` (nested inside `circulating`, not a number on the asset), and its price is `price`.",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoins` instead. This host does not read keys and is rate limited.\n\n**Response:** `peggedAssets[]`. Each asset's supply is nested in `circulating` under its `pegType`: `circulating.peggedUSD` for USD-pegged coins, `circulating.peggedEUR` for EURC, and so on. Read `circulating[asset.pegType]`. `price` is the USD price of one coin, so the USD value is `circulating[asset.pegType] * price`.",
         "servers": [
           {
             "url": "https://stablecoins.llama.fi"
