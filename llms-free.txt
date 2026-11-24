@@ -156,7 +156,7 @@ List all stablecoins along with their circulating amounts
 **Parameters:**
   - `includePrices` (query, boolean, optional) — set whether to include current stablecoin prices Example: `true`
 Returns: {peggedAssets}
-**Response:** `peggedAssets[]`. Each asset's supply is nested in `circulating` under its `pegType`: `circulating.peggedUSD` for USD-pegged coins, `circulating.peggedEUR` for EURC, and so on. Read `circulating[asset.pegType]`. `price` is the USD price of one coin, so the USD value is `circulating[asset.pegType] * price`.
+**Response:** `peggedAssets[]`. Each asset's supply is nested in `circulating` under its `pegType`: `circulating.peggedUSD` for USD-pegged coins, `circulating.peggedEUR` for EURC, and so on. Read `circulating[asset.pegType]`. `price` is the USD price of one coin, or `null` when there is no quote (many assets). Compute the USD value as `circulating[asset.pegType] * price` only when `price` is a number. Otherwise the USD value is unavailable, not zero.
 
 ### GET /stablecoincharts/all
 **Base URL:** `https://stablecoins.llama.fi`
