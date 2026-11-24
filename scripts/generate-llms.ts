@@ -160,42 +160,27 @@ function formatTagName(tag: string): string {
 }
 
 /**
- * Goes at the top of all three files. Paying users churned because their agents read the free docs,
- * kept calling the free hosts (which never read a key) and hit the free rate limit.
- * Users call the plan "Pro", "API plan" or "pro API", so the rule keys off having a key, not the plan name.
+ * The one auth section, shared by all three files so an agent gets the same rules from whichever it reads.
+ * Paying users churned because their agents read the free docs, kept calling the free hosts (which never
+ * read a key) and hit the free rate limit. Agents also sent the key as ?apikey= and read the 402 from a
+ * free host as a lapsed plan. Users call the plan "Pro", "API plan" or "pro API", so the rule keys off
+ * having a key, not the plan name. Links are absolute because agents often read a saved copy of a file.
  */
-const HAVE_A_KEY = `## Have an API key? Use pro-api.llama.fi for every request
+const KEY_RULES = `## Have an API key? Use pro-api.llama.fi for every request
 
-If you or your user has a DefiLlama API key, send every request to \`https://pro-api.llama.fi/{YOUR_API_KEY}/...\`. That includes TVL, token prices, stablecoins, yields, volumes and fees, which also have free hosts.
-
-- The free hosts (\`api.llama.fi\`, \`coins.llama.fi\`, \`stablecoins.llama.fi\`, \`yields.llama.fi\`) never read a key. Requests there are free tier and rate limited, even for paying users. A 429 from a free host means the request belongs on pro-api.llama.fi.
-- The key goes in the URL path, right after the host. Headers and \`?apikey=\` are not read.
-- Paths on pro-api.llama.fi have a prefix: \`/protocols\` becomes \`/api/protocols\`, \`/prices/current/{coins}\` becomes \`/coins/prices/current/{coins}\`, \`/stablecoins\` becomes \`/stablecoins/stablecoins\`, \`/pools\` becomes \`/yields/pools\`.
-- Whatever the user calls their plan ("API plan", "Pro", "pro API"), if they have a DefiLlama API key, use pro-api.llama.fi.
-- Use the free hosts only when there is no key.`
-
-/**
- * Shared by llms.txt and llms-pro.txt so agents get the same auth rules from either file.
- * Agents kept sending the key as ?apikey= to api.llama.fi and reading the 402 as a lapsed plan.
- */
-const PRO_AUTH = `## Pro API authentication
-
-Put your API key between the base URL and the endpoint. Do NOT send it as a query parameter (\`?apikey=\`) or header: pro-api.llama.fi does not read either and answers \`500 {"error":"API Key is wrong"}\`. Do NOT put it in \`api.llama.fi\` URLs.
+If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to \`https://pro-api.llama.fi/{YOUR_API_KEY}/...\`. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
 
 \`\`\`
-WRONG  https://pro-api.llama.fi/api/overview/derivatives?apikey={YOUR_API_KEY}
-RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives
+RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/coingecko:ethereum
+WRONG  https://coins.llama.fi/prices/current/coingecko:ethereum                      (free host: ignores the key, rate limited)
+WRONG  https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum?apikey={YOUR_API_KEY}   (key not in the path)
 \`\`\`
 
-There are only two tiers: free (no key) and the API plan. One API plan key unlocks every Pro endpoint. There are no add-ons or separate keys for volumes, derivatives, or other data.
-
-## Troubleshooting
-
-A 200 from \`/protocols\` or \`/overview/fees\` on \`api.llama.fi\` does not validate your API key. Those endpoints require no authentication. A 402 from \`api.llama.fi\` does not prove your subscription expired. It means the endpoint needs the Pro API.
-
-1. Check the host and key placement: \`https://pro-api.llama.fi/{YOUR_API_KEY}/...\`, not \`api.llama.fi\` and not \`?apikey=\`.
-2. Call \`https://pro-api.llama.fi/usage/{YOUR_API_KEY}\` (key at the end, for this endpoint only). It returns your remaining credits, like \`{"creditsLeft": 1000000}\`.
-3. Retry the keyed URL: \`https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/derivatives\`.`
+- The free hosts (\`api.llama.fi\`, \`coins.llama.fi\`, \`stablecoins.llama.fi\`, \`yields.llama.fi\`) never read a key, so a 429 there means the request belongs on pro-api.llama.fi. A 402 there means the endpoint needs pro-api, not that the plan expired.
+- The key goes in the path, right after the host. Headers and \`?apikey=\` are not read: pro-api answers \`500 {"error":"API Key is wrong"}\`.
+- Paths on pro-api have a prefix: \`/protocols\` becomes \`/api/protocols\`, \`/prices/current/{coins}\` becomes \`/coins/prices/current/{coins}\`, \`/stablecoins\` becomes \`/stablecoins/stablecoins\`, \`/pools\` becomes \`/yields/pools\`. Every free path is mapped in [llms.txt](https://api-docs.defillama.com/llms.txt), and the pro-only endpoints are in [llms-pro.txt](https://api-docs.defillama.com/llms-pro.txt).
+- One key unlocks every endpoint. There are no add-ons or separate keys.
+- To check a key, call \`https://pro-api.llama.fi/usage/{YOUR_API_KEY}\` (key at the end, for this endpoint only). It returns \`{"creditsLeft": ...}\`. A 200 from a free host proves nothing, those endpoints need no key.`
 
 function generateIndex(freeEndpoints: Endpoint[], proEndpoints: Endpoint[], mappingTable: string): string {
   const freeGroups = groupByTag(freeEndpoints)
@@ -205,7 +190,7 @@ function generateIndex(freeEndpoints: Endpoint[], proEndpoints: Endpoint[], mapp
 
 > DefiLlama provides free, open-source DeFi analytics data. There are two separate APIs with different base URLs and authentication. Do NOT mix them.
 
-${HAVE_A_KEY}
+${KEY_RULES}
 
 ## Important: Free API vs Pro API
 
@@ -218,13 +203,9 @@ The Free API and Pro API are entirely separate services.
 | Rate Limit | Standard | Higher |
 | Endpoints | ${freeEndpoints.length} | ${proEndpoints.length} exclusive + ${freeEndpoints.length} free with prefix |
 
-${PRO_AUTH}
-
-**Pro users accessing free endpoints:** Pro API key holders can also call free endpoints on \`pro-api.llama.fi\` for higher rate limits. Use the exact path mappings below.
-
 ## Free-to-Pro Path Mapping
 
-Pro users: to call free endpoints with higher rate limits, use \`https://pro-api.llama.fi/{YOUR_API_KEY}\` with the pro path below.
+With a key, call these on \`https://pro-api.llama.fi/{YOUR_API_KEY}\` with the pro path.
 
 ${mappingTable}
 
@@ -351,23 +332,19 @@ function main(): void {
   const llmsFree = generateDetailedFile(
     'DefiLlama Free API (no API key)',
     'https://api.llama.fi',
-    `Free API, for users with no API key. Endpoints are served from several hosts, use the base URL listed on each endpoint. Users with a key use the "With an API key" URL on each endpoint instead, or [llms-pro.txt](/llms-pro.txt).
+    `Free API, for users with no API key. Each endpoint lists its free base URL and, under it, the URL to use with a key.
 
-${HAVE_A_KEY}`,
+${KEY_RULES}`,
     freeEndpoints,
     new Map(freeToProMapping.map((m) => [m.freePath, m.proPath])),
   )
   const proNote = `Pro API — requires a paid API key ($300/mo). The pro-only endpoints below are NOT available on the free API.
 
-${HAVE_A_KEY}
-
-${PRO_AUTH}
-
-Pro users can also call free endpoints with higher rate limits using the path mappings below.
+${KEY_RULES}
 
 ## Free Endpoints Available on Pro (Higher Rate Limits)
 
-Use base URL https://pro-api.llama.fi/{YOUR_API_KEY} with the pro path column.
+Call these on \`https://pro-api.llama.fi/{YOUR_API_KEY}\` with the pro path.
 
 ${mappingTable}`
 

@@ -1,16 +1,22 @@
 # DefiLlama Free API (no API key)
 
-> Free API, for users with no API key. Endpoints are served from several hosts, use the base URL listed on each endpoint. Users with a key use the "With an API key" URL on each endpoint instead, or [llms-pro.txt](/llms-pro.txt).
+> Free API, for users with no API key. Each endpoint lists its free base URL and, under it, the URL to use with a key.
 
 ## Have an API key? Use pro-api.llama.fi for every request
 
-If you or your user has a DefiLlama API key, send every request to `https://pro-api.llama.fi/{YOUR_API_KEY}/...`. That includes TVL, token prices, stablecoins, yields, volumes and fees, which also have free hosts.
+If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/{YOUR_API_KEY}/...`. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
 
-- The free hosts (`api.llama.fi`, `coins.llama.fi`, `stablecoins.llama.fi`, `yields.llama.fi`) never read a key. Requests there are free tier and rate limited, even for paying users. A 429 from a free host means the request belongs on pro-api.llama.fi.
-- The key goes in the URL path, right after the host. Headers and `?apikey=` are not read.
-- Paths on pro-api.llama.fi have a prefix: `/protocols` becomes `/api/protocols`, `/prices/current/{coins}` becomes `/coins/prices/current/{coins}`, `/stablecoins` becomes `/stablecoins/stablecoins`, `/pools` becomes `/yields/pools`.
-- Whatever the user calls their plan ("API plan", "Pro", "pro API"), if they have a DefiLlama API key, use pro-api.llama.fi.
-- Use the free hosts only when there is no key.
+```
+RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/coingecko:ethereum
+WRONG  https://coins.llama.fi/prices/current/coingecko:ethereum                      (free host: ignores the key, rate limited)
+WRONG  https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum?apikey={YOUR_API_KEY}   (key not in the path)
+```
+
+- The free hosts (`api.llama.fi`, `coins.llama.fi`, `stablecoins.llama.fi`, `yields.llama.fi`) never read a key, so a 429 there means the request belongs on pro-api.llama.fi. A 402 there means the endpoint needs pro-api, not that the plan expired.
+- The key goes in the path, right after the host. Headers and `?apikey=` are not read: pro-api answers `500 {"error":"API Key is wrong"}`.
+- Paths on pro-api have a prefix: `/protocols` becomes `/api/protocols`, `/prices/current/{coins}` becomes `/coins/prices/current/{coins}`, `/stablecoins` becomes `/stablecoins/stablecoins`, `/pools` becomes `/yields/pools`. Every free path is mapped in [llms.txt](https://api-docs.defillama.com/llms.txt), and the pro-only endpoints are in [llms-pro.txt](https://api-docs.defillama.com/llms-pro.txt).
+- One key unlocks every endpoint. There are no add-ons or separate keys.
+- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
 
 **Base URL for endpoints below:** `https://api.llama.fi` (unless an endpoint lists its own)
 
