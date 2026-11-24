@@ -58,6 +58,7 @@
       "get": {
         "tags": ["TVL"],
         "summary": "List all protocols on defillama along with their tvl",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/protocols` instead. This host does not read keys and is rate limited.",
         "responses": {
           "200": {
             "description": "Array of all protocols with their TVL data",
@@ -141,6 +142,7 @@
       "get": {
         "tags": ["TVL"],
         "summary": "Get historical TVL of a protocol and breakdowns by token and chain",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/protocol/{protocol}` instead. This host does not read keys and is rate limited.",
         "parameters": [
           {
             "name": "protocol",
@@ -268,6 +270,7 @@
       "get": {
         "tags": ["TVL"],
         "summary": "Get historical TVL (excludes liquid staking and double counted tvl) of DeFi on all chains",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/historicalChainTvl` instead. This host does not read keys and is rate limited.",
         "responses": {
           "200": {
             "description": "Historical TVL data for all chains combined",
@@ -313,6 +316,7 @@
       "get": {
         "tags": ["TVL"],
         "summary": "Get historical TVL (excludes liquid staking and double counted tvl) of a chain",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/historicalChainTvl/{chain}` instead. This host does not read keys and is rate limited.",
         "parameters": [
           {
             "name": "chain",
@@ -373,6 +377,7 @@
       "get": {
         "tags": ["TVL"],
         "summary": "Simplified endpoint to get current TVL of a protocol",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/tvl/{protocol}` instead. This host does not read keys and is rate limited.",
         "description": "Simplified endpoint that only returns a number, the current TVL of a protocol",
         "parameters": [
           {
@@ -421,6 +426,7 @@
       "get": {
         "tags": ["TVL"],
         "summary": "Get current TVL of all chains",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chains` instead. This host does not read keys and is rate limited.",
         "responses": {
           "200": {
             "description": "Array of all chains with their TVL data",
@@ -490,6 +496,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get current prices of tokens by contract address",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/{coins}` instead. This host does not read keys and is rate limited.",
         "description": "The goal of this API is to price as many tokens as possible, including exotic ones that never get traded, which makes them impossible to price by looking at markets.\n\nThe base of our data are prices pulled from coingecko, which is then extended through multiple means:\n- We price all bridged tokens by using the price of the token in it's original chain, so we fetch all bridged versions of USDC on arbitrum, fantom, avax... and price all them using the price for the token on Ethereum, which we know. Right now we support 10 different bridging protocols.\n- We have multiple adapters to price specialized sets of tokens by running custom code:\n  - We price yearn's yToken LPs by checking how much underlying token can be withdrawn for each LP\n  - Aave, compound and euler LP tokens are also priced based on their relationship against underlying tokens\n  - Uniswap, curve, balancer and stargate LPs are priced using the underlying tokens in each pair\n  - GMX's GLP token is priced based on the value of tokens given on withdrawal (which includes calculations based on trader's PnL)\n  \n  - Synthetix tokens are priced using forex prices of the coin they are pegged to\n- For tokens that we haven't been able to price in any other way, we find the pool with most liquidity for each on uniswap, curve and serum and then use the prices provided on those exchanges.\n  \n  Unlike all the other tokens, we can't confirm that these prices are correct, so we only ingest the ones that have sufficient liquidity and, even in that case, we attach a `confidence` value to them that is related to the depth of liquidity and which represents our confidence in the quality of each price. API consumers can choose to filter out prices with low confidence values.\n  \n Our API server is fully open source and we are constantly adding more pricing adapters, extending the amount of tokens we support.\n  \nTokens are queried using {chain}:{address}, where chain is an identifier such as ethereum, bsc, polygon, avax... You can also get tokens by coingecko id by setting `coingecko` as the chain, eg: coingecko:ethereum, coingecko:bitcoin. Examples:\n  - ethereum:0xdF574c24545E5FfEcb9a659c229253D4111d87e1\n  - bsc:0x762539b45a1dcce3d36d080f74d1aed37844b878\n  - coingecko:ethereum\n  - arbitrum:0x4277f8f2c384827b5273592ff7cebd9f2c1ac258\n",
         "servers": [
           {
@@ -576,6 +583,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get historical prices of tokens by contract address",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/historical/{timestamp}/{coins}` instead. This host does not read keys and is rate limited.",
         "description": "See /prices/current for explanation on how prices are sourced.",
         "servers": [
           {
@@ -672,6 +680,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get historical prices for multiple tokens at multiple different timestamps",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/batchHistorical` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://coins.llama.fi"
@@ -758,6 +767,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get token prices at regular time intervals",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/chart/{coins}` instead. This host does not read keys and is rate limited.",
         "description": "Strings accepted by period:\nCan use regular chart candle notion like ‘4h’ etc where:\nW = week, D = day, H = hour, M = minute (not case sensitive)\n",
         "servers": [
           {
@@ -892,6 +902,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get percentage change in price over time",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/percentage/{coins}` instead. This host does not read keys and is rate limited.",
         "description": "Strings accepted by period:\nCan use regular chart candle notion like ‘4h’ etc where:\nW = week, D = day, H = hour, M = minute (not case sensitive)\n",
         "servers": [
           {
@@ -984,6 +995,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get earliest timestamp price record for coins",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/first/{coins}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://coins.llama.fi"
@@ -1058,6 +1070,7 @@
       "get": {
         "tags": ["coins"],
         "summary": "Get the closest block to a timestamp",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/block/{chain}/{timestamp}` instead. This host does not read keys and is rate limited.",
         "description": "Runs binary search over a blockchain's blocks to get the closest one to a timestamp.\nEvery time this is run we add new data to our database, so each query permanently speeds up future queries.\n",
         "servers": [
           {
@@ -1131,6 +1144,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "List all stablecoins along with their circulating amounts",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoins` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://stablecoins.llama.fi"
@@ -1246,6 +1260,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "Get historical mcap sum of all stablecoins",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoincharts/all` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://stablecoins.llama.fi"
@@ -1312,6 +1327,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "Get historical mcap sum of all stablecoins in a chain",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoincharts/{chain}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://stablecoins.llama.fi"
@@ -1388,6 +1404,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "Get historical mcap and historical chain distribution of a stablecoin",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoin/{asset}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://stablecoins.llama.fi"
@@ -1484,6 +1501,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "Get current mcap sum of all stablecoins on each chain",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoinchains` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://stablecoins.llama.fi"
@@ -1538,6 +1556,7 @@
       "get": {
         "tags": ["stablecoins"],
         "summary": "Get historical prices of all stablecoins",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoinprices` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://stablecoins.llama.fi"
@@ -1593,6 +1612,7 @@
       "get": {
         "tags": ["yields"],
         "summary": "Retrieve the latest data for all pools, including enriched information such as predictions",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/pools` instead. This host does not read keys and is rate limited.",
         "deprecated": true,
         "description": "**This endpoint is deprecated and will shut down soon.** The same data remains available at `/yields/v1/pools` on the [API plan](https://defillama.com/subscription).",
         "servers": [
@@ -1775,6 +1795,7 @@
       "get": {
         "tags": ["yields"],
         "summary": "Get historical APY and TVL of a pool",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/chart/{pool}` instead. This host does not read keys and is rate limited.",
         "deprecated": true,
         "description": "**This endpoint is deprecated and will shut down soon.** The same data remains available at `/yields/v1/chart/{pool}` on the [API plan](https://defillama.com/subscription).",
         "servers": [
@@ -1858,6 +1879,7 @@
       "get": {
         "tags": ["volumes"],
         "summary": "List all dexs along with summaries of their volumes and dataType history data",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/dexs` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -1981,6 +2003,7 @@
       "get": {
         "tags": ["volumes"],
         "summary": "List all dexs along with summaries of their volumes and dataType history data filtering by chain",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/dexs/{chain}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -2078,6 +2101,7 @@
       "get": {
         "tags": ["volumes"],
         "summary": "Get summary of dex volume with historical data",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/summary/dexs/{protocol}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -2186,6 +2210,7 @@
       "get": {
         "tags": ["volumes"],
         "summary": "List all options dexs along with summaries of their volumes and dataType history data",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/options` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -2284,6 +2309,7 @@
       "get": {
         "tags": ["volumes"],
         "summary": "List all options dexs along with summaries of their volumes and dataType history data filtering by chain",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/options/{chain}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -2623,6 +2649,7 @@
       "get": {
         "tags": ["volumes"],
         "summary": "Get summary of options dex volume with historical data",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/summary/options/{protocol}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -2903,6 +2930,7 @@
       "get": {
         "tags": ["perps"],
         "summary": "List all open interest dex exchanges along with summaries of their open interest",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/open-interest` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -3014,6 +3042,7 @@
       "get": {
         "tags": ["fees and revenue"],
         "summary": "List all protocols along with summaries of their fees and revenue and dataType history data",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/fees` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -3132,6 +3161,7 @@
       "get": {
         "tags": ["fees and revenue"],
         "summary": "List all protocols along with summaries of their fees and revenue and dataType history data by chain",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/fees/{chain}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
@@ -3260,6 +3290,7 @@
       "get": {
         "tags": ["fees and revenue"],
         "summary": "Get summary of protocol fees and revenue with historical data",
+        "description": "**With an API key:** use `https://pro-api.llama.fi/{YOUR_API_KEY}/api/summary/fees/{protocol}` instead. This host does not read keys and is rate limited.",
         "servers": [
           {
             "url": "https://api.llama.fi"
