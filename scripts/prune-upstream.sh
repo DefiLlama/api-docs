@@ -4,7 +4,9 @@
 # folders, so a merge brings files back or stops on "deleted by us" conflicts, which this also resolves.
 #
 # Before adding a package here, check that @scalar-examples/web does not depend on it, directly or
-# through another workspace package, or the Cloudflare build fails.
+# through another workspace package (dev dependencies included), or `pnpm install` fails.
+# @scalar/snippetz still writes into integrations/ and documentation/ when it builds;
+# scripts/snippetz-output-dirs.mjs creates those folders on install, git-ignored.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -36,16 +38,26 @@ packages/server-side-rendering
 packages/ts-to-openapi
 packages/void-server
 patches/postman-collection@5.3.1.patch
-"
-
-# @scalar/snippetz regenerates these after every build (its postbuild step), and fails if they are missing
-KEEP="
-documentation/configuration.md
-integrations/dotnet/shared/src/Scalar.Shared/Enums/ScalarTarget.Generated.cs
-integrations/dotnet/shared/src/Scalar.Shared/Enums/ScalarClient.Generated.cs
-integrations/dotnet/shared/src/Scalar.Shared/Mapper/ScalarOptionsMapper.Generated.cs
-integrations/java/scalar-core/src/main/java/com/scalar/maven/core/enums/ScalarTarget.java
-integrations/java/scalar-core/src/main/java/com/scalar/maven/core/enums/ScalarClient.java
+patches/README.md
+.agents
+.asyncapi-tool
+.changeset
+.claude
+.devcontainer
+.vscode
+.zed
+.dockerignore
+.mcp.json
+AGENTS.md
+CHANGELOG.md
+CITATION.cff
+CODE_OF_CONDUCT.md
+CODEOWNERS
+CONTRIBUTING.md
+RELEASE.md
+SECURITY.md
+knip.jsonc
+oss-pledge.json
 "
 
 # Every example except the docs site itself
@@ -58,7 +70,4 @@ git rm -r -q --ignore-unmatch -- $PATHS
 # Also drop ignored leftovers (node_modules, dist) so pnpm does not pick them up
 # shellcheck disable=SC2086
 rm -rf $PATHS
-# Put back the files snippetz writes to, at upstream's latest version
-# shellcheck disable=SC2086
-git checkout upstream/main -- $KEEP
 echo "Pruned. Next: pnpm install, then pnpm build:web."

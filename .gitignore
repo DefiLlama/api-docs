@@ -47,3 +47,7 @@ rollup.config-*.mjs
 
 # Local dependency audit reports
 /dependency-audit/
+
+# Created by scripts/snippetz-output-dirs.mjs for @scalar/snippetz's build output; the real folders are pruned
+/integrations/
+/documentation/

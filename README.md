@@ -42,7 +42,9 @@ git merge upstream/main
 sh scripts/prune-upstream.sh
 ```
 
-The repository only keeps what the docs site builds from. `scripts/prune-upstream.sh` removes the rest of upstream Scalar (its docs site, integrations, desktop app, examples and the packages the site does not depend on), and also resolves the "deleted by us" conflicts upstream changes to those folders cause.
+The repository only keeps what the docs site builds from. `scripts/prune-upstream.sh` removes the rest of upstream Scalar (its docs site, integrations, desktop app, examples, the packages the site does not depend on, and Scalar's release, editor and agent files), and also resolves the "deleted by us" conflicts upstream changes to those folders cause.
+
+The remaining 31 packages are all needed: `@scalar/api-reference` depends on them, and `pnpm install` fails if a listed workspace package is missing. `@scalar/snippetz` still writes generated files into `integrations/` and `documentation/` when it builds, so `scripts/snippetz-output-dirs.mjs` (run on `pnpm install`) creates those folders, git-ignored.
 
 The remaining conflicts should only be in files we own (README, CLAUDE.md, root `package.json`, `pnpm-workspace.yaml`, `lefthook.yml`, `.gitignore`), in `.github` (keep ours: upstream's workflows publish Scalar's packages and must not run here), and in `OperationsListItem.vue` (keep the `DefiLlama` block). Then run `pnpm install`, `pnpm build:web`, and check the page against the list above. If the build fails because a package is missing, the site has started depending on it: take it out of the script and restore it with `git checkout upstream/main -- packages/<name>`.
 
