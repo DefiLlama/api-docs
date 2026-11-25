@@ -44,6 +44,10 @@ const configuration = computed<Partial<ApiReferenceConfiguration>>(() => ({
    */
   showDeveloperTools: 'never',
   agent: { disabled: true },
+  /** Keeps the Shell, Ruby, Node.js, PHP, Python and More picker next to our SDK install tabs */
+  showDefaultClientsWithSdkInstallation: true,
+  /** Hides the sidebar link that opens Scalar's hosted client, which production never had */
+  hideClientButton: true,
   // Add path routing option
   ...(window.location.pathname.startsWith('/path-routing')
     ? {

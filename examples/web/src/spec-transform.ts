@@ -13,6 +13,8 @@ export const PRO_HOST = 'https://pro-api.llama.fi'
 /** Shown in snippets when no key is saved, so copied URLs make the key's position obvious. */
 export const API_KEY_PLACEHOLDER = '<API-KEY>'
 
+export const INTRODUCTION_HEADING = 'Introduction'
+
 /** The name of the pro server variable and of the /usage/{YOUR_API_KEY} path parameter. */
 const KEY_VARIABLE = 'YOUR_API_KEY'
 
@@ -95,6 +97,16 @@ export const buildSpec = (freeSpecContent: Json, proSpecContent: Json, apiKey: s
 
   const freeSpec = structuredClone(freeSpecContent)
   const server = proServer(proSpecContent, key)
+
+  /**
+   * When the description opens with text, Scalar adds an "Introduction" sidebar entry and nests
+   * Using AI?, Authentication and SDK under it. An explicit heading keeps all four side by side, as
+   * on the site before the upgrade. style.css hides the heading itself in the page.
+   */
+  const description = freeSpec.info?.description?.trim()
+  if (description && !description.startsWith('#')) {
+    freeSpec.info.description = `## ${INTRODUCTION_HEADING}\n\n${description}`
+  }
 
   forEachOperation(freeSpec, (operation) => prepareOperation(operation, undefined, key))
 

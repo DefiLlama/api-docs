@@ -27,6 +27,10 @@ The Scalar packages in this repository match upstream [scalar/scalar](https://gi
 | API Plan and Beta badges (from `x-api-plan-only` and `x-api-beta`) | `src/spec-transform.ts` (Scalar's `x-badges`), styled in `src/style.css` |
 | "Please set an API key" reply when Test Request has no key | `customFetch` in `src/pages/StandaloneApiReferencePage.vue` |
 | curl as the default code sample | `defaultHttpClient` in the same page |
+| Language picker next to the SDK install tabs, no "Open API Client" button | `showDefaultClientsWithSdkInstallation` and `hideClientButton` in the same page |
+| Introduction, Using AI?, Authentication and SDK side by side in the sidebar | `src/spec-transform.ts` (adds a hidden Introduction heading) and `src/style.css` |
+| Old operation links (`#tag/tvl/get/protocols`) still open the operation | `src/legacy-anchor.ts` |
+| Dark background around the reference in dark mode, readable markdown tables | `src/style.css` |
 
 The one patch inside Scalar is `packages/api-reference/src/components/OperationsList/OperationsListItem.vue`, between the `DefiLlama` comments. It shows the Deprecated, API Plan and Beta chips in each tag's endpoint list, which Scalar has no option for.
 

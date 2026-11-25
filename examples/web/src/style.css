@@ -2,6 +2,21 @@
 
 body {
   margin: 0;
+  /* Follows Scalar's light and dark theme, so the frame around the reference is not white in dark mode */
+  background: var(--scalar-background-1);
+}
+
+/*
+ * Scalar lays markdown tables out with fixed, equal-ish columns and breaks words anywhere, which
+ * squeezed the "Using AI?" table into "Reso-urce" and "llms.t-xt". Size columns by their content again.
+ */
+.scalar-app .markdown table {
+  table-layout: auto;
+}
+.scalar-app .markdown th,
+.scalar-app .markdown td {
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 /*
@@ -39,6 +54,14 @@ body {
 .scalar-app a:has(.sidebar-badge[style*="9333ea"]) {
   position: relative;
   min-height: 40px;
+}
+
+/*
+ * spec-transform.ts adds an Introduction heading so the sidebar stays flat. The page never showed
+ * that heading, so it stays hidden; its section still works as the #description/introduction target.
+ */
+.scalar-app .introduction-description-heading h2[id$="description/introduction"] {
+  display: none;
 }
 
 /* Deprecated operations keep a readable title. The red Deprecated badge already says it. */

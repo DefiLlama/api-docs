@@ -45,6 +45,12 @@ describe('spec-transform', () => {
   describe('buildSpec without a key', () => {
     const spec = buildSpec(freeSpec, proSpec, null)
 
+    // Keeps Introduction, Using AI?, Authentication and SDK side by side in the sidebar
+    it('opens the free description with an Introduction heading', () => {
+      expect(spec.info.description.startsWith('## Introduction\n\n')).toBe(true)
+      expect(spec.info.description).toContain(freeSpec.info.description.trim())
+    })
+
     it('keeps the free servers', () => {
       expect(spec.servers).toEqual(freeSpec.servers)
     })
