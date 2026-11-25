@@ -1,35 +1,96 @@
-<script setup lang="ts">
-import { ScalarIconMagnifyingGlass } from '@scalar/icons'
+<script lang="ts">
+/**
+ * Scalar Combobox Options component
+ *
+ * Renders the searchable option list for a combobox, including
+ * filtering, keyboard navigation, and an optional "add new" action.
+ *
+ * @example
+ * <ScalarComboboxOptions v-model="selected" :options="options" />
+ */
+export default {}
+</script>
+
+<!-- prettier-ignore-attribute generic -->
+<script
+  setup
+  lang="ts"
+  generic="O extends Option = Option, G extends OptionGroup<O> = OptionGroup<O>">
+import { ScalarIconMagnifyingGlass, ScalarIconPlus } from '@scalar/icons'
+import { usePreferredReducedMotion, useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 
+import { filterByOptionLabel } from '@/components/ScalarCombobox/filter-by-option-label'
+
+import { ScalarListboxCheckbox } from '../ScalarListbox'
+import { ScalarLoading, type LoadingState } from '../ScalarLoading'
 import ComboboxOption from './ScalarComboboxOption.vue'
 import ComboboxOptionGroup from './ScalarComboboxOptionGroup.vue'
 import {
+  isGroups,
+  type ComboboxEmits,
   type ComboboxSlots,
+  type FilterFunction,
   type Option,
   type OptionGroup,
-  isGroups,
+  type OptionsOrGroups,
 } from './types'
 
-const props = defineProps<{
-  options: Option[] | OptionGroup[]
-  modelValue?: Option[]
+const {
+  options: optionsOrGroups,
+  placeholder,
+  inputLabel,
+  noResults,
+  close,
+  filterFn = filterByOptionLabel,
+  loader,
+  multiselect,
+} = defineProps<{
+  /** The options to display in the combobox */
+  options: OptionsOrGroups<O, G>
+  /** The placeholder text to display in the combobox */
   placeholder?: string
+  /** An accessible label for the search input */
+  inputLabel?: string
+  /** The message to display when filtering returns no options */
+  noResults?: string
+  /** Close the popover without changing the current selection */
+  close?: () => void
+  /**
+   * A function to filter the options based on a query,
+   * if not provided, the options will be filtered by option label
+   *
+   * Pass `(_, options) => options` when the caller searches the options itself (e.g. on a
+   * server) using the `query` model, so results the server already matched are shown as given.
+   *
+   * @see {@link FilterFunction} for more information
+   */
+  filterFn?: FilterFunction<O, G>
+  /**
+   * The loading state of the options, see `useLoadingState`
+   *
+   * Shows a spinner at the end of the search input while active, or an X when the state is
+   * invalidated (e.g. a failed request). While loading with no options yet, the list shows
+   * placeholder rows instead of the "no results" message and the spinner.
+   */
+  loader?: LoadingState
+  /** Whether the combobox is in multiselect mode, defaults to false */
   multiselect?: boolean
-  isDeletable?: boolean
 }>()
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', v: Option[]): void
-  (e: 'delete', option: Option): void
-}>()
+const emit = defineEmits<ComboboxEmits>()
 
-defineSlots<Omit<ComboboxSlots, 'default'>>()
+const model = defineModel<O[]>({ default: () => [] })
+
+const slots = defineSlots<Omit<ComboboxSlots<O, G>, 'default'>>()
 
 defineOptions({ inheritAttrs: false })
 
 /** A unique ID for the combobox */
 const id = `scalar-combobox-items-${useId()}`
+
+/** A static option entry for the "Add a new option" option */
+const addOption: Option = { id: `${useId()}-add`, label: 'Add a new option' }
 
 /** Generate a unique ID for an option */
 function getOptionId(option: Option) {
@@ -37,132 +98,288 @@ function getOptionId(option: Option) {
 }
 
 /** A flat list of all options */
-const options = computed<Option[]>(() =>
-  isGroups(props.options)
-    ? props.options.flatMap((group) => group.options)
-    : props.options,
+const options = computed<O[]>(() =>
+  isGroups(optionsOrGroups)
+    ? optionsOrGroups.flatMap((group) => group.options)
+    : optionsOrGroups,
 )
 
 /** An list of all groups */
-const groups = computed<OptionGroup[]>(() =>
-  isGroups(props.options)
-    ? props.options
-    : [{ label: '', options: props.options }],
+const groups = computed<G[]>(
+  () =>
+    isGroups(optionsOrGroups)
+      ? optionsOrGroups // G extends OptionGroup<O>
+      : /*
+          We know G is an unextended OptionGroup<O> here because of the
+          structure of the component props so we can cast it to G
+        */
+        [{ label: '', options: optionsOrGroups } as G], // G is OptionGroup<O>
 )
 
-const query = ref<string>('')
-const active = ref<Option | undefined>(
-  props.modelValue?.[0] ?? options.value[0],
+/** The search query, exposed so callers can search the options themselves */
+const query = defineModel<string>('query', { default: '' })
+/** The filtered list of options */
+const filtered = computed<O[]>(() =>
+  filterFn(query.value, options.value, groups.value),
 )
 
-// Clear the query on open and close
-onMounted(async () => {
-  // Clear the query
-  query.value = ''
+/** The list of filtered options with the "Add a new option" option */
+const withAdd = computed<Option[]>(() =>
+  slots.add ? [...filtered.value, addOption] : filtered.value,
+)
 
-  // Set the active option to the selected option or the first option
-  active.value = props.modelValue?.[0] ?? options.value[0]
+/**
+ * The selected option when it is in the list, otherwise the top option.
+ *
+ * With async search the selected option is often not in the loaded results (e.g. a branch
+ * past the first page), and pointing at a row that does not exist would let Enter select nothing.
+ */
+const getInitialActive = (): Option | undefined => {
+  const selected = model.value[0]
+  return selected && withAdd.value.some((option) => option.id === selected.id)
+    ? selected
+    : withAdd.value[0]
+}
 
-  // Scroll to the selected option
-  if (selected.value.length !== 0) {
-    setTimeout(() => {
-      document
-        ?.getElementById(getOptionId(selected.value[0]))
-        ?.scrollIntoView({ block: 'nearest' })
-    }, 10)
+const activeRef = ref<Option | undefined>(getInitialActive())
+const reducedMotion = usePreferredReducedMotion()
+
+const input = ref<HTMLInputElement | null>(null)
+const listbox = ref<HTMLUListElement | null>(null)
+
+/** Keep option scrolling inside the list, even before the floating panel is positioned. */
+const scrollToActiveOption = (behavior: ScrollBehavior = 'auto'): void => {
+  const list = listbox.value
+  const active = activeRef.value
+  const option =
+    active && list?.ownerDocument.getElementById(getOptionId(active))
+  if (!list || !option) {
+    return
   }
+
+  const bounds = list.getBoundingClientRect()
+  const optionBounds = option.getBoundingClientRect()
+  const top = bounds.top + list.clientTop
+  const bottom = top + list.clientHeight
+  const delta =
+    optionBounds.top < top
+      ? optionBounds.top - top
+      : Math.max(0, optionBounds.bottom - bottom)
+
+  if (delta) {
+    list.scrollBy({ top: delta, behavior })
+  }
+}
+
+// Keep the active option visible after floating-panel positioning and later window or list resizes.
+useResizeObserver(listbox, () => scrollToActiveOption())
+
+onMounted(async () => {
+  query.value = ''
+  activeRef.value = getInitialActive()
+
+  // Wait for the cleared query to render, without relying on a timer to finish positioning.
+  await nextTick()
+  input.value?.focus({ preventScroll: true })
+  scrollToActiveOption()
 })
+
+/**
+ * Whether the query changed since the options last updated. Async results arrive after the
+ * query changes, so the top hit of the new results should become active even when the
+ * previously active option is still somewhere in the list.
+ */
+let queryChanged = false
 
 // Set the top option as active when searching
 watch(
   () => query.value,
-  () => (active.value = filtered.value[0]),
+  () => {
+    activeRef.value = withAdd.value[0]
+    queryChanged = true
+  },
 )
 
-const filtered = computed<Option[]>(() =>
-  query.value === ''
-    ? options.value
-    : options.value.filter((option) => {
-        return option.label.toLowerCase().includes(query.value.toLowerCase())
-      }),
-)
-
-const selected = computed<Option[]>({
-  get: () => props.modelValue ?? [],
-  set: (o: Option[]) => o && emit('update:modelValue', o),
+/**
+ * Async options arrive after the query has changed, so the active option can point at a row
+ * that no longer exists or is no longer the top hit. Move it back to the top when that happens.
+ */
+watch(withAdd, (list) => {
+  if (
+    queryChanged ||
+    !list.some((option) => option.id === activeRef.value?.id)
+  ) {
+    activeRef.value = list[0]
+  }
+  queryChanged = false
 })
 
-function toggleSelected(option: Option) {
-  if (props.multiselect) {
-    // Remove from selection list
-    if (selected.value.some((o) => o.id === option.id)) {
-      selected.value = selected.value.filter((o) => o.id !== option.id)
-    }
-    // Add to selection list
-    else {
-      selected.value = [...selected.value, option]
-    }
-  } else {
-    // Set selection for single select mode
-    selected.value = [option]
+/** Whether the options are still loading */
+const isLoading = computed<boolean>(() => Boolean(loader?.isLoading))
+
+/** Show placeholder rows while loading with nothing to show yet */
+const showSkeleton = computed<boolean>(
+  () => isLoading.value && !filtered.value.length,
+)
+
+/** Show the loader in the search input, unless the skeleton already says it is loading */
+const showLoader = computed<boolean>(
+  () => Boolean(loader?.isActive) && !showSkeleton.value,
+)
+
+/** Whether there is anything to show at the end of the search input */
+const showSearchEnd = computed<boolean>(() =>
+  Boolean(slots['search-end'] || showLoader.value),
+)
+
+/** Whether the listbox has anything to show */
+const showList = computed<boolean>(() =>
+  Boolean(
+    filtered.value.length ||
+    slots.add ||
+    showSkeleton.value ||
+    (noResults && !isLoading.value),
+  ),
+)
+
+function toggleSelected(option: Option | undefined) {
+  if (!option) {
+    return
   }
+
+  if (option.id === addOption.id) {
+    addNew()
+    return
+  }
+
+  // Remove from selection list in multiselect mode
+  if (multiselect && model.value.some((o) => o.id === option.id)) {
+    model.value = model.value.filter((o) => o.id !== option.id)
+    return
+  }
+
+  // The active option can be stale while async options load, so never select a missing one
+  const match = options.value.find((o) => o.id === option.id)
+  if (!match) {
+    return
+  }
+
+  // Add to the selection in multiselect mode, replace it in single select mode
+  model.value = multiselect ? [...model.value, match] : [match]
 }
 
 function moveActive(dir: 1 | -1) {
-  const list = filtered.value
+  const list = withAdd.value
 
   // Find active index
-  const activeIdx = list.findIndex((option) => option.id === active.value?.id)
+  const activeIdx = list.findIndex(
+    (option) => option.id === activeRef.value?.id,
+  )
 
   // Calculate next index and exit if it's out of bounds
   const nextIdx = activeIdx + dir
+
   if (nextIdx < 0 || nextIdx > list.length - 1) {
     return
   }
 
-  active.value = list[nextIdx]
+  activeRef.value = list[nextIdx]! // We know it's in bounds from the check above
 
-  // Scroll to the active option
-  document?.getElementById(getOptionId(active.value))?.scrollIntoView({
-    behavior: 'smooth',
-    block: 'nearest',
-  })
+  // Scroll to the active option without animating when reduced motion is preferred.
+  scrollToActiveOption(reducedMotion.value === 'reduce' ? 'instant' : 'smooth')
 }
 
-// Manual autofocus for the input
-const input = ref<HTMLInputElement | null>(null)
+function addNew() {
+  emit('add')
+  query.value = ''
+}
 
-// This must be a setTimeout to ensure there is no scroll jump. nextTick does not work here.
-onMounted(() => setTimeout(() => input.value?.focus(), 0))
+/**
+ * Space toggles the active option in multiselect mode while the search box is empty.
+ *
+ * The options look like checkboxes, so keyboard users press Space to toggle them. Without this
+ * handler Space types a leading space into the query, which filters out every option whose label
+ * has no space and hides the whole list without any feedback (found by an accessibility audit).
+ * Once a query has been typed, Space keeps inserting a character so multi-word labels stay
+ * searchable. Key auto-repeat is ignored so holding Space after opening the popover with it does
+ * not toggle the option repeatedly, and IME composition is left alone.
+ */
+const handleSpace = (event: KeyboardEvent): void => {
+  if (!multiselect || query.value !== '' || event.isComposing) {
+    return
+  }
+  // Suppress repeated spaces too, so holding the key does not start filtering.
+  event.preventDefault()
+  if (!event.repeat) {
+    toggleSelected(activeRef.value)
+  }
+}
 </script>
 <template>
-  <div class="relative flex">
+  <!-- Inset to line up with the options below -->
+  <div class="relative m-1 mb-0.75 flex items-center">
     <ScalarIconMagnifyingGlass
-      class="pointer-events-none absolute left-2.5 search-icon text-c-3 size-4" />
+      class="text-c-3 pointer-events-none absolute top-1/2 left-1.75 size-4 -translate-y-1/2" />
     <input
-      v-model="query"
       ref="input"
-      :aria-activedescendant="active ? getOptionId(active) : undefined"
+      v-model="query"
+      :aria-activedescendant="activeRef ? getOptionId(activeRef) : undefined"
       aria-autocomplete="list"
       :aria-controls="id"
-      class="min-w-0 flex-1 rounded border-0 py-2.5 pl-8 pr-3 leading-none text-c-1 -outline-offset-1"
+      :aria-expanded="showList"
+      :aria-label="inputLabel"
+      class="text-c-1 min-w-0 flex-1 rounded-md border-0 py-1.5 pl-7.25 leading-none"
+      :class="showSearchEnd ? 'pr-7.25' : 'pr-1.75'"
       data-1p-ignore
-      :placeholder="placeholder"
+      :placeholder
       role="combobox"
       tabindex="0"
       type="text"
       @keydown.down.prevent="moveActive(1)"
-      @keydown.enter.prevent="active && toggleSelected(active)"
+      @keydown.enter.prevent="activeRef && toggleSelected(activeRef)"
+      @keydown.esc.prevent="close?.()"
+      @keydown.space="handleSpace"
       @keydown.up.prevent="moveActive(-1)" />
+    <div
+      v-if="showSearchEnd"
+      class="absolute top-1/2 right-1.75 flex -translate-y-1/2 items-center">
+      <slot
+        :loader
+        name="search-end">
+        <ScalarLoading
+          v-if="showLoader"
+          :loader
+          size="md" />
+      </slot>
+    </div>
   </div>
   <ul
-    v-show="filtered.length || $slots.before || $slots.after"
+    v-show="showList"
     :id="id"
+    ref="listbox"
+    :aria-busy="isLoading"
     :aria-multiselectable="multiselect"
-    class="border-t p-0.75 custom-scroll overscroll-contain flex-1 min-h-0"
+    class="custom-scroll min-h-0 flex-1 overscroll-contain border-t p-0.75"
     role="listbox"
     tabindex="-1">
-    <slot name="before" />
+    <template v-if="showSkeleton">
+      <li
+        v-for="idx in 3"
+        :key="idx"
+        aria-hidden="true"
+        class="flex px-2 py-1.5"
+        role="presentation">
+        <div
+          class="bg-b-3 h-lh animate-pulse rounded-md"
+          :class="idx === 3 ? 'w-2/3' : 'w-full'" />
+      </li>
+    </template>
+    <li
+      v-else-if="!filtered.length && !slots.add && noResults && !isLoading"
+      class="text-c-3 px-2.5 py-2"
+      role="status">
+      {{ noResults }}
+    </li>
     <ComboboxOptionGroup
       v-for="(group, i) in groups"
       :id="`${id}-group-${i}`"
@@ -174,7 +391,13 @@ onMounted(() => setTimeout(() => input.value?.focus(), 0))
         !group.label
       ">
       <template #label>
-        {{ group.label }}
+        <slot
+          v-if="$slots.group"
+          :group
+          name="group" />
+        <template v-else>
+          {{ group.label }}
+        </template>
       </template>
       <template
         v-for="option in filtered"
@@ -182,24 +405,41 @@ onMounted(() => setTimeout(() => input.value?.focus(), 0))
         <ComboboxOption
           v-if="group.options.some((o) => o.id === option.id)"
           :id="getOptionId(option)"
-          :active="active?.id === option.id"
-          :isDeletable="option.isDeletable ?? isDeletable"
-          :selected="selected.some((o) => o.id === option.id)"
-          :style="multiselect ? 'checkbox' : 'radio'"
+          v-slot="{ active, selected }"
+          :active="activeRef?.id === option.id"
+          :selected="model.some((o) => o.id === option.id)"
           @click="toggleSelected(option)"
-          @delete="$emit('delete', option)"
           @mousedown.prevent
-          @mouseenter="active = option">
-          {{ option.label }}
+          @mouseenter="activeRef = option">
+          <slot
+            v-if="$slots.option"
+            :active
+            name="option"
+            :option
+            :selected />
+          <template v-else>
+            <ScalarListboxCheckbox
+              :multiselect
+              :selected="model.some((o) => o.id === option.id)" />
+            <span class="text-c-1 inline-block min-w-0 flex-1 truncate">
+              {{ option.label }}
+            </span>
+          </template>
         </ComboboxOption>
       </template>
     </ComboboxOptionGroup>
-    <slot name="after" />
+    <ComboboxOption
+      v-if="slots.add"
+      :id="getOptionId(addOption)"
+      v-slot="{ active }"
+      :active="activeRef?.id === addOption.id"
+      @click="addNew"
+      @mousedown.prevent
+      @mouseenter="activeRef = addOption">
+      <ScalarIconPlus class="size-4 p-px" />
+      <slot
+        :active
+        name="add" />
+    </ComboboxOption>
   </ul>
 </template>
-<style scoped>
-.search-icon {
-  top: 50%;
-  transform: translateY(-50%);
-}
-</style>

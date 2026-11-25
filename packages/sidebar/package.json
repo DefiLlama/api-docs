@@ -1,0 +1,62 @@
+{
+  "name": "@scalar/sidebar",
+  "description": "Scalar sidebar component and sidebar state management",
+  "license": "MIT",
+  "author": "Scalar (https://github.com/scalar)",
+  "homepage": "https://github.com/scalar/scalar",
+  "bugs": "https://github.com/scalar/scalar/issues/new/choose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalar/scalar.git",
+    "directory": "packages/sidebar"
+  },
+  "version": "0.13.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "vite build && pnpm build:styles && vue-tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "build:styles": "shx cp -r src/styles dist && tailwindcss --optimize -i src/style.css -o dist/style.css && cat dist/vue-styles.css >> dist/style.css",
+    "dev": "vite ./playground -c ./vite.config.ts",
+    "test": "vitest --run",
+    "types:check": "vue-tsc --noEmit"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css",
+    "./tailwind.config.css": "./dist/styles/tailwind.config.css",
+    "./vue-styles.css": "./dist/vue-styles.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@scalar/components": "workspace:*",
+    "@scalar/helpers": "workspace:*",
+    "@scalar/icons": "workspace:*",
+    "@scalar/themes": "workspace:*",
+    "@scalar/use-hooks": "workspace:*",
+    "@scalar/workspace-store": "workspace:*",
+    "vue": "catalog:*"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "catalog:*",
+    "@tailwindcss/vite": "catalog:*",
+    "@types/jsdom": "catalog:*",
+    "@types/node": "catalog:*",
+    "@vitejs/plugin-vue": "catalog:*",
+    "@vue/test-utils": "catalog:*",
+    "jsdom": "catalog:*",
+    "tailwindcss": "catalog:*",
+    "vite": "catalog:*",
+    "vitest": "catalog:*"
+  }
+}

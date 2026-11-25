@@ -1,11 +1,16 @@
+import { isObjectLike } from '@scalar/helpers/object/is-object'
+import { getRaw } from '@scalar/json-magic/magic-proxy'
+
 /**
  * Deep merges two objects, combining their properties recursively.
+ * Handles circular references by tracking visited objects to prevent infinite recursion.
  *
  * ⚠️ Note: This operation assumes there are no key collisions between the objects.
  * Use isKeyCollisions() to check for collisions before merging.
  *
  * @param a - Target object to merge into
  * @param b - Source object to merge from
+ * @param cache - Set of visited objects to prevent circular reference issues
  * @returns The merged object (mutates and returns a)
  *
  * @example
@@ -18,22 +23,63 @@
  * const a = { user: { name: 'John' } }
  * const b = { user: { age: 30 } }
  * mergeObjects(a, b) // { user: { name: 'John', age: 30 } }
+ *
+ * // Circular reference safe
+ * const obj = { name: 'John' }
+ * obj.self = obj
+ * const target = { age: 30 }
+ * mergeObjects(target, obj) // Safely merges without infinite recursion
  */
-export const mergeObjects = <R>(a: Record<string, unknown>, b: Record<string, unknown>): R => {
-  for (const key in b) {
-    if (!(key in a)) {
-      a[key] = b[key]
+export const mergeObjects = (
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  /**
+   * By default we overwrite array indexes, our store is built on this assumption when coercing the document
+   * Alternatively we may want to prevent this behaviour when merging with defaults and replace the whole array instead
+   */
+  replaceArrays = false,
+  cache: Set<unknown> = new Set(),
+): Record<string, unknown> => {
+  for (const key of Object.keys(b)) {
+    if (!Object.hasOwn(a, key)) {
+      // A JSON property named __proto__ is data, not an instruction to replace the prototype.
+      if (key === '__proto__') {
+        Object.defineProperty(a, key, { value: b[key], enumerable: true, configurable: true, writable: true })
+      } else {
+        a[key] = b[key]
+      }
     } else {
       const aValue = a[key]
       const bValue = b[key]
 
-      if (typeof aValue === 'object' && aValue !== null && typeof bValue === 'object' && bValue !== null) {
-        a[key] = mergeObjects(aValue as Record<string, unknown>, bValue as Record<string, unknown>)
+      /** Replace whole array instead of replacing each index */
+      const shouldReplaceArrays = replaceArrays && (Array.isArray(aValue) || Array.isArray(bValue))
+
+      if (isObjectLike(aValue) && isObjectLike(bValue) && !shouldReplaceArrays) {
+        const rawA = getRaw(aValue)
+        const rawB = getRaw(bValue)
+
+        // Check for circular references before recursive merge
+        if (cache.has(rawA) || cache.has(rawB)) {
+          // Skip merging this branch to prevent infinite recursion
+          continue
+        }
+
+        // Add objects to cache before recursive call
+        cache.add(rawA)
+        cache.add(rawB)
+
+        mergeObjects(aValue, bValue, replaceArrays, cache)
       } else {
-        a[key] = bValue // Overwrite with b's value if not an object
+        try {
+          a[key] = bValue // Overwrite with b's value if not an object
+        } catch (error) {
+          console.warn(`Issue setting ${key} on object`)
+          console.warn(error)
+        }
       }
     }
   }
 
-  return a as R
+  return a
 }

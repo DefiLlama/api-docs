@@ -1,0 +1,134 @@
+<script setup lang="ts">
+import { ScalarSearchResultItem } from '@scalar/components/search-results'
+import {
+  ScalarIconBracketsCurly,
+  ScalarIconBroadcast,
+  ScalarIconEnvelope,
+  ScalarIconTag,
+  ScalarIconTerminalWindow,
+  ScalarIconTextAlignLeft,
+  ScalarIconWebhooksLogo,
+} from '@scalar/icons'
+import type { ScalarIconComponent } from '@scalar/icons/types'
+import { HttpMethod } from '@scalar/sidebar'
+import {
+  DEFAULT_MODELS_SECTION_LABEL,
+  type ModelsSectionLabel,
+} from '@scalar/types/api-reference'
+import type { FuseResult } from 'fuse.js'
+import { computed } from 'vue'
+
+import { useLocalization } from '@/features/localization'
+import type { EntryType, FuseData } from '@/features/Search/types'
+
+const { result, modelsSectionLabel = DEFAULT_MODELS_SECTION_LABEL } =
+  defineProps<{
+    id: string
+    isSelected: boolean
+    result: FuseResult<FuseData>
+    modelsSectionLabel?: ModelsSectionLabel
+  }>()
+const { translate } = useLocalization()
+
+const ENTRY_ICONS: { [x in EntryType]: ScalarIconComponent } = {
+  'asyncapi-channel': ScalarIconBroadcast,
+  'asyncapi-operation': ScalarIconTerminalWindow,
+  'asyncapi-message': ScalarIconEnvelope,
+  'heading': ScalarIconTextAlignLeft,
+  'model': ScalarIconBracketsCurly,
+  'operation': ScalarIconTerminalWindow,
+  'tag': ScalarIconTag,
+  'webhook': ScalarIconWebhooksLogo,
+}
+
+const entryLabels = computed((): { [x in EntryType]: string } => ({
+  'asyncapi-channel': translate('search.entryChannel'),
+  'asyncapi-operation': translate('search.entryOperation'),
+  'asyncapi-message': translate('search.entryMessage'),
+  'heading': translate('search.entryHeading'),
+  'operation': translate('search.entryOperation'),
+  'tag': translate('search.entryTag'),
+  'model': modelsSectionLabel,
+  'webhook': translate('search.entryWebhook'),
+}))
+const isAsyncApiEntry = computed(
+  (): boolean =>
+    result.item.type === 'asyncapi-channel' ||
+    result.item.type === 'asyncapi-operation' ||
+    result.item.type === 'asyncapi-message',
+)
+const displayAddress = computed(
+  (): string => result.item.path ?? translate('asyncapi.unknownAddress'),
+)
+const showDescriptionMetadata = computed(
+  (): boolean =>
+    result.item.type !== 'webhook' &&
+    Boolean(
+      isAsyncApiEntry.value ||
+      result.item.action ||
+      ((result.item.method || result.item.path) &&
+        result.item.path !== result.item.title),
+    ),
+)
+</script>
+
+<template>
+  <ScalarSearchResultItem
+    :id="id"
+    :icon="ENTRY_ICONS[result.item.type]"
+    :selected="isSelected">
+    <span
+      :class="{
+        'text-decoration-line':
+          result.item.entry.type === 'operation' &&
+          result.item.entry.isDeprecated,
+      }">
+      <span class="sr-only">
+        {{ entryLabels[result.item.type] }}:&nbsp;
+        <template
+          v-if="
+            result.item.entry.type === 'operation' &&
+            result.item.entry.isDeprecated
+          ">
+          ({{ translate('schema.deprecated') }})&nbsp;
+        </template>
+      </span>
+      {{ result.item.title }}
+      <span class="sr-only">,</span>
+    </span>
+    <template
+      v-if="showDescriptionMetadata"
+      #description>
+      <span class="inline-flex items-center gap-1">
+        <span
+          v-if="result.item.action"
+          class="font-code text-xs uppercase"
+          >{{ result.item.action }}</span
+        >
+        <template v-if="result.item.type === 'operation'">
+          <HttpMethod
+            aria-hidden="true"
+            :method="result.item.method ?? 'get'" />
+          <span class="sr-only">
+            {{ translate('common.httpMethod') }}:
+            {{ result.item.method ?? 'get' }}
+          </span>
+        </template>
+        <template v-if="isAsyncApiEntry">
+          <span>{{ translate('asyncapi.address') }}:{{ ' ' }}</span>
+          <span class="whitespace-pre-wrap">{{ displayAddress }}</span>
+        </template>
+        <template v-else>
+          <span class="sr-only">{{ translate('common.path') }}:&nbsp;</span>
+          {{ result.item.path }}
+        </template>
+      </span>
+    </template>
+    <template
+      v-else-if="result.item.description"
+      #description>
+      <span class="sr-only">{{ translate('common.description') }}:&nbsp;</span>
+      {{ result.item.description }}
+    </template>
+  </ScalarSearchResultItem>
+</template>

@@ -1,0 +1,141 @@
+<script lang="ts">
+/**
+ * ServerDropdown component
+ * This component is used to display the server dropdown for the operation block
+ */
+export default {
+  name: 'ServerDropdown',
+}
+
+export type ServerDropdownProps = {
+  /** The meta information for the server */
+  meta: ServerMeta
+  /** List of servers that are available for the operation/document level */
+  servers: ServerObject[]
+  /** Currently selected server */
+  server: ServerObject | null
+  /** The id of the target to use for the popover (e.g. address bar) */
+  target: string
+  /** Client layout */
+  layout: ClientLayout
+}
+</script>
+<script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
+import { ScalarPopover } from '@scalar/components/popover'
+import { ScalarIconPencilSimple, ScalarIconPlus } from '@scalar/icons'
+import type {
+  ApiReferenceEvents,
+  ServerMeta,
+} from '@scalar/workspace-store/events'
+import type { ServerObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed } from 'vue'
+
+import ValueEmitter from '@/v2/components/layout/ValueEmitter.vue'
+import { useLocalization } from '@/v2/features/localization'
+import type { ClientLayout } from '@/v2/types/layout'
+
+import ServerDropdownItem from './ServerDropdownItem.vue'
+
+const { target, server, servers, meta } = defineProps<ServerDropdownProps>()
+
+const emit = defineEmits<{
+  /** Update a server variable for the selected server */
+  (
+    e: 'update:selectedServer',
+    payload: ApiReferenceEvents['server:update:selected'],
+  ): void
+  (
+    e: 'update:variable',
+    payload: ApiReferenceEvents['server:update:variables'],
+  ): void
+  (e: 'update:servers'): void
+  /** Update the open state of the server dropdown */
+  (e: 'update:open', value: boolean): void
+}>()
+
+const { translate } = useLocalization()
+
+const requestServerOptions = computed(() =>
+  servers.map((s) => ({
+    id: s.url,
+    // Prefer the server name (OpenAPI 3.2) as a friendly label, falling back to the URL
+    label:
+      s.name || s.url || translate('apiClient.serverDropdown.unknownServer'),
+  })),
+)
+
+const serverUrlWithoutTrailingSlash = computed(() => {
+  if (server?.url?.endsWith('/')) {
+    return server.url.slice(0, -1)
+  }
+  return server?.url || ''
+})
+</script>
+<template>
+  <ScalarPopover
+    class="max-h-[inherit] rounded-none rounded-b-lg border border-t-0 p-0 text-base inset-shadow-none"
+    focus
+    :offset="0"
+    placement="bottom"
+    resize
+    :target="target"
+    :teleport="`#${target}`">
+    <ScalarButton
+      class="hover:bg-b-2 font-code text-c-2 h-auto gap-0.75 rounded border px-1.5 text-base whitespace-nowrap @3xl:ml-0.75"
+      variant="ghost">
+      <template v-if="server">
+        <span class="sr-only">{{
+          translate('apiClient.serverDropdown.server')
+        }}</span>
+        {{ serverUrlWithoutTrailingSlash }}
+      </template>
+      <template v-else>
+        <span class="sr-only">{{
+          translate('apiClient.serverDropdown.addServer')
+        }}</span>
+        <ScalarIconPlus class="size-3" />
+      </template>
+    </ScalarButton>
+
+    <template #popover="{ close, open }">
+      <!-- Emit the slot value back out the parent -->
+      <ValueEmitter
+        :value="open"
+        @change="(value) => emit('update:open', value)"
+        @unmount="emit('update:open', false)" />
+      <div
+        class="custom-scroll flex max-h-[inherit] flex-col gap-1 p-1"
+        @click="close">
+        <!-- Request -->
+        <ServerDropdownItem
+          v-for="(serverOption, index) in requestServerOptions"
+          :key="serverOption.id"
+          :server="server"
+          :serverOption="serverOption"
+          type="request"
+          @update:selectedServer="
+            emit('update:selectedServer', { url: serverOption.id, meta })
+          "
+          @update:variable="
+            (key, value) => emit('update:variable', { index, key, value, meta })
+          " />
+
+        <!-- Add Server -->
+        <template v-if="layout !== 'modal'">
+          <button
+            class="text-xxs hover:bg-b-2 flex cursor-pointer items-center gap-1.5 rounded p-1.75"
+            type="button"
+            @click="emit('update:servers')">
+            <div class="flex items-center justify-center">
+              <ScalarIconPencilSimple class="size-4" />
+            </div>
+            <span>{{
+              translate('apiClient.serverDropdown.updateServers')
+            }}</span>
+          </button>
+        </template>
+      </div>
+    </template>
+  </ScalarPopover>
+</template>

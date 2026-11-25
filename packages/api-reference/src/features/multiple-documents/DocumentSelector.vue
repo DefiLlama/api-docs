@@ -1,52 +1,89 @@
 <script setup lang="ts">
-import { ScalarListbox, type ScalarListboxOption } from '@scalar/components'
-import { ScalarIconCaretUpDown } from '@scalar/icons'
-import type { SpecConfiguration } from '@scalar/types/api-reference'
-import { computed } from 'vue'
+import { ScalarCombobox } from '@scalar/components/combobox'
+import { ScalarListbox } from '@scalar/components/listbox'
+import { ScalarIconCaretDown } from '@scalar/icons'
+import { useEventListener } from '@vueuse/core'
+import { computed, ref } from 'vue'
 
-const { options, modelValue } = defineProps<{
-  options?: SpecConfiguration[]
-  modelValue?: number
+import { useLocalization } from '@/features/localization'
+
+const props = defineProps<{
+  options: { label: string; id: string }[]
+  modelValue?: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: number): void
+  (e: 'update:modelValue', id: string): void
 }>()
 
-// Show the selector if there are multiple options
-const showSelector = computed(() => options && options?.length > 1)
+const { translate } = useLocalization()
 
-const listboxOptions = computed(
-  () =>
-    options?.map((option, index) => ({
-      id: String(index),
-      // Get the display text for the selected option
-      label: option.title || option.slug || `API #${index + 1}`,
-    })) || [],
+// Returning focus from the search field can retain its focus-visible state after a click.
+const isPointerInteraction = ref(false)
+useEventListener('keydown', () => {
+  isPointerInteraction.value = false
+})
+
+const formattedOptions = computed(() =>
+  props.options.map((o) => ({ id: o.id, label: o.label })),
 )
 
-const selectedOption = computed({
-  get: () => listboxOptions.value.find(({ id }) => id === String(modelValue)),
-  set: (opt: ScalarListboxOption) => emit('update:modelValue', Number(opt.id)),
-})
+const selected = computed(() =>
+  formattedOptions.value.find((o) => o.id === props.modelValue),
+)
 </script>
 
 <template>
-  <template v-if="showSelector">
-    <div class="document-selector -mb-1 p-3 pb-0">
-      <ScalarListbox
-        v-model="selectedOption"
-        :options="listboxOptions"
-        resize>
+  <div
+    v-if="options.length > 1"
+    class="document-selector px-3 pt-3"
+    @pointerdown.capture="isPointerInteraction = true">
+    <ScalarCombobox
+      v-if="options.length > 5"
+      :inputLabel="translate('search.inputLabel')"
+      :modelValue="selected"
+      :noResults="translate('search.noResults')"
+      :options="formattedOptions"
+      :placeholder="translate('search.placeholder')"
+      resize
+      @update:modelValue="(e) => e && emit('update:modelValue', e.id)">
+      <template #default="{ open }">
         <button
-          class="group/dropdown-label hover:bg-b-2 text-c-2 flex h-8 w-full cursor-pointer items-center rounded border px-2 py-1.75"
+          class="group/dropdown-label text-c-2 hover:text-c-1 flex w-full cursor-pointer items-center gap-1 rounded font-medium focus-visible:outline-offset-4"
+          :class="{ 'outline-none': isPointerInteraction }"
           type="button">
-          <ScalarIconCaretUpDown class="mr-1 size-4 text-current" />
-          <span class="text-c-1 overflow-hidden text-base text-ellipsis">
-            {{ selectedOption?.label || 'Select API' }}
+          <span class="overflow-hidden text-base text-ellipsis">
+            {{ selected?.label || 'Select API' }}
           </span>
+          <ScalarIconCaretDown
+            class="size-3 text-current transition-transform"
+            :class="{ 'rotate-180': open }"
+            weight="bold" />
         </button>
-      </ScalarListbox>
-    </div>
-  </template>
+      </template>
+      <template #option="{ option }">
+        <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
+      </template>
+    </ScalarCombobox>
+    <ScalarListbox
+      v-else
+      v-slot="{ open }"
+      :modelValue="selected"
+      :options="formattedOptions"
+      resize
+      @update:modelValue="(e) => emit('update:modelValue', e.id)">
+      <button
+        class="group/dropdown-label text-c-2 hover:text-c-1 flex w-full cursor-pointer items-center gap-1 rounded font-medium focus-visible:outline-offset-4"
+        :class="{ 'outline-none': isPointerInteraction }"
+        type="button">
+        <span class="overflow-hidden text-base text-ellipsis">
+          {{ selected?.label || 'Select API' }}
+        </span>
+        <ScalarIconCaretDown
+          class="size-3 text-current transition-transform"
+          :class="{ 'rotate-180': open }"
+          weight="bold" />
+      </button>
+    </ScalarListbox>
+  </div>
 </template>

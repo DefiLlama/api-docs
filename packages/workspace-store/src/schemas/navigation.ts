@@ -1,89 +1,459 @@
-import { compose } from '@/schemas/compose'
-import { Type, type Static, type TSchema } from '@sinclair/typebox'
+import type { HttpMethod } from '@scalar/helpers/http/http-methods'
+import { Type } from '@scalar/typebox'
+import type { AsyncApiInfoObject } from '@scalar/types/asyncapi/3.1'
+import type { LiteralUnion } from 'type-fest'
 
-export const NavigationBaseSchema = Type.Object({
-  type: Type.Union([
-    Type.Literal('text'),
-    Type.Literal('operation'),
-    Type.Literal('model'),
-    Type.Literal('tag'),
-    Type.Literal('webhook'),
-  ]),
+import { compose } from '@/schemas/compose'
+import { type XBadge, XBadgeSchema } from '@/schemas/extensions/operation/x-badge'
+import type { ExternalDocumentationObject } from '@/schemas/v3.2/strict/external-documentation'
+import type { InfoObject } from '@/schemas/v3.2/strict/info'
+import type { OperationObject } from '@/schemas/v3.2/strict/operation'
+import { ExternalDocumentationObjectRef, TraversedEntryObjectRef } from '@/schemas/v3.2/strict/ref-definitions'
+import type { SchemaObject } from '@/schemas/v3.2/strict/schema'
+import type { TagObject } from '@/schemas/v3.2/strict/tag'
+
+/**
+ * An operation method, including document-defined extension methods.
+ * Known methods retain editor completion; the open string branch still requires
+ * consumers to handle unknown methods rather than rely on an exhaustive switch.
+ */
+export type OperationMethod = LiteralUnion<HttpMethod, string>
+
+export const NavigationBaseSchemaDefinition = Type.Object({
   id: Type.String(),
   title: Type.String(),
 })
 
-export const TraversedDescriptionSchema = compose(
-  NavigationBaseSchema,
+type BaseSchema = {
+  /**
+   * The unique identifier for the entry
+   *
+   * Must be unique across the entire navigation structure.
+   */
+  id: string
+  /** The user readable title of the entry */
+  title: string
+}
+
+export const TraversedDocumentSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
   Type.Object({
-    type: Type.Literal('text'),
-    children: Type.Optional(Type.Array(NavigationBaseSchema)),
+    type: Type.Literal('document'),
+    name: Type.String(),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
+    icon: Type.Optional(Type.String()),
   }),
 )
 
-export type TraversedDescription = Static<typeof TraversedDescriptionSchema>
+/**
+ * An entry representing an OpenAPI in the navigation structure.
+ *
+ * Used in the client to represent the root document and its operations or tags.
+ */
+export type TraversedDocument = BaseSchema & {
+  type: 'document'
+  /** Document name */
+  name: string
+  /** Child entries under the document */
+  children?: TraversedEntry[]
+  icon?: string
+}
 
-export const TraversedOperationSchema = compose(
-  NavigationBaseSchema,
+export const TraversedDescriptionSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('text'),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
+  }),
+)
+
+/**
+ * An entry representing a markdown description in the navigation structure.
+ */
+export type TraversedDescription = BaseSchema & {
+  type: 'text'
+  children?: TraversedEntry[]
+}
+
+export const TraversedExampleSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('example'),
+    name: Type.String(),
+  }),
+)
+
+/**
+ * An entry representing an operation example in the navigation structure.
+ */
+export type TraversedExample = BaseSchema & {
+  type: 'example'
+  name: string
+}
+
+export const TraversedOperationSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
   Type.Object({
     type: Type.Literal('operation'),
     ref: Type.String(),
     method: Type.String(),
     path: Type.String(),
+    isDeprecated: Type.Optional(Type.Boolean()),
+    badges: Type.Optional(Type.Array(XBadgeSchema)),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
+  }),
+)
+/**
+ * An entry representing an operation in the navigation structure.
+ */
+export type TraversedOperation = BaseSchema & {
+  type: 'operation'
+  ref: string
+  method: OperationMethod
+  path: string
+  isDeprecated?: boolean
+  /** Badges from the `x-badges` extension of the operation */
+  badges?: XBadge[]
+  children?: TraversedEntry[]
+}
+
+export const TraversedAsyncApiOperationSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('asyncapi-operation'),
+    operationName: Type.String(),
+    action: Type.Union([Type.Literal('send'), Type.Literal('receive')]),
+    channelName: Type.String(),
+    channelAddress: Type.String(),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
   }),
 )
 
-export type TraversedOperation = Static<typeof TraversedOperationSchema>
+/**
+ * An entry representing an AsyncAPI operation in the navigation structure.
+ */
+export type TraversedAsyncApiOperation = BaseSchema & {
+  type: 'asyncapi-operation'
+  /** Key in `document.operations` */
+  operationName: string
+  action: 'send' | 'receive'
+  /** Resolved channel key in `document.channels` */
+  channelName: string
+  /** Channel address for display and routing */
+  channelAddress: string
+  /** Messages available on this operation */
+  children?: TraversedEntry[]
+}
 
-export const TraversedSchemaSchema = compose(
-  NavigationBaseSchema,
+export const TraversedAsyncApiChannelSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('asyncapi-channel'),
+    channelName: Type.String(),
+    channelAddress: Type.String(),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
+  }),
+)
+
+/**
+ * An entry representing an AsyncAPI channel in the navigation structure.
+ */
+export type TraversedAsyncApiChannel = BaseSchema & {
+  type: 'asyncapi-channel'
+  /** Key in `document.channels` */
+  channelName: string
+  /** Channel address for display and routing */
+  channelAddress: string
+  /** Operations and the complete visible message catalog on the channel */
+  children?: TraversedEntry[]
+}
+
+export const TraversedAsyncApiMessageSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('asyncapi-message'),
+    messageName: Type.String(),
+    channelName: Type.String(),
+  }),
+)
+
+/**
+ * An entry representing an AsyncAPI message in the navigation structure.
+ */
+export type TraversedAsyncApiMessage = BaseSchema & {
+  type: 'asyncapi-message'
+  /** Key in `channel.messages` */
+  messageName: string
+  /** Parent channel key in `document.channels` */
+  channelName: string
+}
+
+export const TraversedSchemaSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
   Type.Object({
     type: Type.Literal('model'),
     ref: Type.String(),
     name: Type.String(),
+    badges: Type.Optional(Type.Array(XBadgeSchema)),
   }),
 )
 
-export type TraversedSchema = Static<typeof TraversedSchemaSchema>
+/**
+ * An entry representing a model in the navigation structure.
+ */
+export type TraversedSchema = BaseSchema & {
+  type: 'model'
+  ref: string
+  name: string
+  /** Badges from the `x-badges` extension of the schema */
+  badges?: XBadge[]
+}
 
-export const TraversedWebhookSchema = compose(
-  NavigationBaseSchema,
+export const TraversedWebhookSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
   Type.Object({
     type: Type.Literal('webhook'),
     ref: Type.String(),
     method: Type.String(),
     name: Type.String(),
+    isDeprecated: Type.Optional(Type.Boolean()),
+    badges: Type.Optional(Type.Array(XBadgeSchema)),
   }),
 )
 
-export type TraversedWebhook = Static<typeof TraversedWebhookSchema>
+/**
+ * An entry representing a webhook in the navigation structure.
+ */
+export type TraversedWebhook = BaseSchema & {
+  type: 'webhook'
+  ref: string
+  method: OperationMethod
+  name: string
+  isDeprecated?: boolean
+  /** Badges from the `x-badges` extension of the webhook operation */
+  badges?: XBadge[]
+}
 
-// Recursive schemas for traversed tags and entries
-const traversedTagSchemaBuilder = <T extends TSchema>(traversedEntrySchema: T) =>
-  compose(
-    NavigationBaseSchema,
-    Type.Object({
-      type: Type.Literal('tag'),
-      name: Type.String(),
-      children: Type.Optional(Type.Array(traversedEntrySchema)),
-      isGroup: Type.Boolean(),
-    }),
-  )
-
-const traversedEntrySchemaBuilder = <T extends TSchema>(traversedTagSchema: T) =>
-  Type.Union([
-    TraversedDescriptionSchema,
-    TraversedOperationSchema,
-    TraversedSchemaSchema,
-    traversedTagSchema,
-    TraversedWebhookSchema,
-  ])
-
-export const TraversedTagSchema = Type.Recursive((This) => traversedTagSchemaBuilder(traversedEntrySchemaBuilder(This)))
-
-export const TraversedEntrySchema = Type.Recursive((This) =>
-  traversedEntrySchemaBuilder(traversedTagSchemaBuilder(This)),
+export const TraversedTagSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('tag'),
+    name: Type.String(),
+    description: Type.Optional(Type.String()),
+    externalDocs: Type.Optional(ExternalDocumentationObjectRef),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
+    isGroup: Type.Boolean(),
+    isTagGroup: Type.Optional(Type.Boolean()),
+    isWebhooks: Type.Optional(Type.Boolean()),
+    badges: Type.Optional(Type.Array(XBadgeSchema)),
+    xKeys: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  }),
 )
 
-export type TraversedTag = Static<typeof TraversedTagSchema>
-export type TraversedEntry = Static<typeof TraversedEntrySchema>
+/**
+ * An entry representing a tag in the navigation structure.
+ *
+ * Used to group operations or webhooks under a common heading.
+ */
+export type TraversedTag = BaseSchema & {
+  type: 'tag'
+  name: string
+  description?: string
+  externalDocs?: ExternalDocumentationObject
+  children?: TraversedEntry[]
+  isGroup: boolean
+  /**
+   * True only for legacy `x-tagGroups` wrapper entries, which are not real tags and render
+   * without a header of their own. Real OpenAPI 3.2 nested-tag sections keep this unset so the
+   * renderer still shows their summary and description.
+   */
+  isTagGroup?: boolean
+  isWebhooks?: boolean
+  /** Badges from the `x-badges` extension of the tag or the `x-tagGroups` entry */
+  badges?: XBadge[]
+  xKeys?: Record<string, unknown>
+}
+
+export const TraversedModelsSchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('models'),
+    name: Type.String(),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
+  }),
+)
+/**
+ *  Top level models navigation entry.
+ */
+export type TraversedModels = BaseSchema & {
+  type: 'models'
+  name: string
+  children?: TraversedEntry[]
+}
+
+export const TraversedPluginEntrySchemaDefinition = compose(
+  NavigationBaseSchemaDefinition,
+  Type.Object({
+    type: Type.Literal('plugin'),
+    documentType: Type.String(),
+    kind: Type.Optional(Type.String()),
+    children: Type.Optional(Type.Array(TraversedEntryObjectRef)),
+  }),
+)
+
+/**
+ * An entry contributed by a registered document type (see `DocumentTypeDefinition`).
+ *
+ * The store and sidebar only rely on the base fields; `kind` lets the document type tell its own
+ * entries apart (e.g. a workflow and a step) when it renders them.
+ */
+export type TraversedPluginEntry = BaseSchema & {
+  type: 'plugin'
+  /** The document type that produced the entry */
+  documentType: string
+  /** Free-form discriminator owned by the document type */
+  kind?: string
+  children?: TraversedEntry[]
+}
+
+export const TraversedEntrySchemaDefinition = Type.Union([
+  TraversedDescriptionSchemaDefinition,
+  TraversedOperationSchemaDefinition,
+  TraversedAsyncApiOperationSchemaDefinition,
+  TraversedAsyncApiChannelSchemaDefinition,
+  TraversedAsyncApiMessageSchemaDefinition,
+  TraversedSchemaSchemaDefinition,
+  TraversedTagSchemaDefinition,
+  TraversedWebhookSchemaDefinition,
+  TraversedExampleSchemaDefinition,
+  TraversedDocumentSchemaDefinition,
+  TraversedModelsSchemaDefinition,
+  TraversedPluginEntrySchemaDefinition,
+])
+
+export type TraversedEntry =
+  | TraversedDescription
+  | TraversedOperation
+  | TraversedAsyncApiOperation
+  | TraversedAsyncApiChannel
+  | TraversedAsyncApiMessage
+  | TraversedSchema
+  | TraversedTag
+  | TraversedWebhook
+  | TraversedExample
+  | TraversedDocument
+  | TraversedModels
+  | TraversedPluginEntry
+
+/**
+ * Type helper for when we are storing the parent entry in the entry itself.
+ * The parent is recursively defined to also include its own parent, except for
+ * TraversedDocument which can be a terminal parent without requiring its own parent.
+ */
+export type WithParent<Entry extends TraversedEntry> = Entry & {
+  parent: WithParent<TraversedEntry> | TraversedDocument
+}
+
+export type DocumentIdProps = {
+  name: string
+  info: InfoObject | AsyncApiInfoObject
+  type: 'document'
+}
+
+type DescriptionIdProps = {
+  info: InfoObject | AsyncApiInfoObject
+  type: 'text'
+  slug?: string
+  depth?: number
+  value: string
+  parentId: string
+}
+
+export type ParentTag = {
+  tag: TagObject
+  id: string
+}
+
+type TagProps = {
+  parentId: string
+  tag: TagObject
+  type: 'tag'
+  /**
+   * Set when this tag has no operations of its own and only nests other tags,
+   * so the renderer can present it as a section rather than a leaf.
+   */
+  isGroup?: boolean
+  /**
+   * Set when `tag` is an `x-tagGroups` wrapper entry (not a real OpenAPI tag),
+   * so its ID stays distinct from same-named OpenAPI tags and from other groups.
+   * Native OpenAPI 3.2 nested tags are real tags and keep the regular `tag` prefix.
+   */
+  isTagGroup?: boolean
+}
+
+type OperationProps = {
+  parentId: string
+  operation: OperationObject
+  path: string
+  method: OperationMethod
+  type: 'operation'
+  parentTag?: ParentTag
+}
+
+type WebhookProps = {
+  parentId: string
+  webhook?: OperationObject
+  name: string
+  method?: OperationMethod
+  type: 'webhook'
+  parentTag?: ParentTag
+}
+
+type ModelProps = {
+  parentId: string
+  schema?: SchemaObject
+  name?: string
+  type: 'model'
+  parentTag?: ParentTag
+}
+
+type ExampleProps = {
+  parentId: string
+  name: string
+  type: 'example'
+}
+
+type AsyncApiOperationProps = {
+  parentId: string
+  operationName: string
+  type: 'asyncapi-operation'
+  parentTag?: ParentTag
+}
+
+type AsyncApiChannelProps = {
+  parentId: string
+  channelName: string
+  type: 'asyncapi-channel'
+  parentTag?: ParentTag
+}
+
+type AsyncApiMessageProps = {
+  parentId: string
+  messageName: string
+  channelName: string
+  type: 'asyncapi-message'
+}
+
+export type IdGeneratorProps =
+  | DocumentIdProps
+  | DescriptionIdProps
+  | TagProps
+  | OperationProps
+  | AsyncApiOperationProps
+  | AsyncApiChannelProps
+  | AsyncApiMessageProps
+  | WebhookProps
+  | ModelProps
+  | ExampleProps
+
+export type IdGenerator = (props: IdGeneratorProps) => string

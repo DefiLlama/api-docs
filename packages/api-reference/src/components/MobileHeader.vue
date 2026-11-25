@@ -1,61 +1,81 @@
 <script setup lang="ts">
-import { ScalarIconButton } from '@scalar/components'
+import { ScalarIconButton } from '@scalar/components/icon-button'
+import { ScalarIconList, ScalarIconX } from '@scalar/icons'
+import { cva } from '@scalar/use-hooks/useBindCx'
 
-import { useSidebar } from '@/features/sidebar'
-
-const { isSidebarOpen } = useSidebar()
+import { useLocalization } from '@/features/localization'
 
 defineProps<{
   breadcrumb: string
+  isSidebarOpen: boolean
+  showSidebar: boolean
 }>()
+const emit = defineEmits<{
+  (e: 'toggleSidebar'): void
+}>()
+
+const { translate } = useLocalization()
+
+defineSlots<{
+  actions?(): never
+  sidebar?(props: { sidebarClasses: string }): never
+  search?(): never
+}>()
+
+const variants = cva({
+  base: 'lg:hidden items-center bg-b-1 sticky top-(--scalar-custom-header-height,0) z-10 [grid-area:header]',
+  variants: {
+    open: {
+      true: 'h-(--refs-sidebar-height) custom-scrollbar flex flex-col z-50',
+    },
+  },
+})
 </script>
 <template>
-  <div class="references-mobile-header t-doc__header">
-    <ScalarIconButton
-      :icon="isSidebarOpen ? 'Close' : 'Menu'"
-      :label="isSidebarOpen ? 'Close Menu' : 'Open Menu'"
-      size="md"
-      @click="isSidebarOpen = !isSidebarOpen" />
-    <span class="references-mobile-breadcrumbs">{{ breadcrumb }}</span>
-    <div class="references-mobile-header-actions">
-      <slot name="actions" />
-    </div>
+  <!-- Always render the desktop sidebar slot and let CSS handle breakpoints -->
+  <slot
+    v-bind="{
+      sidebarClasses:
+        'hidden lg:flex sticky top-(--refs-header-height) h-(--refs-sidebar-height) w-(--refs-sidebar-width) [grid-area:navigation]',
+    }"
+    name="sidebar" />
+  <div
+    class="t-doc__header"
+    :class="variants({ open: isSidebarOpen })"
+    :data-scalar-scroll-header="!isSidebarOpen || undefined">
+    <header
+      class="flex h-(--scalar-header-height) w-full items-center border-b bg-inherit px-2">
+      <ScalarIconButton
+        v-if="showSidebar"
+        :icon="isSidebarOpen ? ScalarIconX : ScalarIconList"
+        :label="
+          isSidebarOpen
+            ? translate('navigation.closeMenu')
+            : translate('navigation.openMenu')
+        "
+        size="md"
+        @click="emit('toggleSidebar')" />
+
+      <span
+        v-if="showSidebar"
+        class="flex-1 text-sm font-medium whitespace-nowrap">
+        {{ breadcrumb }}
+      </span>
+      <slot
+        v-else
+        name="search" />
+
+      <div class="flex h-6 items-center gap-1 pl-1">
+        <slot name="actions" />
+      </div>
+    </header>
+    <!-- In mobile layout, render the sidebar slot into the header panel -->
+    <slot
+      v-if="isSidebarOpen"
+      v-bind="{
+        sidebarClasses:
+          'overflow-y-auto custom-scrollbar min-h-0 flex-1 w-full border-none',
+      }"
+      name="sidebar" />
   </div>
 </template>
-<style scoped>
-.references-mobile-header {
-  display: none;
-  align-items: center;
-  height: 100%;
-  width: 100dvw;
-  padding: 0 8px;
-  background: var(--scalar-background-1);
-  border-bottom: 1px solid var(--scalar-border-color);
-}
-
-.references-mobile-breadcrumbs {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--scalar-small);
-  font-weight: var(--scalar-semibold);
-  color: var(--scalar-color-1);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.references-mobile-header-actions {
-  display: flex;
-  flex-direction: row;
-  gap: 4px;
-  height: 24px;
-  align-items: center;
-  padding-left: 4px;
-}
-
-@media (max-width: 1000px) {
-  .references-mobile-header {
-    display: flex;
-  }
-}
-</style>

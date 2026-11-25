@@ -1,7 +1,10 @@
+export { PLUGIN_MANAGER_SYMBOL, usePluginManager } from '@/plugins/hooks/usePluginManager'
 export {
-  createPluginManager,
   type ApiReferencePlugin,
+  type PluginAuthState,
   type PluginManager,
+  type PluginViewComponent,
+  createPluginManager,
 } from '@/plugins/plugin-manager'
 
-export { PLUGIN_MANAGER_SYMBOL, usePluginManager } from '@/plugins/hooks/usePluginManager'
+export { persistencePlugin } from './persistence-plugin'

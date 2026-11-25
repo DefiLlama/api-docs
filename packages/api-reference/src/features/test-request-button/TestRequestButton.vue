@@ -1,35 +1,44 @@
 <script setup lang="ts">
-import type { HttpMethod } from '@scalar/helpers/http/http-methods'
+import { ScreenReader } from '@scalar/blocks/shared'
 import { ScalarIconPlay } from '@scalar/icons'
-import { computed } from 'vue'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
 
-import ScreenReader from '@/components/ScreenReader.vue'
-import { useApiClient } from '@/features/api-client-modal'
-import { useConfig } from '@/hooks/useConfig'
+import { useLocalization } from '@/features/localization'
 
-const { method, path } = defineProps<{
-  method: HttpMethod
+const {
+  id,
+  method,
+  path,
+  eventBus,
+  exampleName,
+  requestBodyCompositionSelection,
+} = defineProps<{
+  id: string
+  method: string
   path: string
+  eventBus: WorkspaceEventBus
+  exampleName?: string
+  requestBodyCompositionSelection?: Record<string, number>
 }>()
+const { translate } = useLocalization()
 
-const { client } = useApiClient()
-const config = useConfig()
-
-const isButtonVisible = computed(
-  () => config.value.hideTestRequestButton !== true,
-)
-
+/** Route via ID and optionally with example name */
 const handleClick = () => {
-  client.value?.open({
-    method,
-    path,
-  })
+  // Include exampleName in payload if provided
+  const payload = {
+    id,
+    ...(exampleName && { exampleName }),
+    ...(requestBodyCompositionSelection &&
+      Object.keys(requestBodyCompositionSelection).length > 0 && {
+        requestBodyCompositionSelection,
+      }),
+  }
+  eventBus.emit('ui:open:client-modal', payload)
 }
 </script>
 <template>
   <!-- Render the Test Request Button -->
   <button
-    v-if="isButtonVisible"
     class="show-api-client-button"
     :method="method"
     type="button"
@@ -37,24 +46,23 @@ const handleClick = () => {
     <ScalarIconPlay
       class="size-3"
       weight="fill" />
-    <span>Test Request</span>
+    <span>{{ translate('operation.testRequest') }}</span>
     <ScreenReader>({{ method }} {{ path }})</ScreenReader>
   </button>
-  <!-- Render whitespace, so the container doesn't collapse -->
-  <template v-else>&nbsp;</template>
 </template>
 <style scoped>
 .show-api-client-button {
   appearance: none;
   border: none;
-  padding: 4px 6px;
+  padding: 1px 6px;
   white-space: nowrap;
   border-radius: var(--scalar-radius);
   display: flex;
   justify-content: center;
   align-items: center;
   font-weight: var(--scalar-semibold);
-  font-size: var(--scalar-mini);
+  font-size: var(--scalar-small);
+  line-height: 22px;
   color: var(--scalar-background-2);
   font-family: var(--scalar-font);
   background: var(--scalar-button-1);

@@ -563,6 +563,19 @@ const hasItems = computed(() => items.value.length > 0)
 </template>
 ```
 
+## November 2026 - Scalar upgrade (read this first)
+
+The repository was re-synced with upstream scalar/scalar. The package patches described in the older
+summaries below (api-key-manager, ProBadge, merge-urls, string-template, Settings API Keys tab and so on)
+no longer exist. All DefiLlama behaviour now lives in `examples/web/src` (`spec-transform.ts`,
+`api-key-storage.ts`, `style.css`, the page and `ApiKeyInput.vue`), plus one marked block in
+`packages/api-reference/src/components/OperationsList/OperationsListItem.vue`. See the README sections
+"Where the DefiLlama customizations live" and "Syncing with upstream Scalar".
+
+Unused upstream folders (integrations, projects, documentation, other examples, packages the site does
+not depend on) are deleted by `scripts/prune-upstream.sh`; run it after every upstream merge. Many
+packages listed in the Key Packages section below therefore no longer exist in this repository.
+
 ## Session Summary: URL Encoding, API Key Injection & PRO Badge System
 
 ### Overview

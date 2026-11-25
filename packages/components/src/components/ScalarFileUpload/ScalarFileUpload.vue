@@ -22,7 +22,7 @@ import ScalarFileUploadError from './ScalarFileUploadError.vue'
 import ScalarFileUploadInput from './ScalarFileUploadInput.vue'
 import ScalarFileUploadInputCompact from './ScalarFileUploadInputCompact.vue'
 import ScalarFileUploadLoading from './ScalarFileUploadLoading.vue'
-import { type ExtensionList, isExtensionList } from './types'
+import { isExtensionList, type ExtensionList } from './types'
 
 const {
   variant = 'default',
@@ -101,7 +101,10 @@ function handleFileList(fileList?: FileList | null) {
 
 /** Handles the change event from the input */
 function handleChange(event: Event) {
-  const f = (event.target as HTMLInputElement).files
+  if (!(event.target instanceof HTMLInputElement)) {
+    return
+  }
+  const f = event.target.files
   handleFileList(f)
 }
 
@@ -160,8 +163,8 @@ const { cx } = useBindCx()
       </slot>
     </div>
     <ScalarFileUploadLoading
-      v-if="loader?.isLoading"
-      :loader="loader" />
+      v-if="loader?.isActive"
+      :loader />
     <input
       ref="input"
       :accept="isExtensionList(accept) ? accept.join(',') : accept"

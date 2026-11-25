@@ -1,23 +1,42 @@
-export {
-  type ApiClientConfiguration,
-  type ApiReferenceConfiguration,
-  type ApiReferenceConfigurationWithSources,
-  type AnyApiReferenceConfiguration,
-  type SpecConfiguration,
-  apiClientConfigurationSchema,
-  apiReferenceConfigurationSchema,
-  specConfigurationSchema,
-  isConfigurationWithSources,
-} from './api-reference-configuration'
-
-export {
-  type HtmlRenderingConfiguration,
-  htmlRenderingConfigurationSchema,
-} from './html-rendering-configuration'
-
 export type {
-  SpecificationExtension,
-  ApiReferencePlugin,
+  PluginAuthSecrets,
+  PluginAuthState,
+  PluginDocumentAuth,
+  PluginNavigationEntry,
+  PluginSelectedSecurity,
 } from './api-reference-plugin'
-
 export type { ApiReferenceInstance, CreateApiReference } from './html-api'
+export type { HtmlRenderingConfiguration } from './html-rendering-configuration'
+export type {
+  AnyApiReferenceConfiguration,
+  ApiClientConfiguration,
+  ApiClientTranslations,
+  ApiReferenceBuiltInLocale,
+  ApiReferenceConfiguration,
+  ApiReferenceConfigurationRaw,
+  ApiReferenceConfigurationWithMultipleSources,
+  ApiReferenceConfigurationWithSource,
+  ApiReferenceLocale,
+  ApiReferenceLocalization,
+  ApiReferencePlugin,
+  ApiReferenceTextDirection,
+  ApiReferenceTextDirectionPreference,
+  ApiReferenceTranslationKey,
+  ApiReferenceTranslations,
+  AuthenticationConfiguration,
+  BaseConfiguration,
+  ExternalUrls,
+  LifecycleHooks,
+  ModelsSectionLabel,
+  MultipartNaming,
+  PluginDocumentType,
+  SecurityScheme,
+  SecuritySchemeApiKey,
+  SecuritySchemeHttp,
+  SecuritySchemeOauth2,
+  SecuritySchemeOpenIdConnect,
+  SourceConfiguration,
+  SpecificationExtension,
+  ViewComponent,
+} from './types'
+export { DEFAULT_MODELS_SECTION_LABEL, isConfigurationWithSources } from './types'

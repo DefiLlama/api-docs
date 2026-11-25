@@ -1,11 +1,22 @@
 import { placements } from '@floating-ui/utils'
-import type { Meta, StoryObj } from '@storybook/vue3'
-import { ref } from 'vue'
+import type { Middleware } from '@floating-ui/vue'
+import type { Meta, StoryObj } from '@storybook/vue3-vite'
+import { useEventListener } from '@vueuse/core'
+import { type Component, ref, watch } from 'vue'
+import type { ComponentExposed } from 'vue-component-type-helpers'
 
-import { ScalarButton, ScalarDropdownButton, ScalarIcon } from '../..'
+import { ScalarButton, ScalarDropdownButton, ScalarListboxCheckbox, useLoadingState } from '../..'
 import ScalarCombobox from './ScalarCombobox.vue'
 import ScalarComboboxMultiselect from './ScalarComboboxMultiselect.vue'
 import type { Option, OptionGroup } from './types'
+
+/**
+ * Helper to handle generic Vue components
+ * @see https://github.com/storybookjs/storybook/issues/24238#issuecomment-2609580391
+ */
+type GenericMeta<C> = Omit<Meta<C>, 'component'> & {
+  component: ComponentExposed<C>
+}
 
 const meta = {
   component: ScalarCombobox,
@@ -20,7 +31,7 @@ const meta = {
     },
     class: { control: 'text' },
   },
-} satisfies Meta<typeof ScalarCombobox>
+} satisfies GenericMeta<typeof ScalarCombobox>
 
 export default meta
 type Story = StoryObj<typeof meta>
@@ -34,28 +45,41 @@ const options: Option[] = [
   { id: '7', label: 'Blackberry' },
 ]
 
-const groups: OptionGroup[] = [
+/** An example of an extended option with a timezone */
+type ExtendedOption = Option & {
+  timezone: string
+}
+
+/** An example of an extended option group with a flag */
+type ExtendedOptionGroup = OptionGroup<ExtendedOption> & {
+  flag: string
+}
+
+const groups: ExtendedOptionGroup[] = [
   {
     label: 'Canada',
+    flag: '🇨🇦',
     options: [
-      { id: 'ca-yvr', label: 'Vancouver' },
-      { id: 'ca-yyc', label: 'Calgary' },
-      { id: 'ca-yyz', label: 'Toronto' },
+      { id: 'ca-yvr', label: 'Vancouver', timezone: '-8' },
+      { id: 'ca-yyc', label: 'Calgary', timezone: '-7' },
+      { id: 'ca-yyz', label: 'Toronto', timezone: '-5' },
     ],
   },
   {
     label: 'United States',
+    flag: '🇺🇸',
     options: [
-      { id: 'us-sea', label: 'Seattle' },
-      { id: 'us-lax', label: 'Los Angeles' },
-      { id: 'us-jfk', label: 'New York' },
+      { id: 'us-sea', label: 'Seattle', timezone: '-8' },
+      { id: 'us-lax', label: 'Los Angeles', timezone: '-8' },
+      { id: 'us-jfk', label: 'New York', timezone: '-5' },
     ],
   },
   {
     label: 'Japan',
+    flag: '🇯🇵',
     options: [
-      { id: 'jp-hnd', label: 'Tokyo' },
-      { id: 'jp-itm', label: 'Osaka' },
+      { id: 'jp-hnd', label: 'Tokyo', timezone: '+9' },
+      { id: 'jp-itm', label: 'Osaka', timezone: '+9' },
     ],
   },
 ]
@@ -64,16 +88,15 @@ export const Base: Story = {
   args: { options },
   render: (args) => ({
     components: {
-      ScalarCombobox,
+      ScalarCombobox: ScalarCombobox as ComponentExposed<typeof ScalarCombobox>,
       ScalarButton,
-      ScalarIcon,
     },
     setup() {
       const selected = ref<Option>()
       return { args, selected }
     },
     template: `
-<div class="flex justify-center w-full min-h-96">
+<div class="flex flex-col items-center w-full min-h-96">
   <ScalarCombobox v-model="selected" placeholder="Change fruit..." v-bind="args">
     <ScalarButton class="w-48 px-3" variant="outlined">
       <div class="flex flex-1 items-center min-w-0">
@@ -92,16 +115,15 @@ export const Groups: Story = {
   args: { options: groups },
   render: (args) => ({
     components: {
-      ScalarCombobox,
+      ScalarCombobox: ScalarCombobox as ComponentExposed<typeof ScalarCombobox>,
       ScalarButton,
-      ScalarIcon,
     },
     setup() {
       const selected = ref<Option>()
       return { args, selected }
     },
     template: `
-<div class="flex justify-center w-full min-h-96">
+<div class="flex flex-col items-center w-full min-h-96">
   <ScalarCombobox v-model="selected" placeholder="Change city..." v-bind="args">
     <ScalarButton class="w-48 px-3" variant="outlined">
       <div class="flex flex-1 items-center min-w-0">
@@ -120,16 +142,15 @@ export const Multiselect: Story = {
   args: { options },
   render: (args) => ({
     components: {
-      ScalarComboboxMultiselect,
+      ScalarComboboxMultiselect: ScalarComboboxMultiselect as any,
       ScalarButton,
-      ScalarIcon,
     },
     setup() {
       const selected = ref<Option[]>([])
       return { args, selected }
     },
     template: `
-<div class="flex justify-center w-full min-h-96">
+<div class="flex flex-col items-center w-full min-h-96">
   <ScalarComboboxMultiselect v-model="selected" placeholder="Select fruits..." v-bind="args">
     <ScalarButton class="w-48 px-3" variant="outlined">
       <div class="flex flex-1 items-center min-w-0">
@@ -148,16 +169,15 @@ export const MultiselectGroups: Story = {
   args: { options: groups },
   render: (args) => ({
     components: {
-      ScalarComboboxMultiselect,
+      ScalarComboboxMultiselect: ScalarComboboxMultiselect as any,
       ScalarButton,
-      ScalarIcon,
     },
     setup() {
       const selected = ref<Option[]>([])
       return { args, selected }
     },
     template: `
-<div class="flex justify-center w-full min-h-96">
+<div class="flex flex-col items-center w-full min-h-96">
   <ScalarComboboxMultiselect v-model="selected" placeholder="Select cities..." v-bind="args">
     <ScalarButton class="w-48 px-3" variant="outlined">
       <div class="flex flex-1 items-center min-w-0">
@@ -172,36 +192,42 @@ export const MultiselectGroups: Story = {
   }),
 }
 
-export const WithSlots: Story = {
-  args: { options: groups },
+export const WithAddNew: Story = {
+  args: { options: [] },
   render: (args) => ({
     components: {
-      ScalarComboboxMultiselect,
+      ScalarComboboxMultiselect: ScalarComboboxMultiselect as any,
       ScalarButton,
-      ScalarIcon,
       ScalarDropdownButton,
+      ScalarListboxCheckbox,
     },
     setup() {
       const selected = ref<Option[]>([])
-      return { args, selected }
+      const opts = ref<Option[]>([])
+      const counter = ref<number>(1)
+      function add() {
+        const newOpt = { label: `Option ${counter.value}`, id: `${counter.value++}` }
+        opts.value = [...opts.value, newOpt]
+        selected.value = [...selected.value, newOpt]
+      }
+      add(), add(), add()
+
+      return { args, selected, add, opts }
     },
     template: `
-<div class="flex justify-center w-full min-h-96">
-  <ScalarComboboxMultiselect v-model="selected" placeholder="Select cities..." v-bind="args">
+<div class="flex flex-col items-center w-full min-h-96">
+  <ScalarComboboxMultiselect v-model="selected" v-bind="args" :options="opts" @add="add">
     <ScalarButton class="w-48 px-3" variant="outlined">
       <div class="flex flex-1 items-center min-w-0">
         <span class="inline-block truncate flex-1 min-w-0 text-left">
-        {{ selected.length }} cities selected
+          {{ selected.length }} of {{ opts.length }} options selected
         </span>
       </div>
     </ScalarButton>
-    <template #before>
-      <div class="placeholder">Before</div>
+    <template #add>
+      Add a new option
     </template>
-    <template #after>
-      <div class="placeholder">After</div>
-    </template>
-  </ScalarComboboxMultiselect>
+  </ScalarCombobox>
 </div>
 `,
   }),
@@ -217,16 +243,15 @@ export const CustomClasses: Story = {
   },
   render: (args) => ({
     components: {
-      ScalarCombobox,
+      ScalarCombobox: ScalarCombobox as ComponentExposed<typeof ScalarCombobox>,
       ScalarButton,
-      ScalarIcon,
     },
     setup() {
       const selected = ref<Option>()
       return { args, selected }
     },
     template: `
-<div class="flex justify-center w-full min-h-96">
+<div class="flex flex-col items-center w-full min-h-96">
   <ScalarCombobox v-model="selected" placeholder="Change fruit..." v-bind="args">
     <ScalarButton class="w-48 px-3" variant="outlined">
       <div class="flex flex-1 items-center min-w-0">
@@ -240,3 +265,117 @@ export const CustomClasses: Story = {
 `,
   }),
 }
+
+/**
+ * Searches the options on a (fake) server as you type. The caller owns the query, the
+ * debounce and the loading state, the combobox only shows the results it is given.
+ *
+ * Type "error" to see a failed request.
+ */
+export const Async: Story = {
+  args: { options: [] },
+  render: (args) => ({
+    components: {
+      ScalarCombobox: ScalarCombobox as ComponentExposed<typeof ScalarCombobox>,
+      ScalarButton,
+    },
+    setup() {
+      const selected = ref<Option>()
+      const query = ref('')
+      const results = ref<Option[]>([])
+      const loader = useLoadingState()
+
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      watch(
+        query,
+        (value) => {
+          clearTimeout(timeout)
+          loader.start()
+          timeout = setTimeout(() => {
+            if (value === 'error') {
+              void loader.invalidate({ persist: true })
+              return
+            }
+            results.value = options.filter((o) => o.label.toLowerCase().includes(value.toLowerCase()))
+            void loader.clear()
+          }, 800)
+        },
+        { immediate: true },
+      )
+
+      return { args, selected, query, results, loader }
+    },
+    template: `
+<div class="flex flex-col items-center w-full min-h-96">
+  <ScalarCombobox
+    v-model="selected"
+    v-model:query="query"
+    v-bind="args"
+    :loader
+    noResults="No fruits found"
+    :options="results"
+    placeholder="Search fruits..."
+    :filterFn="(_, options) => options">
+    <ScalarButton class="w-48 px-3" variant="outlined">
+      <div class="flex flex-1 items-center min-w-0">
+        <span class="inline-block truncate flex-1 min-w-0 text-left">
+        {{ selected?.label ?? 'Select a fruit' }}
+        </span>
+      </div>
+    </ScalarButton>
+  </ScalarCombobox>
+</div>
+`,
+  }),
+}
+
+/** Hold positioning until the test releases it, so opening races are reproducible. */
+const delayedPositioningStory = (multiselect: boolean): Story => ({
+  tags: ['!dev', '!autodocs'],
+  args: { options: [] },
+  parameters: { layout: 'fullscreen' },
+  render: () => ({
+    components: {
+      ScalarCombobox: ScalarCombobox as ComponentExposed<typeof ScalarCombobox>,
+      ScalarComboboxMultiselect: ScalarComboboxMultiselect as unknown as Component,
+      ScalarButton,
+    },
+    setup() {
+      const choices = Array.from({ length: 40 }, (_, index) => ({ id: `${index}`, label: `Option ${index}` }))
+      const selected = ref(choices[25])
+      const selections = ref([choices[25]!])
+      const positioned = ref(false)
+      const ready = new Promise<void>((resolve) => {
+        useEventListener(document, 'position-picker', () => resolve())
+      })
+      const middleware: Middleware[] = [
+        {
+          name: 'wait-for-test',
+          async fn() {
+            await ready
+            positioned.value = true
+            return {}
+          },
+        },
+      ]
+      return { choices, selected, selections, positioned, middleware, multiselect }
+    },
+    template: `
+<div class="h-[16000px] pt-[10000px]">
+  <div aria-label="Outer scroller" class="h-80 overflow-auto">
+    <div class="h-[2000px] pt-[600px] pl-32">
+      <p role="status">{{ positioned ? 'Positioned' : 'Waiting for positioning' }}</p>
+      <ScalarComboboxMultiselect v-if="multiselect" v-model="selections" :options="choices" :middleware="middleware" teleport class="max-h-60">
+        <ScalarButton>Choose options</ScalarButton>
+      </ScalarComboboxMultiselect>
+      <ScalarCombobox v-else v-model="selected" :options="choices" :middleware="middleware" teleport class="max-h-60">
+        <ScalarButton>Choose option</ScalarButton>
+      </ScalarCombobox>
+    </div>
+  </div>
+</div>`,
+  }),
+})
+
+export const DelayedPositioning = delayedPositioningStory(false)
+export const DelayedMultiselect = delayedPositioningStory(true)

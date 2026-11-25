@@ -1,0 +1,266 @@
+import { isElectron } from '@scalar/helpers/general/is-electron'
+import type { MultipartNaming } from '@scalar/types/api-reference'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import {
+  type SecuritySchemeObjectSecret,
+  filterGlobalCookie,
+  getDefaultHeaders,
+  restoreConventionalDefaultHeaderNames,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarCookie } from '@scalar/workspace-store/schemas/extensions/general/x-scalar-cookies'
+import type { OperationObject, ServerObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import type { Request as HarRequest } from 'har-format'
+
+import { APP_VERSION } from '@/constants'
+
+import { processBody } from './process-body'
+import { processParameters } from './process-parameters'
+import { processSecuritySchemes } from './process-security-schemes'
+import { processServerUrl } from './process-server-url'
+
+export type OperationToHarProps = {
+  /** OpenAPI Operation object */
+  operation: OperationObject
+  /** HTTP method of the operation */
+  method: string
+  /** Path of the operation */
+  path: string
+  /**
+   * Name of the currently selected operation example
+   *
+   * Applies to both the body and the parameters
+   */
+  example?: string
+  /**
+   * Content type of the operation
+   *
+   * Applies to both the body and the parameters (if applicable)
+   * @defaults to the first content type in the MediaTypeObject
+   */
+  contentType?: string
+  /** OpenAPI Server object */
+  server?: ServerObject | null
+  /** OpenAPI SecurityScheme objects which are applicable to the operation */
+  securitySchemes?: SecuritySchemeObjectSecret[]
+  /** Workspace + document cookies */
+  globalCookies?: XScalarCookie[]
+  /**
+   * Whether to include default headers (e.g., Accept, Content-Type) automatically.
+   * If false, default headers will be omitted from the HAR request.
+   * @default true
+   */
+  includeDefaultHeaders?: boolean
+  /**
+   * Selected oneOf/anyOf variants for nested request body example generation
+   * (e.g. from the schema dropdowns in the API reference).
+   */
+  /** Originating OpenAPI version, used for version-specific serialization. */
+  openapiVersion?: string
+  jsonSchemaDialect?: string
+  multipartNaming?: MultipartNaming
+  requestBodyCompositionSelection?: Record<string, number>
+  /**
+   * Whether to disable parameters by default.
+   * @default false
+   */
+  defaultDisabledParameters?: boolean
+}
+
+/**
+ * Converts an OpenAPI Operation to a HarRequest format for generating HTTP request snippets.
+ *
+ * This function transforms OpenAPI 3.1 operation objects into HAR (HTTP Archive) format requests,
+ * which can be used to generate code snippets for various programming languages and HTTP clients.
+ *
+ * The conversion handles:
+ * - Server URL processing and path parameter substitution
+ * - Query parameter formatting based on OpenAPI parameter styles
+ * - Request body processing with content type handling
+ * - Security scheme integration (API keys, etc.)
+ *
+ * The resulting HarRequest object follows the HAR specification and includes:
+ * - HTTP method and URL
+ * - Headers and query parameters
+ * - Request body (if present)
+ * - Cookie information
+ * - Size calculations for headers and body
+ *
+ * @see https://w3c.github.io/web-performance/specs/HAR/Overview.html
+ * @see https://spec.openapis.org/oas/v3.1.0#operation-object
+ */
+export const operationToHar = ({
+  includeDefaultHeaders = false,
+  operation,
+  contentType,
+  method,
+  path,
+  server = null,
+  example,
+  securitySchemes,
+  globalCookies,
+  openapiVersion,
+  jsonSchemaDialect,
+  multipartNaming,
+  requestBodyCompositionSelection,
+  defaultDisabledParameters = false,
+}: OperationToHarProps): HarRequest => {
+  const defaultHeaders = includeDefaultHeaders
+    ? getDefaultHeaders({
+        method,
+        operation,
+        exampleName: example ?? 'default',
+        hideDisabledHeaders: true,
+        hideOverriddenHeaders: true,
+        options: { isElectron: isElectron(), appVersion: APP_VERSION },
+      })
+    : {}
+  const defaultHeadersWithConventionalNames = restoreConventionalDefaultHeaderNames(defaultHeaders)
+
+  const disabledGlobalCookies =
+    operation['x-scalar-disable-parameters']?.['global-cookies']?.[example ?? 'default'] ?? {}
+
+  const serverUrl = processServerUrl(server, path)
+
+  // Initialize the HAR request with basic properties
+  const harRequest: HarRequest = {
+    method,
+    url: serverUrl,
+    headers: Object.entries(defaultHeadersWithConventionalNames).map(([name, value]) => ({ name, value })),
+    queryString: [],
+    postData: undefined,
+    httpVersion: 'HTTP/1.1',
+    cookies: [],
+    headersSize: -1,
+    bodySize: -1,
+  }
+
+  let hasCookieStyleEntries = false
+  let hasSerializedQuery = false
+
+  // Handle parameters
+  if (operation.parameters) {
+    const {
+      url,
+      headers,
+      queryString,
+      cookies,
+      hasCookieStyleEntries: processedCookieStyleEntries,
+      hasSerializedQuery: processedSerializedQuery,
+    } = processParameters({
+      harRequest,
+      parameters: operation.parameters,
+      openapiVersion,
+      jsonSchemaDialect,
+      example,
+      defaultDisabled: defaultDisabledParameters,
+    })
+
+    // Correctly filter the global cookies by the processed url
+    const filteredGlobalCookies =
+      globalCookies
+        ?.filter((cookie) => filterGlobalCookie({ cookie, url, disabledGlobalCookies }))
+        ?.map((cookie) => ({ name: cookie.name, value: cookie.value })) ?? []
+
+    hasCookieStyleEntries = processedCookieStyleEntries
+    hasSerializedQuery = processedSerializedQuery ?? false
+    harRequest.url = url
+    harRequest.headers = headers
+    harRequest.queryString = queryString
+    harRequest.cookies = [...filteredGlobalCookies, ...cookies]
+  }
+
+  const body = getResolvedRef(operation.requestBody)
+
+  // Handle request body
+  if (body?.content) {
+    const postData = processBody({
+      requestBody: body,
+      contentType,
+      example,
+      openapiVersion,
+      jsonSchemaDialect,
+      multipartNaming,
+      requestBodyCompositionSelection,
+    })
+
+    if (postData) {
+      harRequest.postData = postData
+      harRequest.bodySize = postData.text?.length ?? -1
+
+      // Add or update Content-Type header
+      if (postData.mimeType) {
+        const existingContentTypeHeader = harRequest.headers.find(
+          (header) => header.name.toLowerCase() === 'content-type',
+        )
+        // Update existing header if it has an empty value
+        if (
+          existingContentTypeHeader &&
+          (!existingContentTypeHeader.value ||
+            (postData.mimeType.startsWith('multipart/') &&
+              postData.mimeType.includes('boundary=') &&
+              postData.text !== undefined))
+        ) {
+          existingContentTypeHeader.value = postData.mimeType
+        }
+        // Add new header if none exists
+        else if (!existingContentTypeHeader) {
+          harRequest.headers.push({
+            name: 'Content-Type',
+            value: postData.mimeType,
+          })
+        }
+      }
+    }
+  }
+
+  const hasUriReadyQuery =
+    hasSerializedQuery || operation.parameters?.some((parameter) => getResolvedRef(parameter)?.in === 'querystring')
+
+  // Handle security schemes
+  if (securitySchemes) {
+    const { headers, queryString, cookies } = processSecuritySchemes(securitySchemes)
+    harRequest.headers.push(...headers)
+    harRequest.queryString.push(...queryString)
+    harRequest.cookies.push(...cookies)
+  }
+
+  // Keep authentication and global cookies in the explicit header as well, so
+  // snippet generators cannot replace cookie-style parameters with their own header.
+  const cookieHeader = harRequest.headers.find((header) => header.name.toLowerCase() === 'cookie')
+  if (hasCookieStyleEntries && cookieHeader && harRequest.cookies.length) {
+    const extraCookies = harRequest.cookies
+      .map((cookie) => `${encodeURIComponent(cookie.name)}=${encodeURIComponent(cookie.value)}`)
+      .join('; ')
+    cookieHeader.value = cookieHeader.value ? `${cookieHeader.value}; ${extraCookies}` : extraCookies
+    harRequest.cookies = []
+  }
+
+  // Whole-query content and serialized examples must retain their authored URI encoding.
+  // Keeping all query data in the URL avoids snippet generators introducing a second question mark.
+  if (hasUriReadyQuery && harRequest.queryString.length) {
+    const hashIndex = harRequest.url.indexOf('#')
+    const hash = hashIndex === -1 ? '' : harRequest.url.slice(hashIndex)
+    const url = hashIndex === -1 ? harRequest.url : harRequest.url.slice(0, hashIndex)
+    const query = harRequest.queryString
+      .map(({ name, value }) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+      .join('&')
+    harRequest.url = `${url}${url.includes('?') ? '&' : '?'}${query}${hash}`
+    harRequest.queryString = []
+  }
+
+  // Structured multipart parts (with or without files) are encoded by the HTTP client, which owns the boundary.
+  // Raw multipart text already has its boundary and must retain its Content-Type.
+  if (harRequest.postData?.mimeType === 'multipart/form-data' && harRequest.postData.params?.length) {
+    harRequest.headers = harRequest.headers.filter((header) => header.name.toLowerCase() !== 'content-type')
+  }
+
+  // Calculate headers size without allocating a large joined string
+  let headersSize = 0
+  for (const h of harRequest.headers) {
+    // name + ": " + value + "\r\n"
+    headersSize += (h.name?.length ?? 0) + 2 + (h.value?.length ?? 0) + 2
+  }
+  harRequest.headersSize = headersSize
+
+  return harRequest
+}

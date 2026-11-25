@@ -23,11 +23,14 @@ export default {}
 import { useBindCx } from '@scalar/use-hooks/useBindCx'
 
 import ScalarSidebarButton from './ScalarSidebarButton.vue'
+import ScalarSidebarLoading from './ScalarSidebarLoading.vue'
 import ScalarSidebarSpacer from './ScalarSidebarSpacer.vue'
-import type { ScalarSidebarItemProps } from './types'
+import type { ScalarSidebarGroupProps, ScalarSidebarItemProps } from './types'
 import { useSidebarGroups } from './useSidebarGroups'
 
-const { is = 'ul' } = defineProps<ScalarSidebarItemProps>()
+const { is = 'li' } = defineProps<
+  ScalarSidebarItemProps & Pick<ScalarSidebarGroupProps, 'loading'>
+>()
 
 defineSlots<{
   /** The text content of the toggle */
@@ -42,27 +45,31 @@ defineOptions({ inheritAttrs: false })
 const { cx } = useBindCx()
 </script>
 <template>
-  <li class="group/item group/sidebar-section contents">
+  <component
+    :is="is"
+    v-bind="cx('group/item group/sidebar-section contents')">
     <ScalarSidebarSpacer
       class="group/spacer-before h-3"
       :indent="level" />
     <ScalarSidebarButton
       is="div"
-      class="text-sm font-bold"
-      :indent="level"
+      v-if="$slots.default"
+      class="py-1.75 text-sm/4 font-bold"
+      disabled
       :icon="icon"
-      disabled>
+      :indent="level">
       <slot />
     </ScalarSidebarButton>
-    <component
-      :is="is"
-      v-bind="cx('flex flex-col gap-px')">
-      <slot name="items" />
-    </component>
+    <ul class="flex flex-col gap-px">
+      <ScalarSidebarLoading v-if="loading" />
+      <slot
+        v-else
+        name="items" />
+    </ul>
     <ScalarSidebarSpacer
       class="group/spacer-after h-3"
       :indent="level" />
-  </li>
+  </component>
 </template>
 <style>
 @reference "../../style.css";
@@ -79,6 +86,6 @@ const { cx } = useBindCx()
 
 /* Only one spacer between sections */
 .group\/sidebar-section:has(+ .group\/sidebar-section) > .group\/spacer-after {
-  @apply h-0 -mb-px;
+  @apply -mb-px h-0;
 }
 </style>

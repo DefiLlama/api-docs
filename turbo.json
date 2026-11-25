@@ -1,17 +1,48 @@
 {
-  "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["GOCACHE", "LOCALAPPDATA"],
+  "$schema": "./node_modules/turbo/schema.json",
+  "globalPassThroughEnv": ["GOCACHE", "LOCALAPPDATA", "REMOTE_CONTAINERS"],
   "ui": "tui",
   "tasks": {
     "lint:fix": {},
     "build": {
-      "outputs": ["dist/**", "storybook-static/**", ".output", ".nuxt"],
+      "outputs": ["dist/**", "storybook-static/**", ".output", ".nuxt", ".next", "build", "target/**"],
       "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "types:check": {
+      "dependsOn": ["build"]
+    },
+    "types:build": {
+      "dependsOn": ["build"]
     },
     "dev": {
       "cache": false,
       "persistent": true,
       "dependsOn": ["^build"]
+    },
+    "playground": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+    "playground:modal": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+    "playground:web": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+    "@scalarapi/docker-api-reference#build": {
+      "outputs": []
+    },
+    "proxy-scalar-com#build": {
+      "outputs": []
     }
   }
 }

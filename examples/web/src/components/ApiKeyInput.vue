@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { getApiKey, saveApiKey } from '@scalar/api-client'
 import { computed, onMounted, ref, watch } from 'vue'
 
-const WORKSPACE_ID = 'default'
+import { getApiKey, saveApiKey } from '../api-key-storage'
+
+const emit = defineEmits<{
+  (e: 'apiKeyChange', key: string | null): void
+}>()
 
 /** Reactive API key value */
 const apiKey = ref('')
@@ -18,13 +21,9 @@ const isProUser = computed(() => {
   return !!apiKey.value?.trim()
 })
 
-const emit = defineEmits<{
-  (e: 'apiKeyChange', key: string | null): void
-}>()
-
 /** Load API key from API key manager on mount */
 onMounted(() => {
-  const stored = getApiKey(WORKSPACE_ID)
+  const stored = getApiKey()
   if (stored) {
     apiKey.value = stored.key || ''
     previousApiKey.value = stored.key || ''
@@ -36,7 +35,7 @@ onMounted(() => {
 })
 
 /** Save API key when it changes */
-const handleApiKeyChange = async () => {
+const handleApiKeyChange = () => {
   // Don't do anything on initial load
   if (!isInitialized.value) return
 
@@ -55,7 +54,7 @@ const handleApiKeyChange = async () => {
   }
 
   // Save the API key
-  saveApiKey(WORKSPACE_ID, config)
+  saveApiKey(config)
 
   // Update previous value
   previousApiKey.value = apiKey.value
@@ -98,8 +97,8 @@ const switchToFreeApi = () => {
         <div class="header-actions">
           <button
             v-if="isProUser"
-            @click="switchToFreeApi"
-            class="switch-button">
+            class="switch-button"
+            @click="switchToFreeApi">
             Switch to Free API
           </button>
         </div>
@@ -109,10 +108,10 @@ const switchToFreeApi = () => {
     <div class="input-section">
       <div class="input-wrapper">
         <input
+          class="api-key-field"
+          placeholder="Enter your DefiLlama (API plan) API key"
           type="text"
           :value="apiKey"
-          placeholder="Enter your DefiLlama (API plan) API key"
-          class="api-key-field"
           @input="handleKeyChange" />
       </div>
       <p class="storage-info">

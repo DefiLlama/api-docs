@@ -1,114 +1,218 @@
+<script lang="ts">
+/**
+ * References Operation "block"
+ */
+export default {}
+
+export type OperationProps = {
+  id: string
+  method: string
+  /** The subset of the configuration object required for the operation component */
+  options: Pick<
+    ApiReferenceConfigurationRaw,
+    | 'expandAllParameters'
+    | 'expandAllResponses'
+    | 'hideModels'
+    | 'hideModelNames'
+    | 'hideTestRequestButton'
+    | 'layout'
+    | 'orderRequiredPropertiesFirst'
+    | 'orderSchemaPropertiesBy'
+    | 'expandAllSchemaProperties'
+    | 'maxVisibleRequestBodyProperties'
+    | 'schemaKeyboardNav'
+    | 'showOperationId'
+    | 'multipartNaming'
+    | 'showExtensions'
+  >
+  /** Document object */
+  document: OpenApiDocument
+  /** Key of the operations path in the document.paths object */
+  path: string
+  /** OpenAPI path object that will include the operation */
+  pathValue: PathItemObject | undefined
+  /** Currently selected server for the document */
+  server: ServerObject | null
+  /** The merged security schemes for the document and the authentication configuration */
+  securitySchemes: MergedSecuritySchemes
+  /** The http client options for the dropdown */
+  clientOptions: ClientOptionGroup[]
+  /** Whether the Classic layout operation is collapsed */
+  isCollapsed: boolean
+  /** Whether the operation is a webhook */
+  isWebhook: boolean
+  /** The currently selected client for the document */
+  selectedClient: WorkspaceStore['workspace']['x-scalar-default-client']
+  /** The currently selected example key, shared across operations for in-sync example pickers */
+  selectedExample: WorkspaceStore['workspace']['x-scalar-default-example']
+  /** The event bus */
+  eventBus: WorkspaceEventBus
+  /** The auth store */
+  authStore: AuthStore
+}
+</script>
+
 <script lang="ts" setup>
-import { useWorkspace } from '@scalar/api-client/store'
-import { filterSecurityRequirements } from '@scalar/api-client/views/Request/RequestSection'
-import type { HttpMethod } from '@scalar/helpers/http/http-methods'
-import type { Collection, Server } from '@scalar/oas-utils/entities/spec'
-import type { OpenAPIV3_1 } from '@scalar/openapi-types'
-import { isReference } from '@scalar/workspace-store/schemas/v3.1/type-guard'
+import type { ClientOptionGroup } from '@scalar/blocks/code-example'
+import type { SchemaRenderingProps } from '@scalar/blocks/schema'
+import type { ApiReferenceConfigurationRaw } from '@scalar/types/api-reference'
+import type { WorkspaceStore } from '@scalar/workspace-store/client'
+import type { AuthStore } from '@scalar/workspace-store/entities/auth'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getPathItemOperation } from '@scalar/workspace-store/helpers/for-each-path-item-operation'
+import { getFirstServer } from '@scalar/workspace-store/helpers/get-first-server'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import {
+  combineParams,
+  type MergedSecuritySchemes,
+} from '@scalar/workspace-store/request-example'
+import type {
+  OpenApiDocument,
+  PathItemObject,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
 import { computed } from 'vue'
 
-import { convertSecurityScheme } from '@/helpers/convert-security-scheme'
-import { useOperationDiscriminator } from '@/hooks/useOperationDiscriminator'
-import { useStore } from '@/v2/hooks/useStore'
+import { filterSelectedSecurity } from '@/features/Operation/helpers/filter-selected-security'
+import { SpecificationExtension } from '@/features/specification-extension'
 
+import {
+  getRequiredSecurity,
+  type RequiredSecurity,
+} from './helpers/get-required-security'
 import ClassicLayout from './layouts/ClassicLayout.vue'
 import ModernLayout from './layouts/ModernLayout.vue'
 
 const {
-  layout = 'modern',
+  specificationExtension = SpecificationExtension,
+  authStore,
+  clientOptions,
   document,
-  server,
+  eventBus,
+  isCollapsed,
   isWebhook,
-  collection,
-  path,
   method,
-} = defineProps<{
-  path: string
-  method: HttpMethod
-  isWebhook?: boolean
-  layout?: 'modern' | 'classic'
-  id: string
-  server: Server | undefined
-  /** @deprecated Use `document` instead, we just need the selected security scheme uids for now */
-  collection: Collection
-  /** @deprecated Use the new workspace store instead*/
-  document?: OpenAPIV3_1.Document
+  options,
+  path,
+  pathValue,
+  securitySchemes,
+  server,
+} = defineProps<OperationProps & SchemaRenderingProps>()
+
+defineSlots<{
+  /** Replaces the default copy control without replacing the security badge. */
+  actions?: () => unknown
 }>()
 
-const { workspace } = useStore()
-
 /**
- * Operation from the new workspace store, ensure we are de-referenced
- * TODO: loading/error states
+ * Operation from the new workspace store, ensure we are de-reference
+ *
+ * Also adds in params from the pathItemObject
  */
 const operation = computed(() => {
-  const initialKey = isWebhook ? 'webhooks' : 'paths'
-  const entity = workspace.activeDocument?.[initialKey]?.[path]?.[method]
+  const entity = getResolvedRef(getPathItemOperation(pathValue, method))
 
-  if (isReference(entity)) {
+  if (!entity) {
     return null
   }
 
-  return entity
+  // Combine params from the pathItem and the operation
+  const parameters = combineParams(pathValue?.parameters, entity.parameters)
+  return { ...entity, parameters }
 })
 
-const oldOperation = computed(() =>
-  isWebhook
-    ? document?.webhooks?.[path]?.[method]
-    : document?.paths?.[path]?.[method],
+/**
+ * Determine the effective server for the code examples.
+ */
+const selectedServer = computed<ServerObject | null>(() =>
+  getFirstServer(
+    // 1) Operation
+    operation.value?.servers ?? null,
+    // 2) Path Item
+    pathValue?.servers ?? null,
+    // 3) Document
+    server,
+  ),
 )
 
-/**
- * Handle the selection of discriminator in the request body (anyOf, oneOf…)
- *
- * TODO: update this to use the new store
- */
-const { handleDiscriminatorChange } = useOperationDiscriminator(
-  oldOperation.value,
-  document?.components?.schemas,
+const requiredSecurity = computed<RequiredSecurity>(() =>
+  getRequiredSecurity(operation.value, document),
 )
 
-/**
- * TEMP
- * This still uses the client store and formats it into the new store format
- */
-const { securitySchemes } = useWorkspace()
+/** We must ensure the selected security schemes are required on this operation */
 const selectedSecuritySchemes = computed(() =>
-  filterSecurityRequirements(
-    operation.value?.security || document?.security,
-    collection.selectedSecuritySchemeUids,
+  filterSelectedSecurity(
+    document,
+    operation.value,
+    authStore.getAuthSelectedSchemas({
+      type: 'document',
+      documentName: document?.['x-scalar-navigation']?.name ?? '',
+    }),
+    authStore.getAuthSelectedSchemas({
+      type: 'operation',
+      documentName: document?.['x-scalar-navigation']?.name ?? '',
+      path,
+      method,
+    }),
     securitySchemes,
-  ).map(convertSecurityScheme),
+  ),
 )
 </script>
 
 <template>
   <template v-if="operation">
-    <template v-if="layout === 'classic'">
-      <ClassicLayout
-        :id="id"
-        :isWebhook="isWebhook"
-        :method="method"
-        :operation="operation"
-        :oldOperation="oldOperation"
-        :securitySchemes="selectedSecuritySchemes"
-        :path="path"
-        :schemas="document?.components?.schemas"
-        :server="server"
-        @update:modelValue="handleDiscriminatorChange" />
-    </template>
-    <template v-else>
-      <ModernLayout
-        :id="id"
-        :isWebhook="isWebhook"
-        :method="method"
-        :oldOperation="oldOperation"
-        :securitySchemes="selectedSecuritySchemes"
-        :path="path"
-        :operation="operation"
-        :schemas="document?.components?.schemas"
-        :server="server"
-        @update:modelValue="handleDiscriminatorChange" />
-    </template>
+    <ClassicLayout
+      v-if="options.layout === 'classic'"
+      :id
+      :clientOptions
+      :document
+      :eventBus
+      :expansion="expansion"
+      :isCollapsed
+      :isWebhook
+      :method
+      :operation
+      :options
+      :path
+      :pathValue
+      :requiredSecurity
+      :scrollTargetId="scrollTargetId"
+      :selectedClient
+      :selectedExample
+      :selectedSecuritySchemes
+      :selectedServer
+      :specificationExtension="specificationExtension">
+      <template
+        v-if="$slots.actions"
+        #actions>
+        <slot name="actions" />
+      </template>
+    </ClassicLayout>
+    <ModernLayout
+      v-else
+      :id
+      :clientOptions
+      :document
+      :eventBus
+      :expansion="expansion"
+      :isWebhook
+      :method
+      :operation
+      :options
+      :path
+      :pathValue
+      :requiredSecurity
+      :scrollTargetId="scrollTargetId"
+      :selectedClient
+      :selectedExample
+      :selectedSecuritySchemes
+      :selectedServer
+      :specificationExtension="specificationExtension">
+      <template
+        v-if="$slots.actions"
+        #actions>
+        <slot name="actions" />
+      </template>
+    </ModernLayout>
   </template>
 </template>

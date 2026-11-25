@@ -1,0 +1,560 @@
+import { useModal } from '@scalar/components/modal'
+import { createWorkspaceStore } from '@scalar/workspace-store/client'
+import type { OpenApiDocument } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, nextTick, ref } from 'vue'
+
+import 'fake-indexeddb/auto'
+
+import { mockEventBus } from '@/v2/helpers/test-utils'
+
+import type { ApiClientOptions, ApiClientOptionsRef } from './helpers/types'
+import { useModalSidebar } from './hooks/use-modal-sidebar'
+import Modal from './Modal.vue'
+
+enableAutoUnmount(afterEach)
+
+/**
+ * Mock useFocusTrap - requires a real focusable DOM element which is unavailable in JSDOM tests.
+ */
+vi.mock('@vueuse/integrations/useFocusTrap', () => ({
+  useFocusTrap: () => ({
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+  }),
+}))
+
+/**
+ * Creates a test document with sensible defaults.
+ */
+const getDocument = (overrides: Partial<OpenApiDocument> = {}): OpenApiDocument => ({
+  openapi: '3.0.0',
+  info: { title: 'Test API', version: '1.0.0' },
+  paths: {},
+  'x-scalar-original-document-hash': 'test-hash',
+  ...overrides,
+})
+
+const createModalOptions = (options: ApiClientOptions = {}): ApiClientOptionsRef => ref(options)
+
+/**
+ * Shared workspace store - created once for the entire test file.
+ * Avoids re-running the expensive OpenAPI bundling pipeline on every test.
+ */
+const store = createWorkspaceStore()
+
+await store.addDocument({
+  name: 'test-doc',
+  document: getDocument({
+    paths: {
+      '/users': {
+        get: { summary: 'Get users', operationId: 'getUsers' },
+        post: { summary: 'Create user', operationId: 'createUser' },
+      },
+      '/pets': {
+        get: { summary: 'Get pets', operationId: 'getPets' },
+      },
+    },
+  }),
+})
+
+store.update('x-scalar-active-document', 'test-doc')
+
+const documentSlug = computed<string | undefined>(() => 'test-doc')
+const path = computed<string | undefined>(() => '/users')
+const method = computed<'get' | 'post' | undefined>(() => 'get')
+const exampleName = computed<string | undefined>(() => 'default')
+const isWebhook = computed(() => false)
+
+/**
+ * Creates fresh per-test reactive wrappers around the shared store.
+ * This is cheap — no document bundling, just computed refs and modal state.
+ */
+const createProps = () => {
+  const document = computed<OpenApiDocument | null>(
+    () => (store.workspace.documents[documentSlug.value ?? ''] as OpenApiDocument | undefined) ?? null,
+  )
+  const modalState = useModal()
+  const requestBodyCompositionSelection = ref<Record<string, number>>({})
+
+  const sidebarState = useModalSidebar({
+    workspaceStore: store,
+    documentSlug,
+    path,
+    method,
+    exampleName,
+    isWebhook,
+    route: vi.fn(),
+  })
+
+  return {
+    documentSlug,
+    path,
+    method,
+    exampleName,
+    document,
+    modalState,
+    sidebarState,
+    props: {
+      workspaceStore: store,
+      document,
+      path: computed(() => path.value),
+      method: computed(() => method.value),
+      options: createModalOptions(),
+      plugins: [],
+      exampleName: computed(() => exampleName.value),
+      isWebhook,
+      requestBodyCompositionSelection,
+      modalState,
+      sidebarState,
+      eventBus: mockEventBus,
+    },
+  }
+}
+
+/**
+ * Helper to wait for async operations and Vue updates.
+ */
+const waitForUpdates = async () => {
+  await nextTick()
+  await flushPromises()
+}
+
+/**
+ * Critical tests for the Modal component.
+ * Tests focus on core functionality like visibility, sidebar, operation rendering, and state management.
+ */
+describe('Modal', () => {
+  beforeEach(() => {
+    // Create a DOM element for mounting - required for teleport to work
+    document.body.innerHTML = '<div id="scalar-modal-test"></div>'
+  })
+
+  afterEach(() => {
+    // Clean up DOM and overflow style
+    document.body.innerHTML = ''
+    document.documentElement.style.overflow = ''
+    // Reset any store state modified by individual tests
+    store.update('x-scalar-sidebar-width', undefined)
+    store.workspace['x-scalar-active-environment'] = undefined
+    store.workspace['x-scalar-environments'] = undefined
+    ;(store.workspace.documents['test-doc'] as OpenApiDocument)['x-scalar-environments'] = undefined
+  })
+
+  it('renders when modal state is open', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * The modal should be visible when modalState.open is true.
+     * This is critical for the modal to function as expected.
+     */
+    const modalContainer = wrapper.find('.scalar-app-layout')
+    expect(modalContainer.exists()).toBe(true)
+    expect(modalContainer.attributes('role')).toBe('dialog')
+    expect(modalContainer.attributes('aria-modal')).toBe('true')
+  })
+
+  it('hides when modal state is closed', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = false
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * The modal should be hidden when modalState.open is false.
+     * Visibility is controlled via CSS class (not v-show/display:none) to avoid layout reflow on open.
+     */
+    const container = wrapper.find('.scalar-container')
+    expect(container.classes()).not.toContain('scalar-client--open')
+  })
+
+  it('renders Operation component when document, path, and method are provided', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * The Operation component should render when all required props are provided.
+     * This is critical for displaying the API operation details.
+     */
+    const operation = wrapper.findComponent({ name: 'Operation' })
+    expect(operation.exists()).toBe(true)
+  })
+
+  it('renders empty state when document is missing', async () => {
+    const emptyStore = createWorkspaceStore()
+    const modalState = useModal()
+    modalState.open = true
+
+    const emptyDocument = computed(() => null)
+    const requestBodyCompositionSelection = ref<Record<string, number>>({})
+    const sidebarState = useModalSidebar({
+      workspaceStore: emptyStore,
+      documentSlug: computed<string | undefined>(() => undefined),
+      path: computed<string | undefined>(() => undefined),
+      method: computed<'get' | 'post' | undefined>(() => undefined),
+      exampleName: computed<string | undefined>(() => undefined),
+      route: vi.fn(),
+    })
+
+    const wrapper = mount(Modal, {
+      props: {
+        workspaceStore: emptyStore,
+        document: emptyDocument,
+        path: computed(() => undefined),
+        method: computed(() => undefined),
+        options: createModalOptions(),
+        plugins: [],
+        exampleName: computed(() => undefined),
+        isWebhook,
+        requestBodyCompositionSelection,
+        modalState,
+        sidebarState,
+        eventBus: mockEventBus,
+      },
+      attachTo: '#scalar-modal-test',
+    })
+    await waitForUpdates()
+
+    /**
+     * Empty state should be shown when no document is selected.
+     * This prevents errors and provides user feedback.
+     */
+    expect(wrapper.text()).toContain('No document selected')
+    const operation = wrapper.findComponent({ name: 'Operation' })
+    expect(operation.exists()).toBe(false)
+  })
+
+  it('renders Sidebar component', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * The Sidebar should be rendered for navigation.
+     * This is critical for browsing API operations.
+     */
+    const sidebar = wrapper.findComponent({ name: 'Sidebar' })
+    expect(sidebar.exists()).toBe(true)
+  })
+
+  it('renders SidebarToggle component', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * The SidebarToggle should be rendered to allow users to show/hide the sidebar.
+     */
+    const sidebarToggle = wrapper.findComponent({ name: 'SidebarToggle' })
+    expect(sidebarToggle.exists()).toBe(true)
+  })
+
+  it('closes modal when clicking exit overlay', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * Clicking the exit overlay should close the modal.
+     * This provides an intuitive way to dismiss the modal.
+     */
+    const exitOverlay = wrapper.find('.scalar-app-exit')
+    expect(exitOverlay.exists()).toBe(true)
+
+    await exitOverlay.trigger('click')
+    expect(modalState.open).toBe(false)
+  })
+
+  it('uses default sidebar width when not configured', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    const sidebar = wrapper.findComponent({ name: 'Sidebar' })
+    expect(sidebar.exists()).toBe(true)
+
+    /**
+     * Default sidebar width should be used when x-scalar-sidebar-width is not set.
+     * The default is 288 pixels.
+     */
+    expect(wrapper.vm.sidebarWidth).toBe(288)
+  })
+
+  it('uses configured sidebar width from workspace store', async () => {
+    store.update('x-scalar-sidebar-width', 400)
+
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * Sidebar width from workspace configuration should be respected.
+     * This ensures user preferences are applied.
+     */
+    expect(wrapper.vm.sidebarWidth).toBe(400)
+  })
+
+  it('computes environment from workspace and document', async () => {
+    ;(store.workspace.documents['test-doc'] as OpenApiDocument)['x-scalar-environments'] = {
+      prod: {
+        color: '#FFFFFF',
+        variables: [{ name: 'API_KEY', value: 'doc-key-123' }],
+      },
+    }
+
+    // Set workspace-level environment
+    store.workspace['x-scalar-active-environment'] = 'prod'
+    store.workspace['x-scalar-environments'] = {
+      prod: {
+        color: '#FF0000',
+        variables: [{ name: 'BASE_URL', value: 'https://api.example.com' }],
+      },
+    }
+
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * Environment variables should be merged from workspace and document levels.
+     * This is critical for proper API request configuration.
+     */
+    expect(wrapper.vm.environment).toBeDefined()
+
+    expect(wrapper.vm.environment).toEqual({
+      color: '#FFFFFF',
+      variables: [
+        {
+          name: 'BASE_URL',
+          value: 'https://api.example.com',
+        },
+        {
+          name: 'API_KEY',
+          value: 'doc-key-123',
+        },
+      ],
+    })
+  })
+
+  it('passes correct props to Operation component', async () => {
+    const { props, modalState, path, method, exampleName } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * Operation component should receive correct props for rendering the right operation.
+     */
+    const operation = wrapper.findComponent({ name: 'Operation' })
+    expect(operation.exists()).toBe(true)
+    expect(operation.props('path')).toBe(path.value)
+    expect(operation.props('method')).toBe(method.value)
+    expect(operation.props('exampleName')).toBe(exampleName.value)
+    expect(operation.props('layout')).toBe('modal')
+  })
+
+  it('passes the document name (not the slugified navigation id) as documentSlug', async () => {
+    // The auth store keys secrets by the document name, but the navigation `id` is a
+    // slugified version of it. When the name is not slug-safe (common for `sources`
+    // documents with an explicit slug), passing the `id` here would make the runner
+    // read auth secrets under a different key than they were written, dropping the
+    // typed token. See https://github.com/scalar/scalar/issues/9554.
+    const rawName = 'My API'
+    const rawStore = createWorkspaceStore()
+    await rawStore.addDocument({
+      name: rawName,
+      document: getDocument({ paths: { '/users': { get: { summary: 'Get users' } } } }),
+    })
+    rawStore.update('x-scalar-active-document', rawName)
+
+    const rawDocumentSlug = computed<string | undefined>(() => rawName)
+    const rawPath = computed<string | undefined>(() => '/users')
+    const rawMethod = computed<'get' | 'post' | undefined>(() => 'get')
+    const rawExampleName = computed<string | undefined>(() => 'default')
+
+    const document = computed<OpenApiDocument | null>(
+      () => (rawStore.workspace.documents[rawName] as OpenApiDocument | undefined) ?? null,
+    )
+    const modalState = useModal()
+    modalState.open = true
+
+    const wrapper = mount(Modal, {
+      props: {
+        workspaceStore: rawStore,
+        document,
+        path: rawPath,
+        method: rawMethod,
+        options: createModalOptions(),
+        plugins: [],
+        exampleName: rawExampleName,
+        isWebhook,
+        requestBodyCompositionSelection: ref<Record<string, number>>({}),
+        modalState,
+        sidebarState: useModalSidebar({
+          workspaceStore: rawStore,
+          documentSlug: rawDocumentSlug,
+          path: rawPath,
+          method: rawMethod,
+          exampleName: rawExampleName,
+          route: vi.fn(),
+        }),
+        eventBus: mockEventBus,
+      },
+      attachTo: '#scalar-modal-test',
+    })
+    await waitForUpdates()
+
+    const navigation = document.value?.['x-scalar-navigation']
+    expect(navigation?.name).toBe(rawName)
+    expect(navigation?.id).toBe('my-api')
+
+    const operation = wrapper.findComponent({ name: 'Operation' })
+    expect(operation.props('documentSlug')).toBe(rawName)
+  })
+
+  it('has correct accessibility attributes', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * Modal should have proper accessibility attributes for screen readers.
+     */
+    const dialog = wrapper.find('[role="dialog"]')
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.attributes('aria-modal')).toBe('true')
+    expect(dialog.attributes('aria-label')).toBe('API Client')
+    expect(dialog.attributes('tabindex')).toBe('-1')
+  })
+
+  it('disables page scrolling when modal opens', async () => {
+    const { props, modalState } = createProps()
+
+    mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    // Open the modal
+    modalState.open = true
+    await waitForUpdates()
+
+    /**
+     * Page scrolling should be disabled when modal is open to prevent background scroll.
+     */
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Close the modal
+    modalState.open = false
+    await waitForUpdates()
+
+    /**
+     * Page scrolling should be restored when modal is closed.
+     */
+    expect(document.documentElement.style.overflow).toBe('')
+  })
+
+  it('renders with modal layout for Operation', async () => {
+    const { props, modalState } = createProps()
+    modalState.open = true
+
+    const wrapper = mount(Modal, { props, attachTo: '#scalar-modal-test' })
+    await waitForUpdates()
+
+    /**
+     * Operation should be rendered with 'modal' layout, not 'web' or 'desktop'.
+     * This ensures proper styling for the modal context.
+     */
+    const operation = wrapper.findComponent({ name: 'Operation' })
+    expect(operation.props('layout')).toBe('modal')
+
+    const sidebar = wrapper.findComponent({ name: 'Sidebar' })
+    expect(sidebar.props('layout')).toBe('modal')
+  })
+
+  it('passes hideClientButton option to Operation component', async () => {
+    // This test mounts the Modal three times in sequence, which can exceed the
+    // default 5s timeout on slower CI runners. Allow extra headroom.
+    const { props: baseProps, modalState } = createProps()
+    modalState.open = true
+
+    // Test with hideClientButton: true
+    const wrapperWithHidden = mount(Modal, {
+      props: {
+        ...baseProps,
+        options: createModalOptions({ hideClientButton: true }),
+      },
+      attachTo: '#scalar-modal-test',
+    })
+    await waitForUpdates()
+
+    /**
+     * When hideClientButton is true, it should be passed as true to Operation.
+     * This allows hiding the client button in the modal.
+     */
+    const operationWithHidden = wrapperWithHidden.findComponent({ name: 'OperationBlock' })
+    expect(operationWithHidden.exists()).toBe(true)
+    expect(operationWithHidden.props('hideClientButton')).toBe(true)
+
+    wrapperWithHidden.unmount()
+
+    // Test with hideClientButton: false
+    const wrapperWithShown = mount(Modal, {
+      props: {
+        ...baseProps,
+        options: createModalOptions({ hideClientButton: false }),
+      },
+      attachTo: '#scalar-modal-test',
+    })
+    await waitForUpdates()
+
+    /**
+     * When hideClientButton is false, it should be passed as false to Operation.
+     */
+    const operationWithShown = wrapperWithShown.findComponent({ name: 'OperationBlock' })
+    expect(operationWithShown.exists()).toBe(true)
+    expect(operationWithShown.props('hideClientButton')).toBe(false)
+
+    wrapperWithShown.unmount()
+
+    // Test with hideClientButton: undefined (should default to false)
+    const wrapperWithDefault = mount(Modal, {
+      props: {
+        ...baseProps,
+        options: createModalOptions(),
+      },
+      attachTo: '#scalar-modal-test',
+    })
+    await waitForUpdates()
+
+    /**
+     * When hideClientButton is undefined, it should default to false.
+     * This ensures the button is shown by default.
+     */
+    const operationWithDefault = wrapperWithDefault.findComponent({ name: 'OperationBlock' })
+    expect(operationWithDefault.exists()).toBe(true)
+    expect(operationWithDefault.props('hideClientButton')).toBe(false)
+  }, 15000)
+})

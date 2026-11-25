@@ -5,7 +5,20 @@
 [![License](https://img.shields.io/npm/l/%40scalar%2Fcore)](https://www.npmjs.com/package/@scalar/core)
 [![Discord](https://img.shields.io/discord/1135330207960678410?style=flat&color=5865F2)](https://discord.gg/scalar)
 
-Shared libraries for our packages, specifically [@scalar/api-reference](https://npmjs.com/@scalar/api-reference) and [@scalar/api-client](https://www.npmjs.com/package/@scalar/api-client).
+Shared libraries for our packages, specifically [@scalar/api-reference](https://www.npmjs.com/pacupdatekage/@scalar/api-reference) and [@scalar/api-client](https://www.npmjs.com/package/@scalar/api-client).
+
+---
+
+Scalar is an open-source API platform for teams who want beautiful developer interfaces without vendor lock-in.
+
+- **[API References](https://scalar.com/products/api-references/getting-started)** — Interactive API documentation from OpenAPI and AsyncAPI specs.
+- **[Developer Docs](https://scalar.com/products/docs/getting-started)** — Write in Markdown/MDX, generate API references, sync with two-way Git.
+- **[SDK Generator](https://scalar.com/products/sdk-generator/getting-started)** — Type-safe SDKs and CLIs in TypeScript, Python, Go, PHP, Java, and Ruby.
+- **[API Client](https://scalar.com/products/api-client/getting-started)** — Open-source, offline-first Postman alternative built on OpenAPI.
+
+20M+ monthly npm installs · 15,500+ GitHub stars · MIT licensed · [scalar.com](https://scalar.com)
+
+---
 
 
 ## Installation
@@ -20,7 +33,7 @@ npm install @scalar/core
 import { getHtmlDocument } from '@scalar/core/libs/html-rendering'
 
 const html = getHtmlDocument({
-  url: 'https://cdn.jsdelivr.net/npm/@scalar/galaxy/dist/latest.json',
+  url: 'https://registry.scalar.com/@scalar/apis/galaxy?format=json',
 })
 ```
 

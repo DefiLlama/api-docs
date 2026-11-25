@@ -1,0 +1,70 @@
+import { DEFAULT_MODELS_SECTION_LABEL, type ModelsSectionLabel } from '@scalar/types/api-reference'
+import type { AsyncApiDocument } from '@scalar/types/asyncapi/3.1'
+import type { OpenApiDocument } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import type { FuseResult } from 'fuse.js'
+import { type MaybeRefOrGetter, computed, ref, toValue } from 'vue'
+
+import { createFuseInstance } from '../helpers/create-fuse-instance'
+import { createSearchIndex } from '../helpers/create-search-index'
+import type { FuseData } from '../types'
+
+const MAX_SEARCH_RESULTS = 25
+
+/**
+ * Creates the search index from an OpenAPI or AsyncAPI document.
+ */
+export function useSearchIndex(
+  document: MaybeRefOrGetter<OpenApiDocument | AsyncApiDocument | undefined>,
+  modelsSectionLabel: MaybeRefOrGetter<ModelsSectionLabel | undefined> = DEFAULT_MODELS_SECTION_LABEL,
+  labels: MaybeRefOrGetter<{
+    heading: string
+    tagGroup: string
+    webhook: string
+    webhooks: string
+    introduction: string
+  }> = {
+    heading: 'Heading',
+    tagGroup: 'Tag Group',
+    webhook: 'Webhook',
+    webhooks: 'Webhooks',
+    introduction: 'Introduction',
+  },
+) {
+  const searchIndex = computed<FuseData[]>(() =>
+    createSearchIndex(toValue(document), {
+      labels: toValue(labels),
+      modelsSectionLabel: toValue(modelsSectionLabel) ?? DEFAULT_MODELS_SECTION_LABEL,
+    }),
+  )
+
+  /** When the document changes we replace the search index */
+  const fuse = computed(() => {
+    const instance = createFuseInstance()
+    instance.setCollection(searchIndex.value)
+    return instance
+  })
+
+  const query = ref<string>('')
+
+  const results = computed(() => {
+    if (query.value.length !== 0) {
+      return fuse.value.search(query.value, {
+        limit: MAX_SEARCH_RESULTS,
+      })
+    }
+
+    // Show a few entries as a placeholder
+    return searchIndex.value.slice(0, MAX_SEARCH_RESULTS).map(
+      (item: FuseData, index: number) =>
+        ({
+          item,
+          refIndex: index,
+        }) satisfies FuseResult<FuseData>,
+    )
+  })
+
+  return {
+    results,
+    query,
+  }
+}

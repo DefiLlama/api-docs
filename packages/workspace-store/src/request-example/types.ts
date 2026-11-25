@@ -1,0 +1,15 @@
+/**
+ * Re-exported from `@scalar/helpers/types/result` so the rest of the
+ * workspace-store codebase keeps importing `Result` from a colocated
+ * module while the canonical definition lives in helpers.
+ */
+export type { Result } from '@scalar/helpers/types/result'
+
+export type RequestExampleMeta = {
+  /** API path, or webhook name when `isWebhook` is true. */
+  path: string
+  method: string
+  exampleName: string
+  /** Resolve the operation from `document.webhooks` instead of `document.paths`. */
+  isWebhook?: boolean
+}

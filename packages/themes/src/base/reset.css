@@ -4,9 +4,9 @@
   @see https://github.com/tailwindlabs/tailwindcss/blob/3.3/src/css/preflight.css
 */
 
-/* Reset <body> in a layer  */
+/* Only reset pages that explicitly opt into Scalar styling. */
 @layer scalar-base {
-  body {
+  body.scalar-app {
     margin: 0;
     line-height: inherit;
   }
@@ -18,6 +18,18 @@
   font-family: var(--scalar-font);
   line-height: 1.15;
   color: var(--scalar-color-1);
+
+  /**
+   * Colour of the keyboard focus ring.
+   *
+   * The bare accent is only 2.78:1 against a hovered or selected surface, short
+   * of the 3:1 WCAG 1.4.11 asks of a focus indicator, so it is pulled toward the
+   * text colour. A fifth of the way clears 3:1 on every default surface, down to
+   * --scalar-background-3 (3.39:1), which is the tightest one a ring lands on.
+   * Anything drawing its own ring should use this token rather than the accent so
+   * every focus ring stays in step.
+   */
+  --scalar-focus-color: color-mix(in srgb, var(--scalar-color-accent), var(--scalar-color-1) 20%);
 
   -webkit-text-size-adjust: 100%;
   -moz-tab-size: 4;
@@ -41,6 +53,8 @@
     font-size: inherit;
     font-weight: inherit;
     font-style: inherit;
+    text-decoration: inherit;
+    text-align: inherit;
     line-height: inherit;
     color: inherit;
     margin: unset;
@@ -78,12 +92,28 @@
   input:where(:not([type="button"], [type="reset"], [type="submit"])),
   select,
   textarea {
-    border-radius: var(--scalar-radius);
+    border-radius: var(--scalar-radius-md);
     border-width: 1px;
   }
 
+  /**
+   * Align text form controls to the writing direction by default.
+   *
+   * The universal reset above sets `text-align: inherit`, which overrides the controls' built-in
+   * `start` alignment with whatever an ancestor resolves to — including a physical `left` from a
+   * Tailwind `text-left` utility, which does not flip for RTL. Re-asserting the logical `start`
+   * keeps inputs reading correctly in both LTR and RTL documents.
+   */
+  input,
+  select,
+  textarea {
+    text-align: start;
+  }
+
   /** Style placeholder text */
-  input::placeholder {
+  input::placeholder,
+  text-area::placeholder,
+  ::-webkit-input-placeholder {
     color: var(--scalar-color-3);
     font-family: var(--scalar-font);
   }
@@ -102,18 +132,31 @@
   /** Remove yellow/blue autofill indicator */
   input:-webkit-autofill {
     background-clip: text !important;
+    -webkit-text-fill-color: var(--scalar-color-1);
   }
 
   /** Add outline for focus visible */
   :focus-visible {
     outline-style: solid;
-    border-radius: var(--scalar-radius);
   }
 
   /** Set outline offset for buttons */
   button:focus-visible,
   [role="button"]:focus-visible {
     outline-offset: -1px;
+  }
+
+  /**
+   * Focus rings need 3:1 against the surface they sit on (WCAG 1.4.11), and the
+   * default light accent is only 2.78:1 on a hovered or selected sidebar item.
+   * Links and buttons show this ring for keyboard focus only, so the blend above
+   * is invisible to mouse users. Text inputs keep the plain accent ring because
+   * they are focused by click as well.
+   */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible {
+    outline-color: var(--scalar-focus-color);
   }
 
   /** Set the default cursor for buttons. */
@@ -144,8 +187,16 @@
     vertical-align: middle; /* 2 */
   }
 
-  /** Make elements with the HTML hidden attribute stay hidden by default */
-  [hidden] {
+  /**
+   * Make elements with the HTML hidden attribute stay hidden by default.
+   *
+   * `hidden="until-found"` is deliberately excluded: that value asks the
+   * browser to keep the subtree hidden but still searchable, which it does
+   * with `content-visibility: hidden`. `display: none` overrides that and
+   * makes find-in-page skip the content, so an author reset written for plain
+   * `hidden` would silently disable the feature wherever it is used.
+   */
+  [hidden]:not([hidden="until-found"]) {
     display: none;
   }
 }

@@ -1,0 +1,219 @@
+<script setup lang="ts">
+import {
+  filterClientsByQuery,
+  findClient,
+  type ClientOption,
+  type ClientOptionGroup,
+  type CustomClientOption,
+} from '@scalar/blocks/code-example'
+import { ScalarCombobox } from '@scalar/components/combobox'
+import { ScalarIcon } from '@scalar/components/icon'
+import { freezeElement } from '@scalar/helpers/dom/freeze-element'
+import type { AvailableClient, TargetId } from '@scalar/types/snippetz'
+import { type WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { computed, ref } from 'vue'
+
+import { isFeaturedClient } from '@/blocks/scalar-client-selector-block/helpers/featured-clients'
+import { useLocalization } from '@/features/localization'
+
+const { clientOptions, eventBus, selectedClient, featuredClients } =
+  defineProps<{
+    /** Client options */
+    clientOptions: ClientOptionGroup[]
+    /** The currently selected Http Client (a built-in client id or a custom sample id) */
+    selectedClient?: string
+    /** Clients shown as tabs beside this dropdown. */
+    featuredClients?: AvailableClient[]
+    /** Event bus */
+    eventBus: WorkspaceEventBus
+  }>()
+
+const containerRef = ref<HTMLElement>()
+const { translate } = useLocalization()
+
+/**
+ * Icons have longer names to appear in icon searches, e.g. "javascript-js" instead of just "javascript". This function
+ * maps the language key to the icon name.
+ */
+const getIconByLanguageKey = (targetKey: TargetId) =>
+  `programming-language-${targetKey === 'js' ? 'javascript' : targetKey}` as const
+
+/** Set custom example, or update the selected HTTP client globally */
+const selectClient = (option: ClientOption | CustomClientOption) => {
+  if (!containerRef.value) {
+    return
+  }
+
+  // We need to freeze the ui to prevent scrolling as the clients change
+  const unfreeze = freezeElement(containerRef.value)
+  setTimeout(() => {
+    unfreeze()
+  }, 300)
+
+  // Update the store
+  if (option.clientKey !== 'custom') {
+    eventBus.emit('workspace:update:selected-client', option.id)
+  }
+}
+
+/** Calculates the targetKey from the selected client id */
+const selectedTargetKey = computed(
+  () => selectedClient?.split('/')[0] as TargetId | undefined,
+)
+</script>
+<template>
+  <!--
+    Lives beside the TabList (not inside it). A combobox button is not a tab,
+    so placing it in role="tablist" fails aria-required-children.
+  -->
+  <div
+    ref="containerRef"
+    class="client-libraries-more">
+    <ScalarCombobox
+      :filterFn="filterClientsByQuery"
+      :inputLabel="translate('clientLibraries.searchLabel')"
+      :modelValue="findClient(clientOptions, selectedClient)"
+      :options="clientOptions"
+      placement="bottom-end"
+      teleport
+      @update:modelValue="selectClient($event as ClientOption)">
+      <button
+        class="client-libraries client-libraries__select"
+        :class="{
+          'client-libraries__active':
+            selectedClient &&
+            !isFeaturedClient(selectedClient, featuredClients),
+        }"
+        type="button">
+        <div
+          aria-hidden="true"
+          class="client-libraries-icon__more">
+          <template
+            v-if="
+              selectedClient &&
+              !isFeaturedClient(selectedClient, featuredClients)
+            ">
+            <div :class="`client-libraries-icon__${selectedTargetKey}`">
+              <ScalarIcon
+                v-if="selectedTargetKey"
+                class="client-libraries-icon"
+                :icon="getIconByLanguageKey(selectedTargetKey)" />
+            </div>
+          </template>
+          <template v-else>
+            <svg
+              class="client-libraries-icon"
+              height="50"
+              role="presentation"
+              viewBox="0 0 50 50"
+              width="50"
+              xmlns="http://www.w3.org/2000/svg">
+              <g
+                fill="currentColor"
+                fill-rule="nonzero">
+                <path
+                  d="M10.71 25.3a3.87 3.87 0 1 0 7.74 0 3.87 3.87 0 0 0-7.74 0M21.13 25.3a3.87 3.87 0 1 0 7.74 0 3.87 3.87 0 0 0-7.74 0M31.55 25.3a3.87 3.87 0 1 0 7.74 0 3.87 3.87 0 0 0-7.74 0" />
+              </g>
+            </svg>
+          </template>
+        </div>
+        <span
+          v-if="clientOptions.length"
+          class="client-libraries-text client-libraries-text-more">
+          {{ translate('clientLibraries.more') }}
+        </span>
+        <span class="sr-only">
+          {{ translate('clientLibraries.selectAll') }}
+        </span>
+      </button>
+    </ScalarCombobox>
+  </div>
+</template>
+<style scoped>
+/* One even column, the same width as each tab beside it */
+.client-libraries-more {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.client-libraries {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  position: relative;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 8px 2px;
+  gap: 6px;
+  color: var(--scalar-color-3);
+  border-bottom: 1px solid transparent;
+  user-select: none;
+}
+
+.client-libraries:not(.client-libraries__active):hover:before {
+  content: '';
+  position: absolute;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  background: var(--scalar-background-2);
+  left: 2px;
+  top: 2px;
+  z-index: 0;
+  border-radius: var(--scalar-radius);
+}
+.client-libraries:active {
+  color: var(--scalar-color-1);
+}
+.client-libraries:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--scalar-color-accent);
+}
+.client-libraries-icon {
+  max-width: 14px;
+  max-height: 14px;
+  min-width: 14px;
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-sizing: border-box;
+  color: currentColor;
+}
+.client-libraries-icon__more svg {
+  height: initial;
+}
+.client-libraries__active {
+  color: var(--scalar-color-1);
+  border-bottom: 1px solid var(--scalar-color-1);
+}
+.client-libraries .client-libraries-text {
+  font-size: var(--scalar-small);
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.client-libraries__active .client-libraries-text {
+  color: var(--scalar-color-1);
+  font-weight: var(--scalar-semibold);
+}
+@media screen and (max-width: 600px) {
+  .references-classic .client-libraries {
+    flex-direction: column;
+  }
+}
+@container client-libraries-list (width < 400px) {
+  .client-libraries-more {
+    flex: 0 0 auto;
+  }
+  .client-libraries__select {
+    width: fit-content;
+
+    .client-libraries-icon__more + span {
+      display: none;
+    }
+  }
+}
+</style>

@@ -1,0 +1,222 @@
+import type { PartialDeep } from 'type-fest'
+
+import type { SecretsAuth } from '@/entities/auth/schema'
+import type { AuthSecretField } from '@/helpers/auth-secret-fields'
+import type {
+  OAuthFlowsObject,
+  SecurityRequirementObject,
+  SecuritySchemeObject,
+} from '@/schemas/v3.2/strict/openapi-document'
+import type { ApiKeyObject, HttpObject, OAuth2Object, OpenIdConnectObject } from '@/schemas/v3.2/strict/security-scheme'
+
+/**
+ * AuthMeta defines the meta information needed to specify whether the authentication operation
+ * is being performed at the document level (entire API), or for a specific operation (specific path and method).
+ *
+ * - If type is 'document', the operation applies to the whole OpenAPI document.
+ * - If type is 'operation', it targets a specific operation, identified by its path and method.
+ */
+export type AuthMeta =
+  | {
+      type: 'document'
+    }
+  | {
+      type: 'operation'
+      path: string
+      method: string
+    }
+
+/**
+ * SecuritySchemeUpdate represents the possible updates that can be made
+ * to an OpenAPI security scheme object via UI interactions.
+ *
+ * - `http`: Updates to HTTP type schemes (e.g. basic, bearer), allowing token, username, and password changes.
+ * - `apiKey`: Updates to API Key type schemes, allowing the key name and its value to be updated.
+ * - `oauth2`: Updates to OAuth2 type schemes for each supported OAuth2 flow.
+ *    - Can set various properties such as auth/token URLs, tokens, PKCE method, client credentials, etc.
+ */
+type SecuritySchemeUpdatePayload =
+  | ({
+      type: 'http'
+    } & Partial<Omit<HttpObject, 'type'>>)
+  | ({
+      type: 'apiKey'
+    } & Partial<Omit<ApiKeyObject, 'type'>>)
+  | ({
+      type: 'oauth2'
+    } & PartialDeep<Omit<OAuth2Object, 'type'>>)
+  | ({
+      type: 'openIdConnect'
+    } & Partial<Omit<OpenIdConnectObject, 'type'>>)
+
+/** Event definitions for auth */
+export type AuthEvents = {
+  /**
+   * Update the selected security schemes for a document or specific operation.
+   * Triggers when the user picks or adds new auth schemes in the UI.
+   * - `selectedRequirements` is the current array of selected security requirement objects.
+   * - `newSchemes` lists new security schemes (with names and definitions) to be created and added.
+   * - `meta` describes the target (whole document or a specific operation).
+   */
+  'auth:update:selected-security-schemes': {
+    /** Security requirement objects representing the full updated selection */
+    selectedRequirements: SecurityRequirementObject[]
+    /** New security scheme definitions to add (name & scheme definition) */
+    newSchemes: { name: string; scheme: SecuritySchemeObject }[]
+    /** Meta describing update scope (document or operation) */
+    meta: AuthMeta
+  }
+
+  /**
+   * Update the currently active authentication tab index for the selected security schemes.
+   * Fires when the user changes which authentication method is actively edited in the UI (e.g., switches between multiple selected auth schemes).
+   * - `index` is the new active tab index to set.
+   * - `meta` describes the update scope (document or specific operation).
+   */
+  'auth:update:active-index': {
+    /** The index of the auth tab to set as active */
+    index: number
+    /** Meta information for the auth update */
+    meta: AuthMeta
+  }
+
+  /**
+   * Update a security scheme in the OpenAPI document's components object.
+   * Use this event to update secret information or configuration for UI-auth flows,
+   * such as username, password, tokens for HTTP/ApiKey/OAuth2 schemes.
+   */
+  'auth:update:security-scheme': {
+    /** The data to update the security scheme with */
+    payload: SecuritySchemeUpdatePayload
+    /** The name of the security scheme to update */
+    name: string
+  }
+
+  /**
+   * Update a security scheme in the OpenAPI document's components object.
+   * Use this event to update secret information or configuration for UI-auth flows,
+   * such as username, password, tokens for HTTP/ApiKey/OAuth2 schemes.
+   */
+  'auth:update:security-scheme-secrets': {
+    /** The data to update the security scheme with */
+    payload: PartialDeep<SecretsAuth[string]> & { type: SecretsAuth[string]['type'] }
+    /** The name of the security scheme to update */
+    name: string
+    /** Replace existing secrets instead of deep-merging with previous values, required when removing properties */
+    overwrite?: boolean
+  }
+
+  /**
+   * Clear the selected security schemes for a document or specific operation.
+   * Triggers when the user toggles the operation security toggle.
+   * - `meta` describes the target (whole document or a specific operation).
+   */
+  'auth:clear:selected-security-schemes': {
+    /** Meta information for the auth update */
+    meta: AuthMeta
+  }
+
+  /**
+   * Removes a scheme from the auth store
+   */
+  'auth:clear:security-scheme-secrets': {
+    /** The name of the security scheme to clear */
+    name: string
+  }
+
+  /** Restore one credential's default without clearing the rest of the form. */
+  'auth:reset:security-scheme-secret': {
+    name: string
+    field: AuthSecretField
+    flow?: keyof OAuthFlowsObject
+  }
+
+  /**
+   * Update the selected scopes for a given security scheme.
+   * Triggers when the user selects/deselects scopes for an OAuth2 (or other scopes-supporting) scheme in the UI.
+   *
+   * Provide either:
+   * - `scopes`: the absolute scope list (used by bulk actions like "Select All" / "Deselect All"), or
+   * - `scope` together with `selected`: a single-scope toggle applied against the scopes currently
+   *   stored in the auth state. Toggling against the stored value (rather than a snapshot computed in
+   *   the component) keeps rapid successive clicks from racing and dropping each other's changes.
+   *
+   * A payload that provides neither (or `scope` without `selected`) is ignored, so a malformed event
+   * can never silently clear the selection.
+   */
+  'auth:update:selected-scopes': {
+    /** The id of the security scheme to update the scopes for */
+    id: string[]
+    /** The name of the security scheme to update the scopes for */
+    name: string
+    /** The absolute scope list to store. Used by bulk actions. Mutually exclusive with `scope`. */
+    scopes?: string[]
+    /** The single scope to toggle. Applied against the currently stored scopes. Requires `selected`. */
+    scope?: string
+    /** Whether the toggled `scope` should be selected (added) or deselected (removed). */
+    selected?: boolean
+    /** Meta information for the auth update */
+    meta: AuthMeta
+  }
+
+  /**
+   * Add a new scope to an OAuth2 flow, or rename / update the description of an existing scope.
+   *
+   * - When `oldScope` is omitted, a new scope is added (no-op if the scope already exists).
+   * - When `oldScope` is provided, the existing scope is replaced. The `scope` key may equal
+   *   `oldScope` for description-only updates.
+   * - When `enable` is true, the resulting `scope` is additionally added to every selection
+   *   requirement (document- and operation-level) that already references this security scheme,
+   *   so callers do not need a follow-up `auth:update:selected-scopes`.
+   *
+   * Renames always rewrite the previous scope key inside matching selections. `enable` is
+   * intended for "add and select" flows where the new scope should be immediately active.
+   */
+  'auth:upsert:scopes': {
+    /** The name of the security scheme that owns the flow */
+    name: string
+    /** Which OAuth flow on the scheme to update */
+    flowType: keyof OAuthFlowsObject
+    /** The desired scope key */
+    scope: string
+    /** Description for the scope */
+    description: string
+    /** When set, the existing scope with this key is replaced (rename + description update) */
+    oldScope?: string
+    /**
+     * When true, ensure the resulting `scope` is included in every selection requirement
+     * (document- and operation-level) that references this security scheme by name.
+     */
+    enable?: boolean
+  }
+
+  /**
+   * Remove a scope from an OAuth2 flow.
+   *
+   * Selection state is owned by `auth:update:selected-scopes`. Callers that want to drop the
+   * removed scope from current selections must emit `auth:update:selected-scopes` separately.
+   */
+  'auth:delete:scopes': {
+    /** The name of the security scheme that owns the flow */
+    name: string
+    /** Which OAuth flow on the scheme to delete the scope from */
+    flowType: keyof OAuthFlowsObject
+    /** The scope key to delete */
+    scope: string
+  }
+
+  /**
+   * Delete one or more security schemes from the OpenAPI document.
+   *
+   * When triggered, removes the specified security scheme(s) from components.securitySchemes,
+   * and also cleans up all associated document-level and operation-level references,
+   * including selected security (x-scalar-selected-security) everywhere those schemes appear.
+   *
+   * - `names`: Array of security scheme names to delete. Array is used to support deleting multiple
+   *   schemes at once, including multi-scheme (composite/complex) authentication scenarios.
+   */
+  'auth:delete:security-scheme': {
+    /** Names of the security schemes to delete */
+    names: string[]
+  }
+}

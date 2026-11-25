@@ -1,0 +1,624 @@
+import { mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import { h } from 'vue'
+
+import RenderPlugins from './RenderPlugins.vue'
+
+/**
+ * Mock the usePluginManager composable to control what components are returned.
+ */
+vi.mock('@/plugins', () => ({
+  usePluginManager: vi.fn(),
+}))
+
+import { usePluginManager } from '@/plugins'
+
+describe('RenderPlugins', () => {
+  const mockOptions = { theme: 'dark', layout: 'modern' }
+
+  /** Read-only auth accessor shared by the mocked plugin managers below. */
+  const mockAuthState = {
+    export: vi.fn().mockReturnValue({}),
+    getAuthSecrets: vi.fn(),
+    getAuthSelectedSchemas: vi.fn(),
+  }
+
+  describe('rendering', () => {
+    it('renders nothing when no components are registered', () => {
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.plugin-view').exists()).toBe(false)
+      expect(wrapper.html()).toBe('<!--v-if-->')
+    })
+
+    it('renders a Vue component without custom renderer', () => {
+      const TestComponent = {
+        name: 'TestComponent',
+        template: '<div class="test-component">Test Content</div>',
+        props: ['options'],
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([
+          {
+            component: TestComponent,
+          },
+        ]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.plugin-view').exists()).toBe(true)
+      expect(wrapper.find('.test-component').exists()).toBe(true)
+      expect(wrapper.find('.test-component').text()).toBe('Test Content')
+    })
+
+    it('renders with custom renderer', () => {
+      const CustomRenderer = {
+        name: 'CustomRenderer',
+        template: '<div class="custom-renderer">Rendered with custom renderer</div>',
+        props: ['component', 'options'],
+      }
+
+      const MockReactComponent = 'MockReactComponent'
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([
+          {
+            component: MockReactComponent,
+            renderer: CustomRenderer,
+          },
+        ]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.plugin-view').exists()).toBe(true)
+      expect(wrapper.find('.custom-renderer').exists()).toBe(true)
+      expect(wrapper.find('.custom-renderer').text()).toBe('Rendered with custom renderer')
+    })
+  })
+
+  describe('props handling', () => {
+    it('passes options to Vue components', () => {
+      const receivedProps: any = {}
+
+      const TestComponent = {
+        name: 'TestComponent',
+        template: '<div class="test-component">Props received</div>',
+        props: ['options'],
+        setup(props: any) {
+          receivedProps.options = props.options
+          return {}
+        },
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([
+          {
+            component: TestComponent,
+          },
+        ]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(receivedProps.options).toStrictEqual(mockOptions)
+    })
+
+    it('passes additional props to Vue components', () => {
+      const receivedProps: any = {}
+
+      const TestComponent = {
+        name: 'TestComponent',
+        template: '<div class="test-component">Props received</div>',
+        props: ['options', 'customProp', 'anotherProp'],
+        setup(props: any) {
+          receivedProps.options = props.options
+          receivedProps.customProp = props.customProp
+          receivedProps.anotherProp = props.anotherProp
+          return {}
+        },
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([
+          {
+            component: TestComponent,
+            props: {
+              customProp: 'custom value',
+              anotherProp: 42,
+            },
+          },
+        ]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(receivedProps.options).toStrictEqual(mockOptions)
+      expect(receivedProps.customProp).toBe('custom value')
+      expect(receivedProps.anotherProp).toBe(42)
+    })
+
+    it('passes correct props to custom renderer', () => {
+      const receivedProps: any = {}
+
+      const CustomRenderer = {
+        name: 'CustomRenderer',
+        template: '<div class="custom-renderer">Custom renderer</div>',
+        props: ['component', 'options', 'extraProp'],
+        setup(props: any) {
+          receivedProps.component = props.component
+          receivedProps.store = props.store
+          receivedProps.options = props.options
+          receivedProps.extraProp = props.extraProp
+          return {}
+        },
+      }
+
+      const MockComponent = 'MockReactComponent'
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([
+          {
+            component: MockComponent,
+            renderer: CustomRenderer,
+            props: {
+              extraProp: 'extra value',
+            },
+          },
+        ]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(receivedProps.component).toBe(MockComponent)
+      expect(receivedProps.options).toStrictEqual(mockOptions)
+      expect(receivedProps.extraProp).toBe('extra value')
+    })
+  })
+
+  describe('multiple components', () => {
+    it('renders multiple plugin components', () => {
+      const TestComponent1 = {
+        name: 'TestComponent1',
+        template: '<div class="component-1">First Component</div>',
+        props: ['options'],
+      }
+
+      const TestComponent2 = {
+        name: 'TestComponent2',
+        template: '<div class="component-2">Second Component</div>',
+        props: ['options'],
+      }
+
+      const TestComponent3 = {
+        name: 'TestComponent3',
+        template: '<div class="component-3">Third Component</div>',
+        props: ['options'],
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi
+          .fn()
+          .mockReturnValue([
+            { component: TestComponent1 },
+            { component: TestComponent2 },
+            { component: TestComponent3 },
+          ]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.plugin-view').exists()).toBe(true)
+      expect(wrapper.find('.component-1').exists()).toBe(true)
+      expect(wrapper.find('.component-2').exists()).toBe(true)
+      expect(wrapper.find('.component-3').exists()).toBe(true)
+      expect(wrapper.find('.component-1').text()).toBe('First Component')
+      expect(wrapper.find('.component-2').text()).toBe('Second Component')
+      expect(wrapper.find('.component-3').text()).toBe('Third Component')
+    })
+
+    it('renders components from multiple plugins with different configurations', () => {
+      const VueComponent = {
+        name: 'VueComponent',
+        template: '<div class="vue-component">Vue Component</div>',
+        props: ['options'],
+      }
+
+      const CustomRenderer = {
+        name: 'CustomRenderer',
+        template: '<div class="custom-rendered">Custom Rendered</div>',
+        props: ['component', 'options'],
+      }
+
+      const ReactComponent = 'ReactComponent'
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi
+          .fn()
+          .mockReturnValue([{ component: VueComponent }, { component: ReactComponent, renderer: CustomRenderer }]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.plugin-view').exists()).toBe(true)
+      expect(wrapper.find('.vue-component').exists()).toBe(true)
+      expect(wrapper.find('.custom-rendered').exists()).toBe(true)
+    })
+  })
+
+  describe('error boundary', () => {
+    it('wraps each component in ScalarErrorBoundary', () => {
+      const TestComponent = {
+        name: 'TestComponent',
+        template: '<div class="test-component">Test</div>',
+        props: ['options'],
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([{ component: TestComponent }]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      /**
+       * We cannot directly test for ScalarErrorBoundary in the wrapper
+       * because it is a component that wraps the plugin component.
+       * Instead, we verify that the component is rendered successfully,
+       * which indicates the error boundary is working as expected.
+       */
+      expect(wrapper.find('.test-component').exists()).toBe(true)
+    })
+  })
+
+  describe('view name handling', () => {
+    it('calls getViewComponents with the correct view name', () => {
+      const getViewComponentsMock = vi.fn().mockReturnValue([])
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: getViewComponentsMock,
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(getViewComponentsMock).toHaveBeenCalledWith('content.end', 'my-doc')
+      expect(getViewComponentsMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('handles different view names correctly', () => {
+      const getViewComponentsMock = vi.fn().mockReturnValue([])
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: getViewComponentsMock,
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      mount(RenderPlugins, {
+        props: {
+          // @ts-expect-error just for the test
+          viewName: 'custom.view.name',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(getViewComponentsMock).toHaveBeenCalledWith('custom.view.name', 'my-doc')
+    })
+  })
+
+  describe('navigation wiring', () => {
+    it('renders each view with its id so navigation can scroll to it', () => {
+      const TestComponent = {
+        name: 'TestComponent',
+        template: '<div class="test-component">Test</div>',
+        props: ['options'],
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([
+          {
+            id: 'my-doc/plugin-view/my-plugin/content.start/0',
+            component: TestComponent,
+            sidebar: { show: true, label: 'Getting Started' },
+          },
+        ]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.start',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      // The wrapper id mirrors the sidebar entry id so scroll navigation can find it
+      expect(wrapper.find('[id="my-doc/plugin-view/my-plugin/content.start/0"]').exists()).toBe(true)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('handles components with no props gracefully', () => {
+      const TestComponent = {
+        name: 'TestComponent',
+        template: '<div class="test-component">No props</div>',
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([{ component: TestComponent }]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.test-component').exists()).toBe(true)
+      expect(wrapper.find('.test-component').text()).toBe('No props')
+    })
+
+    it('handles empty options object', () => {
+      const TestComponent = {
+        name: 'TestComponent',
+        template: '<div class="test-component">Test</div>',
+        props: ['options'],
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([{ component: TestComponent }]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: {},
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.test-component').exists()).toBe(true)
+    })
+
+    it('handles component with render function', () => {
+      const TestComponent = {
+        name: 'TestComponent',
+        props: ['options'],
+        render() {
+          return h('div', { class: 'render-function-component' }, 'Render function')
+        },
+      }
+
+      vi.mocked(usePluginManager).mockReturnValue({
+        getViewComponents: vi.fn().mockReturnValue([{ component: TestComponent }]),
+        getSpecificationExtensions: vi.fn(),
+        notifyInit: vi.fn(),
+        notifyConfigChange: vi.fn(),
+        notifyDestroy: vi.fn(),
+        getApiClientPlugins: vi.fn().mockReturnValue([]),
+        getSidebarEntries: vi.fn().mockReturnValue([]),
+        getDocumentTypes: vi.fn().mockReturnValue([]),
+        getDocumentType: vi.fn().mockReturnValue(undefined),
+        getAuthState: vi.fn().mockReturnValue(mockAuthState),
+        getMarkdownRenderHooks: vi.fn().mockReturnValue([]),
+      })
+
+      const wrapper = mount(RenderPlugins, {
+        props: {
+          viewName: 'content.end',
+          options: mockOptions,
+          documentSlug: 'my-doc',
+        },
+      })
+
+      expect(wrapper.find('.render-function-component').exists()).toBe(true)
+      expect(wrapper.find('.render-function-component').text()).toBe('Render function')
+    })
+  })
+})

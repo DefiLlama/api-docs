@@ -14,7 +14,9 @@ import { useBindCx } from '@scalar/use-hooks/useBindCx'
 import { useTextareaAutosize } from '@vueuse/core'
 import { onMounted } from 'vue'
 
-const model = defineModel<string>()
+import { ScalarFormInput } from '../ScalarForm'
+
+const model = defineModel<string>({ default: '' })
 
 const { textarea } = useTextareaAutosize({
   input: model,
@@ -22,7 +24,7 @@ const { textarea } = useTextareaAutosize({
 })
 
 defineOptions({ inheritAttrs: false })
-const { classCx, otherAttrs } = useBindCx()
+const { stylingAttrsCx, otherAttrs } = useBindCx()
 
 onMounted(() => {
   // Force autofocus if the textarea has the autofocus attribute
@@ -30,10 +32,11 @@ onMounted(() => {
 })
 </script>
 <template>
-  <div
+  <ScalarFormInput
+    is="div"
     v-bind="
-      classCx(
-        'bg-b-1.5 custom-scroll flex min-h-0 shrink cursor-text items-center gap-0.75 rounded-md border px-3 py-2.5 outline-offset-[-1px] focus-within:bg-b-1 has-[input:focus-visible]:outline',
+      stylingAttrsCx(
+        'custom-scroll flex min-h-0 shrink cursor-text items-start bg-b-1 text-c-1 leading-snug dark:bg-b-1.5',
       )
     "
     @click="textarea?.focus()">
@@ -41,6 +44,6 @@ onMounted(() => {
       ref="textarea"
       v-model="model"
       v-bind="otherAttrs"
-      class="w-full resize-none border-none bg-transparent text-sm focus-within:outline-none" />
-  </div>
+      class="w-full resize-none rounded-none border-none bg-transparent placeholder:font-[inherit] focus-within:outline-none" />
+  </ScalarFormInput>
 </template>

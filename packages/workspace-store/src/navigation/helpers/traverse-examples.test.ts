@@ -1,0 +1,620 @@
+import { describe, expect, it } from 'vitest'
+
+import type { OperationObject } from '@/schemas/v3.2/strict/openapi-document'
+
+import { getUniqueExampleName, traverseOperationExamples } from './traverse-examples'
+
+describe('traverse-examples', () => {
+  it('returns empty array for empty operation object', () => {
+    const operation: OperationObject = {
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  describe('draft examples extraction', () => {
+    it('extracts examples from x-draft-examples when array exists', () => {
+      const operation: OperationObject = {
+        'x-draft-examples': ['draft-1', 'draft-2'],
+        responses: {},
+      }
+
+      const result = traverseOperationExamples(operation)
+
+      expect(result).toHaveLength(2)
+      expect(result).toContain('draft-1')
+      expect(result).toContain('draft-2')
+    })
+
+    it('returns empty array when x-draft-examples is missing', () => {
+      const operation: OperationObject = {
+        responses: {},
+      }
+
+      const result = traverseOperationExamples(operation)
+
+      expect(result).toEqual([])
+    })
+
+    it('returns empty array when x-draft-examples is empty array', () => {
+      const operation: OperationObject = {
+        'x-draft-examples': [],
+        responses: {},
+      }
+
+      const result = traverseOperationExamples(operation)
+
+      expect(result).toEqual([])
+    })
+
+    it('merges draft examples with request body examples', () => {
+      const operation: OperationObject = {
+        'x-draft-examples': ['draft-example'],
+        requestBody: {
+          content: {
+            'application/json': {
+              examples: {
+                requestExample: { value: { id: 1 } },
+              },
+            },
+          },
+        },
+        responses: {},
+      }
+
+      const result = traverseOperationExamples(operation)
+
+      expect(result).toHaveLength(2)
+      expect(result).toContain('draft-example')
+      expect(result).toContain('requestExample')
+    })
+
+    it('deduplicates draft example names with examples from other sources', () => {
+      const operation: OperationObject = {
+        'x-draft-examples': ['shared'],
+        requestBody: {
+          content: {
+            'application/json': {
+              examples: {
+                shared: { value: { id: 1 } },
+              },
+            },
+          },
+        },
+        responses: {},
+      }
+
+      const result = traverseOperationExamples(operation)
+
+      expect(result).toEqual(['shared'])
+    })
+
+    it('preserves draft examples first in result when only draft examples exist', () => {
+      const operation: OperationObject = {
+        'x-draft-examples': ['first-draft', 'second-draft'],
+        responses: {},
+      }
+
+      const result = traverseOperationExamples(operation)
+
+      expect(result).toEqual(['first-draft', 'second-draft'])
+    })
+  })
+
+  it('extracts examples from request body', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {
+            examples: {
+              example1: {
+                value: { id: 1 },
+              },
+              example2: {
+                value: { id: 2 },
+              },
+            },
+          },
+        },
+      },
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual(['example1', 'example2'])
+  })
+
+  it('extracts examples from request body with multiple media types', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {
+            examples: {
+              jsonExample: {
+                value: { id: 1 },
+              },
+            },
+          },
+          'application/xml': {
+            examples: {
+              xmlExample: {
+                value: '<root></root>',
+              },
+            },
+          },
+        },
+      },
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toHaveLength(2)
+    expect(result).toContain('jsonExample')
+    expect(result).toContain('xmlExample')
+  })
+
+  it('handles request body with $ref', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        $ref: '#/components/requestBodies/RequestBody',
+        '$ref-value': {
+          content: {
+            'application/json': {
+              examples: {
+                refExample: {
+                  value: { id: 1 },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual(['refExample'])
+  })
+
+  it('handles request body without content', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {},
+      },
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('handles request body with content but no examples', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+            },
+          },
+        },
+      },
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('extracts examples from parameter examples property', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          name: 'userId',
+          in: 'query',
+          examples: {
+            paramExample1: {
+              value: '123',
+            },
+            paramExample2: {
+              value: '456',
+            },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual(['paramExample1', 'paramExample2'])
+  })
+
+  it('extracts examples from parameter content', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          name: 'filter',
+          in: 'query',
+          content: {
+            'application/json': {
+              examples: {
+                contentExample: {
+                  value: { active: true },
+                },
+              },
+            },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual(['contentExample'])
+  })
+
+  it('extracts examples from multiple parameters', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          name: 'userId',
+          in: 'query',
+          examples: {
+            example1: {
+              value: '123',
+            },
+          },
+        },
+        {
+          name: 'filter',
+          in: 'query',
+          content: {
+            'application/json': {
+              examples: {
+                example2: {
+                  value: { active: true },
+                },
+              },
+            },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toHaveLength(2)
+    expect(result).toContain('example1')
+    expect(result).toContain('example2')
+  })
+
+  it('handles parameter with $ref', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          $ref: '#/components/parameters/UserIdParam',
+          '$ref-value': {
+            name: 'userId',
+            in: 'query',
+            examples: {
+              refParamExample: {
+                value: '123',
+              },
+            },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual(['refParamExample'])
+  })
+
+  it('handles parameter without examples or content', () => {
+    const operation: OperationObject = {
+      parameters: [
+        {
+          name: 'userId',
+          in: 'query',
+          schema: {
+            type: 'string',
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('does not extract examples from responses', () => {
+    const operation: OperationObject = {
+      responses: {
+        '200': {
+          description: 'Success',
+          content: {
+            'application/json': {
+              examples: {
+                responseExample1: {
+                  value: { success: true },
+                },
+                responseExample2: {
+                  value: { success: false },
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('handles response without content', () => {
+    const operation: OperationObject = {
+      responses: {
+        '204': {
+          description: 'No Content',
+        },
+      },
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('handles response with content but no examples', () => {
+    const operation: OperationObject = {
+      responses: {
+        '200': {
+          description: 'Success',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('deduplicates example names across request body and parameters', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {
+            examples: {
+              sharedExample: {
+                value: { id: 1 },
+              },
+            },
+          },
+        },
+      },
+      parameters: [
+        {
+          name: 'userId',
+          in: 'query',
+          examples: {
+            sharedExample: {
+              value: '123',
+            },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual(['sharedExample'])
+  })
+
+  it('extracts all examples from complex operation (request body and parameters only)', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {
+            examples: {
+              requestExample: {
+                value: { id: 1 },
+              },
+            },
+          },
+        },
+      },
+      parameters: [
+        {
+          name: 'userId',
+          in: 'query',
+          examples: {
+            paramExample: {
+              value: '123',
+            },
+          },
+        },
+        {
+          name: 'filter',
+          in: 'query',
+          content: {
+            'application/json': {
+              examples: {
+                paramContentExample: {
+                  value: { active: true },
+                },
+              },
+            },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toHaveLength(3)
+    expect(result).toContain('requestExample')
+    expect(result).toContain('paramExample')
+    expect(result).toContain('paramContentExample')
+  })
+
+  it('handles operation with no requestBody, parameters, or responses', () => {
+    const operation: OperationObject = {}
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('handles empty arrays and objects gracefully', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {},
+      },
+      parameters: [],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toEqual([])
+  })
+
+  it('handles mixed $ref and regular objects', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        $ref: '#/components/requestBodies/RequestBody',
+        '$ref-value': {
+          content: {
+            'application/json': {
+              examples: {
+                refExample: {
+                  value: { id: 1 },
+                },
+              },
+            },
+          },
+        },
+      },
+      parameters: [
+        {
+          name: 'userId',
+          in: 'query',
+          examples: {
+            regularExample: {
+              value: '123',
+            },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    expect(result).toHaveLength(2)
+    expect(result).toContain('refExample')
+    expect(result).toContain('regularExample')
+  })
+
+  it('preserves insertion order of unique examples', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {
+            examples: {
+              first: { value: 1 },
+              second: { value: 2 },
+            },
+          },
+        },
+      },
+      parameters: [
+        {
+          name: 'param',
+          in: 'query',
+          examples: {
+            third: { value: 3 },
+          },
+        },
+      ],
+      responses: {},
+    }
+
+    const result = traverseOperationExamples(operation)
+
+    // Since we are using a Set and then converting to array,
+    // the order should be preserved based on insertion order
+    expect(result[0]).toBe('first')
+    expect(result[1]).toBe('second')
+    expect(result[2]).toBe('third')
+  })
+  it('returns the base name when nothing uses it yet', () => {
+    const operation: OperationObject = {
+      'x-draft-examples': ['Existing'],
+      responses: {},
+    }
+
+    expect(getUniqueExampleName(operation, 'Generated from schema')).toBe('Generated from schema')
+  })
+
+  it('adds a numeric suffix when the base name is taken', () => {
+    const operation: OperationObject = {
+      'x-draft-examples': ['Generated from schema'],
+      responses: {},
+    }
+
+    expect(getUniqueExampleName(operation, 'Generated from schema')).toBe('Generated from schema (2)')
+  })
+
+  it('skips suffixes that are already taken', () => {
+    const operation: OperationObject = {
+      'x-draft-examples': ['Generated from schema', 'Generated from schema (2)', 'Generated from schema (3)'],
+      responses: {},
+    }
+
+    expect(getUniqueExampleName(operation, 'Generated from schema')).toBe('Generated from schema (4)')
+  })
+
+  it('takes request body example keys into account', () => {
+    const operation: OperationObject = {
+      requestBody: {
+        content: {
+          'application/json': {
+            examples: {
+              'Generated from schema': { value: {} },
+            },
+          },
+        },
+      },
+      responses: {},
+    }
+
+    expect(getUniqueExampleName(operation, 'Generated from schema')).toBe('Generated from schema (2)')
+  })
+})

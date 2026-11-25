@@ -1,0 +1,183 @@
+<script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
+import { ScalarIconTrash } from '@scalar/icons'
+import type {
+  CollectionType,
+  WorkspaceEventBus,
+} from '@scalar/workspace-store/events'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import { computed } from 'vue'
+
+import { CodeInputLite } from '@/v2/components/code-input'
+import {
+  DataTable,
+  DataTableCell,
+  DataTableHeader,
+  DataTableRow,
+} from '@/v2/components/data-table'
+import { useLocalization } from '@/v2/features/localization'
+
+const { environment, environmentName, eventBus, collectionType } = defineProps<
+  {
+    environment: XScalarEnvironment
+    environmentName: string
+    eventBus: WorkspaceEventBus
+  } & CollectionType
+>()
+
+const { translate } = useLocalization()
+
+/** Column widths: Name, Value, Actions (delete button) */
+const COLUMNS = ['1fr', '1fr', '36px']
+
+/** Adds an empty row at the end for creating new variables */
+const displayRows = computed<
+  {
+    name: string
+    value: string
+  }[]
+>(() => {
+  /** Normalize the variables to have a name and value */
+  const variableRows = environment.variables.map((v) => ({
+    name: v.name,
+    value: typeof v.value === 'string' ? v.value : v.value.default,
+  }))
+
+  const lastRow = environment.variables.at(-1)
+  const hasContentInLastRow =
+    lastRow && (lastRow.name !== '' || lastRow.value !== '')
+
+  // Add the extra row at the end
+  if (!lastRow || hasContentInLastRow) {
+    return [...variableRows, { name: '', value: '' }]
+  }
+
+  return variableRows
+})
+
+/** Updates an existing variable or creates a new one */
+const handleVariableChange = (
+  name: string,
+  value: string,
+  index: number,
+): void => {
+  const isNewVariable = index >= environment.variables.length
+
+  /**
+   * Do not allow adding a new variable with an empty name on the last row,
+   * we allow it on other rows as it will delete the row
+   */
+  if (!name && isNewVariable) {
+    return
+  }
+
+  // Adding a new variable
+  if (index >= environment.variables.length) {
+    eventBus.emit('environment:upsert:environment-variable', {
+      environmentName,
+      variable: { name, value },
+      collectionType,
+    })
+    return
+  }
+
+  // Updating
+  eventBus.emit('environment:upsert:environment-variable', {
+    environmentName,
+    variable: { name, value },
+    index,
+    collectionType,
+  })
+}
+
+/** Deletes a variable by index */
+const handleVariableDelete = (index: number): void =>
+  eventBus.emit('environment:delete:environment-variable', {
+    environmentName,
+    index,
+    collectionType,
+  })
+</script>
+<template>
+  <!-- Environment variables table -->
+  <DataTable
+    class="group/table data-table h-min flex-1 rounded"
+    :columns="COLUMNS">
+    <!-- Accessibility header row -->
+    <DataTableRow class="sr-only !block">
+      <DataTableHeader>
+        {{ translate('apiClient.environmentVariablesTable.name') }}
+      </DataTableHeader>
+      <DataTableHeader>
+        {{ translate('apiClient.environmentVariablesTable.value') }}
+      </DataTableHeader>
+      <DataTableHeader>
+        {{ translate('apiClient.environmentVariablesTable.actions') }}
+      </DataTableHeader>
+    </DataTableRow>
+
+    <!-- Variable rows -->
+    <DataTableRow
+      v-for="(row, index) in displayRows"
+      :key="index"
+      class="group/row">
+      <!-- Name -->
+      <DataTableCell>
+        <CodeInputLite
+          :aria-label="
+            translate(
+              'apiClient.environmentVariablesTable.environmentVariableName',
+            )
+          "
+          :environment="undefined"
+          :modelValue="row.name"
+          :placeholder="translate('apiClient.environmentVariablesTable.name')"
+          @update:modelValue="
+            (name) => handleVariableChange(name, row.value, index)
+          " />
+      </DataTableCell>
+
+      <!-- Value -->
+      <DataTableCell>
+        <CodeInputLite
+          :aria-label="
+            translate(
+              'apiClient.environmentVariablesTable.environmentVariableValue',
+            )
+          "
+          :environment="undefined"
+          :modelValue="row.value"
+          :placeholder="translate('apiClient.environmentVariablesTable.value')"
+          @update:modelValue="
+            (value) => handleVariableChange(row.name, value, index)
+          " />
+      </DataTableCell>
+
+      <!-- Delete button -->
+      <DataTableCell class="flex items-center justify-center">
+        <ScalarButton
+          v-if="index < environment.variables.length"
+          class="text-c-2 hover:text-c-1 hover:bg-b-2 hidden h-fit rounded p-1 group-focus-within:flex group-hover/row:flex"
+          size="sm"
+          variant="ghost"
+          @click="handleVariableDelete(index)">
+          <ScalarIconTrash class="size-3.5" />
+        </ScalarButton>
+      </DataTableCell>
+    </DataTableRow>
+  </DataTable>
+</template>
+<style scoped>
+:deep(.code-input-lite__editor) {
+  background-color: transparent;
+  font-family: var(--scalar-font);
+  font-size: var(--scalar-small);
+  padding: 5px 8px;
+}
+:deep(.scalar-pill:not(:last-of-type)) {
+  margin-right: 0.15em;
+}
+:deep(.scalar-pill:not(:first-of-type)) {
+  margin-left: 0.5px;
+}
+</style>

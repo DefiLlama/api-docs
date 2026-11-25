@@ -1,47 +1,32 @@
 <script setup lang="ts">
-import {
-  cva,
-  ScalarButton,
-  ScalarIcon,
-  ScalarListbox,
-} from '@scalar/components'
-import type { ContentType, RequestBody } from '@scalar/types/legacy'
-import { computed, ref } from 'vue'
+import { ScreenReader } from '@scalar/blocks/shared'
+import { ScalarButton } from '@scalar/components/button'
+import { ScalarListbox } from '@scalar/components/listbox'
+import { ScalarIconCaretDown } from '@scalar/icons'
+import { cva } from '@scalar/use-hooks/useBindCx'
+import type { MediaTypeObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed } from 'vue'
 
-import ScreenReader from '@/components/ScreenReader.vue'
+import { useLocalization } from '@/features/localization'
 
-const prop = defineProps<{
-  requestBody?: RequestBody
-  defaultValue?: ContentType
+const { content } = defineProps<{
+  content: Record<string, MediaTypeObject> | undefined
 }>()
+const { translate } = useLocalization()
 
-const emit = defineEmits<{
-  (e: 'selectContentType', payload: { contentType: ContentType }): void
-}>()
+/** The selected content type with two-way binding */
+const selectedContentType = defineModel<string>({ required: true })
 
-const handleSelectContentType = (option: any) => {
-  if (option?.id) {
-    emit('selectContentType', { contentType: option.id as ContentType })
-  }
-}
+defineOptions({ inheritAttrs: false })
 
-const contentTypes = computed(() => {
-  if (prop.requestBody?.content) {
-    return Object.keys(prop.requestBody.content)
-  }
-  return []
-})
-
-const selectedContentType = ref<ContentType>(
-  prop.defaultValue || (contentTypes.value[0] as ContentType),
-)
+const contentTypes = computed(() => Object.keys(content ?? {}))
 
 const selectedOption = computed({
   get: () =>
     options.value.find((option) => option.id === selectedContentType.value),
   set: (option) => {
     if (option) {
-      selectedContentType.value = option.id as ContentType
+      selectedContentType.value = option.id
     }
   },
 })
@@ -55,10 +40,10 @@ const options = computed(() => {
 
 // Content type select style variant based on dropdown availability
 const contentTypeSelect = cva({
-  base: 'font-normal text-c-2 bg-b-2 py-0.75 flex cursor-pointer items-center gap-1 rounded-full text-xs',
+  base: 'font-normal text-c-2 bg-b-1 py-1 flex items-center gap-1 rounded-full text-xs leading-none border',
   variants: {
     dropdown: {
-      true: 'border hover:text-c-1 pl-2 pr-1.5',
+      true: 'hover:text-c-1 pl-2 pr-1.5 font-medium cursor-pointer',
       false: 'px-2',
     },
   },
@@ -66,30 +51,40 @@ const contentTypeSelect = cva({
 </script>
 <template>
   <ScalarListbox
-    v-if="prop?.requestBody && contentTypes.length > 1"
+    v-if="contentTypes.length > 1"
+    v-slot="{ open }"
     v-model="selectedOption"
-    class="font-normal"
     :options="options"
     placement="bottom-end"
-    @update:modelValue="handleSelectContentType">
+    teleport
+    @click.stop>
     <ScalarButton
       class="h-fit"
       :class="contentTypeSelect({ dropdown: true })"
-      variant="ghost">
-      <ScreenReader>Selected Content Type:</ScreenReader>
+      variant="ghost"
+      v-bind="$attrs"
+      @click.stop>
+      <ScreenReader>
+        {{ translate('operation.selectedContentType') }}:
+      </ScreenReader>
       <span>{{ selectedContentType }}</span>
-      <ScalarIcon
-        class="ui-open:rotate-180 ml-auto"
-        icon="ChevronDown"
-        size="sm"
-        thickness="2" />
+      <ScalarIconCaretDown
+        class="size-2.75 transition-transform duration-100"
+        :class="{ 'rotate-180': open }"
+        weight="bold" />
     </ScalarButton>
   </ScalarListbox>
+  <!-- With a single content type there is nothing to choose, so this read-only
+       readout stays out of the tab order: a focus stop on static text strands
+       keyboard users on something they cannot act on. It keeps a role and the
+       same name as the dropdown branch so screen readers still announce it. -->
   <div
     v-else
-    :class="contentTypeSelect({ dropdown: false })"
+    :aria-label="translate('operation.selectedContentType')"
     class="selected-content-type"
-    tabindex="0">
+    :class="contentTypeSelect({ dropdown: false })"
+    role="group"
+    v-bind="$attrs">
     <span>{{ selectedContentType }}</span>
   </div>
 </template>

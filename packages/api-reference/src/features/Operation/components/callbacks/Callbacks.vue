@@ -1,72 +1,129 @@
 <script setup lang="ts">
-import type { HttpMethod } from '@scalar/helpers/http/http-methods'
+import type { SchemaRenderingProps } from '@scalar/blocks/schema'
 import { isHttpMethod } from '@scalar/helpers/http/is-http-method'
-import type { CallbackObject } from '@scalar/workspace-store/schemas/v3.1/strict/path-operations'
-import { isReference } from '@scalar/workspace-store/schemas/v3.1/type-guard'
-import { watch } from 'vue'
+import { objectEntries } from '@scalar/helpers/object/object-entries'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { forEachPathItemOperation } from '@scalar/workspace-store/helpers/for-each-path-item-operation'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import type {
+  OpenApiDocument,
+  OperationObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed } from 'vue'
 
-import type { Schemas } from '@/features/Operation/types/schemas'
-import { useStore } from '@/v2/hooks/useStore'
+import { SectionHeaderTag } from '@/components/Section'
+import { useDocumentOutline } from '@/features/document-outline'
+import { useLocalization } from '@/features/localization'
+import type { OperationProps } from '@/features/Operation/Operation.vue'
 
 import Callback from './Callback.vue'
 
-const {
-  path,
-  method: operationMethod,
-  callbacks,
-  schemas,
-} = defineProps<{
-  path: string
-  method: HttpMethod
-  callbacks: CallbackObject
-  schemas?: Schemas
-}>()
+const { path, callbacks, breadcrumb } = defineProps<
+  {
+    path: string
+    callbacks: NonNullable<OperationObject['callbacks']>
+    eventBus: WorkspaceEventBus | null
+    /** Breadcrumb of the owning operation; extended per callback below */
+    breadcrumb?: string[]
+    /** The document the callbacks belong to, used to resolve schema references for display */
+    document?: OpenApiDocument
+    options: Pick<
+      OperationProps['options'],
+      | 'expandAllParameters'
+      | 'hideModels'
+      | 'orderRequiredPropertiesFirst'
+      | 'orderSchemaPropertiesBy'
+      | 'expandAllSchemaProperties'
+      | 'schemaKeyboardNav'
+      | 'showExtensions'
+      | 'maxVisibleRequestBodyProperties'
+      | 'hideModelNames'
+    >
+  } & SchemaRenderingProps
+>()
+const { translate } = useLocalization()
 
-const { resolve } = useStore()
+const { level: headingLevel } = useDocumentOutline('operationSection')
 
-// Ensure we resolve any external references
-watch(
-  () => callbacks,
-  (newCallbacks) =>
-    Object.values(newCallbacks).forEach((pathItem) => {
-      if (isReference(pathItem)) {
-        resolve(['paths', path, operationMethod])
+type CallbackType = {
+  name: string
+  url: string
+  method: string
+  callback: OperationObject
+}
+
+/** Extract the callbacks with method, url, and name */
+const flattenedCallbacks = computed<CallbackType[]>(() => {
+  const _callbacks: CallbackType[] = []
+
+  // Loop over the name level
+  objectEntries(callbacks).forEach(([name, pathItem]) => {
+    // Loop over the url level
+    objectEntries(getResolvedRef(pathItem) ?? {}).forEach(([url, methods]) => {
+      if (typeof methods !== 'object' || !methods) {
+        return
       }
-    }),
-  { immediate: true },
-)
+
+      // Loop over the method level
+      forEachPathItemOperation(methods, (callbackMethod, callback) => {
+        const resolvedCallback = getResolvedRef(callback)
+        if (!resolvedCallback) {
+          return
+        }
+        _callbacks.push({
+          name,
+          url,
+          method: callbackMethod,
+          callback: resolvedCallback,
+        })
+      })
+    })
+  })
+
+  return _callbacks
+})
 </script>
 
 <template>
-  <div class="callbacks-list gap-3">
-    <div class="callbacks-title text-c-1 my-3 text-lg font-medium">
-      Callbacks
-    </div>
-
-    <!-- Loop over names -->
-    <template
-      v-for="(pathItem, name) in callbacks"
-      :key="name">
-      <!-- Make sure its not a ref -->
-      <template v-if="!isReference(pathItem)">
-        <!-- Loop over methods -->
-        <template v-for="(methods, url) in pathItem">
-          <!-- Only HTTP Methods -->
-          <template
-            v-for="(callback, method) in methods"
-            :key="method">
-            <Callback
-              v-if="isHttpMethod(method)"
-              :callback="callback"
-              :method="method"
-              :operationMethod="operationMethod"
-              :name="name"
-              :path="path"
-              :schemas="schemas"
-              :url="url" />
-          </template>
-        </template>
-      </template>
-    </template>
+  <div
+    :aria-label="translate('operation.callbacks')"
+    class="callbacks-list gap-3"
+    role="group">
+    <!-- The heading carries the rule; the callback row pads itself, so no bottom margin -->
+    <SectionHeaderTag
+      class="callbacks-title text-c-1 callbacks-title--tree mt-3 mb-0 block! text-lg font-medium"
+      :level="headingLevel"
+      rule>
+      {{ translate('operation.callbacks') }}
+    </SectionHeaderTag>
+    <!-- The url is part of a callback's identity (one name can carry several
+         urls), so name + method alone would collide on one expansion key -->
+    <Callback
+      v-for="{ callback, method, name, url } in flattenedCallbacks"
+      :key="`${name}-${url}-${method}`"
+      :breadcrumb="
+        breadcrumb
+          ? [
+              ...breadcrumb,
+              'callbacks',
+              name,
+              url,
+              ...(isHttpMethod(method)
+                ? [method]
+                : ['additionalOperations', method]),
+            ]
+          : undefined
+      "
+      :callback
+      :document
+      :eventBus
+      :expansion="expansion"
+      :method
+      :name
+      :options
+      :path
+      :scrollTargetId="scrollTargetId"
+      :specificationExtension="specificationExtension"
+      :url />
   </div>
 </template>

@@ -1,0 +1,117 @@
+import { createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import { mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+
+import { AddressBar } from '@/v2/blocks/scalar-address-bar-block'
+
+import Header, { type HeaderProps } from './Header.vue'
+import OpenApiClientButton from './OpenApiClientButton.vue'
+
+describe('Header', () => {
+  const eventBus = createWorkspaceEventBus()
+
+  const defaultProps = {
+    path: '/pets',
+    method: 'get' as const,
+    documentSlug: 'test-document',
+    exampleKey: 'default',
+    layout: 'web' as const,
+    isSidebarOpen: true,
+    showSidebar: true,
+    hideClientButton: false,
+    integration: null as string | null,
+    documentUrl: undefined as string | undefined,
+    source: 'api-reference' as const,
+    server: null,
+    servers: [] as any[],
+    history: [] as any[],
+    requestLoadingPercentage: undefined as number | undefined,
+    eventBus,
+    environment: {
+      variables: [],
+      color: '#FF0000',
+      description: 'Test Environment',
+    } as XScalarEnvironment,
+    serverMeta: {
+      type: 'document',
+    },
+  } as HeaderProps
+
+  const render = (overrides: Partial<HeaderProps> = {}) => {
+    const props = { ...defaultProps, ...overrides }
+    return mount(Header, { props })
+  }
+
+  it('emits execute when AddressBar emits execute', () => {
+    const wrapper = render()
+    const addressBar = wrapper.getComponent(AddressBar)
+    addressBar.vm.$emit('execute')
+
+    const emitted = wrapper.emitted().execute
+    expect(emitted?.length).toBe(1)
+  })
+
+  it('passes current path and method to OpenApiClientButton in modal layout', () => {
+    const modalWithUrl = render({
+      layout: 'modal',
+      documentUrl: 'https://example.com/openapi.json',
+      path: '/users/{id}',
+      method: 'post',
+    })
+    const button = modalWithUrl.getComponent(OpenApiClientButton)
+
+    expect(button.props('operationPath')).toBe('/users/{id}')
+    expect(button.props('operationMethod')).toBe('post')
+  })
+
+  it('renders OpenApiClientButton only in modal layout with documentUrl when not hidden', () => {
+    const modalWithUrl = render({ layout: 'modal', documentUrl: 'https://example.com/openapi.json' })
+    expect(modalWithUrl.findComponent(OpenApiClientButton).exists()).toBe(true)
+
+    const webLayout = render({ layout: 'web', documentUrl: 'https://example.com/openapi.json' })
+    expect(webLayout.findComponent(OpenApiClientButton).exists()).toBe(false)
+
+    const hiddenButton = render({
+      layout: 'modal',
+      documentUrl: 'https://example.com/openapi.json',
+      hideClientButton: true,
+    })
+    expect(hiddenButton.findComponent(OpenApiClientButton).exists()).toBe(false)
+  })
+
+  it('emits ui:close:client-modal on the event bus when close buttons are clicked in modal', async () => {
+    const fn = vi.fn()
+    eventBus.on('ui:close:client-modal', fn)
+
+    const wrapper = render({ layout: 'modal' })
+    const buttons = wrapper.findAll('button')
+    for (const btn of buttons) {
+      await btn.trigger('click')
+    }
+
+    expect(fn).toHaveBeenCalled()
+  })
+
+  it('passes method and path props to AddressBar', () => {
+    const wrapper = render({ method: 'put', path: '/animals' })
+    const addressBar = wrapper.getComponent(AddressBar)
+    const props = addressBar.props() as any
+    expect(props.method).toBe('put')
+    expect(props.path).toBe('/animals')
+  })
+
+  it('marks the close button as the initial focus target in modal layout', () => {
+    const target = render({ layout: 'modal' }).find('[data-modal-initial-focus]')
+    expect(target.exists()).toBe(true)
+    expect(target.element.tagName).toBe('BUTTON')
+    expect(target.text()).toContain('Close Client')
+
+    const gitbookTarget = render({ layout: 'modal', source: 'gitbook' }).find('[data-modal-initial-focus]')
+    expect(gitbookTarget.exists()).toBe(true)
+    expect(gitbookTarget.element.tagName).toBe('BUTTON')
+    expect(gitbookTarget.text()).toContain('Close Client')
+
+    expect(render({ layout: 'web' }).find('[data-modal-initial-focus]').exists()).toBe(false)
+  })
+})

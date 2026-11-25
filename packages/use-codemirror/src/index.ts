@@ -1,6 +1,9 @@
-export { type Extension, RangeSetBuilder, StateEffect } from '@codemirror/state'
-export { colorPicker } from '@replit/codemirror-css-color-picker'
-
+export {
+  EditorState,
+  type Extension,
+  RangeSetBuilder,
+  StateEffect,
+} from '@codemirror/state'
 export {
   Decoration,
   type DecorationSet,
@@ -10,5 +13,10 @@ export {
   WidgetType,
 } from '@codemirror/view'
 
-export * from './hooks'
-export * from './types'
+export { colorPicker } from './extensions/color-picker/color-picker'
+export {
+  type UseCodeMirrorParameters,
+  useCodeMirror,
+} from './hooks/useCodeMirror'
+export { useDropdown } from './hooks/useDropdown'
+export type { CodeMirrorLanguage } from './types'

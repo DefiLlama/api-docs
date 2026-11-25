@@ -1,7 +1,9 @@
-import vue from '@vitejs/plugin-vue'
-import { defineConfig, type Plugin } from 'vite'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { resolve } from 'path'
-import { readFileSync, existsSync, mkdirSync, copyFileSync } from 'fs'
+
+import vue from '@vitejs/plugin-vue'
+import { type Plugin, defineConfig } from 'vite'
+
 import { crawlerResourceBudgetPlugin } from './src/crawler-resource-budget'
 
 /**
@@ -17,13 +19,13 @@ const ROOT_FILES: Record<string, string> = {
 }
 
 function llmsTxtPlugin(): Plugin {
-  const rootPath = (name: string): string => resolve(__dirname, '../..', name)
+  const rootPath = (name: string): string => resolve(import.meta.dirname, '../..', name)
 
   return {
     name: 'llms-txt-plugin',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const name = req.url?.split('?')[0].slice(1) ?? ''
+        const name = req.url?.split('?')[0]?.slice(1) ?? ''
         const contentType = ROOT_FILES[name]
         if (!contentType) {
           next()
@@ -34,7 +36,7 @@ function llmsTxtPlugin(): Plugin {
       })
     },
     closeBundle() {
-      const outputDir = resolve(__dirname, 'dist')
+      const outputDir = resolve(import.meta.dirname, 'dist')
       if (!existsSync(outputDir)) {
         mkdirSync(outputDir, { recursive: true })
       }
@@ -64,6 +66,7 @@ export default defineConfig({
           if (moduleId.includes('/node_modules/')) {
             return 'vendor'
           }
+          return undefined
         },
       },
     },

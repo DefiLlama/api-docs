@@ -24,28 +24,41 @@
 export default {}
 </script>
 <script setup lang="ts">
-import { useBindCx } from '@scalar/use-hooks/useBindCx'
-import { cva } from '@scalar/use-hooks/useBindCx'
+import { cva, useBindCx } from '@scalar/use-hooks/useBindCx'
 
 import { ScalarIconLegacyAdapter } from '../ScalarIcon'
 import ScalarSidebarIndent from './ScalarSidebarIndent.vue'
-import type { ScalarSidebarItemProps, ScalarSidebarItemSlots } from './types'
+import type { ScalarSidebarButtonSlots, ScalarSidebarItemProps } from './types'
 
 const { is = 'a', indent = 0 } = defineProps<ScalarSidebarItemProps>()
 
-defineSlots<ScalarSidebarItemSlots>()
+defineSlots<ScalarSidebarButtonSlots>()
 
 const variants = cva({
   base: [
-    'group/button flex items-stretch rounded px-2 font-sidebar text-c-2 no-underline',
+    'group/button peer/button flex items-stretch rounded p-2',
+    'font-sidebar text-base/4  text-sidebar-c-2 no-underline wrap-break-word',
   ],
   variants: {
-    active: { true: 'text-c-1 font-sidebar-active' },
+    active: { true: 'text-sidebar-c-active font-sidebar-active' },
     disabled: { true: 'cursor-auto' },
-    selected: { true: 'cursor-auto bg-b-2 text-c-1 font-sidebar-active' },
+    selected: {
+      true: 'cursor-auto bg-sidebar-b-active text-sidebar-c-active font-sidebar-active',
+    },
   },
   compoundVariants: [
-    { selected: false, disabled: false, class: 'hover:bg-b-2' },
+    {
+      selected: false,
+      disabled: false,
+      active: false,
+      class: 'hover:bg-sidebar-b-hover hover:text-sidebar-c-hover',
+    },
+    {
+      selected: false,
+      disabled: false,
+      active: true,
+      class: 'hover:bg-sidebar-b-hover',
+    },
   ],
   defaultVariants: { selected: false, disabled: false, active: false },
 })
@@ -55,31 +68,28 @@ const { cx } = useBindCx()
 <template>
   <component
     :is="is"
-    :aria-selected="selected"
+    :aria-current="selected ? 'page' : undefined"
     :type="is === 'button' ? 'button' : undefined"
     v-bind="cx(variants({ selected, disabled, active }))">
     <slot name="indent">
       <ScalarSidebarIndent
+        class="-my-2"
+        :disabled
         :indent
-        :selected
-        :disabled />
+        :selected />
     </slot>
-    <div class="flex items-center gap-1 flex-1 py-2 leading-5">
-      <div
-        v-if="icon || $slots.icon"
-        class="size-4">
-        <slot name="icon">
-          <ScalarIconLegacyAdapter
-            v-if="icon"
-            :icon="icon" />
-        </slot>
-      </div>
+    <div
+      v-if="icon || $slots.icon"
+      class="mr-1 flex h-lh items-center *:size-4">
+      <slot name="icon">
+        <ScalarIconLegacyAdapter
+          v-if="icon"
+          :icon="icon" />
+      </slot>
+    </div>
+    <div class="group/button-label min-w-0 flex-1">
       <slot />
     </div>
-    <div
-      v-if="$slots.aside"
-      class="flex items-center">
-      <slot name="aside" />
-    </div>
+    <slot name="aside" />
   </component>
 </template>

@@ -7,6 +7,19 @@
 
 Scalar Themes provides a library of themes for all Scalar products and components. It also contains the base set of Scalar CSS variables and an associated [Tailwind](https://tailwindcss.com) preset which leverages those variables.
 
+---
+
+Scalar is an open-source API platform for teams who want beautiful developer interfaces without vendor lock-in.
+
+- **[API References](https://scalar.com/products/api-references/getting-started)** — Interactive API documentation from OpenAPI and AsyncAPI specs.
+- **[Developer Docs](https://scalar.com/products/docs/getting-started)** — Write in Markdown/MDX, generate API references, sync with two-way Git.
+- **[SDK Generator](https://scalar.com/products/sdk-generator/getting-started)** — Type-safe SDKs and CLIs in TypeScript, Python, Go, PHP, Java, and Ruby.
+- **[API Client](https://scalar.com/products/api-client/getting-started)** — Open-source, offline-first Postman alternative built on OpenAPI.
+
+20M+ monthly npm installs · 15,500+ GitHub stars · MIT licensed · [scalar.com](https://scalar.com)
+
+---
+
 To see a list of available themes, see the [`presets`](./src/index.ts#L65) export.
 
 ## CSS Layers
@@ -36,7 +49,7 @@ pnpm i @scalar/themes
 
 ### Usage via CSS Import (Basic)
 
-To import the basic theme styles into your project, you can just import `style.css` which imports the reset, scrollbars, and a copy of the base [Scalar CSS variables](./src/variables.css) and [default theme](./src/presets/default.css).
+To import the basic theme styles into your project, you can just import `style.css` which imports the reset, scrollbars, and a copy of the base [Scalar CSS variables](./src/base/variables.css) and [default theme](./src/presets/default.css).
 
 ```ts
 import '@scalar/themes/styles.css'

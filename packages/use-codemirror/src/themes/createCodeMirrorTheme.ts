@@ -13,7 +13,7 @@ type StyleSpec = {
   [propOrSelector: string]: string | number | StyleSpec | null
 }
 
-export type CreateThemeOptions = {
+type CreateThemeOptions = {
   /**
    * Theme inheritance. Determines which styles CodeMirror will apply by default.
    */
@@ -28,7 +28,7 @@ export type CreateThemeOptions = {
 
 type Theme = 'light' | 'dark'
 
-export type Settings = {
+type Settings = {
   /** Editor background color. */
   background?: string
   /** Editor background image. */
@@ -86,13 +86,13 @@ export const createCodeMirrorTheme = ({ theme, settings = {}, styles = [] }: Cre
       fontFamily: settings.fontFamily,
     }
   }
-  if (settings.gutterBackground) {
+  if (settings.gutterBackground && themeOptions['.cm-gutters']) {
     themeOptions['.cm-gutters'].backgroundColor = settings.gutterBackground
   }
-  if (settings.gutterForeground) {
+  if (settings.gutterForeground && themeOptions['.cm-gutters']) {
     themeOptions['.cm-gutters'].color = settings.gutterForeground
   }
-  if (settings.gutterBorder) {
+  if (settings.gutterBorder && themeOptions['.cm-gutters']) {
     themeOptions['.cm-gutters'].borderRightColor = settings.gutterBorder
   }
 

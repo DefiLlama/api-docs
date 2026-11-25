@@ -1,0 +1,62 @@
+# @scalar/localization
+
+## 0.2.15
+
+No changes in this release.
+
+## 0.2.14
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.2.13
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.2.12
+
+No changes in this release.
+
+## 0.2.11
+
+## 0.2.10
+
+## 0.2.9
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.2.8
+
+## 0.2.7
+
+### Patch Changes
+
+- [#10508](https://github.com/scalar/scalar/pull/10508): Add built-in Traditional Chinese (Taiwan) translations for `zh-TW`, including case and underscore variants, across API Reference, API Client, and schema blocks.
+
+## 0.2.6
+
+## 0.2.5
+
+## 0.2.4
+
+## 0.2.3
+
+## 0.2.2
+
+## 0.2.1
+
+### Patch Changes
+
+- [#10175](https://github.com/scalar/scalar/pull/10175): Support API Client UI translations through `localization.translations.apiClient`, including the client embedded in API Reference. Ship client translations for English, Russian, Spanish, French, German, Simplified Chinese, Arabic, and Portuguese to match API Reference. Preserve English fallbacks across package providers and react to locale, direction, and translation updates.
+- [#10175](https://github.com/scalar/scalar/pull/10175): Preserve literal dollar sequences in interpolated translation values, including existing API Reference translations.
+
+## 0.2.0
+
+### Minor Changes
+
+- [#9675](https://github.com/scalar/scalar/pull/9675): feat: new package — a framework-agnostic localization engine shared across Scalar packages. It provides `createLocalization()`, which binds a set of translations to a Vue provide/inject context so translations can be contributed and consumed across package boundaries.

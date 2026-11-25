@@ -1,0 +1,1467 @@
+import type { AuthenticationConfiguration } from '@scalar/types/api-reference'
+import type { AsyncApiComponentsObject } from '@scalar/types/asyncapi/3.1'
+import { createWorkspaceStore } from '@scalar/workspace-store/client'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import { isOpenApiDocument } from '@scalar/workspace-store/schemas/type-guards'
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import {
+  type ComponentsObject,
+  SecuritySchemeObjectSchema,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { assert, describe, expect, it } from 'vitest'
+import { computed, reactive } from 'vue'
+
+import { authMutatorsFactory } from '@/mutators/auth'
+import { buildRequestSecurity } from '@/request-example/builder/security/build-request-security'
+
+import { mergeSecurity } from './merge-security'
+
+describe('mergeSecurity', () => {
+  it.each(['implicit', 'password', 'clientCredentials', 'authorizationCode', 'deviceAuthorization'] as const)(
+    'preserves configured defaults when coercing the %s flow',
+    (flowName) => {
+      // Configuration-only flows have not passed through document normalization.
+      const config = {
+        oauth: {
+          type: 'oauth2',
+          flows: {
+            [flowName]: {
+              authorizationUrl: 'https://example.com/authorize',
+              tokenUrl: 'https://example.com/token',
+              deviceAuthorizationUrl: 'https://example.com/device',
+              scopes: { read: 'Read access' },
+              'x-scalar-client-id': 'configured-client',
+              token: 'configured-token',
+              selectedScopes: ['read'],
+            },
+          },
+        },
+      } satisfies AuthenticationConfiguration['securitySchemes']
+      const original = structuredClone(config)
+      const result = mergeSecurity({}, config, createWorkspaceStore().auth, 'test').oauth
+      assert(result?.type === 'oauth2')
+      const flow = result.flows[flowName]
+      assert(flow)
+
+      expect(flow['x-scalar-secret-client-id']).toBe('configured-client')
+      expect(flow['x-scalar-secret-token']).toBe('configured-token')
+      expect(flow.refreshUrl).toBe('')
+      expect(result['x-default-scopes']).toStrictEqual(['read'])
+      expect(config).toStrictEqual(original)
+    },
+  )
+
+  it('preserves distinct client IDs when coercing two flows on the same scheme', () => {
+    const config = {
+      oauth: {
+        type: 'oauth2',
+        flows: {
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/authorize',
+            tokenUrl: 'https://example.com/token',
+            scopes: {},
+            'x-scalar-client-id': 'authorization-code-client',
+          },
+          clientCredentials: {
+            tokenUrl: 'https://example.com/token',
+            scopes: {},
+            'x-scalar-client-id': 'client-credentials-client',
+          },
+        },
+      },
+    } satisfies AuthenticationConfiguration['securitySchemes']
+
+    const result = mergeSecurity({}, config, createWorkspaceStore().auth, 'test').oauth
+    assert(result?.type === 'oauth2')
+    expect(result.flows.authorizationCode?.['x-scalar-secret-client-id']).toBe('authorization-code-client')
+    expect(result.flows.clientCredentials?.['x-scalar-secret-client-id']).toBe('client-credentials-client')
+  })
+
+  it.each(['document', 'configuration'] as const)('preserves authorization code defaults from the %s', (source) => {
+    const flow = {
+      authorizationUrl: 'https://example.com/authorize',
+      tokenUrl: 'https://example.com/token',
+      scopes: {},
+      'x-usePkce': 'SHA-256',
+    } as const
+    const defaults = {
+      'x-scalar-client-id': 'configured-client',
+      clientSecret: 'configured-secret',
+      'x-scalar-redirect-uri': 'https://example.com/callback',
+    }
+    const schemes = {
+      oauth: {
+        type: 'oauth2',
+        flows: { authorizationCode: { ...flow, ...(source === 'document' ? defaults : {}) } },
+      },
+    } as const
+    const config: AuthenticationConfiguration['securitySchemes'] =
+      source === 'configuration' ? { oauth: { flows: { authorizationCode: defaults } } } : {}
+    const originalSchemes = structuredClone(schemes)
+    const originalConfig = structuredClone(config)
+    const auth = createWorkspaceStore().auth
+    const result = mergeSecurity(schemes, config, auth, 'test').oauth
+    assert(result?.type === 'oauth2')
+    const mergedFlow = result.flows.authorizationCode
+    assert(mergedFlow)
+
+    expect(mergedFlow['x-scalar-secret-client-id']).toBe('configured-client')
+    expect(mergedFlow['x-scalar-secret-client-secret']).toBe('configured-secret')
+    expect(mergedFlow['x-scalar-secret-redirect-uri']).toBe('https://example.com/callback')
+    expect(mergedFlow['x-usePkce']).toBe('SHA-256')
+    expect(mergedFlow.refreshUrl).toBe('')
+
+    auth.setAuthSecrets('test', 'oauth', {
+      type: 'oauth2',
+      authorizationCode: { 'x-scalar-secret-client-id': 'user-client' },
+    })
+    const edited = mergeSecurity(schemes, config, auth, 'test').oauth
+    assert(edited?.type === 'oauth2')
+    expect(edited.flows.authorizationCode?.['x-scalar-secret-client-id']).toBe('user-client')
+    expect(schemes).toStrictEqual(originalSchemes)
+    expect(config).toStrictEqual(originalConfig)
+  })
+
+  it('preserves AsyncAPI OAuth defaults while normalizing available scopes', () => {
+    const schemes = {
+      oauth: {
+        type: 'oauth2',
+        flows: {
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/authorize',
+            tokenUrl: 'https://example.com/token',
+            availableScopes: { read: 'Read access' },
+            'x-scalar-client-id': 'configured-client',
+          },
+        },
+      },
+    } as const
+    const result = mergeSecurity(schemes, {}, createWorkspaceStore().auth, 'test').oauth
+    assert(result?.type === 'oauth2')
+    expect(result.flows.authorizationCode?.scopes).toStrictEqual({ read: 'Read access' })
+    expect(result.flows.authorizationCode?.['x-scalar-secret-client-id']).toBe('configured-client')
+  })
+
+  it.each(['scopes', 'x-scalar-security-query', 'x-scalar-security-body'] as const)(
+    'normalizes malformed %s while preserving configured credentials',
+    (field) => {
+      // Malformed API descriptions can supply arrays where OAuth expects a map.
+      const schemes = {
+        oauth: {
+          type: 'oauth2',
+          flows: {
+            authorizationCode: {
+              authorizationUrl: 'https://example.com/authorize',
+              tokenUrl: 'https://example.com/token',
+              scopes: {},
+              [field]: ['read'],
+              'x-scalar-client-id': 'configured-client',
+            },
+          },
+        },
+      } as unknown as ComponentsObject['securitySchemes']
+      const result = mergeSecurity(schemes, {}, createWorkspaceStore().auth, 'test').oauth
+      assert(result?.type === 'oauth2')
+      expect(result.flows.authorizationCode?.[field]).toStrictEqual({})
+      expect(result.flows.authorizationCode?.['x-scalar-secret-client-id']).toBe('configured-client')
+    },
+  )
+
+  it('normalizes an array supplied as an OAuth flow without retaining its entries', () => {
+    const schemes = {
+      oauth: {
+        type: 'oauth2',
+        flows: { authorizationCode: ['read'] },
+      },
+    } as unknown as ComponentsObject['securitySchemes']
+
+    const result = mergeSecurity(schemes, {}, createWorkspaceStore().auth, 'test').oauth
+    assert(result?.type === 'oauth2')
+    const flow = result.flows.authorizationCode
+    assert(flow)
+    expect(flow.scopes).toStrictEqual({})
+    expect(flow).not.toHaveProperty('0')
+  })
+
+  it('preserves configured OAuth flows with an own __proto__ property', () => {
+    const config: AuthenticationConfiguration['securitySchemes'] = JSON.parse(`{
+      "oauth": { "type": "oauth2", "flows": { "authorizationCode": {
+        "authorizationUrl": "https://example.com/authorize",
+        "tokenUrl": "https://example.com/token",
+        "scopes": {},
+        "x-scalar-client-id": "configured-client",
+        "__proto__": { "untrusted": true }
+      } } }
+    }`)
+    const original = structuredClone(config)
+    const result = mergeSecurity({}, config, createWorkspaceStore().auth, 'test').oauth
+    assert(result?.type === 'oauth2')
+    const flow = result.flows.authorizationCode
+    assert(flow)
+    expect(flow['x-scalar-secret-client-id']).toBe('configured-client')
+    expect(flow.refreshUrl).toBe('')
+    expect(Object.getOwnPropertyDescriptor(flow, '__proto__')?.value).toStrictEqual({ untrusted: true })
+    expect(config).toStrictEqual(original)
+  })
+
+  it('overrides document prefixes through configuration without changing credentials', () => {
+    const auth = createWorkspaceStore().auth
+    const document = {
+      key: { type: 'apiKey', in: 'header', name: 'Authorization', 'x-scalar-token-prefix': 'original' },
+    } as const
+    const merged = mergeSecurity(document, { key: { value: 'abc', 'x-scalar-token-prefix': 'token' } }, auth, 'test')
+    assert(merged.key?.type === 'apiKey' && merged.key.in === 'header')
+    expect(merged.key['x-scalar-secret-token']).toBe('abc')
+    expect(merged.key['x-scalar-token-prefix']).toBe('token')
+    const cleared = mergeSecurity(document, { key: { 'x-scalar-token-prefix': '' } }, auth, 'test')
+    assert(cleared.key?.type === 'apiKey' && cleared.key.in === 'header')
+    expect(cleared.key['x-scalar-token-prefix']).toBe('')
+  })
+
+  it('keeps OIDC defaults separate until discovery and prefers the sole configured flow', () => {
+    const auth = createWorkspaceStore().auth
+    const schemes = { oidc: { type: 'openIdConnect', openIdConnectUrl: 'https://example.com/discovery' } } as const
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      oidc: {
+        type: 'openIdConnect',
+        flows: {
+          authorizationCode: {
+            'x-scalar-client-id': 'scalar',
+            selectedScopes: ['openid', 'profile'],
+            'x-usePkce': 'SHA-256',
+          },
+        },
+      },
+    }
+    const before = mergeSecurity(schemes, config, auth, documentSlug).oidc
+    assert(before?.type === 'openIdConnect')
+    expect(before.flows).toBeUndefined()
+    expect(before['x-default-scopes']).toStrictEqual(['openid', 'profile'])
+    expect(before.configuredFlows).toStrictEqual({
+      authorizationCode: {
+        'x-scalar-client-id': 'scalar',
+        selectedScopes: ['openid', 'profile'],
+        'x-usePkce': 'SHA-256',
+      },
+    })
+
+    auth.setAuthSecrets(documentSlug, 'oidc', {
+      type: 'openIdConnect',
+      implicit: { authorizationUrl: 'https://example.com/auth', scopes: { openid: '' } },
+      authorizationCode: {
+        authorizationUrl: 'https://example.com/auth',
+        tokenUrl: 'https://example.com/token',
+        scopes: { openid: '', profile: '' },
+        'x-usePkce': 'SHA-256',
+      },
+    })
+    const after = mergeSecurity(schemes, config, auth, documentSlug).oidc
+    assert(after?.type === 'openIdConnect')
+    expect(Object.keys(after.flows ?? {})).toStrictEqual(['implicit', 'authorizationCode'])
+    expect(after.flows?.authorizationCode?.['x-order']).toBe(-1)
+    expect(after.flows?.implicit?.['x-order']).toBeUndefined()
+    expect(after.flows?.authorizationCode?.['x-scalar-secret-client-id']).toBe('scalar')
+    expect(after.flows?.authorizationCode?.authorizationUrl).toBe('https://example.com/auth')
+    expect(after['x-default-scopes']).toStrictEqual(['openid', 'profile'])
+    expect(schemes.oidc).toStrictEqual({ type: 'openIdConnect', openIdConnectUrl: 'https://example.com/discovery' })
+  })
+
+  it('retains discovery order when multiple OIDC flows have configured defaults', () => {
+    const auth = createWorkspaceStore().auth
+    auth.setAuthSecrets(documentSlug, 'oidc', {
+      type: 'openIdConnect',
+      implicit: { authorizationUrl: 'https://example.com/auth', scopes: {} },
+      authorizationCode: {
+        authorizationUrl: 'https://example.com/auth',
+        tokenUrl: 'https://example.com/token',
+        scopes: {},
+      },
+    })
+    const scheme = mergeSecurity(
+      { oidc: { type: 'openIdConnect', openIdConnectUrl: 'https://example.com/discovery' } },
+      {
+        oidc: {
+          type: 'openIdConnect',
+          flows: {
+            authorizationCode: { 'x-scalar-client-id': 'scalar' },
+            implicit: { 'x-scalar-client-id': 'scalar' },
+          },
+        },
+      },
+      auth,
+      documentSlug,
+    ).oidc
+    assert(scheme?.type === 'openIdConnect')
+    expect(Object.keys(scheme.flows ?? {})).toStrictEqual(['implicit', 'authorizationCode'])
+  })
+
+  it('does not invent an unsupported configured OIDC flow', () => {
+    const auth = createWorkspaceStore().auth
+    auth.setAuthSecrets(documentSlug, 'oidc', {
+      type: 'openIdConnect',
+      implicit: { authorizationUrl: 'https://example.com/auth', scopes: { profile: '' } },
+    })
+    const scheme = mergeSecurity(
+      { oidc: { type: 'openIdConnect', openIdConnectUrl: 'https://example.com/discovery' } },
+      {
+        oidc: {
+          type: 'openIdConnect',
+          flows: { authorizationCode: { 'x-scalar-client-id': 'scalar', selectedScopes: ['profile'] } },
+        },
+      },
+      auth,
+      documentSlug,
+    ).oidc
+    assert(scheme?.type === 'openIdConnect')
+    expect(Object.keys(scheme.flows ?? {})).toStrictEqual(['implicit'])
+    expect(scheme['x-default-scopes']).toBeUndefined()
+  })
+
+  it.each(['edited', ''])('preserves an OIDC client ID override of %j and its reset default', (clientId) => {
+    const auth = createWorkspaceStore().auth
+    auth.setAuthSecrets(documentSlug, 'oidc', {
+      type: 'openIdConnect',
+      authorizationCode: {
+        authorizationUrl: 'https://example.com/auth',
+        tokenUrl: 'https://example.com/token',
+        scopes: {},
+        'x-usePkce': 'no',
+        'x-scalar-secret-client-id': clientId,
+        'x-scalar-secret-cleared-fields': ['x-scalar-secret-client-id'],
+      },
+    })
+    const scheme = mergeSecurity(
+      { oidc: { type: 'openIdConnect', openIdConnectUrl: 'https://example.com/discovery' } },
+      {
+        oidc: {
+          type: 'openIdConnect',
+          flows: { authorizationCode: { 'x-scalar-client-id': 'scalar', 'x-usePkce': 'SHA-256' } },
+        },
+      },
+      auth,
+      documentSlug,
+    ).oidc
+    assert(scheme?.type === 'openIdConnect')
+    expect(scheme.flows?.authorizationCode?.['x-scalar-secret-client-id']).toBe(clientId)
+    expect(scheme.flows?.authorizationCode?.['x-scalar-secret-defaults']?.['x-scalar-secret-client-id']).toBe('scalar')
+    expect(scheme.flows?.authorizationCode?.['x-usePkce']).toBe('no')
+  })
+
+  const workspaceStore = createWorkspaceStore()
+  const authStore = workspaceStore.auth
+  const documentSlug = 'test-document'
+
+  it.each(['Bearer', 'BEARER', 'bEaReR'])('retains bearer credentials for HTTP scheme %s', (scheme) => {
+    const auth = createWorkspaceStore().auth
+    auth.setAuthSecrets(documentSlug, 'mixedCaseBearer', {
+      type: 'http',
+      'x-scalar-secret-token': 'test-token',
+    })
+    const schemes = {
+      mixedCaseBearer: { type: 'http', scheme },
+    } satisfies AsyncApiComponentsObject['securitySchemes']
+
+    const result = mergeSecurity(schemes, {}, auth, documentSlug)
+
+    expect(buildRequestSecurity(Object.values(result))).toStrictEqual([
+      { in: 'header', name: 'Authorization', value: 'test-token', format: 'bearer' },
+    ])
+  })
+
+  it.each(['document', 'configured', 'configuration-only'] as const)(
+    'retains API key name edits and clearing for a %s scheme',
+    async (source) => {
+      const store = createWorkspaceStore()
+      const scheme = { type: 'apiKey', in: 'header', name: 'apikey' } as const
+      await store.addDocument({
+        name: documentSlug,
+        document: {
+          openapi: '3.1.0',
+          info: { title: 'API key', version: '1.0.0' },
+          components: { securitySchemes: source === 'configuration-only' ? {} : { key: scheme } },
+        },
+      })
+      const document = store.workspace.documents[documentSlug]
+      assert(isOpenApiDocument(document))
+      const mutators = authMutatorsFactory({ store, document })
+      const configuredSchemes: AuthenticationConfiguration['securitySchemes'] =
+        source === 'document' ? {} : { key: { ...scheme, name: 'apikey-aa' } }
+      store.auth.setAuthSecrets(documentSlug, 'key', { type: 'apiKey', 'x-scalar-secret-token': 'secret' })
+
+      for (const name of ['edited-name', '']) {
+        mutators.updateSecurityScheme({ name: 'key', payload: { type: 'apiKey', name } }, configuredSchemes)
+        const merged = mergeSecurity(document.components?.securitySchemes, configuredSchemes, store.auth, documentSlug)
+        expect(merged.key).toStrictEqual({ ...scheme, name, 'x-scalar-secret-token': 'secret' })
+        expect(buildRequestSecurity(Object.values(merged))).toStrictEqual([{ in: 'header', name, value: 'secret' }])
+      }
+      expect(configuredSchemes).toStrictEqual(source === 'document' ? {} : { key: { ...scheme, name: 'apikey-aa' } })
+      expect(document.components?.securitySchemes).toStrictEqual(
+        source === 'configuration-only' ? {} : { key: { ...scheme, name: source === 'document' ? '' : scheme.name } },
+      )
+
+      // Removing the credential override restores the configured or document name.
+      store.auth.clearAuthSecrets(documentSlug, 'key')
+      expect(
+        mergeSecurity(document.components?.securitySchemes, configuredSchemes, store.auth, documentSlug).key,
+      ).toStrictEqual({
+        ...scheme,
+        name: source === 'document' ? '' : 'apikey-aa',
+        'x-scalar-secret-token': '',
+      })
+    },
+  )
+
+  it.each(['configured', 'configuration-only'] as const)(
+    'restoring the %s default releases the name override and retains the token',
+    async (source) => {
+      const store = createWorkspaceStore()
+      const scheme = { type: 'apiKey', in: 'header', name: 'X-Key' } as const
+      await store.addDocument({
+        name: documentSlug,
+        document: {
+          openapi: '3.1.0',
+          info: { title: 'API key', version: '1.0.0' },
+          components: { securitySchemes: source === 'configuration-only' ? {} : { key: scheme } },
+        },
+      })
+      const document = store.workspace.documents[documentSlug]
+      assert(isOpenApiDocument(document))
+      const mutators = authMutatorsFactory({ store, document })
+      const configuredSchemes: AuthenticationConfiguration['securitySchemes'] = { key: { ...scheme } }
+      store.auth.setAuthSecrets(documentSlug, 'key', { type: 'apiKey', 'x-scalar-secret-token': 'secret' })
+      for (const name of ['', 'X-Key']) {
+        mutators.updateSecurityScheme({ name: 'key', payload: { type: 'apiKey', name } }, configuredSchemes)
+        expect(
+          mergeSecurity(document.components?.securitySchemes, configuredSchemes, store.auth, documentSlug).key,
+        ).toStrictEqual({ ...scheme, name, 'x-scalar-secret-token': 'secret' })
+      }
+      configuredSchemes.key = { ...scheme, name: 'X-Api-Key' }
+      expect(
+        mergeSecurity(document.components?.securitySchemes, configuredSchemes, store.auth, documentSlug).key,
+      ).toStrictEqual({
+        ...scheme,
+        name: 'X-Api-Key',
+        'x-scalar-secret-token': 'secret',
+      })
+      expect(document.components?.securitySchemes).toStrictEqual(source === 'configuration-only' ? {} : { key: scheme })
+    },
+  )
+
+  it('writes name edits to the document when the configuration does not supply a name', async () => {
+    const store = createWorkspaceStore()
+    const scheme = { type: 'apiKey', in: 'header', name: 'X-Key' } as const
+    await store.addDocument({
+      name: documentSlug,
+      document: {
+        openapi: '3.1.0',
+        info: { title: 'API key', version: '1.0.0' },
+        components: { securitySchemes: { key: scheme } },
+      },
+    })
+    const document = store.workspace.documents[documentSlug]
+    assert(isOpenApiDocument(document))
+    // A configuration that only pre-fills the token leaves the name to the document.
+    const configuredSchemes: AuthenticationConfiguration['securitySchemes'] = {
+      key: { type: 'apiKey', in: 'header', value: 'secret' },
+    }
+
+    authMutatorsFactory({ store, document }).updateSecurityScheme(
+      { name: 'key', payload: { type: 'apiKey', name: 'X-Edited' } },
+      configuredSchemes,
+    )
+
+    expect(document.components?.securitySchemes).toStrictEqual({ key: { ...scheme, name: 'X-Edited' } })
+    expect(store.auth.getAuthSecrets(documentSlug, 'key')).toBeUndefined()
+    expect(
+      mergeSecurity(document.components?.securitySchemes, configuredSchemes, store.auth, documentSlug).key,
+    ).toStrictEqual({
+      ...scheme,
+      name: 'X-Edited',
+      value: 'secret',
+      'x-scalar-secret-token': 'secret',
+      'x-scalar-secret-defaults': { 'x-scalar-secret-token': 'secret' },
+    })
+  })
+
+  it('does not write secrets when a document name is edited without an override', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: documentSlug,
+      document: {
+        openapi: '3.1.0',
+        info: { title: 'API key', version: '1.0.0' },
+        components: { securitySchemes: { key: { type: 'apiKey', in: 'header', name: 'X-Key' } } },
+      },
+    })
+    const document = store.workspace.documents[documentSlug]
+    assert(isOpenApiDocument(document))
+    const mutators = authMutatorsFactory({ store, document })
+
+    for (const name of ['X', 'X-', 'X-E']) {
+      mutators.updateSecurityScheme({ name: 'key', payload: { type: 'apiKey', name } }, {})
+    }
+
+    expect(store.auth.getAuthSecrets(documentSlug, 'key')).toBeUndefined()
+  })
+
+  it('ignores a name override once the scheme is no longer configured', async () => {
+    const store = createWorkspaceStore()
+    const scheme = { type: 'apiKey', in: 'header', name: 'X-Key' } as const
+    await store.addDocument({
+      name: documentSlug,
+      document: {
+        openapi: '3.1.0',
+        info: { title: 'API key', version: '1.0.0' },
+        components: { securitySchemes: { key: scheme } },
+      },
+    })
+    const document = store.workspace.documents[documentSlug]
+    assert(isOpenApiDocument(document))
+    const configuredSchemes: AuthenticationConfiguration['securitySchemes'] = { key: { ...scheme, name: 'X-Api-Key' } }
+    store.auth.setAuthSecrets(documentSlug, 'key', { type: 'apiKey', 'x-scalar-secret-token': 'secret' })
+    authMutatorsFactory({ store, document }).updateSecurityScheme(
+      { name: 'key', payload: { type: 'apiKey', name: 'X-Custom' } },
+      configuredSchemes,
+    )
+    expect(
+      mergeSecurity(document.components?.securitySchemes, configuredSchemes, store.auth, documentSlug).key,
+    ).toStrictEqual({ ...scheme, name: 'X-Custom', 'x-scalar-secret-token': 'secret' })
+
+    // The persisted override must not outlive the configuration it overrode.
+    expect(mergeSecurity(document.components?.securitySchemes, {}, store.auth, documentSlug).key).toStrictEqual({
+      ...scheme,
+      'x-scalar-secret-token': 'secret',
+    })
+  })
+
+  it('persists a document scheme whose name matches an inherited configuration property', () => {
+    const document = {
+      'x-scalar-original-document-hash': '',
+      openapi: '3.1.0',
+      info: { title: 'API key', version: '1.0.0' },
+      components: { securitySchemes: { toString: { type: 'apiKey' as const, in: 'header' as const, name: 'X-Key' } } },
+    }
+    authMutatorsFactory({ store: null, document }).updateSecurityScheme({
+      name: 'toString',
+      payload: { type: 'apiKey', name: 'X-Edited' },
+    })
+    expect(document.components.securitySchemes.toString).toStrictEqual({
+      type: 'apiKey',
+      in: 'header',
+      name: 'X-Edited',
+    })
+  })
+
+  it('returns empty object when both parameters are undefined', () => {
+    const result = mergeSecurity(undefined, undefined, authStore, documentSlug)
+    expect(result).toEqual({})
+  })
+
+  it('returns converted config when security schemes is undefined', () => {
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        name: 'X-API-Key',
+        in: 'header',
+        value: 'my-api-key',
+      },
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        token: 'my-bearer-token',
+      },
+      basicAuth: {
+        type: 'http',
+        scheme: 'basic',
+        username: 'test-user',
+        password: 'test-pass',
+      },
+    }
+
+    const result = mergeSecurity(undefined, config, authStore, documentSlug)
+
+    expect(result.apiKeyAuth).toMatchObject({
+      type: 'apiKey',
+      name: 'X-API-Key',
+      in: 'header',
+      'x-scalar-secret-token': 'my-api-key',
+    })
+    expect(result.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+      'x-scalar-secret-token': 'my-bearer-token',
+    })
+    expect(result.basicAuth).toMatchObject({
+      type: 'http',
+      scheme: 'basic',
+      'x-scalar-secret-username': 'test-user',
+      'x-scalar-secret-password': 'test-pass',
+    })
+  })
+
+  it('returns security schemes with secret fields when config is empty', () => {
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        name: 'X-API-Key',
+        in: 'header',
+      },
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+      },
+    }
+
+    const result = mergeSecurity(securitySchemes, {}, authStore, documentSlug)
+
+    expect(result.apiKeyAuth).toMatchObject({
+      type: 'apiKey',
+      name: 'X-API-Key',
+      in: 'header',
+      'x-scalar-secret-token': '',
+    })
+
+    expect(result.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+      'x-scalar-secret-token': '',
+      'x-scalar-secret-username': '',
+      'x-scalar-secret-password': '',
+    })
+  })
+
+  it('merges config values into existing security schemes', () => {
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        name: 'X-API-Key',
+        in: 'header',
+      },
+    }
+
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        value: 'my-secret-token',
+      },
+    }
+
+    const result = mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    expect(result.apiKeyAuth).toMatchObject({
+      type: 'apiKey',
+      name: 'X-API-Key',
+      in: 'header',
+      'x-scalar-secret-token': 'my-secret-token',
+    })
+  })
+
+  it('keeps apiKey config value when config scheme is partial', () => {
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        name: 'x-api-key',
+        in: 'header',
+      },
+    }
+
+    // Mirrors ApiReference authentication config where apiKey does not always include `in`.
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        name: 'x-api-key',
+        value: 'test-token',
+      },
+    }
+
+    const result = mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    expect(result.apiKeyAuth).toMatchObject({
+      type: 'apiKey',
+      name: 'x-api-key',
+      in: 'header',
+      'x-scalar-secret-token': 'test-token',
+    })
+  })
+
+  it('keeps apiKey config value when only config schemes are provided', () => {
+    // Mirrors ApiReference authentication config where apiKey may be config-only and omit `in`.
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      apiKey: {
+        type: 'apiKey',
+        name: 'x-api-key',
+        value: 'test-token',
+      },
+    }
+
+    const result = mergeSecurity(undefined, config, authStore, documentSlug)
+    expect(result.apiKey).toMatchObject({
+      type: 'apiKey',
+      name: 'x-api-key',
+      'x-scalar-secret-token': 'test-token',
+    })
+  })
+
+  it('adds apiKey type when missing in config-only security scheme', () => {
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      apiKey: {
+        name: 'x-api-key',
+        value: 'test-token',
+      },
+    }
+
+    const result = mergeSecurity(undefined, config, authStore, documentSlug)
+
+    expect(result.apiKey).toMatchObject({
+      type: 'apiKey',
+      name: 'x-api-key',
+      'x-scalar-secret-token': 'test-token',
+    })
+  })
+
+  it('normalizes an AsyncAPI httpApiKey scheme onto apiKey', () => {
+    // AsyncAPI's `httpApiKey` is the structural twin of OpenAPI `apiKey`; Scalar's auth UI only
+    // understands OpenAPI vocab, so the merge step must rename the type while keeping name + in.
+    const securitySchemes = {
+      apiKey: {
+        type: 'httpApiKey',
+        name: 'api_key',
+        in: 'query',
+        description: 'API key in query',
+      },
+    } as unknown as ComponentsObject['securitySchemes']
+
+    const result = mergeSecurity(securitySchemes, {}, authStore, documentSlug)
+
+    expect(result.apiKey).toMatchObject({
+      type: 'apiKey',
+      name: 'api_key',
+      in: 'query',
+      description: 'API key in query',
+      'x-scalar-secret-token': '',
+    })
+  })
+
+  it.each(['user', 'password'] as const)('keeps an AsyncAPI apiKey (in: %s) as a value-only apiKey', (location) => {
+    // AsyncAPI's own `apiKey` places the key in the broker user/password slot and has no name, so it
+    // has no OpenAPI equivalent — it stays `apiKey` with its broker `in` and still captures a value.
+    const securitySchemes = {
+      brokerKey: {
+        type: 'apiKey',
+        in: location,
+        description: 'Broker API key',
+      },
+    } satisfies AsyncApiComponentsObject['securitySchemes']
+
+    const result = mergeSecurity(securitySchemes, {}, authStore, documentSlug)
+
+    expect(result.brokerKey).toMatchObject({
+      type: 'apiKey',
+      in: location,
+      description: 'Broker API key',
+      'x-scalar-secret-token': '',
+    })
+  })
+
+  it.each(['userPassword', 'plain', 'scramSha256', 'scramSha512'] as const)(
+    'preserves the %s broker scheme when merging authentication',
+    (type) => {
+      const schemes = {
+        broker: { type, description: 'Broker credentials' },
+      } satisfies AsyncApiComponentsObject['securitySchemes']
+      const result = mergeSecurity(schemes, {}, authStore, documentSlug)
+      expect(result.broker).toMatchObject({
+        type,
+        description: 'Broker credentials',
+        'x-scalar-secret-username': '',
+        'x-scalar-secret-password': '',
+      })
+    },
+  )
+
+  it('renames AsyncAPI OAuth2 `availableScopes` onto OpenAPI `scopes`', () => {
+    // AsyncAPI OAuth2 flows carry the scope map under `availableScopes`; the auth UI reads
+    // `flow.scopes`, so the merge step must rename it or the scheme renders with no scopes.
+    const securitySchemes = {
+      oauth2: {
+        type: 'oauth2',
+        flows: {
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/oauth/authorize',
+            tokenUrl: 'https://example.com/oauth/token',
+            availableScopes: {
+              'read:users': 'Read user information',
+              'write:users': 'Modify user information',
+            },
+          },
+        },
+      },
+    } as unknown as ComponentsObject['securitySchemes']
+
+    const result = mergeSecurity(securitySchemes, {}, authStore, documentSlug)
+
+    expect(result.oauth2).toMatchObject({
+      type: 'oauth2',
+      flows: {
+        authorizationCode: {
+          scopes: {
+            'read:users': 'Read user information',
+            'write:users': 'Modify user information',
+          },
+        },
+      },
+    })
+    // The AsyncAPI-only key is gone after normalization.
+    expect(
+      (result.oauth2 as { flows: { authorizationCode: Record<string, unknown> } }).flows.authorizationCode,
+    ).not.toHaveProperty('availableScopes')
+  })
+
+  it('handles deeply nested OAuth2 configuration merging', () => {
+    const securitySchemes = {
+      oauth2: coerceValue(SecuritySchemeObjectSchema, {
+        type: 'oauth2',
+        flows: {
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/oauth/authorize',
+            tokenUrl: 'https://example.com/oauth/token',
+            scopes: {
+              'read:users': 'Read user information',
+              'write:users': 'Modify user information',
+            },
+          },
+        },
+      }),
+    }
+
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      oauth2: {
+        flows: {
+          authorizationCode: {
+            token: 'existing-access-token',
+          },
+        },
+      },
+    }
+
+    const result = mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    expect(result.oauth2).toMatchObject({
+      type: 'oauth2',
+      flows: {
+        authorizationCode: {
+          authorizationUrl: 'https://example.com/oauth/authorize',
+          tokenUrl: 'https://example.com/oauth/token',
+          token: 'existing-access-token',
+          scopes: {
+            'read:users': 'Read user information',
+            'write:users': 'Modify user information',
+          },
+        },
+      },
+    })
+  })
+
+  it('does not mutate source document schemes when deeply merging oauth2 config', () => {
+    const securitySchemes = reactive<NonNullable<ComponentsObject['securitySchemes']>>({
+      oauth2: coerceValue(SecuritySchemeObjectSchema, {
+        type: 'oauth2',
+        flows: {
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/oauth/authorize',
+            tokenUrl: 'https://example.com/oauth/token',
+            scopes: {
+              'read:users': 'Read user information',
+            },
+          },
+        },
+      }),
+    })
+
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      oauth2: {
+        flows: {
+          authorizationCode: {
+            token: 'merged-token',
+          },
+        },
+      },
+    }
+
+    mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    const sourceOauthScheme = getResolvedRef(securitySchemes.oauth2)
+    expect(sourceOauthScheme?.type).toBe('oauth2')
+    if (sourceOauthScheme?.type !== 'oauth2') {
+      throw new Error('Expected oauth2 scheme in source securitySchemes')
+    }
+
+    const sourceAuthorizationCode = sourceOauthScheme.flows?.authorizationCode
+    expect(sourceAuthorizationCode).toMatchObject({
+      authorizationUrl: 'https://example.com/oauth/authorize',
+      tokenUrl: 'https://example.com/oauth/token',
+      scopes: {
+        'read:users': 'Read user information',
+      },
+    })
+    expect(sourceAuthorizationCode).not.toHaveProperty('token')
+  })
+
+  it('preserves security schemes not mentioned in config', () => {
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        name: 'X-API-Key',
+        in: 'header',
+      },
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+      },
+      basicAuth: {
+        type: 'http',
+        scheme: 'basic',
+      },
+    }
+
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      bearerAuth: {
+        token: 'my-bearer-token',
+      },
+    }
+
+    const result = mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    expect(result).toHaveProperty('apiKeyAuth')
+    expect(result).toHaveProperty('bearerAuth')
+    expect(result).toHaveProperty('basicAuth')
+
+    expect(result.apiKeyAuth).toMatchObject({
+      type: 'apiKey',
+      name: 'X-API-Key',
+      in: 'header',
+      'x-scalar-secret-token': '',
+    })
+
+    expect(result.basicAuth).toMatchObject({
+      type: 'http',
+      scheme: 'basic',
+      'x-scalar-secret-token': '',
+      'x-scalar-secret-username': '',
+      'x-scalar-secret-password': '',
+    })
+
+    expect(result.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+      'x-scalar-secret-token': 'my-bearer-token',
+    })
+  })
+
+  it('merges comprehensive auth configuration with all security scheme types', () => {
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      apiKeyHeader: {
+        type: 'apiKey',
+        name: 'X-API-Key',
+        in: 'header',
+        description: 'API Key in header',
+      },
+      apiKeyQuery: {
+        type: 'apiKey',
+        name: 'api_key',
+        in: 'query',
+        description: 'API Key in query',
+      },
+      apiKeyCookie: {
+        type: 'apiKey',
+        name: 'session',
+        in: 'cookie',
+        description: 'API Key in cookie',
+      },
+      basicAuth: {
+        type: 'http',
+        scheme: 'basic',
+        description: 'Basic authentication',
+      },
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Bearer token authentication',
+      },
+      oauth2AllFlows: coerceValue(SecuritySchemeObjectSchema, {
+        type: 'oauth2',
+        description: 'OAuth2 with all flows',
+        flows: {
+          implicit: {
+            authorizationUrl: 'https://example.com/oauth/authorize',
+            scopes: {
+              'read:data': 'Read data',
+              'write:data': 'Write data',
+            },
+          },
+          password: {
+            tokenUrl: 'https://example.com/oauth/token',
+            scopes: {
+              'admin': 'Admin access',
+            },
+          },
+          clientCredentials: {
+            tokenUrl: 'https://example.com/oauth/token',
+            scopes: {
+              'api:access': 'API access',
+            },
+          },
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/oauth/authorize',
+            tokenUrl: 'https://example.com/oauth/token',
+            scopes: {
+              'profile': 'User profile',
+              'email': 'Email address',
+            },
+          },
+        },
+      }),
+      openIdConnect: {
+        type: 'openIdConnect',
+        openIdConnectUrl: 'https://example.com/.well-known/openid-configuration',
+        description: 'OpenID Connect authentication',
+      },
+    }
+
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      apiKeyHeader: {
+        type: 'apiKey',
+        value: 'header-api-key-value',
+      },
+      apiKeyQuery: {
+        type: 'apiKey',
+        value: 'query-api-key-value',
+      },
+      apiKeyCookie: {
+        type: 'apiKey',
+        value: 'cookie-session-value',
+      },
+      basicAuth: {
+        username: 'test-user',
+        password: 'test-password',
+      },
+      bearerAuth: {
+        token: 'bearer-jwt-token',
+      },
+      oauth2AllFlows: {
+        flows: {
+          implicit: {
+            token: 'implicit-access-token',
+            selectedScopes: ['read:data'],
+          },
+          password: {
+            token: 'password-access-token',
+            username: 'oauth-user',
+            password: 'oauth-password',
+            clientSecret: 'password-client-secret',
+            selectedScopes: ['admin'],
+          },
+          clientCredentials: {
+            token: 'client-credentials-token',
+            clientSecret: 'credentials-client-secret',
+            selectedScopes: ['api:access'],
+          },
+          authorizationCode: {
+            token: 'auth-code-token',
+            clientSecret: 'auth-code-client-secret',
+            selectedScopes: ['profile', 'email'],
+          },
+        },
+      },
+    }
+
+    const result = mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    expect(result.apiKeyHeader).toMatchObject({
+      type: 'apiKey',
+      name: 'X-API-Key',
+      in: 'header',
+      description: 'API Key in header',
+      'x-scalar-secret-token': 'header-api-key-value',
+    })
+
+    expect(result.apiKeyQuery).toMatchObject({
+      type: 'apiKey',
+      name: 'api_key',
+      in: 'query',
+      description: 'API Key in query',
+      'x-scalar-secret-token': 'query-api-key-value',
+    })
+
+    expect(result.apiKeyCookie).toMatchObject({
+      type: 'apiKey',
+      name: 'session',
+      in: 'cookie',
+      description: 'API Key in cookie',
+      'x-scalar-secret-token': 'cookie-session-value',
+    })
+
+    expect(result.basicAuth).toMatchObject({
+      type: 'http',
+      scheme: 'basic',
+      description: 'Basic authentication',
+      'x-scalar-secret-username': 'test-user',
+      'x-scalar-secret-password': 'test-password',
+    })
+
+    expect(result.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: 'Bearer token authentication',
+      'x-scalar-secret-token': 'bearer-jwt-token',
+    })
+
+    expect(result.oauth2AllFlows).toMatchObject({
+      type: 'oauth2',
+      description: 'OAuth2 with all flows',
+      flows: {
+        implicit: {
+          authorizationUrl: 'https://example.com/oauth/authorize',
+          token: 'implicit-access-token',
+          selectedScopes: ['read:data'],
+          scopes: {
+            'read:data': 'Read data',
+            'write:data': 'Write data',
+          },
+        },
+        password: {
+          tokenUrl: 'https://example.com/oauth/token',
+          token: 'password-access-token',
+          username: 'oauth-user',
+          password: 'oauth-password',
+          clientSecret: 'password-client-secret',
+          selectedScopes: ['admin'],
+          scopes: {
+            'admin': 'Admin access',
+          },
+        },
+        clientCredentials: {
+          tokenUrl: 'https://example.com/oauth/token',
+          token: 'client-credentials-token',
+          clientSecret: 'credentials-client-secret',
+          selectedScopes: ['api:access'],
+          scopes: {
+            'api:access': 'API access',
+          },
+        },
+        authorizationCode: {
+          authorizationUrl: 'https://example.com/oauth/authorize',
+          tokenUrl: 'https://example.com/oauth/token',
+          token: 'auth-code-token',
+          clientSecret: 'auth-code-client-secret',
+          selectedScopes: ['profile', 'email'],
+          scopes: {
+            'profile': 'User profile',
+            'email': 'Email address',
+          },
+        },
+      },
+    })
+
+    expect(result.openIdConnect).toMatchObject({
+      type: 'openIdConnect',
+      openIdConnectUrl: 'https://example.com/.well-known/openid-configuration',
+      description: 'OpenID Connect authentication',
+    })
+  })
+
+  it('handles security schemes with $ref and $ref-value', () => {
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      apiKeyAuth: {
+        $ref: '#/components/securitySchemes/apiKeyAuth',
+        '$ref-value': {
+          type: 'apiKey',
+          name: 'X-API-Key',
+          in: 'header',
+          description: 'API Key authentication',
+        },
+      },
+      bearerAuth: {
+        $ref: '#/components/securitySchemes/bearerAuth',
+        '$ref-value': {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Bearer token authentication',
+        },
+      },
+      oauth2: {
+        $ref: '#/components/securitySchemes/oauth2',
+        '$ref-value': coerceValue(SecuritySchemeObjectSchema, {
+          type: 'oauth2',
+          description: 'OAuth2 authentication',
+          flows: {
+            authorizationCode: {
+              authorizationUrl: 'https://example.com/oauth/authorize',
+              tokenUrl: 'https://example.com/oauth/token',
+              'x-scalar-secret-token': 'existing-oauth-token',
+              scopes: {
+                'read:users': 'Read user information',
+                'write:users': 'Modify user information',
+              },
+            },
+          },
+        }),
+      },
+    }
+
+    const config: AuthenticationConfiguration['securitySchemes'] = {}
+
+    const result = mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    expect(result.apiKeyAuth).toMatchObject({
+      type: 'apiKey',
+      name: 'X-API-Key',
+      in: 'header',
+      description: 'API Key authentication',
+      'x-scalar-secret-token': '',
+    })
+    expect(result.apiKeyAuth).not.toHaveProperty('$ref')
+    expect(result.apiKeyAuth).not.toHaveProperty('$ref-value')
+
+    expect(result.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: 'Bearer token authentication',
+      'x-scalar-secret-token': '',
+    })
+    expect(result.bearerAuth).not.toHaveProperty('$ref')
+    expect(result.bearerAuth).not.toHaveProperty('$ref-value')
+
+    expect(result.oauth2).toMatchObject({
+      type: 'oauth2',
+      description: 'OAuth2 authentication',
+      flows: {
+        authorizationCode: {
+          authorizationUrl: 'https://example.com/oauth/authorize',
+          tokenUrl: 'https://example.com/oauth/token',
+          'x-scalar-secret-token': '',
+          scopes: {
+            'read:users': 'Read user information',
+            'write:users': 'Modify user information',
+          },
+        },
+      },
+    })
+    expect(result.oauth2).not.toHaveProperty('$ref')
+    expect(result.oauth2).not.toHaveProperty('$ref-value')
+  })
+
+  it('merges auth config into security schemes with $ref and $ref-value', () => {
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      apiKeyAuth: {
+        $ref: '#/components/securitySchemes/apiKeyAuth',
+        '$ref-value': {
+          type: 'apiKey',
+          name: 'X-API-Key',
+          in: 'header',
+          description: 'API Key authentication',
+        },
+      },
+      bearerAuth: {
+        $ref: '#/components/securitySchemes/bearerAuth',
+        '$ref-value': {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Bearer token authentication',
+        },
+      },
+      basicAuth: {
+        $ref: '#/components/securitySchemes/basicAuth',
+        '$ref-value': {
+          type: 'http',
+          scheme: 'basic',
+          description: 'Basic authentication',
+        },
+      },
+      oauth2: {
+        $ref: '#/components/securitySchemes/oauth2',
+        '$ref-value': coerceValue(SecuritySchemeObjectSchema, {
+          type: 'oauth2',
+          description: 'OAuth2 authentication',
+          flows: {
+            authorizationCode: {
+              authorizationUrl: 'https://example.com/oauth/authorize',
+              tokenUrl: 'https://example.com/oauth/token',
+              scopes: {
+                'read:users': 'Read user information',
+                'write:users': 'Modify user information',
+              },
+            },
+            password: {
+              tokenUrl: 'https://example.com/oauth/token',
+              scopes: {
+                'admin': 'Admin access',
+              },
+            },
+          },
+        }),
+      },
+    }
+
+    const config: AuthenticationConfiguration['securitySchemes'] = {
+      apiKeyAuth: {
+        type: 'apiKey',
+        value: 'merged-api-key-value',
+      },
+      bearerAuth: {
+        token: 'merged-bearer-token',
+      },
+      basicAuth: {
+        username: 'merged-username',
+        password: 'merged-password',
+      },
+      oauth2: {
+        flows: {
+          authorizationCode: {
+            token: 'merged-oauth-token',
+            clientSecret: 'merged-client-secret',
+            selectedScopes: ['read:users'],
+          },
+          password: {
+            token: 'merged-password-token',
+            username: 'merged-oauth-user',
+            password: 'merged-oauth-password',
+            selectedScopes: ['admin'],
+          },
+        },
+      },
+    }
+
+    const result = mergeSecurity(securitySchemes, config, authStore, documentSlug)
+
+    expect(result.apiKeyAuth).toMatchObject({
+      type: 'apiKey',
+      name: 'X-API-Key',
+      in: 'header',
+      description: 'API Key authentication',
+      'x-scalar-secret-token': 'merged-api-key-value',
+    })
+    expect(result.apiKeyAuth).not.toHaveProperty('$ref')
+    expect(result.apiKeyAuth).not.toHaveProperty('$ref-value')
+
+    expect(result.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: 'Bearer token authentication',
+      'x-scalar-secret-token': 'merged-bearer-token',
+    })
+    expect(result.bearerAuth).not.toHaveProperty('$ref')
+    expect(result.bearerAuth).not.toHaveProperty('$ref-value')
+
+    expect(result.basicAuth).toMatchObject({
+      type: 'http',
+      scheme: 'basic',
+      description: 'Basic authentication',
+      'x-scalar-secret-username': 'merged-username',
+      'x-scalar-secret-password': 'merged-password',
+    })
+    expect(result.basicAuth).not.toHaveProperty('$ref')
+    expect(result.basicAuth).not.toHaveProperty('$ref-value')
+
+    expect(result.oauth2).toMatchObject({
+      type: 'oauth2',
+      description: 'OAuth2 authentication',
+      flows: {
+        authorizationCode: {
+          authorizationUrl: 'https://example.com/oauth/authorize',
+          tokenUrl: 'https://example.com/oauth/token',
+          token: 'merged-oauth-token',
+          clientSecret: 'merged-client-secret',
+          selectedScopes: ['read:users'],
+          scopes: {
+            'read:users': 'Read user information',
+            'write:users': 'Modify user information',
+          },
+        },
+        password: {
+          tokenUrl: 'https://example.com/oauth/token',
+          token: 'merged-password-token',
+          username: 'merged-oauth-user',
+          password: 'merged-oauth-password',
+          selectedScopes: ['admin'],
+          scopes: {
+            'admin': 'Admin access',
+          },
+        },
+      },
+    })
+    expect(result.oauth2).not.toHaveProperty('$ref')
+    expect(result.oauth2).not.toHaveProperty('$ref-value')
+  })
+
+  it('reacts to nested security scheme updates in computed consumers', () => {
+    const securitySchemes = reactive<NonNullable<ComponentsObject['securitySchemes']>>({
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+      },
+    })
+    const config = reactive<NonNullable<AuthenticationConfiguration['securitySchemes']>>({
+      bearerAuth: {
+        token: 'first-token',
+      },
+    })
+
+    const merged = computed(() => mergeSecurity(securitySchemes, config, authStore, documentSlug))
+
+    const firstBearerAuth = merged.value.bearerAuth
+    expect(firstBearerAuth?.type).toBe('http')
+    if (firstBearerAuth?.type === 'http') {
+      expect(firstBearerAuth['x-scalar-secret-token']).toBe('first-token')
+    }
+
+    config.bearerAuth = {
+      token: 'updated-token',
+    }
+
+    const updatedBearerAuth = merged.value.bearerAuth
+    expect(updatedBearerAuth?.type).toBe('http')
+    if (updatedBearerAuth?.type === 'http') {
+      expect(updatedBearerAuth['x-scalar-secret-token']).toBe('updated-token')
+    }
+  })
+
+  it('preserves an explicitly cleared oauth2 redirect uri from auth store over config fallback', () => {
+    const redirectDocumentSlug = 'redirect-doc'
+    const redirectAuthStore = createWorkspaceStore().auth
+
+    const securitySchemes: ComponentsObject['securitySchemes'] = {
+      oauth2: coerceValue(SecuritySchemeObjectSchema, {
+        type: 'oauth2',
+        flows: {
+          authorizationCode: {
+            authorizationUrl: 'https://example.com/oauth/authorize',
+            tokenUrl: 'https://example.com/oauth/token',
+            scopes: {},
+            'x-scalar-redirect-uri': 'https://galaxy.scalar.com/callback',
+          },
+        },
+      }),
+    }
+
+    redirectAuthStore.setAuthSecrets(redirectDocumentSlug, 'oauth2', {
+      type: 'oauth2',
+      authorizationCode: {
+        'x-scalar-secret-redirect-uri': '',
+      },
+    })
+
+    const result = mergeSecurity(securitySchemes, {}, redirectAuthStore, redirectDocumentSlug)
+
+    expect(result.oauth2?.type).toBe('oauth2')
+    if (result.oauth2?.type === 'oauth2') {
+      expect(result.oauth2.flows.authorizationCode?.['x-scalar-secret-redirect-uri']).toBe('')
+    }
+  })
+})

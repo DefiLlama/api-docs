@@ -1,0 +1,524 @@
+import { getCookieSerializationError } from '@scalar/helpers/http/get-cookie-serialization-error'
+import { isObjectLike } from '@scalar/helpers/object/is-object'
+import {
+  assertReservedPathUrl,
+  serializeReservedPathParameter,
+} from '@scalar/workspace-store/helpers/encode-path-parameter'
+import { getParameterExample } from '@scalar/workspace-store/helpers/get-parameter-example'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import {
+  getQuerystringParameter,
+  serializeQuerystringParameter,
+} from '@scalar/workspace-store/helpers/querystring-parameter'
+import {
+  deSerializeParameter,
+  filterDisabledProperties,
+  getExampleFromSchema,
+  isParamDisabled,
+  serializeContentValue,
+  serializeCookieStyle,
+  serializeDeepObjectStyle,
+  serializeFormStyle,
+  serializeFormStyleForCookies,
+  serializePipeDelimitedStyle,
+  serializeSimpleStyle,
+  serializeSpaceDelimitedStyle,
+} from '@scalar/workspace-store/request-example'
+import type { OperationObject, ParameterObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import type { Request as HarRequest } from 'har-format'
+
+/** An invalid cookie declaration that authors can repair before generating a sample. */
+export class CookieSerializationError extends Error {}
+
+type ProcessedParameters = {
+  /** Named serialized examples already embedded in the URL. */
+  hasSerializedQuery?: boolean
+  url: string
+  headers: HarRequest['headers']
+  queryString: HarRequest['queryString']
+  cookies: HarRequest['cookies']
+  /** Whether serialized cookie-style values require a complete Cookie header. */
+  hasCookieStyleEntries: boolean
+}
+
+/** Ensures we don't have any references in the parameters */
+const deReferenceParams = (params: OperationObject['parameters']): ParameterObject[] =>
+  (params ?? []).map((param) => getResolvedRef(param)).filter((param) => param !== undefined)
+
+/** Whether the parameter allows reserved characters (from param or schema). */
+const isAllowReserved = (param: ParameterObject): boolean => {
+  if ('allowReserved' in param && param.allowReserved !== undefined) {
+    return param.allowReserved
+  }
+  if ('schema' in param && param.schema && typeof param.schema === 'object' && 'allowReserved' in param.schema) {
+    return (param.schema as { allowReserved?: boolean }).allowReserved === true
+  }
+  return false
+}
+
+/**
+ * Get the style and explode values for a parameter according to OpenAPI 3.1.1 specification.
+ * Handles defaults and validation for parameter location restrictions.
+ */
+const getParameterStyleAndExplode = (param: ParameterObject): { style: string; explode: boolean } => {
+  // Headers only support 'simple' style
+  if (param.in === 'header') {
+    const explode = 'explode' in param && param.explode !== undefined ? param.explode : false
+    return { style: 'simple', explode }
+  }
+
+  // Cookies default to form for compatibility and also support cookie style.
+  if (param.in === 'cookie') {
+    const explode = 'explode' in param && param.explode !== undefined ? param.explode : true
+    return { style: 'style' in param && param.style === 'cookie' ? 'cookie' : 'form', explode }
+  }
+
+  const defaultStyle = {
+    path: 'simple',
+    query: 'form',
+    querystring: 'form',
+    header: 'simple',
+    cookie: 'form',
+  }[param.in]
+
+  // Use provided style or default based on location
+  const style = 'style' in param && param.style ? param.style : defaultStyle
+
+  // Determine explode value: use provided value or default based on style
+  const explode = 'explode' in param && param.explode !== undefined ? param.explode : style === 'form'
+
+  return { style, explode }
+}
+
+/**
+ * Extract the value for a parameter from example data or schema.
+ * Prioritizes example data over schema examples.
+ * Returns null if the parameter is disabled so we can skip it.
+ */
+const getParameterValue = (
+  param: ParameterObject,
+  example: string | undefined,
+  defaultDisabled: boolean,
+  openapiVersion?: string,
+  jsonSchemaDialect?: string,
+): unknown => {
+  // Try to get value from example first
+  const selected = getParameterExample(param, example)
+  const exampleValue = selected.example
+
+  const propertyStates =
+    param.in === 'query' && !selected.serialized && !selected.mediaSerialized
+      ? exampleValue?.['x-scalar-disabled-properties']
+      : undefined
+  if (propertyStates) {
+    return filterDisabledProperties(
+      deSerializeParameter(selected.value, param),
+      propertyStates,
+      isParamDisabled(param, exampleValue, defaultDisabled),
+    )
+  }
+
+  // If the parameter is disabled, return undefined so we can skip it.
+  if (isParamDisabled(param, exampleValue, defaultDisabled)) {
+    return undefined
+  }
+
+  // If the example value is set, return it.
+  if (selected.value !== undefined) {
+    return deSerializeParameter(selected.value, param)
+  }
+
+  // Fall back to schema example if available
+  if (!('schema' in param) || !param.schema) {
+    return undefined
+  }
+
+  const options = {
+    openapiVersion,
+    jsonSchemaDialect,
+    ...(param.in === 'path' ? { emptyString: `{${param.name}}` } : {}),
+  }
+  const schema = getResolvedRef(param.schema)
+  return schema ? getExampleFromSchema(schema, options) : undefined
+}
+
+/**
+ * Process OpenAPI parameters and return the updated properties.
+ * Handles path, query, and header parameters with various styles and explode options.
+ *
+ * @see https://spec.openapis.org/oas/latest.html#style-values
+ */
+export const processParameters = ({
+  harRequest,
+  parameters,
+  example,
+  defaultDisabled,
+  openapiVersion,
+  jsonSchemaDialect,
+}: {
+  harRequest: HarRequest
+  parameters: OperationObject['parameters']
+  /** The name of the example to use */
+  example?: string | undefined
+  /** Whether to disable parameters by default. */
+  defaultDisabled: boolean
+  /** Originating API description version. */
+  openapiVersion?: string
+  jsonSchemaDialect?: string
+}): ProcessedParameters => {
+  // Create copies of the arrays to avoid modifying the input
+  const newHeaders = [...harRequest.headers]
+  const newQueryString = [...harRequest.queryString]
+  const newCookies = [...harRequest.cookies]
+  const cookieStyleEntries: HarRequest['cookies'] = []
+  let newUrl = harRequest.url
+  let hasReservedPathParameter = false
+  const serializedQuery: string[] = []
+  const serializedCookies: string[] = []
+
+  const appendQueryParameter = (name: string, value: string, param: ParameterObject): void => {
+    if (isAllowReserved(param)) {
+      // HTTP clients cannot infer reserved expansion from a HAR name/value pair.
+      serializedQuery.push(`${encodeURIComponent(name)}=${value}`)
+    } else {
+      newQueryString.push({ name, value })
+    }
+  }
+
+  // Filter out references
+  const deReferencedParams = deReferenceParams(parameters)
+
+  for (const param of deReferencedParams) {
+    if (!param.in || !param.name) {
+      continue
+    }
+
+    if (param.in === 'querystring') {
+      const querystring = getQuerystringParameter(param, example, {
+        defaultDisabled,
+        openapiVersion,
+        jsonSchemaDialect,
+      })
+      if (querystring) {
+        const hashIndex = newUrl.indexOf('#')
+        const hash = hashIndex === -1 ? '' : newUrl.slice(hashIndex)
+        const base = (hashIndex === -1 ? newUrl : newUrl.slice(0, hashIndex)).split('?')[0]
+        const query = serializeQuerystringParameter(querystring)
+        newUrl = `${base}${query ? `?${query}` : ''}${hash}`
+      }
+      continue
+    }
+
+    const selected = getParameterExample(param, example)
+    if (selected.serialized && !isParamDisabled(param, selected.example, defaultDisabled)) {
+      const wireValue = String(selected.value)
+      switch (param.in) {
+        case 'path':
+          newUrl = newUrl.replaceAll(`{${param.name}}`, () => wireValue)
+          break
+        case 'query':
+          serializedQuery.push(wireValue)
+          break
+        case 'header':
+          newHeaders.push({ name: param.name, value: wireValue })
+          break
+        case 'cookie':
+          serializedCookies.push(wireValue)
+          break
+      }
+      continue
+    }
+    if (selected.mediaSerialized && !isParamDisabled(param, selected.example, defaultDisabled)) {
+      const text = String(selected.value)
+      switch (param.in) {
+        case 'query':
+          appendQueryParameter(param.name, text, param)
+          break
+        case 'header':
+          newHeaders.push({ name: param.name, value: text })
+          break
+        case 'path':
+          newUrl = newUrl.replaceAll(`{${param.name}}`, () => encodeURIComponent(text))
+          break
+        case 'cookie':
+          newCookies.push({ name: param.name, value: text })
+          break
+      }
+      continue
+    }
+    const paramValue = getParameterValue(param, example, defaultDisabled, openapiVersion, jsonSchemaDialect)
+    if (paramValue === undefined) {
+      continue
+    }
+
+    const { style, explode } = getParameterStyleAndExplode(param)
+
+    switch (param.in) {
+      case 'path': {
+        const allowReserved = openapiVersion?.startsWith('3.2.') && 'schema' in param && param.allowReserved === true
+        hasReservedPathParameter ||= Boolean(allowReserved)
+        const pathValue = allowReserved
+          ? serializeReservedPathParameter(param.name, { value: paramValue, style, explode })
+          : undefined
+        newUrl =
+          pathValue === undefined
+            ? processPathParameters(newUrl, param, paramValue, style, explode)
+            : newUrl.replaceAll(`{${param.name}}`, () => pathValue)
+        break
+      }
+
+      case 'query': {
+        // Content type parameters should be serialized according to the parameter's own content type
+        if ('content' in param && param.content) {
+          // We grab the first for now but eventually we should support selecting the content type per parameter
+          const paramContentType = Object.keys(param.content)[0] ?? 'application/json'
+          const serializedValue = serializeContentValue(paramValue, paramContentType)
+          appendQueryParameter(param.name, serializedValue, param)
+          break
+        }
+
+        // Handle query parameters
+        switch (style) {
+          case 'form': {
+            const serialized = serializeFormStyle(paramValue, explode)
+
+            // If serialized is an array of key-value pairs (exploded object or array)
+            if (Array.isArray(serialized)) {
+              for (const entry of serialized) {
+                const key = entry.key || param.name
+                appendQueryParameter(key, String(entry.value), param)
+              }
+            }
+            // Otherwise, convert to string
+            else {
+              appendQueryParameter(param.name, String(serialized), param)
+            }
+            break
+          }
+          case 'spaceDelimited': {
+            const serialized = serializeSpaceDelimitedStyle(paramValue)
+            appendQueryParameter(param.name, serialized, param)
+            break
+          }
+          case 'pipeDelimited': {
+            const serialized = serializePipeDelimitedStyle(paramValue)
+            appendQueryParameter(param.name, serialized, param)
+            break
+          }
+          case 'deepObject': {
+            // OAS marks deepObject-on-array and deepObject+explode:false as undefined.
+            // Mirror process-body: fall back to form/explode:true for arrays and always
+            // invoke the serializer for objects so authors get useful output instead of
+            // a silently-dropped parameter.
+            if (Array.isArray(paramValue)) {
+              const serialized = serializeFormStyle(paramValue, true)
+              if (Array.isArray(serialized)) {
+                for (const entry of serialized) {
+                  const key = entry.key || param.name
+                  appendQueryParameter(key, String(entry.value), param)
+                }
+              } else {
+                appendQueryParameter(param.name, String(serialized), param)
+              }
+            } else {
+              const entries = serializeDeepObjectStyle(param.name, paramValue)
+              for (const entry of entries) {
+                appendQueryParameter(entry.key, entry.value, param)
+              }
+            }
+            break
+          }
+
+          // Default to form style
+          default:
+            appendQueryParameter(param.name, String(paramValue), param)
+        }
+        break
+      }
+
+      // Headers only support 'simple' style according to OpenAPI 3.1.1
+      // For arrays, simple style always produces comma-separated values regardless of explode
+      // The explode parameter only affects object serialization
+      case 'header': {
+        const serialized = serializeSimpleStyle(paramValue, explode)
+        newHeaders.push({ name: param.name, value: String(serialized) })
+        break
+      }
+
+      // Keep cookie style separate so snippet generators cannot percent-encode it.
+      case 'cookie': {
+        const [major, minor] = (openapiVersion ?? '').split('.')
+        const error =
+          major === '3' && minor === '2' && !('content' in param)
+            ? getCookieSerializationError(param, paramValue)
+            : undefined
+        if (error) {
+          throw new CookieSerializationError(error)
+        }
+        if (style === 'cookie') {
+          cookieStyleEntries.push(...serializeCookieStyle(param.name, paramValue, explode))
+          break
+        }
+        const serialized = serializeFormStyleForCookies(paramValue, explode)
+
+        // If serialized is an array of key-value pairs (exploded object or array)
+        if (Array.isArray(serialized)) {
+          for (const entry of serialized) {
+            const key = entry.key || param.name
+            const value = entry.value === null ? 'null' : String(entry.value)
+            newCookies.push({ name: key, value })
+          }
+        }
+        // Otherwise, convert to string
+        else {
+          const value = serialized === null ? 'null' : String(serialized)
+          newCookies.push({ name: param.name, value })
+        }
+        break
+      }
+    }
+  }
+
+  // HAR cookie entries are encoded by snippet generators. Use a complete header
+  // when cookie style is present, preserving legacy encoding for other cookies.
+  if (cookieStyleEntries.length || serializedCookies.length) {
+    const cookieValue = [
+      ...newCookies.map((cookie) => `${encodeURIComponent(cookie.name)}=${encodeURIComponent(cookie.value)}`),
+      ...cookieStyleEntries.map((cookie) => `${cookie.name}=${cookie.value}`),
+      ...serializedCookies,
+    ].join('; ')
+    const existing = newHeaders.find((header) => header.name.toLowerCase() === 'cookie')
+    if (existing) {
+      newHeaders.splice(newHeaders.indexOf(existing), 1, {
+        ...existing,
+        value: existing.value ? `${existing.value}; ${cookieValue}` : cookieValue,
+      })
+    } else {
+      newHeaders.push({ name: 'Cookie', value: cookieValue })
+    }
+  }
+
+  if (serializedQuery.length) {
+    const hashIndex = newUrl.indexOf('#')
+    const hash = hashIndex < 0 ? '' : newUrl.slice(hashIndex)
+    const base = hashIndex < 0 ? newUrl : newUrl.slice(0, hashIndex)
+    newUrl = `${base}${base.includes('?') ? '&' : '?'}${serializedQuery.join('&')}${hash}`
+  }
+
+  if (hasReservedPathParameter) {
+    assertReservedPathUrl(newUrl)
+  }
+
+  return {
+    url: newUrl,
+    headers: newHeaders,
+    queryString: newQueryString,
+    cookies: cookieStyleEntries.length || serializedCookies.length ? [] : newCookies,
+    hasCookieStyleEntries: cookieStyleEntries.length > 0 || serializedCookies.length > 0,
+    ...(serializedQuery.length ? { hasSerializedQuery: true } : {}),
+  }
+}
+
+/**
+ * Process path parameters according to OpenAPI specification.
+ * Handles matrix, label, and simple styles with explode options.
+ *
+ * @param url - The URL to process
+ * @param param - The parameter object
+ * @param paramValue - The value of the parameter
+ * @param style - The style of the parameter (matrix, label, simple)
+ * @param explode - Whether to explode the parameter
+ * @returns The updated URL with processed path parameters
+ */
+const processPathParameters = (
+  url: string,
+  param: ParameterObject,
+  paramValue: unknown,
+  style: string,
+  explode: boolean,
+): string => {
+  switch (style) {
+    case 'matrix': {
+      if (explode) {
+        // Matrix explode array: ;color=blue;color=black;color=brown
+        if (Array.isArray(paramValue)) {
+          const values = paramValue.map((v: unknown) => `${param.name}=${v}`).join(';')
+          return url.replace(`{;${param.name}}`, `;${values}`)
+        }
+
+        // Matrix explode object: ;R=100;G=200;B=150
+        if (isObjectLike(paramValue)) {
+          const values = Object.entries(paramValue)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(';')
+          return url.replace(`{;${param.name}}`, `;${values}`)
+        }
+
+        // Matrix explode primitive: ;color=blue
+        return url.replace(`{;${param.name}}`, `;${param.name}=${paramValue}`)
+      }
+
+      // Matrix no explode array: ;color=blue,black,brown
+      if (Array.isArray(paramValue)) {
+        return url.replace(`{;${param.name}}`, `;${param.name}=${paramValue.join(',')}`)
+      }
+
+      // Matrix no explode object: ;color=R,100,G,200,B,150
+      if (isObjectLike(paramValue)) {
+        const values = Object.entries(paramValue)
+          .map(([k, v]) => `${k},${v}`)
+          .join(',')
+        return url.replace(`{;${param.name}}`, `;${param.name}=${values}`)
+      }
+
+      // Matrix no explode primitive: ;color=blue
+      return url.replace(`{;${param.name}}`, `;${param.name}=${paramValue}`)
+    }
+    case 'label': {
+      if (explode) {
+        // Label explode array: .blue.black.brown
+        if (Array.isArray(paramValue)) {
+          return url.replace(`{.${param.name}}`, `.${paramValue.join('.')}`)
+        }
+
+        // Label explode object: .R=100.G=200.B=150
+        if (isObjectLike(paramValue)) {
+          const values = Object.entries(paramValue)
+            .map(([k, v]) => `${k}=${v}`)
+            .join('.')
+
+          return url.replace(`{.${param.name}}`, `.${values}`)
+        }
+
+        // Label explode primitive: .blue
+        return url.replace(`{.${param.name}}`, `.${paramValue}`)
+      }
+
+      // Label no explode array: .blue,black,brown
+      if (Array.isArray(paramValue)) {
+        return url.replace(`{.${param.name}}`, `.${paramValue.join(',')}`)
+      }
+
+      // Label no explode object: .R,100,G,200,B,150
+      if (isObjectLike(paramValue)) {
+        const values = Object.entries(paramValue)
+          .map(([k, v]) => `${k},${v}`)
+          .join(',')
+
+        return url.replace(`{.${param.name}}`, `.${values}`)
+      }
+
+      // Label no explode primitive: .blue
+      return url.replace(`{.${param.name}}`, `.${paramValue}`)
+    }
+
+    case 'simple': {
+      const serialized = serializeSimpleStyle(paramValue, explode)
+      return url.replace(`{${param.name}}`, String(serialized))
+    }
+
+    // Default to simple style
+    default:
+      return url.replace(`{${param.name}}`, String(paramValue))
+  }
+}

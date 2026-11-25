@@ -1,0 +1,125 @@
+<script setup lang="ts">
+import { ScalarHotkey } from '@scalar/components/hotkey'
+
+import Computer from '@/assets/computer.ascii?raw'
+import { ScalarAsciiArt } from '@/components/ScalarAsciiArt'
+import { useLocalization } from '@/v2/features/localization'
+import type { ClientLayout } from '@/v2/types/layout'
+
+const { totalPerformedRequests, layout, appVersion } = defineProps<{
+  /** Wait for the selected external request example before sending. */
+  executionDisabled?: boolean
+  /** Client layout */
+  layout: ClientLayout
+  /** Total number of performed requests */
+  totalPerformedRequests: number
+  /** Application version */
+  appVersion: string
+}>()
+
+const emits = defineEmits<{
+  (e: 'addRequest'): void
+  (e: 'sendRequest'): void
+  (e: 'openCommandPalette'): void
+}>()
+
+const { translate } = useLocalization()
+</script>
+<template>
+  <div class="flex-center relative flex flex-1 flex-col gap-6 p-2 capitalize">
+    <div
+      class="flex h-[calc(100%_-_50px)] flex-col items-center justify-center"
+      :class="{
+        'hidden opacity-0': totalPerformedRequests > 0 && layout !== 'modal',
+      }">
+      <div
+        v-if="layout !== 'modal'"
+        class="scalar-version-number">
+        {{
+          translate('apiClient.responseEmpty.version', { version: appVersion })
+        }}
+        <div class="mt-2">
+          <a
+            href="https://github.com/scalar/scalar/issues/2669"
+            target="_blank"
+            >{{ translate('apiClient.responseEmpty.roadmap') }}</a
+          >
+        </div>
+      </div>
+      <a
+        class="gitbook-show scalar-version-number"
+        href="https://www.scalar.com"
+        target="_blank"
+        >{{ translate('apiClient.responseEmpty.poweredByScalarcom') }}</a
+      >
+      <ScalarAsciiArt
+        :art="Computer"
+        class="text-c-3" />
+    </div>
+
+    <div
+      class="text-c-3 right-4 mt-auto flex w-full flex-col items-end gap-2 text-sm">
+      <button
+        v-if="layout !== 'modal'"
+        class="flex items-center gap-1.5"
+        type="button"
+        @click="emits('openCommandPalette')">
+        {{ translate('apiClient.responseEmpty.getStarted')
+        }}<ScalarHotkey
+          hotkey="k"
+          :modifier="['default']" />
+      </button>
+      <button
+        v-if="layout === 'desktop'"
+        class="flex items-center gap-1.5"
+        type="button"
+        @click="emits('addRequest')">
+        {{ translate('apiClient.responseEmpty.newRequest')
+        }}<ScalarHotkey hotkey="N" />
+      </button>
+      <button
+        class="flex items-center gap-1.5"
+        :disabled="executionDisabled"
+        type="button"
+        @click="emits('sendRequest')">
+        {{ translate('apiClient.responseEmpty.sendRequest')
+        }}<ScalarHotkey hotkey="↵" />
+      </button>
+    </div>
+  </div>
+</template>
+<style scoped>
+.scalar-version-number {
+  transform: skew(0deg, 13deg);
+  width: 76px;
+  height: 76px;
+  position: absolute;
+  margin-left: -36px;
+  font-size: 8px;
+  font-family: var(--scalar-font-code);
+  line-height: 11px;
+  margin-top: -113px;
+  border-radius: 9px 9px 16px 12px;
+  box-shadow: inset 2px 0px 0 2px var(--scalar-background-2);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-transform: initial;
+  text-decoration-color: var(--scalar-color-3);
+}
+.scalar-version-number a {
+  font-weight: bold;
+  font-weight: bold;
+  background: var(--scalar-background-2);
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-decoration: none;
+  border: 0.5px solid var(--scalar-border-color);
+}
+
+.gitbook-show {
+  display: none;
+}
+</style>

@@ -1,5 +1,1705 @@
 # @scalar/openapi-to-markdown
 
+## 1.7.12
+
+### Patch Changes
+
+- [#11149](https://github.com/scalar/scalar/pull/11149): Resolve references in Node Markdown exports against the OpenAPI 3.2 document's `$self` URI when present.
+
+  For object and inline JSON/YAML input, resolve relative `$self` values against the configured `basePath`, or the current directory when omitted. File access still requires an explicit `basePath`.
+
+  Preserve literal `$ref` keys in examples when bundling descriptions, including descriptions without `$self`.
+- [#11148](https://github.com/scalar/scalar/pull/11148): Resolve URI security requirements in Node Markdown exports for OpenAPI 3.2 descriptions.
+
+  Follow annotated security scheme references when resolving URI requirements.
+
+  Preserve security scheme reference descriptions in OpenAPI 3.1 and 3.2 Markdown exports.
+
+## 1.7.11
+
+No changes in this release.
+
+## 1.7.10
+
+### Patch Changes
+
+- [#11124](https://github.com/scalar/scalar/pull/11124): Render Markdown through `@scalar/markdown` instead of `@scalar/code-highlight`
+
+  None of them pull in lowlight or highlight.js any more: code blocks in descriptions are highlighted by `@scalar/highlight`, the same highlighter `ScalarCodeBlock` uses. A fenced code block without a language is no longer auto-detected and renders as plain text. In `@scalar/openapi-to-markdown` this shows up in descriptions that contain HTML or alerts: an unlabeled fence used to come out labeled with highlight.js's guess (often wrong, such as `properties` for JSON), and now stays unlabeled.
+- [#11124](https://github.com/scalar/scalar/pull/11124): Share one copy of the Markdown parser stack
+
+  `@scalar/markdown` adds `parseMarkdown`, `mdastFromHtml` and `createMarkdownSerializer`. `@scalar/openapi-to-markdown` and `@scalar/asyncapi-to-markdown` use them instead of importing `unified`, `remark-*` and `rehype-*` themselves. `@scalar/markdown` bundles that stack, so a bundle that included both used to carry two copies of parse5, micromark and the mdast/hast utilities; the API Reference standalone build is about 330 KB smaller, 99 KB gzipped. Sharing the stack does not change the Markdown either package produces.
+
+## 1.7.9
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 1.7.8
+
+### Patch Changes
+
+- [#11074](https://github.com/scalar/scalar/pull/11074): Link references and keep boolean schemas inside OpenAPI objects named like keywords, such as a `default` response, a header named `schema` or a callback named `example`, so their schemas render with fields and examples instead of `any` and `null`.
+
+## 1.7.7
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+
+## 1.7.6
+
+No changes in this release.
+
+## 1.7.5
+
+### Patch Changes
+
+- [#10904](https://github.com/scalar/scalar/pull/10904): Share confined document loading between Markdown converters and include HTTP status codes in load errors.
+
+## 1.7.4
+
+## 1.7.3
+
+## 1.7.2
+
+## 1.7.1
+
+## 1.7.0
+
+### Minor Changes
+
+- [#10696](https://github.com/scalar/scalar/pull/10696): Upgrade Undici to 8.12.3. JSON Magic, Mock Server, Workspace Store, OpenAPI to Markdown, and Scalar App now require Node.js 22.19.0 or later; Node.js 22.0 through 22.18 are no longer supported. Undici 8 enables HTTP/2 by default.
+
+## 1.6.1
+
+## 1.6.0
+
+### Minor Changes
+
+- [#10586](https://github.com/scalar/scalar/pull/10586): Add AsyncAPI Markdown conversion with reusable renderers and individual reference pages. Share Markdown description parsing between the OpenAPI and AsyncAPI converters.
+
+  Include shared model links, contents navigation, tag pages, generated examples, and an interactive playground.
+
+  Preserve discriminators and linked schema descriptions, generate examples from primitive aliases, and compact property annotations.
+
+  Include full-export tag documentation, preserve XML schema examples, and normalize annotated primitive aliases.
+
+  Infer enum and const type labels and honor primitive-link settings in generated model examples.
+
+  Preserve AsyncAPI application and schema metadata, explain security alternatives, and render reply and unknown-address semantics accurately.
+
+### Patch Changes
+
+- [#10606](https://github.com/scalar/scalar/pull/10606): Block private-network document requests by default and require an explicit basePath for local files. Apply the same permissions to external references, with an opt-in for trusted private-network inputs.
+- [#10598](https://github.com/scalar/scalar/pull/10598): Preserve OpenAPI 3.2 tag ancestry in Markdown exports with parent-first breadcrumb headings.
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 1.5.4
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+- [#10505](https://github.com/scalar/scalar/pull/10505): Apply formatting and lint compatibility changes for Biome 2.5.15.
+
+## 1.5.3
+
+### Patch Changes
+
+- [#10484](https://github.com/scalar/scalar/pull/10484): Use OpenAPI 3.2 tag summaries as Markdown headings, falling back to tag names.
+
+## 1.5.2
+
+## 1.5.1
+
+### Patch Changes
+
+- [#10457](https://github.com/scalar/scalar/pull/10457): Render a selected operation, model, tag or webhook in time proportional to the selection instead of the whole document.
+
+## 1.5.0
+
+### Minor Changes
+
+- [#10425](https://github.com/scalar/scalar/pull/10425): Make single-page Markdown easier to read, especially for AI agents reading `llms.txt` exports.
+  - An operation, webhook or model page now starts with that item as its `#` title and uses `##` sections, without the API's document header. An empty API version is never printed.
+  - Schema property descriptions keep their Markdown: paragraphs, links, inline code and fenced code blocks are no longer flattened into one escaped line. A parameter description is no longer repeated by its schema.
+  - Each property is one line with its name, type and annotations. Nullable unions read as `string | null`, single-branch `allOf` wrappers as the wrapped type, unions of plain types as one type, `const` and `enum` schemas without a `type` as their inferred JSON type, and arrays of simple items as `array of …`. Composition branches are listed one per item, with discriminator values beside their branch.
+  - Parameters are grouped by location. Responses that return the same schema and media type are grouped into one entry, such as a list of error statuses.
+  - In linked mode, references are shown as a link in the property's type. Primitive, enum and `const` schemas and aliases of them are written in place instead of linked; set `schemaReferences.inlinePrimitives: false` to link them. Generated examples are left out without a placeholder, while a model page generates an example of its own schema with linked schemas as empty stubs.
+  - The Authentication section is left out when the API description declares no security requirements, and only an explicit `security: []` says that no authentication is required. Security schemes are summarized on one line, for example "API key in header `X-Api-Key`", instead of printed as JSON.
+  - Selected pages retain empty server overrides as `/` and include server variable choices and descriptions. Model pages retain authored examples for primitive and array schemas as well as objects.
+
+- [#10425](https://github.com/scalar/scalar/pull/10425): Give shared schemas canonical definitions and internal links in whole-document Markdown exports, retaining primitive types inline and constraints beside references.
+
+  Deduplicate generated examples within each schema and request/response/media-type context, label them as generated, and retain authored examples at their original locations.
+
+  Explain inherited servers and authentication once, with links from operations, while retaining path and operation overrides, server variables, and explicit anonymous access.
+
+  Add a compact contents index linking to operations, webhooks, and schemas through unique explicit anchors.
+
+### Patch Changes
+
+- [#10425](https://github.com/scalar/scalar/pull/10425): Add a browser playground for previewing and downloading per-page, linked, and whole-document Markdown exports from Galaxy, Stripe, GitHub, and Cloudflare examples.
+- [#10425](https://github.com/scalar/scalar/pull/10425): Shorten the `## Schemas` section for schemas a page already expanded. Such a model is now a single line, for example `` `Customer` — shown above. ``, instead of a heading, type, "shown above" note and generated example. The line keeps the model's title and any description that a reference sibling replaced where the schema was expanded. A selected model, leaf schemas, models the page has not expanded, and object models with authored examples keep their full sections. A Stripe operation page such as `GET /v1/customers/{customer}` drops from about 2.5 MB to about 1.3 MB, with 819 of its 918 model sections reduced to one line. Everything above `## Schemas` is unchanged.
+
+## 1.4.0
+
+### Minor Changes
+
+- [#10394](https://github.com/scalar/scalar/pull/10394): Add opt-in linked schema rendering with caller-supplied model URLs for bounded operation, model, and webhook pages. Keep default expansion unchanged, retain reference siblings and inline schemas, and omit generated examples in linked mode.
+
+## 1.3.0
+
+### Minor Changes
+
+- [#10192](https://github.com/scalar/scalar/pull/10192): Mock-server XML response bytes now use the shared schema-aware serializer instead of `json2xml`, including attributes, namespaces, and root naming. Existing XML response snapshots may need updating. Supplied serialized XML remains unchanged.
+
+  Generate XML examples from schema metadata, preserving attributes, namespaces, array wrappers, repeated elements, and OpenAPI 3.2 text and CDATA nodes. Use the same XML serialization for request bodies, code snippets, response examples, mock responses, and Markdown documentation. Preserve serialized media examples and escape schema string examples as element text.
+
+  Explain XML generation failures in response example panels, including the serialized-example escape hatch for large payloads. Expose XML generation failures in mock response headers with `X-Scalar-XML-Error`, containing the first error diagnostic code. Report diagnostics to other consumers through a callback or the developer console, and format element-only descendants within mixed content without changing text values.
+
+### Patch Changes
+
+- [#10356](https://github.com/scalar/scalar/pull/10356): Load densely cross-linked API descriptions with far less memory. References are now linked after coercion, so TypeBox no longer copies the reference graph each time it checks a union or array. Stripe's API description loads in about 2 seconds with a peak of about 190 MB, down from about 17 seconds and 1.4 GB, so it now loads and renders with a 768 MB heap limit.
+
+  Coercion now checks each reference target in its own position, not through every reference that points to it. Before, a target that failed a strict schema check (for example, a schema with `oneOf` references) could turn the reference into an empty schema and drop sibling `x-` extensions. Those references and extensions are now kept, so affected response schemas render in full.
+
+  References to targets that coercion drops, such as a root-level `definitions` block, now link to a copy cast as the schema, parameter, response or other object the reference stands in for, and their anchors resolve against the resource that contains them. A `$ref: '#'` inside a schema with an `$id` now links to that schema.
+
+  Coerce reference targets stored in extension data and schema siblings on fallback references before rendering, avoiding crashes from malformed fields while preserving recursive links.
+
+- [#10192](https://github.com/scalar/scalar/pull/10192): Apply edited XML bodies instead of their original serialized or data examples, render schema-free XML examples in Markdown, and share reference decoding and response provenance selection.
+
+## 1.2.0
+
+### Minor Changes
+
+- [#10186](https://github.com/scalar/scalar/pull/10186): Support document-defined additional operations in Markdown operation, webhook, and tag selections. Preserve custom method spelling and inherited parameters, servers, and security when copying an operation as Markdown.
+
+### Patch Changes
+
+- [#10329](https://github.com/scalar/scalar/pull/10329): Render each shared schema once per page. The first reference to a structured schema expands it and labels it with its name (for example `schema: Account`). Later references print "Schema `Account` is shown above." instead of expanding it again. Model sections for schemas already expanded on the page refer back to them too. True cycles still print `[Circular Reference]`. This keeps Markdown output proportional to the schema graph, rather than to the number of paths through it. Before this change, densely linked descriptions such as Stripe's ran out of memory when rendering a single operation.
+
+  A node budget per operation and model section adds a visible `[Schema output truncated]` marker as a last resort. Generated examples that would exceed 10,000 values are omitted with a note. References past the depth limit now point to the model's own section instead of being cut off.
+
+## 1.1.0
+
+### Minor Changes
+
+- [#10251](https://github.com/scalar/scalar/pull/10251): Preserve chained path-item references with non-enumerable links.
+
+  Remove the HTML output APIs `createHtmlFromOpenApi` and `renderer.renderHtml` from `@scalar/openapi-to-markdown`. Use `createMarkdownFromOpenApi` or `renderer.render` and convert the resulting Markdown with an application-provided renderer when HTML is needed.
+
+- [#10222](https://github.com/scalar/scalar/pull/10222): Add a Copy as Markdown button to operations and webhooks in both API Reference layouts. Add a browser entry point for converting resolved OpenAPI documents to Markdown.
+
+### Patch Changes
+
+- [#10275](https://github.com/scalar/scalar/pull/10275): Preserve operation and schema details, supplied and named examples, response headers and links, and request encoding metadata in Markdown output. Render composition siblings and schema annotations, respect readOnly/writeOnly when generating examples, and distinguish recursive references from deep schemas.
+- [#10211](https://github.com/scalar/scalar/pull/10211): Preserve literal data and tag groups when upgrading to OpenAPI 3.2, migrate XML metadata only in schemas, and remove incompatible legacy XML flags. Make 3.2 upgrades leave the input unchanged, match the complete source version, prevent previously inactive parameter settings from changing serialization, and report path-specific errors for detected compatibility issues that require an author's decision.
+
+  Tag `kind` values may change: navigation groups are classified from actual operation-tag usage instead of name substrings. Malformed 3.1 versions now report explicit errors, and successful 3.2 upgrades clone the input only once.
+
+  Expose `UpgradeIncompatibilityError` so Markdown generation can retain OpenAPI 3.1 for descriptions requiring author decisions instead of failing or silently changing semantics. Clone safety and malformed-version errors still propagate.
+
+  The mock server also retains OpenAPI 3.1 when the strict 3.2 migration reports compatibility diagnostics. Existing inline XML descriptions continue loading without inventing element names.
+
+  Read only own data properties during migration so inherited parameter lists, XML metadata, and reference targets cannot modify prototype-owned objects.
+
+  Add `upgrade(input, '3.2', { onIncompatible: 'collect' })` to return a complete document and compatibility diagnostics. Compatible descriptions upgrade to 3.2; incompatible descriptions retain 3.1 without partial transformations. Strict mode remains the default, and malformed-version and clone-safety errors still propagate. The Markdown converter and mock server now use the shared collect mode.
+
+## 1.0.2
+
+## 1.0.1
+
+## 1.0.0
+
+### Major Changes
+
+- [#10233](https://github.com/scalar/scalar/pull/10233): Generate Markdown directly from a Markdown syntax tree, avoiding Vue server rendering and the generated HTML conversion pipeline. Reuse normalized schemas and parsed descriptions across pages while preserving selection, schema coercion, reference resolution, and raw HTML description sanitization.
+
+  Keep the HTML API through an on-demand Markdown conversion. Markdown and HTML spacing and escaping may differ from previous output.
+
+### Minor Changes
+
+- [#10224](https://github.com/scalar/scalar/pull/10224): Add a reusable renderer that loads an OpenAPI document once and generates multiple Markdown or HTML pages from it.
+
+### Patch Changes
+
+- [#10241](https://github.com/scalar/scalar/pull/10241): Simplify reference link rebuilding after OpenAPI document coercion.
+
+## 0.6.0
+
+### Minor Changes
+
+- [#10169](https://github.com/scalar/scalar/pull/10169): Render scoped operation, tag, model, webhook, and introduction pages in Markdown and HTML while preserving referenced schemas and inherited context.
+
+## 0.5.44
+
+## 0.5.43
+
+## 0.5.42
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.5.41
+
+## 0.5.40
+
+## 0.5.39
+
+## 0.5.38
+
+## 0.5.37
+
+## 0.5.36
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.5.35
+
+## 0.5.34
+
+## 0.5.33
+
+## 0.5.32
+
+## 0.5.31
+
+## 0.5.30
+
+## 0.5.29
+
+## 0.5.28
+
+## 0.5.27
+
+## 0.5.26
+
+## 0.5.25
+
+### Patch Changes
+
+- [#9342](https://github.com/scalar/scalar/pull/9342): fix: resolve operations when OpenAPI path items use `$ref`
+
+  Path entries and webhooks can reference `components.pathItems` instead of inlining operations. Navigation, mutators, search, and markdown export now resolve path-item references before reading HTTP methods and path-level parameters.
+
+## 0.5.24
+
+## 0.5.23
+
+## 0.5.22
+
+## 0.5.21
+
+## 0.5.20
+
+## 0.5.19
+
+## 0.5.18
+
+### Patch Changes
+
+- [#9291](https://github.com/scalar/scalar/pull/9291): chore: import from `@scalar/components` subpaths instead of the package barrel for better tree-shaking
+
+## 0.5.17
+
+## 0.5.16
+
+## 0.5.15
+
+## 0.5.14
+
+## 0.5.13
+
+## 0.5.12
+
+### Patch Changes
+
+- [#9040](https://github.com/scalar/scalar/pull/9040): fix(openapi-to-markdown): render operation parameters in Markdown output
+
+## 0.5.11
+
+## 0.5.10
+
+## 0.5.9
+
+## 0.5.8
+
+## 0.5.7
+
+## 0.5.6
+
+## 0.5.5
+
+## 0.5.4
+
+### Patch Changes
+
+- [#8825](https://github.com/scalar/scalar/pull/8825): chore: moving files around in preparation for the big deletion of client v1
+
+## 0.5.3
+
+## 0.5.2
+
+### Patch Changes
+
+- [#8757](https://github.com/scalar/scalar/pull/8757): fix: circular references cause max call stack exceeded
+
+## 0.5.1
+
+## 0.5.0
+
+### Minor Changes
+
+- [#8710](https://github.com/scalar/scalar/pull/8710): feat(openapi-to-markdown): support rendering single operations by selector (operationId, path+method, and JSON pointer), including full `#/...` pointer support.
+- [#8638](https://github.com/scalar/scalar/pull/8638): refactor openapi-to-markdown to use workspace-store and json-magic bundling instead of openapi-parser, while preserving the existing public API and adding file/url reference bundling support.
+
+### Patch Changes
+
+- [#8710](https://github.com/scalar/scalar/pull/8710): Reject unsupported `connect` operation selectors so markdown generation fails with a clear error instead of silently producing an empty operations section.
+
+## 0.4.16
+
+## 0.4.15
+
+## 0.4.14
+
+## 0.4.13
+
+## 0.4.12
+
+## 0.4.11
+
+## 0.4.10
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.4.9
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.25.4**
+  - [#8448](https://github.com/scalar/scalar/pull/8448): fix parser validation for unused path parameters
+
+- **@scalar/components@0.20.9**
+  - [#8453](https://github.com/scalar/scalar/pull/8453): refactor: remove @ts-expect-error from ScalarTextArea
+
+- **@scalar/oas-utils@0.10.8**
+
+## 0.4.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.7**
+
+- **@scalar/components@0.20.8**
+
+## 0.4.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.6**
+
+- **@scalar/components@0.20.7**
+
+## 0.4.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.6**
+  - [#8327](https://github.com/scalar/scalar/pull/8327): fix: markdown tables with specified width attributes in td/th break the layout
+
+- **@scalar/helpers@0.4.1**
+  - [#8420](https://github.com/scalar/scalar/pull/8420): fix TypeScript access to navigator.userAgentData in isMacOS without ts-expect-error
+
+- **@scalar/oas-utils@0.10.5**
+
+- **@scalar/openapi-parser@0.25.3**
+
+- **@scalar/types@0.7.3**
+
+- **@scalar/openapi-upgrader@0.2.0**
+
+## 0.4.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.4**
+
+- **@scalar/components@0.20.5**
+
+## 0.4.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.25.2**
+  - [#8359](https://github.com/scalar/scalar/pull/8359): fix(openapi-parser): replace $dynamicRef with $ref in v3.2 schema for AJV compatibility
+
+- **@scalar/helpers@0.4.0**
+  - [#8336](https://github.com/scalar/scalar/pull/8336): feat: support flushing any pending operations
+
+- **@scalar/oas-utils@0.10.3**
+  - [#8253](https://github.com/scalar/scalar/pull/8253): feat(api-reference): support propertyNames enum for additionalProperties
+
+- **@scalar/components@0.20.4**
+
+- **@scalar/types@0.7.2**
+
+- **@scalar/openapi-upgrader@0.2.0**
+
+## 0.4.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.1**
+  - [#8381](https://github.com/scalar/scalar/pull/8381): feat: add mcp config support
+
+- **@scalar/oas-utils@0.10.2**
+
+- **@scalar/openapi-parser@0.25.1**
+
+- **@scalar/openapi-upgrader@0.2.0**
+
+- **@scalar/components@0.20.3**
+
+## 0.4.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.2**
+  - [#8366](https://github.com/scalar/scalar/pull/8366): fix(components): clean up search components and add snapshots
+
+- **@scalar/oas-utils@0.10.1**
+
+- **@scalar/openapi-parser@0.25.1**
+
+## 0.4.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.10.0**
+  - [#8266](https://github.com/scalar/scalar/pull/8266): support operation level authentication and servers
+
+- **@scalar/components@0.20.1**
+
+## 0.4.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-upgrader@0.2.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/openapi-parser@0.25.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/openapi-types@0.6.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/components@0.20.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/oas-utils@0.9.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/helpers@0.3.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+- **@scalar/types@0.7.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.3.56
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-types@0.5.4**
+  - [#8275](https://github.com/scalar/scalar/pull/8275): fix(openapi-types): make the `$ref` property in the `ReferenceObject` type required
+
+- **@scalar/components@0.19.15**
+  - [#8319](https://github.com/scalar/scalar/pull/8319): fix(components): fix adjust sidebar section line height
+
+- **@scalar/openapi-upgrader@0.1.11**
+  - [#8326](https://github.com/scalar/scalar/pull/8326): feat: keep named request examples when upgrading from Swagger 2.0
+
+- **@scalar/oas-utils@0.8.3**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+- **@scalar/helpers@0.2.18**
+  - [#8314](https://github.com/scalar/scalar/pull/8314): chore: limit concurrent operations while migrating workspaces
+
+- **@scalar/openapi-parser@0.24.17**
+
+- **@scalar/types@0.6.10**
+
+## 0.3.55
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.14**
+
+- **@scalar/oas-utils@0.8.2**
+
+## 0.3.54
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.17**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): refactor: move helpers to the helpers package to share primitive helpers
+
+- **@scalar/openapi-upgrader@0.1.10**
+  - [#8272](https://github.com/scalar/scalar/pull/8272): feat: migrate swagger 2.0 response examples
+
+- **@scalar/oas-utils@0.8.1**
+  - [#8310](https://github.com/scalar/scalar/pull/8310): fix: correctly handle circular documents during the migration to indexdb
+
+- **@scalar/components@0.19.13**
+
+- **@scalar/openapi-parser@0.24.16**
+
+- **@scalar/types@0.6.9**
+
+## 0.3.53
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.8.0**
+  - [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+- **@scalar/components@0.19.12**
+  - [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+## 0.3.52
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.11**
+  - [#8276](https://github.com/scalar/scalar/pull/8276): feat(components): standardize form inputs to have a height of 40px
+
+- **@scalar/oas-utils@0.7.0**
+  - [#8234](https://github.com/scalar/scalar/pull/8234): support operation level authentication and servers
+
+## 0.3.51
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.8**
+  - [#8274](https://github.com/scalar/scalar/pull/8274): feat(agent): add config to hide search api
+
+- **@scalar/openapi-upgrader@0.1.9**
+  - [#8251](https://github.com/scalar/scalar/pull/8251): feat: migrate swagger 2.0 defaults for parameter
+
+- **@scalar/oas-utils@0.6.48**
+
+- **@scalar/openapi-parser@0.24.15**
+
+- **@scalar/components@0.19.10**
+
+## 0.3.50
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.47**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: remove unnecessary property truncation in example generation
+  - [#8248](https://github.com/scalar/scalar/pull/8248): chore: map themeId to slug and add default operation to drafts
+
+- **@scalar/helpers@0.2.16**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): fix: local storage migration script
+
+- **@scalar/components@0.19.9**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): feat: slugs for headings with nested content
+  - [#8248](https://github.com/scalar/scalar/pull/8248): feat: add optional chevron click handler for the sidebar
+
+- **@scalar/openapi-parser@0.24.14**
+
+- **@scalar/types@0.6.7**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.49
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.46**
+
+- **@scalar/components@0.19.8**
+
+## 0.3.48
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.15**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/oas-utils@0.6.45**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/types@0.6.6**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+- **@scalar/components@0.19.7**
+
+- **@scalar/openapi-parser@0.24.13**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.47
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.14**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/oas-utils@0.6.44**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/types@0.6.5**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+- **@scalar/components@0.19.6**
+
+- **@scalar/openapi-parser@0.24.12**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.46
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.43**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+- **@scalar/helpers@0.2.13**
+  - [#7826](https://github.com/scalar/scalar/pull/7826): feat: added migrator for v1 local storage to v2 indexdb
+
+- **@scalar/types@0.6.4**
+  - [#8174](https://github.com/scalar/scalar/pull/8174): feat: add `createAnySecurityScheme` config option to control generic auth scheme creation
+
+- **@scalar/openapi-parser@0.24.11**
+
+- **@scalar/components@0.19.5**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.45
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.4**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+- **@scalar/helpers@0.2.12**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+- **@scalar/oas-utils@0.6.42**
+
+- **@scalar/openapi-parser@0.24.10**
+
+- **@scalar/types@0.6.3**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.3**
+  - [#8155](https://github.com/scalar/scalar/pull/8155): fix(api-reference): bugs with cards rendering
+
+- **@scalar/oas-utils@0.6.41**
+
+## 0.3.43
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.2**
+  - [#8134](https://github.com/scalar/scalar/pull/8134): fix(components): change caret position to right
+
+- **@scalar/oas-utils@0.6.40**
+  - [#8121](https://github.com/scalar/scalar/pull/8121): chore: moved client plugin types to oas-utils so they can be shared
+
+## 0.3.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.39**
+
+- **@scalar/components@0.19.1**
+
+## 0.3.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.0**
+  - [#8081](https://github.com/scalar/scalar/pull/8081): feat(components): improve ScalarCodeBlock copy UI
+  - [#8065](https://github.com/scalar/scalar/pull/8065): feat(components): add editor to ScalarMenu and optionally remove docs
+
+- **@scalar/oas-utils@0.6.38**
+
+- **@scalar/openapi-parser@0.24.9**
+
+## 0.3.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.18.0**
+  - [#8077](https://github.com/scalar/scalar/pull/8077): feat: support team workspaces
+
+- **@scalar/oas-utils@0.6.37**
+
+## 0.3.39
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.36**
+  - [#8037](https://github.com/scalar/scalar/pull/8037): Improve error message when running oas-utils tests while test-servers are not running
+
+- **@scalar/components@0.17.6**
+  - [#8070](https://github.com/scalar/scalar/pull/8070): chore: remove the import modal and change the workspace picker to support groups
+
+- **@scalar/openapi-parser@0.24.8**
+
+## 0.3.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.35**
+
+- **@scalar/components@0.17.5**
+
+## 0.3.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.34**
+
+- **@scalar/components@0.17.4**
+
+## 0.3.36
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.11**
+  - [#8016](https://github.com/scalar/scalar/pull/8016): feat: move history and auth into their own store
+
+- **@scalar/oas-utils@0.6.33**
+
+- **@scalar/components@0.17.3**
+
+- **@scalar/openapi-parser@0.24.7**
+
+- **@scalar/types@0.6.2**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.35
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.2**
+  - [#7934](https://github.com/scalar/scalar/pull/7934): fix: z-index issues in addressBar
+
+- **@scalar/oas-utils@0.6.32**
+
+## 0.3.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.1**
+  - [#8000](https://github.com/scalar/scalar/pull/8000): fix(agent): change enabled flag to disabled
+  - [#7995](https://github.com/scalar/scalar/pull/7995): feat: enable/disable agent scalar
+
+- **@scalar/openapi-parser@0.24.6**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/helpers@0.2.10**
+  - [#7963](https://github.com/scalar/scalar/pull/7963): feat: unify is-object helpers
+
+- **@scalar/oas-utils@0.6.31**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+- **@scalar/components@0.17.1**
+
+## 0.3.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+- **@scalar/types@0.6.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+- **@scalar/oas-utils@0.6.30**
+
+- **@scalar/openapi-parser@0.24.5**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.29**
+
+- **@scalar/components@0.16.32**
+
+## 0.3.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.28**
+
+- **@scalar/openapi-parser@0.24.5**
+
+- **@scalar/components@0.16.31**
+
+## 0.3.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.27**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+- **@scalar/helpers@0.2.9**
+  - [#7894](https://github.com/scalar/scalar/pull/7894): fix: the import and export of redirect to proxy
+
+- **@scalar/components@0.16.30**
+
+- **@scalar/types@0.5.10**
+
+- **@scalar/openapi-parser@0.24.4**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+## 0.3.29
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.26**
+
+- **@scalar/components@0.16.29**
+
+## 0.3.28
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.9**
+  - [#7866](https://github.com/scalar/scalar/pull/7866): chore: expose har types
+
+- **@scalar/oas-utils@0.6.25**
+
+- **@scalar/openapi-parser@0.24.3**
+
+- **@scalar/openapi-upgrader@0.1.8**
+
+- **@scalar/components@0.16.28**
+
+## 0.3.27
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.24**
+
+- **@scalar/components@0.16.27**
+
+## 0.3.26
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-upgrader@0.1.8**
+  - [#7842](https://github.com/scalar/scalar/pull/7842): feat: migrate swagger 2.0 responses
+
+- **@scalar/components@0.16.26**
+  - [#7846](https://github.com/scalar/scalar/pull/7846): Fix dev dep issue
+
+- **@scalar/openapi-parser@0.24.3**
+
+- **@scalar/oas-utils@0.6.23**
+
+## 0.3.25
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.22**
+  - [#7814](https://github.com/scalar/scalar/pull/7814): fix: additional properties generate invalid example
+
+- **@scalar/components@0.16.25**
+
+## 0.3.24
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.24**
+  - [#7802](https://github.com/scalar/scalar/pull/7802): fix: Vue warning because of deprecated icon syntax
+
+- **@scalar/oas-utils@0.6.21**
+
+- **@scalar/openapi-parser@0.24.2**
+
+## 0.3.23
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.20**
+
+- **@scalar/components@0.16.23**
+
+## 0.3.22
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.8**
+  - [#7751](https://github.com/scalar/scalar/pull/7751): fix: auth persistence
+
+- **@scalar/oas-utils@0.6.19**
+
+- **@scalar/components@0.16.22**
+
+- **@scalar/types@0.5.8**
+
+- **@scalar/openapi-parser@0.24.1**
+
+- **@scalar/openapi-upgrader@0.1.7**
+
+## 0.3.21
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.24.0**
+  - [#7171](https://github.com/scalar/scalar/pull/7171): refactor: new validator class
+
+- **@scalar/oas-utils@0.6.18**
+
+- **@scalar/components@0.16.21**
+
+## 0.3.20
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/oas-utils@0.6.17**
+
+- **@scalar/components@0.16.20**
+
+## 0.3.19
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.19**
+  - [#7725](https://github.com/scalar/scalar/pull/7725): fix(components): support slot for nested items icon
+  - [#7693](https://github.com/scalar/scalar/pull/7693): feat: markdown default line height
+
+- **@scalar/helpers@0.2.7**
+  - [#7720](https://github.com/scalar/scalar/pull/7720): feat: escape XML in json2xml
+
+- **@scalar/openapi-upgrader@0.1.7**
+  - [#7739](https://github.com/scalar/scalar/pull/7739): fix: upgrade form to multipart/form
+  - [#7694](https://github.com/scalar/scalar/pull/7694): feat: migrate x-example and x-examples
+
+- **@scalar/oas-utils@0.6.16**
+
+- **@scalar/types@0.5.7**
+
+- **@scalar/openapi-parser@0.23.13**
+
+## 0.3.18
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/openapi-parser@0.23.12**
+  - [#7719](https://github.com/scalar/scalar/pull/7719): fix: self-referencing causes infinite loop in `dereference`
+
+- **@scalar/oas-utils@0.6.15**
+
+- **@scalar/components@0.16.18**
+
+## 0.3.17
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.17**
+  - [#7680](https://github.com/scalar/scalar/pull/7680): feat(components): simplify nested sidebar items styles
+
+## 0.3.16
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/types@0.5.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+- **@scalar/oas-utils@0.6.14**
+
+- **@scalar/components@0.16.16**
+
+- **@scalar/openapi-parser@0.23.11**
+
+- **@scalar/openapi-upgrader@0.1.6**
+
+## 0.3.15
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/types@0.5.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+- **@scalar/oas-utils@0.6.13**
+
+- **@scalar/components@0.16.15**
+
+- **@scalar/openapi-parser@0.23.10**
+
+- **@scalar/openapi-upgrader@0.1.6**
+
+## 0.3.14
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.14**
+  - [#7654](https://github.com/scalar/scalar/pull/7654): fix(components): explicitly set line height for buttons and sections
+
+- **@scalar/helpers@0.2.4**
+
+- **@scalar/oas-utils@0.6.12**
+
+- **@scalar/openapi-parser@0.23.9**
+
+- **@scalar/openapi-types@0.5.3**
+
+- **@scalar/openapi-upgrader@0.1.6**
+
+- **@scalar/types@0.5.4**
+
+## 0.3.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.13**
+  - [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove internal unused export
+    - `CARD_Heading_SYMBOL`
+    - `FORM_GROUP_SYMBOL`
+    - `formatHotKey#isDefault`
+    - `LoadingCompletionOptions`
+    - `MaybeElement`
+    - `ScalarComboBox#isGroup`
+
+  - [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove unused `@scalar/use-toasts` dependency
+  - [#7604](https://github.com/scalar/scalar/pull/7604): fix(components): improve sidebar groups
+  - [#7589](https://github.com/scalar/scalar/pull/7589): chore(components): upgrade to Storybook 10
+
+- **@scalar/oas-utils@0.6.12**
+
+## 0.3.12
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.12**
+  - [#7562](https://github.com/scalar/scalar/pull/7562): feat(components): remove headless ui from dropdown component
+
+## 0.3.11
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.11**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/helpers@0.2.4**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+- **@scalar/oas-utils@0.6.11**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/openapi-parser@0.23.9**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+- **@scalar/types@0.5.4**
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+- **@scalar/openapi-upgrader@0.1.6**
+
+## 0.3.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/helpers@0.2.3**
+  - [#7575](https://github.com/scalar/scalar/pull/7575): feat: add support for object examples + hide body when empty
+
+- **@scalar/components@0.16.10**
+  - [#7531](https://github.com/scalar/scalar/pull/7531): feat(components): add discrete sidebar group buttons
+
+- **@scalar/oas-utils@0.6.10**
+
+- **@scalar/openapi-parser@0.23.8**
+
+## 0.3.9
+
+### Patch Changes
+
+- Updated dependencies [[`bb52d9a`](https://github.com/scalar/scalar/commit/bb52d9a21e53628270bab93c0f03b5731c9c97c6)]:
+  - @scalar/types@0.5.3
+  - @scalar/components@0.16.9
+  - @scalar/oas-utils@0.6.9
+  - @scalar/openapi-parser@0.23.7
+  - @scalar/openapi-upgrader@0.1.6
+  - @scalar/helpers@0.2.2
+  - @scalar/openapi-types@0.5.3
+
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies [[`f7c24e4`](https://github.com/scalar/scalar/commit/f7c24e4995580649dbc3cb87007a683f5dd91f7c), [`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf)]:
+  - @scalar/helpers@0.2.2
+  - @scalar/components@0.16.8
+  - @scalar/oas-utils@0.6.8
+  - @scalar/openapi-parser@0.23.7
+
+## 0.3.7
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a), [`21aa62e`](https://github.com/scalar/scalar/commit/21aa62e2ebdd262cb5aa53658c3b659736660722), [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/oas-utils@0.6.7
+  - @scalar/openapi-parser@0.23.6
+  - @scalar/helpers@0.2.1
+  - @scalar/openapi-types@0.5.3
+  - @scalar/types@0.5.2
+  - @scalar/components@0.16.7
+  - @scalar/openapi-upgrader@0.1.6
+
+## 0.3.6
+
+### Patch Changes
+
+- Updated dependencies [[`9ec8adf`](https://github.com/scalar/scalar/commit/9ec8adfea017333dee5bc3949104232f7dc57f4a)]:
+  - @scalar/helpers@0.2.0
+  - @scalar/oas-utils@0.6.6
+  - @scalar/components@0.16.6
+  - @scalar/openapi-parser@0.23.5
+
+## 0.3.5
+
+### Patch Changes
+
+- [#7387](https://github.com/scalar/scalar/pull/7387) [`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03) Thanks [@geoffgscott](https://github.com/geoffgscott)! - hotfix: patch exports from build tooling bug
+
+- Updated dependencies [[`5aa0380`](https://github.com/scalar/scalar/commit/5aa0380adfcd173e58659fb5dd57df363d985583), [`62b5210`](https://github.com/scalar/scalar/commit/62b521092bafeb8e83e79222e13378c4a19defc8), [`a164d76`](https://github.com/scalar/scalar/commit/a164d76f21437b3a35210d62a996b6c9d483e5a4), [`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03), [`86f028d`](https://github.com/scalar/scalar/commit/86f028deb0b456f923edd261f5f4b0fa9b616b7d)]:
+  - @scalar/components@0.16.5
+  - @scalar/openapi-types@0.5.2
+  - @scalar/helpers@0.1.3
+  - @scalar/types@0.5.1
+  - @scalar/oas-utils@0.6.5
+  - @scalar/openapi-parser@0.23.4
+  - @scalar/openapi-upgrader@0.1.5
+
+## 0.3.4
+
+### Patch Changes
+
+- [#7337](https://github.com/scalar/scalar/pull/7337) [`0b881ee`](https://github.com/scalar/scalar/commit/0b881eec7ae5d43c80b00d9ee05ee0bb9d745acf) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(openapi-to-markdown): remove unused dependencies
+  - `@scalar/snippetz`
+  - `rehype-stringify`
+
+- [#7385](https://github.com/scalar/scalar/pull/7385) [`8f26496`](https://github.com/scalar/scalar/commit/8f26496829285a56622b977b002a39ac7cea5ce5) Thanks [@inyourtime](https://github.com/inyourtime)! - feat(openapi-to-markdown): add language classes to code blocks
+
+- [#7337](https://github.com/scalar/scalar/pull/7337) [`0b881ee`](https://github.com/scalar/scalar/commit/0b881eec7ae5d43c80b00d9ee05ee0bb9d745acf) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix(openapi-to-markdown): remove css exports pointing to non-existing files
+
+- Updated dependencies [[`d86f1d6`](https://github.com/scalar/scalar/commit/d86f1d6911ecbca70b011a2a0efb6d6e0eca59bb), [`44aeef0`](https://github.com/scalar/scalar/commit/44aeef01073801165e339163462378b7b62ff68d), [`0519a33`](https://github.com/scalar/scalar/commit/0519a33c7d3f3cf65b93b37392c51d3c0586cbab), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`5a108fc`](https://github.com/scalar/scalar/commit/5a108fcbc52ae7957731c23689896ba353b83d3b), [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47)]:
+  - @scalar/helpers@0.1.2
+  - @scalar/types@0.5.0
+  - @scalar/oas-utils@0.6.4
+  - @scalar/components@0.16.4
+  - @scalar/openapi-parser@0.23.3
+  - @scalar/openapi-upgrader@0.1.4
+  - @scalar/openapi-types@0.5.1
+
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [[`9c9dbba`](https://github.com/scalar/scalar/commit/9c9dbbaa940667303f0ace59469fd78c2a741937), [`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74)]:
+  - @scalar/helpers@0.1.1
+  - @scalar/components@0.16.3
+  - @scalar/oas-utils@0.6.3
+  - @scalar/openapi-parser@0.23.2
+
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [[`fddf294`](https://github.com/scalar/scalar/commit/fddf294b00dd8c9eb5c713c338f2ec6e3f62523d), [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`c1ecd0c`](https://github.com/scalar/scalar/commit/c1ecd0c6096f3fbe2e3d8ad3794ea718bb6bce66), [`2377b76`](https://github.com/scalar/scalar/commit/2377b76d050f8de70037b17a32d0dd1181d3311d)]:
+  - @scalar/helpers@0.1.0
+  - @scalar/openapi-parser@0.23.1
+  - @scalar/oas-utils@0.6.2
+  - @scalar/components@0.16.2
+
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/oas-utils@0.6.1
+  - @scalar/components@0.16.1
+
+## 0.3.0
+
+### Minor Changes
+
+- [#7121](https://github.com/scalar/scalar/pull/7121) [`9661e81`](https://github.com/scalar/scalar/commit/9661e81907d1a9b74ba30f270f2d6c8e49834cd5) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat(oas-utils): make `dereference` synchronous
+
+- [#7199](https://github.com/scalar/scalar/pull/7199) [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat: update vue to 3.5.21
+
+### Patch Changes
+
+- Updated dependencies [[`eb022f2`](https://github.com/scalar/scalar/commit/eb022f2c8f93c84a04c0093fefe8a1e05d6ec80d), [`348f8f6`](https://github.com/scalar/scalar/commit/348f8f6292ef41844fda1fdd3089a55d97adbc0e), [`11a6e64`](https://github.com/scalar/scalar/commit/11a6e6405d4f30f001a16d6afda4d2b759c0ed09), [`c22fc4e`](https://github.com/scalar/scalar/commit/c22fc4e5acb49d648014a6100c724a5b33c59cde), [`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`9661e81`](https://github.com/scalar/scalar/commit/9661e81907d1a9b74ba30f270f2d6c8e49834cd5), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`81b0a7a`](https://github.com/scalar/scalar/commit/81b0a7a4245619f03161eae639dc5834b77432b6), [`8a5a6a0`](https://github.com/scalar/scalar/commit/8a5a6a052cc05b0902b05052c80cc429ebc5a730), [`704fa30`](https://github.com/scalar/scalar/commit/704fa302b2cdbb17b19ca2d742537ca163d58c1c), [`c84b7c5`](https://github.com/scalar/scalar/commit/c84b7c5e81be83dacbdfcbf9cb1e558dfdc3faa1), [`0319b8a`](https://github.com/scalar/scalar/commit/0319b8a8652a50667776b2e9fd27c3e15b34f765), [`da7ab2f`](https://github.com/scalar/scalar/commit/da7ab2fb2e422b9cec2de5faba58ea83dd774808), [`a26ced6`](https://github.com/scalar/scalar/commit/a26ced6f2897074f0c102d5ccbff55c6fd520e12), [`134ff5f`](https://github.com/scalar/scalar/commit/134ff5f32aa6842696bf146c7e0817b1662905eb), [`6a090a2`](https://github.com/scalar/scalar/commit/6a090a2e07ef961c56041c85ee9786180437593a), [`592533f`](https://github.com/scalar/scalar/commit/592533faf60b6a5ba27909a4ca0847ca9f04a96d), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461), [`a821986`](https://github.com/scalar/scalar/commit/a821986332141e69d26885b2d2b32eb0c49f416c), [`c72a2c5`](https://github.com/scalar/scalar/commit/c72a2c59eb80e1f5e216c687229ff90bea88f554), [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0), [`e23229d`](https://github.com/scalar/scalar/commit/e23229dfbd9613b5047b28b57901f2fc5a6e33e6)]:
+  - @scalar/types@0.4.0
+  - @scalar/components@0.16.0
+  - @scalar/openapi-upgrader@0.1.4
+  - @scalar/openapi-parser@0.23.0
+  - @scalar/openapi-types@0.5.1
+  - @scalar/helpers@0.0.13
+  - @scalar/oas-utils@0.6.0
+  - @scalar/snippetz@0.5.2
+
+## 0.2.45
+
+### Patch Changes
+
+- Updated dependencies [f8efecd]
+- Updated dependencies [3f6d0b9]
+- Updated dependencies [f3e17d8]
+- Updated dependencies [f8efecd]
+- Updated dependencies [f69e7cc]
+  - @scalar/components@0.15.1
+  - @scalar/helpers@0.0.12
+  - @scalar/types@0.3.2
+  - @scalar/oas-utils@0.5.2
+  - @scalar/openapi-types@0.5.0
+  - @scalar/openapi-parser@0.22.3
+  - @scalar/openapi-upgrader@0.1.3
+  - @scalar/snippetz@0.5.1
+
+## 0.2.44
+
+### Patch Changes
+
+- Updated dependencies [15c4240]
+- Updated dependencies [debdcf6]
+- Updated dependencies [63ff417]
+- Updated dependencies [e0cdd9a]
+- Updated dependencies [a747da6]
+- Updated dependencies [1e01464]
+- Updated dependencies [c69cb71]
+- Updated dependencies [90d54b6]
+  - @scalar/openapi-types@0.4.1
+  - @scalar/oas-utils@0.5.1
+  - @scalar/components@0.15.0
+  - @scalar/snippetz@0.5.0
+  - @scalar/types@0.3.1
+  - @scalar/openapi-parser@0.22.2
+  - @scalar/openapi-upgrader@0.1.2
+
+## 0.2.43
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+- Updated dependencies [f833196]
+- Updated dependencies [a9f8d56]
+  - @scalar/openapi-types@0.4.0
+  - @scalar/oas-utils@0.5.0
+  - @scalar/types@0.3.0
+  - @scalar/components@0.14.40
+  - @scalar/openapi-parser@0.22.1
+  - @scalar/openapi-upgrader@0.1.1
+  - @scalar/snippetz@0.4.11
+
+## 0.2.42
+
+### Patch Changes
+
+- Updated dependencies [4951456]
+  - @scalar/openapi-parser@0.22.0
+  - @scalar/oas-utils@0.4.34
+  - @scalar/components@0.14.39
+
+## 0.2.41
+
+### Patch Changes
+
+- Updated dependencies [0b3c6fa]
+- Updated dependencies [bbceb27]
+  - @scalar/components@0.14.38
+  - @scalar/oas-utils@0.4.33
+
+## 0.2.40
+
+### Patch Changes
+
+- b858566: chore: moved api client code sample to new store
+- Updated dependencies [db5b649]
+  - @scalar/components@0.14.37
+  - @scalar/oas-utils@0.4.32
+  - @scalar/openapi-parser@0.21.2
+
+## 0.2.39
+
+### Patch Changes
+
+- Updated dependencies [e1cdd00]
+  - @scalar/openapi-parser@0.21.1
+  - @scalar/oas-utils@0.4.31
+  - @scalar/components@0.14.36
+
+## 0.2.38
+
+### Patch Changes
+
+- 02085ef: refactor: use upgrade function from @scalar/openapi-upgrader
+- Updated dependencies [6221e4a]
+- Updated dependencies [005fba9]
+- Updated dependencies [a1f865c]
+- Updated dependencies [a1f865c]
+- Updated dependencies [2d612e4]
+- Updated dependencies [dcf50ef]
+- Updated dependencies [02085ef]
+  - @scalar/openapi-upgrader@0.1.0
+  - @scalar/types@0.2.16
+  - @scalar/openapi-parser@0.21.0
+  - @scalar/oas-utils@0.4.30
+  - @scalar/snippetz@0.4.10
+  - @scalar/components@0.14.35
+
+## 0.2.37
+
+### Patch Changes
+
+- Updated dependencies [498f771]
+- Updated dependencies [bff46e5]
+- Updated dependencies [8f2a2f2]
+  - @scalar/components@0.14.34
+  - @scalar/helpers@0.0.11
+  - @scalar/oas-utils@0.4.29
+  - @scalar/openapi-parser@0.20.6
+
+## 0.2.36
+
+### Patch Changes
+
+- Updated dependencies [39bbc0e]
+  - @scalar/openapi-parser@0.20.5
+  - @scalar/oas-utils@0.4.28
+  - @scalar/components@0.14.33
+
+## 0.2.35
+
+### Patch Changes
+
+- @scalar/oas-utils@0.4.27
+- @scalar/components@0.14.32
+
+## 0.2.34
+
+### Patch Changes
+
+- Updated dependencies [821717b]
+- Updated dependencies [2249fe3]
+  - @scalar/oas-utils@0.4.26
+  - @scalar/helpers@0.0.10
+  - @scalar/components@0.14.31
+  - @scalar/openapi-parser@0.20.4
+
+## 0.2.33
+
+### Patch Changes
+
+- Updated dependencies [b8c4b61]
+  - @scalar/openapi-parser@0.20.3
+  - @scalar/oas-utils@0.4.25
+  - @scalar/components@0.14.30
+
+## 0.2.32
+
+### Patch Changes
+
+- Updated dependencies [c470c60]
+- Updated dependencies [abe3842]
+  - @scalar/components@0.14.29
+  - @scalar/types@0.2.15
+  - @scalar/oas-utils@0.4.24
+  - @scalar/openapi-parser@0.20.2
+  - @scalar/snippetz@0.4.9
+
+## 0.2.31
+
+### Patch Changes
+
+- 98c55d0: feat: better xml rendering
+- Updated dependencies [714b197]
+- Updated dependencies [40e79b9]
+- Updated dependencies [98c55d0]
+- Updated dependencies [792c937]
+- Updated dependencies [f918582]
+- Updated dependencies [cededd8]
+- Updated dependencies [a6ae22a]
+- Updated dependencies [422cb2b]
+- Updated dependencies [0e747c7]
+- Updated dependencies [976366f]
+  - @scalar/oas-utils@0.4.23
+  - @scalar/snippetz@0.4.8
+  - @scalar/helpers@0.0.9
+  - @scalar/types@0.2.14
+  - @scalar/components@0.14.28
+  - @scalar/openapi-parser@0.20.2
+
+## 0.2.30
+
+### Patch Changes
+
+- Updated dependencies [50032be]
+  - @scalar/types@0.2.13
+  - @scalar/oas-utils@0.4.22
+  - @scalar/openapi-parser@0.20.1
+  - @scalar/snippetz@0.4.7
+  - @scalar/components@0.14.27
+
+## 0.2.29
+
+### Patch Changes
+
+- Updated dependencies [86d29c1]
+- Updated dependencies [e2272a1]
+- Updated dependencies [b6f4b60]
+  - @scalar/snippetz@0.4.6
+  - @scalar/oas-utils@0.4.21
+  - @scalar/components@0.14.26
+
+## 0.2.28
+
+### Patch Changes
+
+- 66b18fc: feat: update the references to handle $refs from the magic proxy
+- Updated dependencies [bbef120]
+- Updated dependencies [a1429ca]
+- Updated dependencies [d4adeba]
+- Updated dependencies [172e397]
+- Updated dependencies [66b18fc]
+- Updated dependencies [5f022b5]
+- Updated dependencies [d8b8a5b]
+- Updated dependencies [6c24be9]
+- Updated dependencies [6a88108]
+- Updated dependencies [c418e92]
+- Updated dependencies [638120c]
+- Updated dependencies [0804cfc]
+  - @scalar/oas-utils@0.4.20
+  - @scalar/openapi-parser@0.20.0
+  - @scalar/components@0.14.25
+  - @scalar/types@0.2.12
+  - @scalar/openapi-types@0.3.7
+  - @scalar/snippetz@0.4.5
+
+## 0.2.27
+
+### Patch Changes
+
+- Updated dependencies [e203e90]
+- Updated dependencies [3de82ac]
+- Updated dependencies [58b9321]
+- Updated dependencies [fbafeab]
+  - @scalar/openapi-parser@0.19.1
+  - @scalar/oas-utils@0.4.19
+  - @scalar/components@0.14.24
+  - @scalar/openapi-types@0.3.7
+  - @scalar/snippetz@0.4.4
+  - @scalar/types@0.2.11
+
+## 0.2.26
+
+### Patch Changes
+
+- Updated dependencies [46bfd2f]
+  - @scalar/oas-utils@0.4.18
+  - @scalar/components@0.14.23
+
+## 0.2.25
+
+### Patch Changes
+
+- Updated dependencies [952bde2]
+- Updated dependencies [46ebe6e]
+- Updated dependencies [dd00357]
+- Updated dependencies [2888e18]
+  - @scalar/openapi-parser@0.19.0
+  - @scalar/oas-utils@0.4.17
+  - @scalar/components@0.14.22
+
+## 0.2.24
+
+### Patch Changes
+
+- Updated dependencies [ccf875a]
+- Updated dependencies [f913898]
+- Updated dependencies [cf5d6a2]
+- Updated dependencies [94d6d0c]
+- Updated dependencies [c345d2c]
+- Updated dependencies [1af32c0]
+- Updated dependencies [b957a2c]
+- Updated dependencies [f3d0216]
+- Updated dependencies [af22451]
+  - @scalar/openapi-types@0.3.7
+  - @scalar/types@0.2.11
+  - @scalar/components@0.14.21
+  - @scalar/oas-utils@0.4.16
+  - @scalar/openapi-parser@0.18.3
+  - @scalar/snippetz@0.4.4
+
+## 0.2.23
+
+### Patch Changes
+
+- Updated dependencies [60c7bef]
+- Updated dependencies [fb62e1b]
+- Updated dependencies [cac47ea]
+- Updated dependencies [1c2b9f3]
+  - @scalar/components@0.14.20
+  - @scalar/types@0.2.10
+  - @scalar/openapi-parser@0.18.2
+  - @scalar/oas-utils@0.4.15
+  - @scalar/snippetz@0.4.3
+
 ## 0.2.22
 
 ### Patch Changes

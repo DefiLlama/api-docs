@@ -1,10 +1,10 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["./src", "./test"],
+  "include": ["./src", "./test", "./vitest.config.ts", "./vite.config.ts", "./vite.standalone.config.ts"],
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@v2/*": ["./src/v2/*"],
       "@test/*": ["./test/*"]
     },
     "types": ["vite/client", "node"]

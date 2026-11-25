@@ -1,6 +1,9 @@
+import { isJsonMediaType } from '@scalar/helpers/http/is-json-media-type'
 import type { HarRequest, PluginConfiguration } from '@scalar/types/snippetz'
 
-const LENGTH_CONSIDERED_AS_SHORT = 40
+import { accumulateRepeatedValue, normalizeMethod, reduceQueryParams } from '@/libs/http'
+
+export const LENGTH_CONSIDERED_AS_SHORT = 40
 
 // Function to convert JavaScript boolean and null values to Python equivalents
 function convertToPythonSyntax(str: string): string {
@@ -22,11 +25,25 @@ function convertToPythonSyntax(str: string): string {
   return result
 }
 
+export function formatPythonValue(value: unknown, indentation = 4): string {
+  if (typeof value === 'boolean') {
+    return value ? 'True' : 'False'
+  }
+
+  return convertToPythonSyntax(
+    JSON.stringify(value, null, 2)
+      .split('\n')
+      .map((line, index) => (index === 0 ? line : ' '.repeat(indentation) + line))
+      .join('\n'),
+  )
+}
+
 export function requestsLikeGenerate(
   clientVar: string,
   request?: Partial<HarRequest>,
   configuration?: PluginConfiguration,
-) {
+  library: 'requests' | 'httpx' = 'requests',
+): string {
   // Normalize request with defaults
   const normalizedRequest = {
     url: 'https://example.com',
@@ -35,27 +52,25 @@ export function requestsLikeGenerate(
   }
 
   // Normalize method to lowercase for requests library
-  const method = normalizedRequest.method.toLowerCase()
+  const wireMethod = normalizeMethod(normalizedRequest.method)
+  const method = wireMethod.toLowerCase()
 
   // Build options object
   const options: Record<string, any> = {}
 
   // Add headers if present
   if (normalizedRequest.headers?.length) {
-    options.headers = normalizedRequest.headers.reduce(
-      (acc, header) => {
-        if (!(header.name in acc)) {
-          acc[header.name] = header.value
-        }
-        return acc
-      },
-      {} as Record<string, string>,
-    )
+    options.headers = normalizedRequest.headers.reduce<Record<string, string>>((acc, header) => {
+      if (!(header.name in acc)) {
+        acc[header.name] = header.value
+      }
+      return acc
+    }, {})
   }
 
   // Add query parameters if present
   if (normalizedRequest.queryString?.length) {
-    options.params = Object.fromEntries(normalizedRequest.queryString.map((q) => [q.name, q.value]))
+    options.params = reduceQueryParams(normalizedRequest.queryString)
   }
 
   // Add cookies if present
@@ -72,7 +87,7 @@ export function requestsLikeGenerate(
   if (normalizedRequest.postData) {
     const { mimeType, text, params } = normalizedRequest.postData
 
-    if (mimeType === 'application/json' && text) {
+    if (isJsonMediaType(mimeType) && text) {
       try {
         options.json = JSON.parse(text)
       } catch {
@@ -81,33 +96,71 @@ export function requestsLikeGenerate(
     } else if (mimeType === 'application/octet-stream' && text) {
       options.data = text // Store raw text, we'll handle the b"..." formatting later
     } else if (mimeType === 'multipart/form-data' && params) {
-      const files: { key: string; file: string }[] = []
-      const formData: Record<string, string> = {}
+      const files: string[] = []
+      const formData: Record<string, string | string[]> = {}
+      const textFields: string[] = []
 
       params.forEach((param) => {
         if (param.fileName !== undefined) {
-          files.push({ key: param.name, file: `open("${param.fileName}", "rb")` })
+          const name = JSON.stringify(param.name)
+          const fileName = JSON.stringify(param.fileName)
+          const file = `open(${fileName}, "rb")`
+
+          if (param.contentType) {
+            const contentType = JSON.stringify(param.contentType)
+            files.push(`(${name}, (${fileName}, ${file}, ${contentType}))`)
+          } else {
+            files.push(`(${name}, ${file})`)
+          }
         } else if (param.value !== undefined) {
-          formData[param.name] = param.value
+          if (param.contentType) {
+            const name = JSON.stringify(param.name)
+            const value = JSON.stringify(param.value)
+            const contentType = JSON.stringify(param.contentType)
+
+            files.push(`(${name}, (None, ${value}, ${contentType}))`)
+          } else {
+            accumulateRepeatedValue(formData, param.name, param.value)
+            textFields.push(`(${JSON.stringify(param.name)}, (None, ${JSON.stringify(param.value)}))`)
+          }
         }
       })
 
-      if (Object.keys(files).length) {
+      if (!files.length) {
+        // Without a file part, requests and httpx would send `data` as a urlencoded form,
+        // so plain text fields go through `files` to keep the body multipart.
+        if (textFields.length) {
+          options.files = textFields
+        }
+      } else {
         options.files = files
-      }
-      if (Object.keys(formData).length) {
-        options.data = formData
+        if (Object.keys(formData).length) {
+          options.data = formData
+        }
       }
     } else if (mimeType === 'application/x-www-form-urlencoded' && params) {
-      options.data = Object.fromEntries(params.map((p) => [p.name, p.value]))
+      const formData: Record<string, string | string[]> = {}
+      params.forEach((param) => {
+        accumulateRepeatedValue(formData, param.name, param.value ?? '')
+      })
+      options.data = formData
+    } else if (text) {
+      // Any other body (text/plain, application/xml, …) is sent as it is
+      options.data = text
     }
+  }
+
+  // HTTPX accepts raw request bodies through content; data is reserved for form fields.
+  if (library === 'httpx' && typeof options.data === 'string') {
+    options.content = options.data
+    delete options.data
   }
 
   // Format all parameters
   const formattedParams: string[] = []
 
   // Format URL based on length
-  const urlParam = `"${normalizedRequest.url}"`
+  const urlParam = JSON.stringify(normalizedRequest.url)
   if (normalizedRequest.url.length > LENGTH_CONSIDERED_AS_SHORT) {
     formattedParams.push(urlParam)
   } else {
@@ -122,29 +175,31 @@ export function requestsLikeGenerate(
         `${key}=(${convertToPythonSyntax(JSON.stringify(value[0]))}, ${convertToPythonSyntax(JSON.stringify(value[1]))})`,
       )
     } else if (key === 'files') {
-      const filesTuples = value.map(({ key, file }: { key: string; file: string }) => `      ("${key}", ${file})`)
+      const filesTuples = value.map((tuple: string) => `      ${tuple}`)
       const filesStr = '[\n' + filesTuples.join(',\n') + '\n    ]'
       formattedParams.push(`${key}=${filesStr}`)
     } else if (key === 'json') {
-      const jsonString = convertToPythonSyntax(
-        JSON.stringify(value, null, 2)
-          .split('\n')
-          .map((line, i) => (i === 0 ? line : '    ' + line))
-          .join('\n'),
-      )
+      const jsonString = formatPythonValue(value)
       formattedParams.push(`${key}=${jsonString}`)
-    } else if (key === 'data' && normalizedRequest.postData?.mimeType === 'application/octet-stream') {
+    } else if (
+      (key === 'data' || key === 'content') &&
+      normalizedRequest.postData?.mimeType === 'application/octet-stream'
+    ) {
       // Special handling for binary data
       formattedParams.push(`${key}=b"${value}"`)
     } else {
-      const str = convertToPythonSyntax(
-        JSON.stringify(value, null, 2)
-          .split('\n')
-          .map((line, i) => (i === 0 ? line : '    ' + line))
-          .join('\n'),
-      )
+      const str = formatPythonValue(value)
       formattedParams.push(`${key}=${str}`)
     }
+  }
+
+  // HTTPX convenience methods for these verbs do not accept request bodies.
+  const requiresGenericRequest =
+    library === 'httpx' &&
+    ['GET', 'DELETE', 'HEAD', 'OPTIONS'].includes(wireMethod) &&
+    ['json', 'data', 'content', 'files'].some((key) => key in options)
+  if (requiresGenericRequest || !['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'].includes(wireMethod)) {
+    return `${clientVar}.request(${[JSON.stringify(wireMethod), urlParam, ...formattedParams.slice(1)].join(', ')})`
   }
 
   // Build the final request string with conditional URL formatting

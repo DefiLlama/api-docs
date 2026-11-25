@@ -1,14 +1,19 @@
 // @ts-check
 
 import eslint from '@eslint/js'
-// import prettier from 'eslint-plugin-prettier/recommended'
+import tsParser from '@typescript-eslint/parser'
 import vue from 'eslint-plugin-vue'
+import globals from 'globals'
 import tslint from 'typescript-eslint'
 import vueParser from 'vue-eslint-parser'
 
 export default tslint.config(
   {
     ignores: [
+      // Nested checkouts have their own lint configuration and dependencies.
+      '**/.worktrees/**',
+      '**/.claude/worktrees/**',
+      '**/.codex/worktrees/**',
       '**/*.js',
       '**/*.cjs',
       '**/*.ts',
@@ -32,15 +37,14 @@ export default tslint.config(
   },
   eslint.configs.recommended,
   ...tslint.configs.recommended,
-  ...vue.configs['flat/base'],
-  ...vue.configs['flat/essential'],
   ...vue.configs['flat/strongly-recommended'],
   {
     languageOptions: {
       parser: vueParser,
+      globals: globals.browser,
 
       parserOptions: {
-        parser: tslint.parser,
+        parser: tsParser,
         extraFileExtensions: ['.vue'],
         // We will skip rules that require projectService as it decreased the lint speed massively
         // projectService: true,
@@ -56,12 +60,25 @@ export default tslint.config(
       '@typescript-eslint/no-unused-expressions': 'warn',
       'consistent-return': 'off',
       'guard-for-in': 'warn',
-      'no-undef': ['warn', {}],
+      // TypeScript checks undefined names, including types and framework globals.
+      'no-undef': 'off',
       'no-inner-declarations': ['warn'],
       'no-param-reassign': 'warn',
       'no-return-assign': 'warn',
       'radix': ['warn'],
       'no-duplicate-imports': 'warn',
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@scalar/components',
+              message:
+                'Import from a component subpath (e.g. @scalar/components/button) instead of the package barrel.',
+            },
+          ],
+        },
+      ],
       'vue/no-undef-components': [
         'warn',
         {
@@ -136,14 +153,8 @@ export default tslint.config(
           ignores: [],
         },
       ],
-      'vue/html-closing-bracket-newline': [
-        'warn',
-        {
-          singleline: 'never',
-          multiline: 'never',
-        },
-      ],
-      'vue/custom-event-name-casing': ['warn', 'camelCase'],
+      'vue/html-closing-bracket-newline': 'off',
+      'vue/custom-event-name-casing': ['off', 'camelCase'],
       'no-array-constructor': 'off',
       '@typescript-eslint/no-array-constructor': 'warn',
       'no-shadow': 'off',
@@ -155,6 +166,7 @@ export default tslint.config(
         {
           ignoreRestSiblings: true,
           argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
         },
       ],
       '@typescript-eslint/no-explicit-any': 'off',
@@ -187,42 +199,16 @@ export default tslint.config(
       ],
     },
   },
-
-  // Need to disable unused vars as we always inject the complete props from the tiptap node
   {
-    files: ['packages/guide/src/editor/extensions/RichTextExtensions/**'],
+    files: ['integrations/nuxt/**/*.vue'],
     rules: {
-      'vue/no-unused-properties': 'off',
-      'vue/prop-name-casing': 'off',
-      '@typescript-eslint/consistent-type-definitions': ['off'],
+      // Nuxt and this module register these components automatically.
+      'vue/no-undef-components': [
+        'warn',
+        {
+          ignorePatterns: ['client-only', 'ssg_children', 'router-link', 'NuxtLink', 'NuxtPage', 'ScalarApiReference'],
+        },
+      ],
     },
   },
-  {
-    files: ['services/helios/**'],
-    languageOptions: {
-      globals: {
-        useFetch: 'readonly',
-        useRoute: 'readonly',
-        useRouter: 'readonly',
-        useState: 'readonly',
-        defineNuxtConfig: 'readonly',
-        definePageMeta: 'readonly',
-        useRuntimeConfig: 'readonly',
-        $fetch: 'readonly',
-        useAsyncData: 'readonly',
-      },
-    },
-    rules: {
-      'vue/no-undef-components': 'off',
-    },
-  },
-  {
-    files: ['projects/static-docs/**'],
-    languageOptions: {
-      globals: {
-        __STATIC_DATA__: 'readonly',
-      },
-    },
-  },
-  // prettier,
 )

@@ -1,0 +1,477 @@
+import { preventPollution } from '@scalar/helpers/object/prevent-pollution'
+import { findVariables } from '@scalar/helpers/regex/find-variables'
+
+import type { WorkspaceStore } from '@/client'
+import type { OperationEvents } from '@/events/definitions/operation'
+import {
+  deletePathItemOperation,
+  getPathItemOperation,
+  pathItemIsEmpty,
+  setPathItemOperation,
+} from '@/helpers/for-each-path-item-operation'
+import { getResolvedRef } from '@/helpers/get-resolved-ref'
+import { unpackProxyObject } from '@/helpers/unpack-proxy'
+import { syncParametersForPathChange } from '@/mutators/operation/helpers/sync-path-parameters'
+import { getOperationEntries } from '@/navigation'
+import { getNavigationOptions } from '@/navigation/get-navigation-options'
+import { updateOrderIds } from '@/navigation/helpers/update-order-ids'
+import type { WorkspaceDocument } from '@/schemas'
+import { isOpenApiDocument } from '@/schemas/type-guards'
+
+/**
+ * Creates a new operation at a specific path and method in the document.
+ * Automatically normalizes the path to ensure it starts with a slash.
+ *
+ * Returns the normalized path if successful, undefined otherwise.
+ *
+ * Example:
+ * ```ts
+ * createOperation(
+ *   document,
+ *   'users',
+ *   'get',
+ *   { tags: ['Users'] },
+ * )
+ * ```
+ */
+export const createOperation = (
+  workspaceStore: WorkspaceStore | null,
+  payload: OperationEvents['operation:create:operation'],
+): string | undefined => {
+  const document = workspaceStore?.workspace.documents[payload.documentName]
+  if (!isOpenApiDocument(document)) {
+    payload.callback?.(false)
+    return undefined
+  }
+
+  const { path, method, operation } = payload
+
+  /** Ensure the path starts with a slash */
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+
+  /** Create the operation in the document */
+  if (!document.paths) {
+    document.paths = {}
+  }
+
+  if (!document.paths[normalizedPath]) {
+    document.paths[normalizedPath] = {}
+  }
+
+  /** Prevent pollution of the path and method */
+  preventPollution(normalizedPath)
+  preventPollution(method)
+
+  /** Create the operation in the document */
+  setPathItemOperation(document.paths[normalizedPath], method, operation)
+
+  // Make sure that we are selecting the new operation server
+  const { servers } = operation
+  const firstServer = unpackProxyObject(servers?.[0])
+
+  // For now we only support document servers but in the future we might support operation servers
+  for (const server of servers ?? []) {
+    // If the server does not exist in the document, add it
+    if (!document.servers?.some((s) => s.url === server.url)) {
+      if (!document.servers) {
+        document.servers = []
+      }
+      document.servers.push(unpackProxyObject(server))
+    }
+  }
+
+  // Update the selected server to the first server of the created operation
+  if (firstServer) {
+    document['x-scalar-selected-server'] = firstServer.url
+  }
+
+  const existingParameters = operation.parameters
+
+  // Sync path variables
+  const result = syncParametersForPathChange(normalizedPath, normalizedPath, existingParameters ?? [], getResolvedRef)
+  if (existingParameters !== undefined || result.length > 0) {
+    operation.parameters = result
+  }
+
+  payload.callback?.(true)
+  return normalizedPath
+}
+
+/**
+ * Updates the `description` of an operation.
+ * Safely no-ops if the document or operation does not exist.
+ *
+ * Example:
+ * ```ts
+ * updateOperationDescription(
+ *   document,
+ *   { meta: { method: 'get', path: '/users' }, payload: { description: 'Get a single user' },
+ * })
+ * ```
+ */
+export const updateOperationMeta = (
+  store: WorkspaceStore | null,
+  document: WorkspaceDocument | null,
+  { meta, payload }: OperationEvents['operation:update:meta'],
+) => {
+  if (!store || !isOpenApiDocument(document)) {
+    return
+  }
+
+  const documentName = document['x-scalar-navigation']?.name
+  if (documentName === undefined) {
+    return
+  }
+
+  const operation = getResolvedRef(getPathItemOperation(document.paths?.[meta.path], meta.method))
+  if (!operation) {
+    console.error('Operation not found', { meta, document })
+    return
+  }
+
+  // Update the description of the operation
+  Object.assign(operation, payload)
+
+  // Rebuild the sidebar to reflect the cahnges
+  store.buildSidebar(documentName)
+}
+
+/**
+ * Updates the HTTP method and/or path of an operation and moves it to the new location.
+ * This function:
+ * 1. Moves the operation from the old method/path to the new method/path under paths
+ * 2. Updates x-scalar-order to maintain the operation's position in the sidebar
+ * 3. Syncs path parameters when the path changes
+ *
+ * Safely no-ops if nothing has changed, or if the document or operation does not exist.
+ *
+ * Example:
+ * ```ts
+ * updateOperationPathMethod({
+ *   document,
+ *   store,
+ *   meta: { method: 'get', path: '/users' },
+ *   payload: { method: 'post', path: '/api/users' },
+ * })
+ * ```
+ */
+export const updateOperationPathMethod = (
+  document: WorkspaceDocument | null,
+  store: WorkspaceStore | null,
+  { meta, payload: { method, path }, blurTargetSelector, callback }: OperationEvents['operation:update:pathMethod'],
+): void => {
+  const methodChanged = meta.method !== method
+  const pathChanged = meta.path !== path
+
+  // If nothing has changed, no need to do anything
+  if (!methodChanged && !pathChanged) {
+    callback('no-change', blurTargetSelector)
+    return
+  }
+
+  // Determine the final method and path
+  const finalMethod = methodChanged ? method : meta.method
+  const finalPath = pathChanged ? path : meta.path
+
+  if (!store || !isOpenApiDocument(document)) {
+    console.error('Document or workspace not found', { document })
+    return
+  }
+
+  // Check for conflicts at the target location
+  if (getPathItemOperation(document.paths?.[finalPath], finalMethod)) {
+    callback('conflict', blurTargetSelector)
+    return
+  }
+
+  const documentNavigation = document['x-scalar-navigation']
+  if (!documentNavigation) {
+    console.error('Document navigation missing', { document })
+    return
+  }
+
+  const operation = getResolvedRef(getPathItemOperation(document.paths?.[meta.path], meta.method))
+  if (!operation) {
+    console.error('Operation not found', { meta, document })
+    return
+  }
+
+  // Sync path parameters if the path has changed
+  if (pathChanged) {
+    const oldPathParams = findVariables(meta.path, { includePath: true, includeEnv: false }).filter(
+      (v): v is string => v !== undefined,
+    )
+    const newPathParams = findVariables(finalPath, { includePath: true, includeEnv: false }).filter(
+      (v): v is string => v !== undefined,
+    )
+
+    if (oldPathParams.length > 0 || newPathParams.length > 0) {
+      const existingParameters = operation.parameters ?? []
+      const result = syncParametersForPathChange(finalPath, meta.path, existingParameters, getResolvedRef)
+      operation.parameters = result
+    }
+  }
+
+  /**
+   * We don't pass navigation options as we don't have config on the client,
+   * and we don't change path or method on the references
+   */
+  const { generateId } = getNavigationOptions(documentNavigation.name)
+
+  /** Grabs all of the current operation entries for the given path and method */
+  const operationEntriesMap = getOperationEntries(documentNavigation)
+  const entries = operationEntriesMap.get(`${meta.path}|${meta.method}`)
+
+  // Updates the order ID so we don't lose the sidebar ordering when it rebuilds
+  if (entries) {
+    updateOrderIds({ store, operation, generateId, method: finalMethod, path: finalPath, entries })
+  }
+
+  // Initialize the paths object if it does not exist
+  if (!document.paths) {
+    document.paths = {}
+  }
+
+  // Initialize the new path if it does not exist
+  if (!document.paths[finalPath]) {
+    document.paths[finalPath] = {}
+  }
+
+  // Prevent assigning dangerous keys to the path items object
+  preventPollution(finalPath)
+  preventPollution(meta.path)
+  preventPollution(finalMethod)
+
+  // Move the operation to the new location
+  setPathItemOperation(document.paths[finalPath], finalMethod, unpackProxyObject(operation))
+
+  // Remove the operation from the old location
+  deletePathItemOperation(document.paths[meta.path], meta.method)
+
+  // If the old path is now empty, remove the path entry (path-level metadata is kept otherwise)
+  if (pathItemIsEmpty(document.paths[meta.path])) {
+    delete document.paths[meta.path]
+  }
+
+  // We need to reset the history for the operation when the path or method changes
+  store.history.clearOperationHistory(document['x-scalar-navigation']?.name ?? '', meta.path, meta.method)
+
+  callback('success', blurTargetSelector)
+}
+
+/**
+ * Deletes an operation from the workspace
+ *
+ * Example:
+ * ```ts
+ * deleteOperation({
+ *   document,
+ *   meta: { method: 'get', path: '/users' },
+ * })
+ * ```
+ */
+export const deleteOperation = (
+  workspace: WorkspaceStore | null,
+  { meta, documentName }: OperationEvents['operation:delete:operation'],
+) => {
+  const document = workspace?.workspace.documents[documentName]
+  if (!isOpenApiDocument(document)) {
+    return
+  }
+
+  preventPollution(meta.path)
+  preventPollution(meta.method)
+
+  deletePathItemOperation(document.paths?.[meta.path], meta.method)
+
+  // If the path is now empty, remove the path entry (path-level metadata is kept otherwise)
+  if (pathItemIsEmpty(document.paths?.[meta.path])) {
+    delete document.paths?.[meta.path]
+  }
+}
+
+/**
+ * Adds an example name to the 'x-draft-examples' array for a specific operation in a document.
+ *
+ * - Finds the target operation using the provided path and method within the specified document.
+ * - If the operation is found and has an 'x-draft-examples' array, pushes the new exampleName to it.
+ * - Safely no-ops if the document or operation does not exist.
+ */
+export const createOperationDraftExample = (
+  workspace: WorkspaceStore | null,
+  { meta: { path, method }, documentName, exampleName }: OperationEvents['operation:create:draft-example'],
+) => {
+  const document = workspace?.workspace.documents[documentName]
+  if (!isOpenApiDocument(document)) {
+    console.error('Document not found', { documentName })
+    return
+  }
+
+  const operation = getResolvedRef(getPathItemOperation(document.paths?.[path], method))
+  if (!operation) {
+    console.error('Operation not found', { path, method })
+    return
+  }
+
+  // Ensure that the x-draft-examples array exists
+  operation['x-draft-examples'] ??= []
+
+  // Remove duplicates
+  const dedupe = new Set(operation['x-draft-examples'])
+  // Add the new example name
+  dedupe.add(exampleName)
+  // Update the operation with the new x-draft-examples array
+  operation['x-draft-examples'] = Array.from(dedupe)
+}
+
+/**
+ * Deletes an example with the given exampleKey from operation parameters and request body.
+ *
+ * - Finds the target operation within the specified document and path/method.
+ * - Removes example values matching exampleKey from both parameter-level and content-level examples.
+ * - Safely no-ops if the document, operation, or request body does not exist.
+ */
+export const deleteOperationExample = (
+  workspace: WorkspaceStore | null,
+  { meta: { path, method, exampleKey }, documentName }: OperationEvents['operation:delete:example'],
+) => {
+  // Find the document in workspace based on documentName
+  const document = workspace?.workspace.documents[documentName]
+  if (!isOpenApiDocument(document)) {
+    return
+  }
+
+  // Get the operation object for the given path and method
+  const operation = getResolvedRef(getPathItemOperation(document.paths?.[path], method))
+  if (!operation) {
+    return
+  }
+
+  // Remove the example from the x-draft-examples array
+  const dedupe = new Set(operation['x-draft-examples'] ?? [])
+  dedupe.delete(exampleKey)
+
+  if (operation['x-draft-examples'] !== undefined) {
+    operation['x-draft-examples'] = Array.from(dedupe)
+  }
+
+  // Remove the example from all operation parameters
+  operation.parameters?.forEach((parameter) => {
+    const resolvedParameter = getResolvedRef(parameter)
+    if (!resolvedParameter) {
+      return
+    }
+
+    // Remove from content-level examples (if parameter uses content)
+    if ('content' in resolvedParameter && resolvedParameter.content) {
+      Object.values(resolvedParameter.content).forEach((mediaType) => {
+        delete mediaType.examples?.[exampleKey]
+      })
+    }
+
+    // Remove from parameter-level examples
+    if ('examples' in resolvedParameter && resolvedParameter.examples) {
+      delete resolvedParameter.examples?.[exampleKey]
+    }
+  })
+
+  // Remove the example from request body content types (if requestBody exists)
+  const requestBody = getResolvedRef(operation.requestBody)
+  if (!requestBody) {
+    return
+  }
+
+  // For each media type, remove the example matching exampleKey
+  Object.values(requestBody.content ?? {}).forEach((mediaType) => {
+    delete mediaType.examples?.[exampleKey]
+  })
+}
+
+/**
+ * Renames an example key for an operation across all operation-level example containers:
+ * - `x-draft-examples`
+ * - parameter-level examples
+ * - parameter content-level examples
+ * - request-body content examples
+ * - request-body selected-content-type map
+ *
+ * If the target example name already exists in any container, this is a no-op to avoid
+ * accidental data overwrites.
+ */
+export const renameOperationExample = (
+  workspace: WorkspaceStore | null,
+  { meta: { path, method, exampleKey }, documentName, payload }: OperationEvents['operation:rename:example'],
+) => {
+  const document = workspace?.workspace.documents[documentName]
+  if (!isOpenApiDocument(document)) {
+    return
+  }
+
+  const operation = getResolvedRef(getPathItemOperation(document.paths?.[path], method))
+  if (!operation) {
+    return
+  }
+
+  const nextExampleName = payload.name.trim()
+  if (!nextExampleName || nextExampleName === exampleKey) {
+    return
+  }
+
+  preventPollution(nextExampleName)
+
+  const records: Record<string, unknown>[] = []
+
+  operation.parameters?.forEach((parameter) => {
+    const resolvedParameter = getResolvedRef(parameter)
+    if (!resolvedParameter) {
+      return
+    }
+
+    if ('examples' in resolvedParameter && resolvedParameter.examples) {
+      records.push(resolvedParameter.examples)
+    }
+
+    if ('content' in resolvedParameter && resolvedParameter.content) {
+      Object.values(resolvedParameter.content).forEach((mediaType) => {
+        if (mediaType.examples) {
+          records.push(mediaType.examples)
+        }
+      })
+    }
+  })
+
+  const requestBody = getResolvedRef(operation.requestBody)
+  if (requestBody) {
+    Object.values(requestBody.content ?? {}).forEach((mediaType) => {
+      if (mediaType.examples) {
+        records.push(mediaType.examples)
+      }
+    })
+
+    if (requestBody['x-scalar-selected-content-type']) {
+      records.push(requestBody['x-scalar-selected-content-type'])
+    }
+  }
+
+  if (
+    operation['x-draft-examples']?.includes(nextExampleName) ||
+    records.some((record) => Object.hasOwn(record, nextExampleName))
+  ) {
+    return
+  }
+
+  if (operation['x-draft-examples']) {
+    operation['x-draft-examples'] = operation['x-draft-examples'].map((name) =>
+      name === exampleKey ? nextExampleName : name,
+    )
+  }
+
+  records.forEach((record) => {
+    if (!Object.hasOwn(record, exampleKey)) {
+      return
+    }
+
+    record[nextExampleName] = unpackProxyObject(record[exampleKey])
+    delete record[exampleKey]
+  })
+}

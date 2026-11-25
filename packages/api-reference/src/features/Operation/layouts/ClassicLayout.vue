@@ -1,76 +1,166 @@
 <script setup lang="ts">
+import { CodeExample } from '@scalar/blocks/code-example'
 import {
-  ScalarErrorBoundary,
-  ScalarIconButton,
-  ScalarMarkdown,
-} from '@scalar/components'
-import type { HttpMethod as HttpMethodType } from '@scalar/helpers/http/http-methods'
+  REQUEST_BODY_COMPOSITION_INDEX_SYMBOL,
+  type RequestBodyCompositionSelection,
+  type SchemaRenderingProps,
+} from '@scalar/blocks/schema'
+import { ScalarErrorBoundary } from '@scalar/components/error-boundary'
+import { ScalarIconButton } from '@scalar/components/icon-button'
+import { ScalarMarkdown } from '@scalar/components/markdown'
 import {
   ScalarIconCopy,
   ScalarIconPlay,
   ScalarIconWebhooksLogo,
 } from '@scalar/icons'
-import {
-  getOperationStability,
-  getOperationStabilityColor,
-  isOperationDeprecated,
-} from '@scalar/oas-utils/helpers'
-import type { OpenAPIV3_1 } from '@scalar/openapi-types'
 import { useClipboard } from '@scalar/use-hooks/useClipboard'
-import type { OperationObject } from '@scalar/workspace-store/schemas/v3.1/strict/path-operations'
-import type { SecuritySchemeObject } from '@scalar/workspace-store/schemas/v3.1/strict/security-scheme'
-import type { ServerObject } from '@scalar/workspace-store/schemas/v3.1/strict/server'
-import type { Dereference } from '@scalar/workspace-store/schemas/v3.1/type-guard'
-import { computed } from 'vue'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import type { SecuritySchemeObjectSecret } from '@scalar/workspace-store/request-example'
+import type {
+  OpenApiDocument,
+  OperationObject,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed, provide, ref } from 'vue'
 
 import { Anchor } from '@/components/Anchor'
 import { Badge } from '@/components/Badge'
 import { HttpMethod } from '@/components/HttpMethod'
+import { LinkList } from '@/components/LinkList'
 import OperationPath from '@/components/OperationPath.vue'
-import { BetaBadge } from '@/components/BetaBadge'
-import { ProBadge } from '@/components/ProBadge'
 import { SectionAccordion } from '@/components/Section'
+import { useDocumentOutline } from '@/features/document-outline'
 import { ExampleResponses } from '@/features/example-responses'
+import { ExternalDocs } from '@/features/external-docs'
+import { useLocalization } from '@/features/localization'
 import Callbacks from '@/features/Operation/components/callbacks/Callbacks.vue'
+import CopyMarkdownButton from '@/features/Operation/components/CopyMarkdownButton.vue'
 import OperationParameters from '@/features/Operation/components/OperationParameters.vue'
 import OperationResponses from '@/features/Operation/components/OperationResponses.vue'
-import type { Schemas } from '@/features/Operation/types/schemas'
+import OperationTags from '@/features/Operation/components/OperationTags.vue'
+import SecurityRequirementBadge from '@/features/Operation/components/SecurityRequirementBadge.vue'
+import type { RequiredSecurity } from '@/features/Operation/helpers/get-required-security'
+import {
+  getOperationStability,
+  getOperationStabilityColor,
+  isOperationDeprecated,
+} from '@/features/Operation/helpers/operation-stability'
+import type { OperationProps } from '@/features/Operation/Operation.vue'
+import {
+  getXKeysFromObject,
+  SpecificationExtension,
+} from '@/features/specification-extension'
+import { usePathsExtensions } from '@/features/specification-extension/use-paths-extensions'
+import { useSpecificationExtensions } from '@/features/specification-extension/use-specification-extensions'
 import { TestRequestButton } from '@/features/test-request-button'
-import { useConfig } from '@/hooks/useConfig'
-import { RequestExample } from '@/v2/blocks/scalar-request-example-block'
-import { useStore } from '@/v2/hooks/useStore'
+import { XBadges } from '@/features/x-badges'
 
-const { operation, path, isWebhook } = defineProps<{
-  id: string
-  path: string
-  method: HttpMethodType
-  operation: Dereference<OperationObject>
-  oldOperation: OpenAPIV3_1.OperationObject
-  isWebhook: boolean
-  server: ServerObject | undefined
-  securitySchemes: SecuritySchemeObject[]
-  schemas?: Schemas
+const {
+  clientOptions,
+  document,
+  eventBus,
+  isWebhook,
+  method,
+  operation,
+  options,
+  path,
+  pathValue,
+  requiredSecurity,
+  selectedServer,
+  selectedSecuritySchemes,
+  selectedClient,
+  selectedExample,
+} = defineProps<
+  Omit<
+    OperationProps,
+    'document' | 'server' | 'securitySchemes' | 'authStore'
+  > & {
+    /** Operation object with path params */
+    operation: OperationObject
+    /** The selected server for the operation */
+    selectedServer: ServerObject | null
+    /** The selected security schemes for the operation */
+    selectedSecuritySchemes: SecuritySchemeObjectSecret[]
+    /** Required/optional security state for the badge next to the path */
+    requiredSecurity: RequiredSecurity
+    /** The document the operation belongs to, used to resolve schema references for display */
+    document?: OpenApiDocument
+  } & SchemaRenderingProps
+>()
+defineSlots<{
+  actions?: () => unknown
 }>()
+
+const { translate } = useLocalization()
+
+const openapiVersion = computed<string | undefined>(
+  () => document?.['x-original-oas-version'] || document?.openapi,
+)
 
 const operationTitle = computed(() => operation.summary || path || '')
 
+const pathsExtensions = usePathsExtensions(() => document?.paths)
+const pathExtensions = computed(() => getXKeysFromObject(pathValue))
+
+const pathsExtensionSelection = useSpecificationExtensions(
+  () => pathsExtensions.value,
+  () => options.showExtensions,
+)
+const pathExtensionSelection = useSpecificationExtensions(
+  () => pathExtensions.value,
+  () => options.showExtensions,
+)
+
+const operationExtensions = computed(() => getXKeysFromObject(operation))
+
+/** Track the selected request body content type so the code sample stays in sync */
+const selectedRequestBodyContentType = ref<string | undefined>()
+
+/**
+ * The example key actually shown in the request snippet for this operation.
+ *
+ * The test-request button lives in the accordion header, outside `OperationCodeSample`, so it
+ * cannot read the resolved key from the footer slot like the modern layout does. We mirror it here
+ * so the button opens the client with the same example the snippet displays, even when this
+ * operation does not share the document-wide selection.
+ */
+const resolvedExampleKey = ref<string>('')
+
+/** Selected request body oneOf/anyOf variants; synced with schema dropdowns and code sample */
+const requestBodyCompositionSelection = ref<RequestBodyCompositionSelection>({})
+
+const requestBodyCompositionSelectionForCodeSample = computed(
+  (): RequestBodyCompositionSelection => ({
+    ...requestBodyCompositionSelection.value,
+  }),
+)
+
+const requestBodyCompositionSelectionKey = computed(() =>
+  JSON.stringify(requestBodyCompositionSelectionForCodeSample.value),
+)
+
+provide(REQUEST_BODY_COMPOSITION_INDEX_SYMBOL, requestBodyCompositionSelection)
+
+/**
+ * Selected response content type per status code. Shared between the response list (which writes
+ * the selection) and the example response panel (which reads it) so the two stay in sync.
+ */
+const selectedResponseContentTypes = ref<Record<string, string>>({})
+
 const { copyToClipboard } = useClipboard()
-const { workspace } = useStore()
-const config = useConfig()
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
-}>()
-
-const handleDiscriminatorChange = (type: string) => {
-  emit('update:modelValue', type)
-}
+const { level: headingLevel } = useDocumentOutline('operation')
 </script>
 <template>
   <SectionAccordion
     :id="id"
+    :aria-label="operationTitle"
     class="reference-endpoint"
-    transparent>
+    :modelValue="!isCollapsed"
+    transparent
+    @update:modelValue="
+      (value) => eventBus?.emit('toggle:nav-item', { id, open: value })
+    ">
     <template #title>
       <div class="operation-title">
         <div class="operation-details">
@@ -79,9 +169,11 @@ const handleDiscriminatorChange = (type: string) => {
             :method="method"
             short />
           <Anchor
-            :id="id"
-            class="endpoint-anchor">
-            <h3 class="endpoint-label">
+            class="endpoint-anchor"
+            @copyAnchorUrl="() => eventBus?.emit('copy-url:nav-item', { id })">
+            <component
+              :is="`h${headingLevel}`"
+              class="endpoint-label flex-wrap">
               <div class="endpoint-label-path">
                 <OperationPath
                   :deprecated="isOperationDeprecated(operation)"
@@ -90,65 +182,148 @@ const handleDiscriminatorChange = (type: string) => {
               <div class="endpoint-label-name">
                 {{ operationTitle }}
               </div>
+              <!-- Stability badge -->
               <Badge
                 v-if="getOperationStability(operation)"
+                class="capitalize"
                 :class="getOperationStabilityColor(operation)">
                 {{ getOperationStability(operation) }}
               </Badge>
 
-              <ProBadge :operation="operation" />
-              <BetaBadge :operation="operation" />
-
+              <!-- Webhook badge -->
               <Badge
                 v-if="isWebhook"
                 class="font-code text-green flex w-fit items-center justify-center gap-1">
-                <ScalarIconWebhooksLogo weight="bold" />Webhook
+                <ScalarIconWebhooksLogo weight="bold" />
+                {{ translate('operation.webhook') }}
               </Badge>
-            </h3>
+
+              <OperationTags
+                :document
+                :tags="operation.tags" />
+              <!-- x-badges before -->
+              <XBadges
+                :badges="operation['x-badges']"
+                position="before" />
+            </component>
           </Anchor>
         </div>
       </div>
     </template>
     <template #actions="{ active }">
-      <TestRequestButton
-        v-if="active && !isWebhook"
-        :method="method"
-        :path="path" />
-      <ScalarIconPlay
-        v-else-if="!config?.hideTestRequestButton"
-        class="endpoint-try-hint size-4.5" />
+      <!-- Required auth indicator -->
+      <SecurityRequirementBadge
+        hideLabel
+        :requiredSecurity />
+      <!-- x-badges after -->
+      <XBadges
+        :badges="operation['x-badges']"
+        position="after" />
+      <template v-if="!options.hideTestRequestButton">
+        <TestRequestButton
+          v-if="active"
+          :id
+          :eventBus
+          :exampleName="resolvedExampleKey"
+          :method
+          :path
+          :requestBodyCompositionSelection="
+            requestBodyCompositionSelectionForCodeSample
+          " />
+        <ScalarIconPlay
+          v-else
+          class="endpoint-try-hint size-4.5" />
+      </template>
+      <span
+        v-if="options.showOperationId && operation.operationId"
+        class="font-code text-sm">
+        {{ operation.operationId }}
+      </span>
       <ScalarIconButton
         class="endpoint-copy p-0.5"
         :icon="ScalarIconCopy"
-        label="Copy endpoint URL"
+        :label="translate('actions.copyEndpointUrl')"
         size="xs"
         variant="ghost"
         @click.stop="copyToClipboard(path)" />
     </template>
-    <template
-      v-if="operation.description"
-      #description>
+    <template #description>
+      <div
+        v-if="document"
+        class="mb-3 flex justify-end">
+        <slot
+          v-if="$slots.actions"
+          name="actions" />
+        <CopyMarkdownButton
+          v-else
+          :document
+          :isWebhook
+          :method
+          :path />
+      </div>
       <ScalarMarkdown
-        :value="operation.description"
-        withImages
-        withAnchors
+        v-if="operation.description"
+        :anchorPrefix="id"
+        :aria-label="translate('common.description')"
+        role="group"
         transformType="heading"
-        :anchorPrefix="id" />
+        :value="operation.description"
+        withAnchors
+        withImages />
     </template>
     <div class="endpoint-content">
       <div class="operation-details-card">
-        <div class="operation-details-card-item">
-          <OperationParameters
-            :parameters="oldOperation.parameters"
-            :requestBody="oldOperation.requestBody"
-            :schemas="schemas"
-            @update:modelValue="handleDiscriminatorChange" />
+        <div
+          v-if="!isWebhook && pathsExtensionSelection.hasExtensions.value"
+          class="operation-details-card-item">
+          <SpecificationExtension
+            :selection="pathsExtensionSelection"
+            :showExtensions="options.showExtensions"
+            :value="pathsExtensions" />
+        </div>
+        <div
+          v-if="!isWebhook && pathExtensionSelection.hasExtensions.value"
+          class="operation-details-card-item">
+          <SpecificationExtension
+            :selection="pathExtensionSelection"
+            :showExtensions="options.showExtensions"
+            :value="pathExtensions" />
+        </div>
+
+        <div
+          v-if="Object.keys(operationExtensions).length > 0"
+          class="operation-details-card-item">
+          <SpecificationExtension
+            :showExtensions="options.showExtensions"
+            :value="operationExtensions" />
         </div>
         <div class="operation-details-card-item">
+          <OperationParameters
+            v-model:selectedContentType="selectedRequestBodyContentType"
+            :breadcrumb="[id]"
+            :document
+            :eventBus
+            :expansion="expansion"
+            :options
+            :parameters="operation.parameters"
+            :requestBody="getResolvedRef(operation.requestBody)"
+            :scrollTargetId="scrollTargetId"
+            :specificationExtension="specificationExtension" />
+        </div>
+        <div class="operation-details-card-item">
+          <!-- Responses are disclosures unless the configuration expands every
+               response, in which case they render as static panels -->
           <OperationResponses
-            :collapsableItems="false"
-            :responses="oldOperation.responses"
-            :schemas="schemas" />
+            v-model:selectedContentTypes="selectedResponseContentTypes"
+            :breadcrumb="[id]"
+            :collapsableItems="!options.expandAllResponses"
+            :document
+            :eventBus
+            :expansion="expansion"
+            :options
+            :responses="operation.responses"
+            :scrollTargetId="scrollTargetId"
+            :specificationExtension="specificationExtension" />
         </div>
 
         <!-- Callbacks -->
@@ -156,31 +331,67 @@ const handleDiscriminatorChange = (type: string) => {
           v-if="operation?.callbacks"
           class="operation-details-card-item">
           <Callbacks
-            :method="method"
-            :path="path"
+            :breadcrumb="[id]"
             :callbacks="operation.callbacks"
-            :schemas="schemas" />
+            :document
+            :eventBus
+            :expansion="expansion"
+            :options
+            :path
+            :scrollTargetId="scrollTargetId"
+            :specificationExtension="specificationExtension" />
         </div>
       </div>
 
       <ExampleResponses
+        v-if="operation.responses"
         class="operation-example-card"
-        :responses="operation.responses" />
+        :eventBus
+        :jsonSchemaDialect="document?.jsonSchemaDialect"
+        :openapiVersion
+        :responses="operation.responses"
+        :selectedContentTypes="selectedResponseContentTypes"
+        :selectedExample />
 
       <!-- New Example Request -->
-      <ScalarErrorBoundary>
-        <RequestExample
-          class="operation-example-card"
-          :method="method"
-          :selectedServer="server"
-          :selectedClient="workspace['x-scalar-default-client']"
-          :securitySchemes="securitySchemes"
-          :path="path"
-          fallback
-          :operation="operation"
-          :schemas="schemas"
-          @update:modelValue="handleDiscriminatorChange" />
-      </ScalarErrorBoundary>
+      <div>
+        <!-- External Docs -->
+        <LinkList v-if="operation.externalDocs">
+          <ExternalDocs :value="operation.externalDocs" />
+        </LinkList>
+        <!-- Request Example -->
+        <ScalarErrorBoundary>
+          <CodeExample
+            :key="requestBodyCompositionSelectionKey"
+            class="operation-example-card"
+            :clientOptions
+            :clientPickerLabel="translate('clientLibraries.changeClient')"
+            :clientSearchLabel="translate('clientLibraries.searchLabel')"
+            :codeSampleLabel="translate('operation.codeSample')"
+            :codeSampleUnavailable="
+              translate('operation.codeSampleUnavailable')
+            "
+            :eventBus
+            fallback
+            :isWebhook
+            :jsonSchemaDialect="document?.jsonSchemaDialect"
+            :method
+            :multipartNaming="options.multipartNaming"
+            :openapiVersion
+            :operation
+            :path
+            :requestBodyCompositionSelection="
+              requestBodyCompositionSelectionForCodeSample
+            "
+            :securitySchemes="selectedSecuritySchemes"
+            :selectedClient
+            :selectedContentType="selectedRequestBodyContentType"
+            :selectedExample
+            :selectedServer
+            @update:exampleKey="resolvedExampleKey = $event">
+          </CodeExample>
+        </ScalarErrorBoundary>
+      </div>
     </div>
   </SectionAccordion>
 </template>
@@ -200,6 +411,10 @@ const handleDiscriminatorChange = (type: string) => {
 
   min-width: 0;
   flex-shrink: 1;
+}
+.operation-details :deep(.endpoint-anchor .scalar-button svg) {
+  width: 16px;
+  height: 16px;
 }
 .endpoint-type {
   display: flex;
@@ -237,8 +452,6 @@ const handleDiscriminatorChange = (type: string) => {
   align-items: center;
   min-width: 0;
   flex-shrink: 1;
-
-  font-size: 20px;
 }
 .endpoint-anchor.label {
   display: flex;
@@ -312,6 +525,69 @@ const handleDiscriminatorChange = (type: string) => {
   min-width: 0;
 }
 
+/*
+ * The schema tree inside a classic card.
+ *
+ * A tree row hangs its +/- control one gutter to the LEFT of its own text. The
+ * modern layout absorbs that in the page margin, but a classic card draws its
+ * border exactly there, so the controls sat on top of the border and outside
+ * the box that is supposed to contain them. Every card that holds tree rows
+ * reserves `gutter + half` on the inline start — plus the same 6px of air the
+ * modern layout leaves at the page edge, so a control never kisses the border —
+ * and matches the card's own 9px on the end so a long signature never touches
+ * the border either.
+ *
+ * The reserve is spelled out at each use site rather than kept as a token: a
+ * custom property substitutes where it is DECLARED, so a token defined at app
+ * scope would freeze at the wide values and keep reserving 25px in a narrow
+ * container that only needs 18 (same reason `schema-rail`'s fade is inline).
+ *
+ * The `:has()` guard reserves the space only where a tree row can draw a
+ * control: a card holding nothing but a description and an example keeps the
+ * plain 9px.
+ *
+ * `.parameter-item--tree` has to be in the guard even though a row of its own
+ * hangs nothing: the classic card renders responses as disclosures, and a
+ * CLOSED one unmounts its panel, taking every `.property--tree` with it. An
+ * operation with only responses would then reserve nothing while its status
+ * rows still drew their pucks 25px to the left — over the card's border — and
+ * the reserve would appear and disappear as rows were opened, shifting the
+ * whole card sideways on a click. The row marker is there whatever the
+ * disclosure is doing, so the reserve holds still.
+ */
+.endpoint-content:has(
+  .property--tree,
+  .parameter-item--tree,
+  .callback-list-item--tree
+) {
+  padding-inline-start: calc(
+    var(--schema-gutter, 16px) + var(--schema-glyph-half, 9px) + 6px
+  );
+}
+
+.operation-details-card-item :deep(.request-body-schema:has(.property--tree)),
+.operation-details-card-item
+  :deep(.callbacks-list:has(.callback-list-item--tree)) {
+  padding-inline-start: calc(
+    var(--schema-gutter, 16px) + var(--schema-glyph-half, 9px) + 6px
+  );
+  padding-inline-end: 9px;
+}
+
+/*
+ * The trailing copy-link is a hover-only affordance, and it is a flex item of
+ * the heading, so it competes for the line with the property name and its type.
+ * The classic card is roughly 90px narrower than the modern column, and there
+ * that 22px is enough to push a signature onto a second line — on a control
+ * that is transparent until hovered, so the row just reads as a blank line
+ * under the name. Rows stay deep-linkable: the anchor id is on the row itself,
+ * and only the click-to-copy button goes, exactly as it does for a coarse
+ * pointer (see CopyLinkButton.vue).
+ */
+.endpoint-content :deep(.copy-link-trailing) {
+  display: none;
+}
+
 .operation-details-card {
   display: flex;
   flex-direction: column;
@@ -360,32 +636,6 @@ const handleDiscriminatorChange = (type: string) => {
   margin: 0;
 }
 
-.operation-details-card :deep(.callback-list-item-title) {
-  padding-left: 28px;
-  padding-right: 12px;
-}
-
-.operation-details-card :deep(.callback-list-item-icon) {
-  left: 6px;
-}
-
-.operation-details-card :deep(.callback-operation-container) {
-  padding-inline: 9px;
-  padding-bottom: 9px;
-}
-
-.operation-details-card :deep(.callback-operation-container > .request-body),
-.operation-details-card :deep(.callback-operation-container > .parameter-list) {
-  border: none;
-}
-
-.operation-details-card
-  :deep(.callback-operation-container > .request-body > .request-body-header) {
-  padding: 0;
-  padding-bottom: 9px;
-  border-bottom: var(--scalar-border-width) solid var(--scalar-border-color);
-}
-
 .operation-details-card :deep(.request-body-description) {
   margin-top: 0;
   padding: 9px 9px 0 9px;
@@ -396,6 +646,10 @@ const handleDiscriminatorChange = (type: string) => {
   margin-top: 0;
   border-radius: var(--scalar-radius-lg);
   border: var(--scalar-border-width) solid var(--scalar-border-color);
+}
+.operation-details-card
+  :deep(.request-body .schema-card--level-0 > .schema-card-description) {
+  padding-inline: 9px;
 }
 
 .operation-details-card :deep(.request-body-header) {
@@ -415,6 +669,9 @@ const handleDiscriminatorChange = (type: string) => {
 .operation-details-card :deep(.request-body-schema .property--level-0) {
   padding: 0;
 }
+.operation-details-card :deep(.request-body-schema .property--level-0) {
+  padding: 0;
+}
 
 .operation-details-card :deep(.selected-content-type) {
   margin-right: 9px;
@@ -422,8 +679,8 @@ const handleDiscriminatorChange = (type: string) => {
 
 .operation-example-card {
   position: sticky;
-  top: calc(var(--refs-header-height) + 24px);
-  max-height: calc(((var(--full-height) - var(--refs-header-height)) - 48px));
+  top: calc(var(--refs-viewport-offset) + 24px);
+  max-height: calc(var(--refs-viewport-height) - 48px);
 }
 
 @media (max-width: 600px) {

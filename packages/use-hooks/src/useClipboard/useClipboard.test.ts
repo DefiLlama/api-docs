@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useClipboard } from './useClipboard'
 
-vi.mock('@scalar/use-toasts', () => ({
+vi.mock(import('@scalar/use-toasts'), () => ({
   useToasts: vi.fn().mockReturnValue({
     toast: vi.fn(),
     initializeToasts: vi.fn(),
@@ -78,12 +78,12 @@ describe('useClipboard', () => {
     expect(mockConsole).toHaveBeenCalledWith('Clipboard error')
   })
 
-  it('works in SSG environment without navigator', async () => {
-    const originalNavigator = global.navigator
-
+  it('works in SSG environment without navigator', async ({ onTestFinished }) => {
     // Mock SSG environment by removing navigator
-    // @ts-expect-error
-    delete global.navigator
+    vi.stubGlobal('navigator', undefined)
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
 
     const notify = vi.fn()
     const { copyToClipboard } = useClipboard({ notify })
@@ -92,8 +92,71 @@ describe('useClipboard', () => {
 
     // Should show error notification since clipboard is not available
     expect(notify).toHaveBeenCalledWith('Failed to copy to clipboard')
+  })
 
-    // Restore navigator
-    global.navigator = originalNavigator
+  it('handles objects by stringifying them', async () => {
+    const { copyToClipboard } = useClipboard()
+    const testObject = { name: 'John', age: 30 }
+
+    await copyToClipboard(testObject)
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(JSON.stringify(testObject))
+  })
+
+  it('handles arrays by stringifying them', async () => {
+    const { copyToClipboard } = useClipboard()
+    const testArray = [1, 2, 3, 'four']
+
+    await copyToClipboard(testArray)
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(JSON.stringify(testArray))
+  })
+
+  it('handles numbers by stringifying them', async () => {
+    const { copyToClipboard } = useClipboard()
+
+    await copyToClipboard(42)
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('42')
+  })
+
+  it('handles booleans by stringifying them', async () => {
+    const { copyToClipboard } = useClipboard()
+
+    await copyToClipboard(true)
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('true')
+  })
+
+  it('handles null by stringifying it', async () => {
+    const { copyToClipboard } = useClipboard()
+
+    await copyToClipboard(null)
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('null')
+  })
+
+  it('handles undefined by stringifying it', async () => {
+    const { copyToClipboard } = useClipboard()
+    await copyToClipboard(undefined)
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('undefined')
+  })
+
+  it('handles nested objects by stringifying them', async () => {
+    const { copyToClipboard } = useClipboard()
+    const nestedObject = {
+      user: {
+        name: 'Jane',
+        preferences: {
+          theme: 'dark',
+          notifications: true,
+        },
+      },
+      items: [1, 2, 3],
+    }
+
+    await copyToClipboard(nestedObject)
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(JSON.stringify(nestedObject))
   })
 })

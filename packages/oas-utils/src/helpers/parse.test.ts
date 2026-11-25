@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
-import { isJsonString, json, parseJsonOrYaml, transformToJson, yaml } from './parse'
+import { json, parseJsonOrYaml, transformToJson, yaml } from './parse'
+
+/**
+ * `headers` is referenced ten times (nine `use` keys and `params`), so its count is 11 and every merge
+ * of `base` costs 11. With yaml 2.9.1, 1,000 merges need a `maxAliasCount` of 11,011 (1,011 before
+ * merges counted).
+ */
+const createMergeHeavyYaml = (): string =>
+  [
+    'headers: &headers',
+    '  accept: application/json',
+    ...Array.from({ length: 9 }, (_, index) => `use${index}: *headers`),
+    'base: &base',
+    '  type: aws',
+    '  params: *headers',
+    ...Array.from({ length: 1000 }, (_, index) => `item${index}:\n  <<: *base\n  title: item${index}`),
+  ].join('\n')
 
 describe('Handles yaml and json parsing', () => {
   it('Parses basic yaml', () => {
@@ -18,22 +34,16 @@ describe('Handles yaml and json parsing', () => {
     expect(() => json.parse('10')).toThrowError()
   })
 
+  it('parses yaml whose merges exceed the old alias limit of 10,000', () => {
+    expect(yaml.parse(createMergeHeavyYaml()).item999).toStrictEqual({
+      type: 'aws',
+      params: { accept: 'application/json' },
+      title: 'item999',
+    })
+  })
+
   it('transforms Yaml to JSON', () => {
-    expect(transformToJson('openapi: 3.0.0')).toMatchObject(JSON.stringify({ openapi: '3.0.0' }))
-  })
-})
-
-describe('isJsonString', () => {
-  it('keeps a path as is', async () => {
-    expect(isJsonString('foobar')).toBe(false)
-  })
-
-  it('removes slash', async () => {
-    expect(isJsonString('{ "foo": "bar" }')).toBe(true)
-  })
-
-  it('trims whitespace', async () => {
-    expect(isJsonString({ foo: 'bar' })).toBe(false)
+    expect(transformToJson('openapi: 3.0.0')).toBe(JSON.stringify({ openapi: '3.0.0' }))
   })
 })
 

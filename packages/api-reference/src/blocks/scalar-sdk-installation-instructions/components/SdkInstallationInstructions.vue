@@ -1,0 +1,590 @@
+<script setup lang="ts">
+import {
+  filterClientsByQuery,
+  getClients,
+  getCustomClientIds,
+  type ClientOptionGroup,
+} from '@scalar/blocks/code-example'
+import {
+  ScalarCombobox,
+  type ScalarComboboxOption,
+} from '@scalar/components/combobox'
+import { ScalarIcon } from '@scalar/components/icon'
+import type { AvailableClient } from '@scalar/types/snippetz'
+import { type WorkspaceEventBus } from '@scalar/workspace-store/events'
+import type { SecuritySchemeObjectSecret } from '@scalar/workspace-store/request-example'
+import type { XScalarSdkInstallation } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-sdk-installation'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useId,
+  watch,
+} from 'vue'
+
+import { getFeaturedClients } from '@/blocks/scalar-client-selector-block/helpers/featured-clients'
+import { useLocalization } from '@/features/localization'
+
+import { getLanguageIcon } from '../helpers/language-icon'
+import { getRenderableSdks } from '../helpers/renderable-sdks'
+import { getVisibleTabCount } from '../helpers/visible-tab-count'
+
+import SdkInstallationMarkdown from './SdkInstallationMarkdown.vue'
+
+const {
+  xScalarSdkInstallation,
+  selectedClient,
+  eventBus,
+  clientOptions = [],
+  featuredClients,
+  securitySchemes = [],
+} = defineProps<{
+  /** Built-in clients to show alongside SDKs when the combined view is enabled. */
+  clientOptions?: ClientOptionGroup[]
+  /** Built-in clients shown inline, in order, after the SDK tabs. */
+  featuredClients?: AvailableClient[]
+  /** Current document authentication selection, including reader credentials. */
+  securitySchemes?: SecuritySchemeObjectSecret[]
+  /** Custom SDK installation instructions from `x-scalar-sdk-installation` */
+  xScalarSdkInstallation?: XScalarSdkInstallation['x-scalar-sdk-installation']
+  /**
+   * The globally selected built-in or `custom/<lang>` client id, keeping the
+   * introduction in sync with the operation code samples.
+   */
+  selectedClient?: string
+  /**
+   * Event bus used to select the matching generated or custom operation example.
+   */
+  eventBus?: WorkspaceEventBus
+}>()
+
+const headingId = useId()
+/** Base id used to associate each tab with the shared panel for assistive tech */
+const baseId = useId()
+const panelId = `${baseId}-panel`
+const { translate } = useLocalization()
+
+/** SDK IDs stay identical to the IDs used by operation code samples. */
+const sdkEntries = computed(() => {
+  const sdks = getRenderableSdks(xScalarSdkInstallation)
+  const ids = getCustomClientIds(
+    sdks.map((sdk) => ({ lang: sdk.lang, source: '' })),
+  )
+  return sdks.map((sdk, index) => ({
+    ...sdk,
+    id: ids[index],
+    title: '',
+    icon: getLanguageIcon(sdk.lang),
+  }))
+})
+
+const featured = computed(() =>
+  getFeaturedClients(clientOptions, featuredClients),
+)
+
+/** SDKs and featured clients are eligible for inline tabs; the rest stay in More. */
+const inlineCount = computed(
+  () => sdkEntries.value.length + featured.value.length,
+)
+
+const entries = computed(() => {
+  const featuredIds = new Set(featured.value.map((client) => client.id))
+  const otherClients = clientOptions.flatMap((group) =>
+    group.options.filter((client) => !featuredIds.has(client.id)),
+  )
+  return [
+    ...sdkEntries.value,
+    ...[...featured.value, ...otherClients].map((client) => ({
+      id: client.id,
+      label: client.targetTitle,
+      title: client.title,
+      description: '',
+      icon: getLanguageIcon(client.targetKey),
+    })),
+  ]
+})
+
+const selectedIndex = ref(0)
+const selected = computed(() => entries.value[selectedIndex.value])
+const clientIds = computed(() => entries.value.map((entry) => entry.id))
+
+/** Broadcast selection so the operation code samples follow the introduction. */
+const select = (index: number): void => {
+  selectedIndex.value = index
+
+  const id = clientIds.value[index]
+  if (id) {
+    eventBus?.emit('workspace:update:selected-client', id)
+  }
+}
+
+// Follow matching global selections, including reordered or filtered options.
+// In SDK-only mode an unrelated built-in selection keeps the current SDK tab.
+watch(
+  [() => selectedClient, clientIds],
+  ([client, ids]) => {
+    const matched = client ? ids.findIndex((id) => id === client) : -1
+
+    if (matched >= 0) {
+      selectedIndex.value = matched
+    } else if (selectedIndex.value > ids.length - 1) {
+      selectedIndex.value = 0
+    }
+  },
+  { immediate: true },
+)
+
+// Re-measure labels as well as languages so renamed SDKs do not leave stale
+// tab widths or an incorrect number of options in the "More" menu.
+watch(
+  () => JSON.stringify(entries.value.map(({ id, label }) => [id, label])),
+  () => void nextTick(measure),
+)
+
+/** The full row, measured for available width (the tab strip's own width depends on the outcome) */
+const rowRef = ref<HTMLElement>()
+/** The tab strip, used to move focus between tabs */
+const tabsRef = ref<HTMLElement>()
+const measureRef = ref<HTMLElement>()
+
+/** The width available to render the tabs in */
+const availableWidth = ref(0)
+/** The natural width of each tab */
+const tabWidths = ref<number[]>([])
+/** The width of the "More" dropdown trigger */
+const moreWidth = ref(0)
+
+/** Measure the available width and the natural width of each tab */
+const measure = () => {
+  const measureEl = measureRef.value
+  const rowEl = rowRef.value
+
+  if (!measureEl || !rowEl) {
+    return
+  }
+
+  // The measuring row renders every tab followed by the "More" trigger
+  const widths = Array.from(measureEl.children).map(
+    (child) => (child as HTMLElement).offsetWidth,
+  )
+
+  tabWidths.value = widths.slice(0, inlineCount.value)
+  moreWidth.value = widths[inlineCount.value] ?? 0
+  availableWidth.value = rowEl.clientWidth
+}
+
+/** How many tabs fit inline before we need the "More" dropdown */
+const visibleCount = computed(() => {
+  // Until we have measured, render everything (also the server-rendered state)
+  if (!tabWidths.value.length || availableWidth.value <= 0) {
+    return inlineCount.value
+  }
+
+  return getVisibleTabCount(
+    tabWidths.value,
+    availableWidth.value,
+    moreWidth.value,
+    entries.value.length > inlineCount.value,
+  )
+})
+
+/** SDKs and featured clients that fit inline. */
+const visibleEntries = computed(() =>
+  entries.value.slice(0, visibleCount.value),
+)
+
+/** Whether the selection lives in the "More" dropdown */
+const isMoreActive = computed(() => selectedIndex.value >= visibleCount.value)
+
+/** Keep SDK overflow separate and preserve language groups for built-in clients. */
+const moreOptions = computed(() => {
+  const overflowIds = new Set(
+    entries.value.slice(visibleCount.value).map((entry) => entry.id),
+  )
+  return getClients(
+    sdkEntries.value.map((sdk) => ({
+      lang: sdk.lang,
+      label: sdk.label,
+      source: '',
+    })),
+    clientOptions,
+    'SDK',
+  )
+    .map((group) => ({
+      ...group,
+      options: group.options.filter((option) => overflowIds.has(option.id)),
+    }))
+    .filter((group) => group.options.length > 0)
+})
+
+/** The selected option within the "More" dropdown, if any */
+const selectedMoreOption = computed(() =>
+  moreOptions.value
+    .flatMap((group) => group.options)
+    .find((option) => option.id === selected.value?.id),
+)
+
+const selectMore = (option: ScalarComboboxOption | undefined): void => {
+  const index = entries.value.findIndex((entry) => entry.id === option?.id)
+  if (index >= 0) {
+    select(index)
+  }
+}
+
+/** The id of the tab that labels the panel (falls back to the heading when the selection lives in "More") */
+const activeTabId = computed(() =>
+  isMoreActive.value ? headingId : `${baseId}-tab-${selectedIndex.value}`,
+)
+
+/**
+ * Keep the inline tabs keyboard-reachable when the selection lives in "More".
+ */
+const tabStopIndex = computed(() =>
+  isMoreActive.value ? 0 : selectedIndex.value,
+)
+
+/** Focus a visible tab by index after the DOM has settled */
+const focusTab = (index: number) => {
+  void nextTick(() => {
+    tabsRef.value
+      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+      .item(index)
+      ?.focus()
+  })
+}
+
+/** Arrow / Home / End keyboard navigation across the visible tabs (WAI-ARIA tabs pattern) */
+const onTabKeydown = (event: KeyboardEvent, index: number) => {
+  const lastVisible = visibleCount.value - 1
+
+  let next: number
+  switch (event.key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      next = index >= lastVisible ? 0 : index + 1
+      break
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      next = index <= 0 ? lastVisible : index - 1
+      break
+    case 'Home':
+      next = 0
+      break
+    case 'End':
+      next = lastVisible
+      break
+    default:
+      return
+  }
+
+  event.preventDefault()
+  select(next)
+  focusTab(next)
+}
+
+let observer: ResizeObserver | undefined
+let frame = 0
+
+/** Coalesce resize bursts into a single measure before the next paint */
+const scheduleMeasure = () => {
+  if (typeof requestAnimationFrame === 'undefined') {
+    measure()
+    return
+  }
+  cancelAnimationFrame(frame)
+  frame = requestAnimationFrame(measure)
+}
+
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined') {
+    observer = new ResizeObserver(scheduleMeasure)
+    // Observe the visible row for the available width, and the hidden measure
+    // row for the natural tab widths. The latter catches changes the container
+    // never sees — web fonts loading, or labels changing without the count
+    // changing — which would otherwise leave the overflow logic stale.
+    if (rowRef.value) {
+      observer.observe(rowRef.value)
+    }
+    if (measureRef.value) {
+      observer.observe(measureRef.value)
+    }
+  }
+  measure()
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  if (typeof cancelAnimationFrame !== 'undefined') {
+    cancelAnimationFrame(frame)
+  }
+})
+</script>
+<template>
+  <div v-if="entries.length">
+    <div
+      :id="headingId"
+      class="client-libraries-heading">
+      {{ translate('clientLibraries.heading') }}
+    </div>
+
+    <!-- Tabs: keep the More combobox outside the tablist so every tablist
+         child is a tab (aria-required-children). -->
+    <div class="client-libraries-content">
+      <div
+        ref="rowRef"
+        class="client-libraries-row">
+        <div
+          ref="tabsRef"
+          :aria-labelledby="headingId"
+          class="client-libraries-tabs"
+          role="tablist">
+          <button
+            v-for="(sdk, index) in visibleEntries"
+            :id="`${baseId}-tab-${index}`"
+            :key="index"
+            :aria-controls="panelId"
+            :aria-selected="index === selectedIndex"
+            class="client-libraries"
+            :class="{ 'client-libraries__active': index === selectedIndex }"
+            role="tab"
+            :tabindex="index === tabStopIndex ? 0 : -1"
+            type="button"
+            @click="select(index)"
+            @keydown="onTabKeydown($event, index)">
+            <ScalarIcon
+              v-if="sdk.icon"
+              class="client-libraries-icon"
+              :icon="sdk.icon" />
+            <span class="client-libraries-text">{{ sdk.label }}</span>
+          </button>
+        </div>
+
+        <!-- More dropdown (not a tab — lives beside the tablist) -->
+        <ScalarCombobox
+          v-if="visibleCount < entries.length"
+          :filterFn="filterClientsByQuery"
+          :inputLabel="translate('clientLibraries.searchLabel')"
+          :modelValue="selectedMoreOption"
+          :options="moreOptions"
+          placement="bottom-end"
+          teleport
+          @update:modelValue="selectMore">
+          <button
+            class="client-libraries client-libraries-more"
+            :class="{ 'client-libraries__active': isMoreActive }"
+            type="button">
+            <ScalarIcon
+              class="client-libraries-icon"
+              :icon="
+                isMoreActive && selected?.icon ? selected.icon : 'Ellipses'
+              " />
+            <span class="client-libraries-text">
+              {{ translate('clientLibraries.more') }}
+            </span>
+          </button>
+        </ScalarCombobox>
+      </div>
+
+      <!-- Hidden row used to measure the natural width of every tab. It is
+           clipped to a zero-size box so it never contributes to the scrollable
+           width of the (horizontally scrollable) row above. -->
+      <div
+        aria-hidden="true"
+        class="client-libraries-measure-clip">
+        <div
+          ref="measureRef"
+          class="client-libraries-row client-libraries-row--measure">
+          <span
+            v-for="(sdk, index) in entries.slice(0, inlineCount)"
+            :key="index"
+            class="client-libraries">
+            <ScalarIcon
+              v-if="sdk.icon"
+              class="client-libraries-icon"
+              :icon="sdk.icon" />
+            <span class="client-libraries-text">{{ sdk.label }}</span>
+          </span>
+          <span class="client-libraries">
+            <ScalarIcon
+              class="client-libraries-icon"
+              icon="Ellipses" />
+            <span class="client-libraries-text">
+              {{ translate('clientLibraries.more') }}
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content: Markdown installation instructions (supports code blocks) -->
+    <div
+      v-if="selected"
+      :id="panelId"
+      :aria-labelledby="activeTabId"
+      class="selected-client"
+      role="tabpanel"
+      tabindex="0">
+      <SdkInstallationMarkdown
+        v-if="selected.description"
+        :securitySchemes
+        :value="selected.description" />
+      <span
+        v-else
+        class="font-code"
+        >{{ selected.title }}</span
+      >
+    </div>
+  </div>
+</template>
+<style scoped>
+/* One panel holds the Markdown installation instructions */
+.selected-client {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  color: var(--scalar-color-1);
+  font-size: var(--scalar-small);
+  padding: 9px 12px;
+  background: var(--scalar-background-1);
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+  border-top: none;
+  border-bottom-left-radius: var(--scalar-radius-xl);
+  border-bottom-right-radius: var(--scalar-radius-xl);
+}
+.selected-client :deep(.markdown pre code) {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.selected-client :deep(.scalar-code-block > [role='group']) {
+  padding: 0;
+}
+.client-libraries-heading {
+  font-size: var(--scalar-small);
+  font-weight: var(--scalar-font-medium);
+  color: var(--scalar-color-1);
+  padding: 9px 12px;
+  background-color: var(--scalar-background-2);
+  display: flex;
+  align-items: center;
+  max-height: 32px;
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+  border-top-left-radius: var(--scalar-radius-xl);
+  border-top-right-radius: var(--scalar-radius-xl);
+}
+.client-libraries-content {
+  position: relative;
+  /*
+   * Scroll horizontally rather than clip: before JS measures the tab widths
+   * (and without JS at all) every tab is rendered, so overflowing tabs must
+   * stay reachable. Once measured, the "More" dropdown absorbs the overflow and
+   * no scrollbar is shown. The bar itself is hidden — keyboard focus and touch
+   * still scroll clipped tabs into view.
+   */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding: 0 12px;
+  background-color: var(--scalar-background-1);
+  border-left: var(--scalar-border-width) solid var(--scalar-border-color);
+  border-right: var(--scalar-border-width) solid var(--scalar-border-color);
+  border-bottom: var(--scalar-border-width) solid var(--scalar-border-color);
+}
+.client-libraries-content::-webkit-scrollbar {
+  display: none;
+}
+.client-libraries-row {
+  display: flex;
+  justify-content: flex-start;
+}
+/* Sized to its tabs, so the "More" trigger still pins to the right edge */
+.client-libraries-tabs {
+  display: flex;
+  flex: 0 0 auto;
+}
+/* Zero-size clip so the measure row never adds to the scrollable width */
+.client-libraries-measure-clip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+/* Off-screen row used only to measure natural tab widths */
+.client-libraries-row--measure {
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+.client-libraries {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+  white-space: nowrap;
+  /* Keep tabs at their natural (measured) width so they scroll rather than squish */
+  flex-shrink: 0;
+  padding: 8px 12px;
+  gap: 6px;
+  color: var(--scalar-color-3);
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  user-select: none;
+}
+.client-libraries:not(.client-libraries__active):hover:before {
+  content: '';
+  position: absolute;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  background: var(--scalar-background-2);
+  left: 2px;
+  top: 2px;
+  z-index: 0;
+  border-radius: var(--scalar-radius);
+}
+.client-libraries:active {
+  color: var(--scalar-color-1);
+}
+.client-libraries:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--scalar-color-accent);
+}
+.client-libraries__active {
+  color: var(--scalar-color-1);
+  border-bottom: 1px solid var(--scalar-color-1);
+}
+/* Always pin the "More" dropdown to the right edge */
+.client-libraries-more {
+  margin-left: auto;
+}
+.client-libraries-icon {
+  max-width: 14px;
+  max-height: 14px;
+  min-width: 14px;
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-sizing: border-box;
+  color: currentColor;
+}
+.client-libraries .client-libraries-text {
+  font-size: var(--scalar-small);
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.client-libraries__active .client-libraries-text {
+  color: var(--scalar-color-1);
+  font-weight: var(--scalar-semibold);
+}
+</style>

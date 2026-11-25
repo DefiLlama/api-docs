@@ -1,16 +1,13 @@
-import { webrequest } from '@/httpsnippet-lite/esm/targets/powershell/webrequest/client'
-import { convertWithHttpSnippetLite } from '@/utils/convertWithHttpSnippetLite'
 import type { Plugin } from '@scalar/types/snippetz'
 
-/**
- * powershell/webrequest
- */
+import { generatePowershell } from '@/libs/powershell'
+
+/** Generates a PowerShell 7 request using Invoke-WebRequest. */
 export const powershellWebrequest: Plugin = {
   target: 'powershell',
   client: 'webrequest',
   title: 'Invoke-WebRequest',
-  generate(request) {
-    // TODO: Write an own converter
-    return convertWithHttpSnippetLite(webrequest, request)
+  generate(request, configuration) {
+    return generatePowershell('Invoke-WebRequest', request, configuration)
   },
 }

@@ -1,0 +1,10 @@
+import '@scalar/themes/style.css'
+import '@scalar/components/style.css'
+import '@scalar/highlight/compat/code.css'
+import './style.css'
+
+import { createApp } from 'vue'
+
+import App from './App.vue'
+
+createApp(App).mount('#app')

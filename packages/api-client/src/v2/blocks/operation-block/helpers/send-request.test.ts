@@ -1,0 +1,1673 @@
+import { isElectron } from '@scalar/helpers/general/is-electron'
+import type { ClientPlugin } from '@scalar/oas-utils/helpers'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { sendRequest } from './send-request'
+
+vi.mock('@scalar/helpers/general/is-electron', () => ({
+  isElectron: vi.fn(() => false),
+}))
+
+const MOCK_URL = 'https://api.example.com'
+
+const globalFetchSpy = vi.spyOn(global, 'fetch')
+afterEach(() => {
+  globalFetchSpy.mockReset()
+  vi.mocked(isElectron).mockReturnValue(false)
+})
+
+describe('sendRequest', () => {
+  it.each(['application/jsonl', 'application/json-seq', 'multipart/mixed; boundary=x', 'Text/Event-Stream'])(
+    'returns a reader before the %s response body finishes',
+    async (contentType) => {
+      let cancelled = false
+      const stream = new ReadableStream<Uint8Array>({
+        cancel: () => {
+          cancelled = true
+        },
+      })
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, { method: 'GET' }],
+        customFetch: () =>
+          Promise.resolve(new Response(stream, { status: 206, headers: { 'Content-Type': contentType } })),
+      })
+      expect(error).toBeNull()
+      if (!result || !('reader' in result.response)) {
+        throw new Error('Expected a live reader')
+      }
+      expect(result.response.status).toBe(206)
+      // The completion hook clones this response before history reads it.
+      const completedResponse = result.originalResponse.clone().clone()
+      expect(completedResponse.status).toBe(206)
+      expect(completedResponse.ok).toBe(true)
+      expect(completedResponse.headers.get('content-type')).toBe(contentType)
+      expect(completedResponse.body).toBeNull()
+      expect(await completedResponse.text()).toBe('')
+      await result.response.reader.cancel()
+      expect(cancelled).toBe(true)
+    },
+  )
+
+  it.each([600, 999])('preserves streaming status %s through completion hook clones', async (status) => {
+    const chunk = new TextEncoder().encode('data: hello\n\n')
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        controller.enqueue(chunk)
+        controller.close()
+      },
+    })
+    const networkResponse = new Response(stream, { headers: { 'content-type': 'text/event-stream' } })
+    Object.defineProperty(networkResponse, 'status', { value: status })
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, { method: 'GET' }],
+      customFetch: () => Promise.resolve(networkResponse),
+    })
+
+    expect(error).toBeNull()
+    if (!result || !('reader' in result.response)) {
+      throw new Error('Expected a live reader')
+    }
+    const completedResponse = result.originalResponse.clone().clone()
+    expect(result.response.status).toBe(status)
+    expect(completedResponse.status).toBe(status)
+    expect(completedResponse.ok).toBe(false)
+    expect(completedResponse.body).toBeNull()
+    expect(await completedResponse.text()).toBe('')
+    expect(await result.response.reader.read()).toStrictEqual({ done: false, value: chunk })
+    expect(await result.response.reader.read()).toStrictEqual({ done: true, value: undefined })
+  })
+
+  /**
+   * Adds a URL property to a Response object and ensures it persists through cloning.
+   * This is needed because Response objects created in tests don't have a URL by default.
+   */
+  const addUrlToResponse = (response: Response, url: string): Response => {
+    Object.defineProperty(response, 'url', {
+      value: url,
+      writable: false,
+    })
+
+    // Override clone method to preserve the URL
+    const originalClone = response.clone.bind(response)
+    response.clone = () => {
+      const cloned = originalClone()
+      Object.defineProperty(cloned, 'url', {
+        value: url,
+        writable: false,
+      })
+      return cloned
+    }
+
+    return response
+  }
+
+  /**
+   * Creates a mock Response that mimics what an echo server would return.
+   * This allows us to test without needing a running server.
+   */
+  const createMockEchoResponse = (url: string, init: RequestInit = {}, overrides: Partial<ResponseInit> = {}) => {
+    const parsedUrl = new URL(url)
+    const query: Record<string, string | string[]> = {}
+
+    parsedUrl.searchParams.forEach((value, key) => {
+      if (query[key]) {
+        query[key] = Array.isArray(query[key]) ? [...(query[key] as string[]), value] : [query[key] as string, value]
+      } else {
+        query[key] = value
+      }
+    })
+
+    const headers: Record<string, string> = {}
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((value, key) => {
+        headers[key.toLowerCase()] = value
+      })
+    } else if (Array.isArray(init.headers)) {
+      init.headers.forEach(([key, value]) => {
+        headers[key.toLowerCase()] = value
+      })
+    } else if (init.headers) {
+      Object.entries(init.headers).forEach(([key, value]) => {
+        headers[key.toLowerCase()] = value
+      })
+    }
+
+    const echoData = {
+      method: init.method ?? 'GET',
+      path: parsedUrl.pathname + parsedUrl.search,
+      query,
+      headers,
+      body: '',
+    }
+
+    const response = new Response(JSON.stringify(echoData), {
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      ...overrides,
+    })
+
+    return addUrlToResponse(response, url)
+  }
+
+  it('uses global fetch when customFetch is not provided', async () => {
+    const requestInit: RequestInit = {}
+    globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    expect(globalFetchSpy).toHaveBeenCalledTimes(1)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(200)
+  })
+
+  it('sends the pre-built request as-is so hook mutations and body bytes are preserved', async () => {
+    const requestInit: RequestInit = { method: 'POST', body: '{"data":"test"}' }
+    const preBuiltRequest = new Request(MOCK_URL, requestInit)
+    preBuiltRequest.headers.set('X-Signature', 'abc123')
+
+    const customFetch = vi.fn().mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+    const [error] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+      request: preBuiltRequest,
+      customFetch,
+    })
+
+    expect(error).toBe(null)
+    expect(customFetch).toHaveBeenCalledTimes(1)
+    // The exact same Request instance must reach fetch, not a rebuilt copy
+    expect(customFetch).toHaveBeenCalledWith(preBuiltRequest)
+  })
+
+  it('uses customFetch instead of global fetch when provided', async () => {
+    const requestInit: RequestInit = {}
+    const customFetch = vi.fn().mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+      customFetch,
+    })
+
+    expect(error).toBe(null)
+    expect(customFetch).toHaveBeenCalledTimes(1)
+    expect(globalFetchSpy).not.toHaveBeenCalled()
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(200)
+  })
+
+  it('propagates errors thrown by customFetch as request failures', async () => {
+    const customFetch = vi.fn().mockRejectedValueOnce(new TypeError('Custom fetch failed'))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, {}],
+      customFetch,
+    })
+
+    expect(result).toBe(null)
+    expect(error).not.toBe(null)
+    expect(error?.message).toContain('Custom fetch failed')
+    expect(globalFetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the requested URL when customFetch returns a Response without a URL', async () => {
+    const requestInit: RequestInit = {}
+    const customFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"ok":true}', { headers: { 'content-type': 'application/json' } }))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [`${MOCK_URL}/things?limit=1`, requestInit],
+      customFetch,
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(200)
+    expect(result.response.path).toBe('/things?limit=1')
+  })
+
+  it('sends a basic request and returns response data', async () => {
+    const requestInit: RequestInit = {}
+    globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.data).toBeDefined()
+    expect(result.response.status).toBe(200)
+    expect(result.response.headers).toBeDefined()
+    expect(result.response.duration).toBeGreaterThanOrEqual(0)
+    expect(result.response.method).toBe('GET')
+    expect(result.response.path).toBe('/')
+    expect(result.timestamp).toBeGreaterThan(0)
+  })
+
+  it('handles POST requests', async () => {
+    const requestInit: RequestInit = {
+      method: 'POST',
+      body: JSON.stringify({ test: 'data' }),
+    }
+    const mockResponse = addUrlToResponse(
+      new Response(
+        JSON.stringify({
+          method: 'POST',
+          path: '/',
+          body: { test: 'data' },
+        }),
+        {
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+        },
+      ),
+      MOCK_URL,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.method).toBe('POST')
+    expect(JSON.parse(result.response.data as string)).toMatchObject({
+      method: 'POST',
+      body: { test: 'data' },
+    })
+  })
+
+  it('handles requests with query parameters', async () => {
+    const url = new URL(MOCK_URL)
+    url.searchParams.set('foo', 'bar')
+    url.searchParams.set('test', 'value')
+    const requestUrl = url.toString()
+    const requestInit: RequestInit = {}
+
+    globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(requestUrl, requestInit))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [requestUrl, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.path).toBe('/?foo=bar&test=value')
+    expect(JSON.parse(result.response.data as string).query).toMatchObject({
+      foo: 'bar',
+      test: 'value',
+    })
+  })
+
+  it('handles requests with custom headers', async () => {
+    const requestInit: RequestInit = {
+      headers: {
+        'X-Custom-Header': 'custom-value',
+        'Content-Type': 'application/json',
+      },
+    }
+
+    globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    const responseData = JSON.parse(result.response.data as string)
+    expect(responseData.headers['x-custom-header']).toBe('custom-value')
+    expect(responseData.headers['content-type']).toBe('application/json')
+  })
+
+  it('normalizes response headers', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response('test', {
+        status: 200,
+        headers: new Headers({
+          'content-type': 'text/plain',
+          'x-custom-header': 'value',
+        }),
+      }),
+      MOCK_URL,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.headers).toHaveProperty('Content-Type')
+    expect(result.response.headers).toHaveProperty('X-Custom-Header')
+  })
+
+  it('handles 204 No Content responses', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response(null, {
+        status: 204,
+        statusText: 'No Content',
+      }),
+      `${MOCK_URL}/204`,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [`${MOCK_URL}/204`, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(204)
+    expect(result.response.data).toBe('')
+  })
+
+  it('handles 205 Reset Content responses', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response(null, {
+        status: 205,
+        statusText: 'Reset Content',
+      }),
+      MOCK_URL,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(205)
+  })
+
+  it('handles 304 Not Modified responses', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response(null, {
+        status: 304,
+        statusText: 'Not Modified',
+      }),
+      MOCK_URL,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(304)
+  })
+
+  it('handles responses with status codes', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response('OK', {
+        status: 200,
+        statusText: 'OK',
+      }),
+      MOCK_URL,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(200)
+  })
+
+  it('handles error status codes', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response('Not Found', {
+        status: 404,
+        statusText: 'Not Found',
+      }),
+      MOCK_URL,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.status).toBe(404)
+  })
+
+  /**
+   * Network responses can carry any status in 0–999. We never rebuild them with
+   * `new Response` (which only allows [200, 599]), so mocks use a Response-like
+   * object for statuses the constructor rejects.
+   */
+  it.each([0, 100, 103, 199, 600, 601, 700, 850, 999])(
+    'surfaces status %s outside the Response constructor range with the response body',
+    async (status) => {
+      const body = JSON.stringify({ code: status, message: 'custom status' })
+      const headers = new Headers({ 'content-type': 'application/json' })
+      const arrayBuffer = new TextEncoder().encode(body).buffer
+
+      const mockResponse = {
+        status,
+        statusText: '',
+        headers,
+        ok: false,
+        url: MOCK_URL,
+        body: null,
+        clone: () => mockResponse,
+        arrayBuffer: async () => arrayBuffer,
+      } as unknown as Response
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, {}],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.status).toBe(status)
+      expect(result.originalResponse.status).toBe(status)
+      expect(result.response.data).toBe(body)
+    },
+  )
+
+  it('handles empty response body', async () => {
+    const mockEmptyStream = new ReadableStream({
+      start(controller) {
+        controller.close()
+      },
+    })
+
+    const mockResponse = {
+      status: 204,
+      headers: new Headers(),
+      body: mockEmptyStream,
+      ok: true,
+      statusText: 'No Content',
+      url: MOCK_URL,
+      clone: () => mockResponse,
+      text: async () => '',
+      json: async () => ({}),
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as Partial<Response>
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse as Response)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, {}],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.data).toBe('')
+  })
+
+  it('calculates response duration', async () => {
+    const requestInit: RequestInit = {}
+    globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.duration).toBeGreaterThanOrEqual(0)
+    expect(typeof result.response.duration).toBe('number')
+  })
+
+  it('includes response size in bytes', async () => {
+    const requestInit: RequestInit = {}
+    globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.size).toBeGreaterThan(0)
+    expect(typeof result.response.size).toBe('number')
+  })
+
+  it('extracts cookie headers when available', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response('test', {
+        status: 200,
+        headers: new Headers({
+          'set-cookie': 'sessionId=abc123; Path=/; HttpOnly',
+        }),
+      }),
+      MOCK_URL,
+    )
+
+    // Mock getSetCookie method
+    Object.defineProperty(mockResponse.headers, 'getSetCookie', {
+      value: () => ['sessionId=abc123; Path=/; HttpOnly'],
+      writable: true,
+    })
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.cookieHeaderKeys).toEqual(['sessionId=abc123; Path=/; HttpOnly'])
+  })
+
+  it('handles missing getSetCookie method gracefully', async () => {
+    const requestInit: RequestInit = {}
+    const mockResponse = addUrlToResponse(
+      new Response('test', {
+        status: 200,
+        headers: new Headers(),
+      }),
+      MOCK_URL,
+    )
+
+    globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, requestInit],
+    })
+
+    expect(error).toBe(null)
+    if (!result || !('data' in result.response)) {
+      throw new Error('No data')
+    }
+    expect(result.response.cookieHeaderKeys).toEqual([])
+  })
+
+  describe('response streaming', () => {
+    it('streams text/event-stream responses', async () => {
+      const requestInit: RequestInit = {}
+      const encoder = new TextEncoder()
+
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: chunk 1\n\n'))
+          controller.enqueue(encoder.encode('data: chunk 2\n\n'))
+          controller.close()
+        },
+      })
+
+      const mockResponse = addUrlToResponse(
+        new Response(mockStream, {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/event-stream',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('reader' in result.response)) {
+        throw new Error('No reader')
+      }
+      expect(result.response.reader).toBeInstanceOf(ReadableStreamDefaultReader)
+
+      // Read and verify the stream contents
+      const chunks = []
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await result.response.reader.read()
+        if (done) {
+          break
+        }
+        chunks.push(decoder.decode(value, { stream: true }))
+      }
+
+      expect(chunks).toEqual(['data: chunk 1\n\n', 'data: chunk 2\n\n'])
+    })
+
+    it('does not stream non-SSE responses', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('regular response', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'application/json',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('Expected data response, not streaming')
+      }
+      expect(result.response.data).toBe('regular response')
+    })
+
+    it('handles streaming responses without body', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response(null, {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/event-stream',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      // Should fall back to regular response when body is null
+      if (!result || !('data' in result.response)) {
+        throw new Error('Expected data response')
+      }
+      // Empty body returns a Blob
+      expect(result.response.data).toBeInstanceOf(Blob)
+    })
+  })
+
+  describe('error handling', () => {
+    it('handles network errors', async () => {
+      globalFetchSpy.mockRejectedValueOnce(new Error('Network error'))
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, {}],
+      })
+
+      expect(error).not.toBe(null)
+      expect(result).toBe(null)
+      expect(error?.message).toContain('error')
+    })
+
+    it('handles fetch errors', async () => {
+      globalFetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, {}],
+      })
+
+      expect(error).not.toBe(null)
+      expect(result).toBe(null)
+    })
+
+    it('handles malformed responses', async () => {
+      const mockResponse = {
+        status: 200,
+        headers: new Headers(),
+        clone: () => {
+          throw new Error('Cannot clone')
+        },
+      } as Partial<Response>
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse as Response)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, {}],
+      })
+
+      expect(error).not.toBe(null)
+      expect(result).toBe(null)
+    })
+  })
+
+  describe('proxy handling', () => {
+    it('normalizes headers when using proxy', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('test', {
+          status: 200,
+          headers: new Headers({
+            'x-scalar-forwarded-header': 'original-value',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: true,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.headers).toBeDefined()
+    })
+
+    it('handles proxy-specific headers', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('test', {
+          status: 200,
+          headers: new Headers({
+            'x-scalar-cookie': 'session=abc123',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: true,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.headers).toBeDefined()
+    })
+  })
+
+  describe('content type handling', () => {
+    it('handles JSON responses', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response(JSON.stringify({ test: 'data' }), {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'application/json',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.data).toBe('{"test":"data"}')
+    })
+
+    it('handles text/plain responses', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('plain text response', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.data).toBe('plain text response')
+    })
+
+    it('handles XML responses', async () => {
+      const requestInit: RequestInit = {}
+      const xmlData = '<?xml version="1.0"?><root><item>test</item></root>'
+      const mockResponse = addUrlToResponse(
+        new Response(xmlData, {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'application/xml',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.data).toBe(xmlData)
+    })
+
+    it('handles binary responses', async () => {
+      const requestInit: RequestInit = {}
+      const binaryData = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+      const mockResponse = addUrlToResponse(
+        new Response(binaryData, {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'image/png',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.data).toBeInstanceOf(Blob)
+    })
+
+    it('defaults to text/plain when content-type is missing', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('test data', {
+          status: 200,
+          headers: new Headers(),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.data).toBe('test data')
+    })
+
+    it('uses the text/plain fallback to resolve plugin decoders when content-type is missing', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('test data', {
+          status: 200,
+          headers: new Headers(),
+        }),
+        MOCK_URL,
+      )
+      const decode = vi.fn(() => 'decoded via plugin')
+      const plugin: ClientPlugin = {
+        responseBody: [
+          {
+            mimeTypes: ['text/plain'],
+            decode,
+            language: 'plaintext',
+          },
+        ],
+      }
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+        plugins: [plugin],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.data).toBe('decoded via plugin')
+      expect(decode).toHaveBeenCalledTimes(1)
+      expect(decode).toHaveBeenCalledWith(expect.any(ArrayBuffer), 'text/plain;charset=UTF-8')
+    })
+
+    it('returns an error when a plugin decoder rejects', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('test data', {
+          status: 200,
+          headers: new Headers(),
+        }),
+        MOCK_URL,
+      )
+      const plugin: ClientPlugin = {
+        responseBody: [
+          {
+            mimeTypes: ['text/plain'],
+            decode: () => Promise.reject(new Error('Decoder failed')),
+            language: 'plaintext',
+          },
+        ],
+      }
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+        plugins: [plugin],
+      })
+
+      expect(result).toBe(null)
+      expect(error).not.toBe(null)
+      expect(error?.message).toContain('Decoder failed')
+    })
+  })
+
+  describe('path extraction', () => {
+    it('extracts path from response URL', async () => {
+      const requestUrl = `${MOCK_URL}/api/users`
+      const requestInit: RequestInit = {}
+      globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(requestUrl, requestInit))
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [requestUrl, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.path).toBe('/api/users')
+    })
+
+    it('includes query parameters in path', async () => {
+      const requestUrl = `${MOCK_URL}/api/users?page=1&limit=10`
+      const requestInit: RequestInit = {}
+
+      globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(requestUrl, requestInit))
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [requestUrl, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.path).toBe('/api/users?page=1&limit=10')
+    })
+
+    it('handles root path', async () => {
+      const requestInit: RequestInit = {}
+
+      globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.path).toBe('/')
+    })
+  })
+
+  describe('timestamp', () => {
+    it('includes timestamp in response', async () => {
+      const beforeTime = Date.now()
+      const requestInit: RequestInit = {}
+
+      globalFetchSpy.mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, requestInit))
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      const afterTime = Date.now()
+
+      expect(error).toBe(null)
+      expect(result?.timestamp).toBeGreaterThanOrEqual(beforeTime)
+      expect(result?.timestamp).toBeLessThanOrEqual(afterTime)
+    })
+  })
+
+  describe('custom cookie header (x-scalar-set-cookie)', () => {
+    it('extracts a single cookie from the custom cookie header', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+            'x-scalar-set-cookie': 'sessionId=abc123; Path=/; HttpOnly',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual(['sessionId=abc123; Path=/; HttpOnly'])
+    })
+
+    it('extracts multiple cookies from the custom cookie header', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+            'x-scalar-set-cookie': 'a=1; Path=/, b=2; Path=/api; Secure',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual(['a=1; Path=/', 'b=2; Path=/api; Secure'])
+    })
+
+    it('preserves combined cookie headers with Expires commas, encoded values, and security attributes', async () => {
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: {
+            'content-type': 'text/plain',
+            'x-scalar-set-cookie':
+              'token=a%2Fb; Expires=Tue, 19 Jan 2038 03:14:07 GMT; Path=/; Secure; HttpOnly; SameSite=None, locale=en%2DUS; Path=/',
+          },
+        }),
+        MOCK_URL,
+      )
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, {}],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual([
+        'token=a/b; Path=/; Expires=Tue, 19 Jan 2038 03:14:07 GMT; HttpOnly; Secure; SameSite=None',
+        'locale=en-US; Path=/',
+      ])
+    })
+
+    it('ignores an empty cookie without discarding other response cookies', async () => {
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          headers: { 'x-scalar-set-cookie': '=, session=abc; Path=/' },
+        }),
+        MOCK_URL,
+      )
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, {}],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual(['session=abc; Path=/'])
+    })
+
+    it('preserves cookie attributes like Domain, Max-Age, and SameSite', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+            'x-scalar-set-cookie':
+              'token=xyz; Domain=.example.com; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=Strict',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      const [cookieStr] = result.response.cookieHeaderKeys
+      expect(cookieStr).toContain('token=xyz')
+      expect(cookieStr).toContain('Domain=.example.com')
+      expect(cookieStr).toContain('Max-Age=3600')
+      expect(cookieStr).toContain('Secure')
+      expect(cookieStr).toContain('HttpOnly')
+      expect(cookieStr).toContain('SameSite=Strict')
+    })
+
+    it.each([
+      ['strict', 'Strict'],
+      ['Strict', 'Strict'],
+      ['sTrIcT', 'Strict'],
+      ['lax', 'Lax'],
+      ['Lax', 'Lax'],
+      ['lAx', 'Lax'],
+      ['none', 'None'],
+      ['None', 'None'],
+      ['nOnE', 'None'],
+    ])('normalizes SameSite=%s to SameSite=%s', async (sameSite, expected) => {
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          headers: { 'x-scalar-set-cookie': `session=abc; Path=/; SameSite=${sameSite}` },
+        }),
+        MOCK_URL,
+      )
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, {}],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual([`session=abc; Path=/; SameSite=${expected}`])
+    })
+
+    it('uses custom cookies instead of getSetCookie when the header is present', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+            'x-scalar-set-cookie': 'sid=abc; Path=/',
+            'set-cookie': 'ignored=yes; Path=/',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      Object.defineProperty(mockResponse.headers, 'getSetCookie', {
+        value: () => ['ignored=yes; Path=/'],
+        writable: true,
+      })
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual(['sid=abc; Path=/'])
+    })
+
+    it('falls back to getSetCookie when custom cookie header is absent', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+            'set-cookie': 'fallback=yes; Path=/',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      Object.defineProperty(mockResponse.headers, 'getSetCookie', {
+        value: () => ['fallback=yes; Path=/'],
+        writable: true,
+      })
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual(['fallback=yes; Path=/'])
+    })
+
+    it('returns empty cookieHeaderKeys when neither custom nor set-cookie headers exist', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual([])
+    })
+
+    it('extracts custom cookies from streaming responses', async () => {
+      const requestInit: RequestInit = {}
+      const encoder = new TextEncoder()
+
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: hello\n\n'))
+          controller.close()
+        },
+      })
+
+      const mockResponse = addUrlToResponse(
+        new Response(mockStream, {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/event-stream',
+            'x-scalar-set-cookie': 'stream_sid=s123; Path=/; HttpOnly',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('reader' in result.response)) {
+        throw new Error('No reader')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual(['stream_sid=s123; Path=/; HttpOnly'])
+    })
+
+    it('handles an empty x-scalar-set-cookie header value', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+            'x-scalar-set-cookie': '',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      expect(result.response.cookieHeaderKeys).toStrictEqual([])
+    })
+
+    it('preserves values with special characters through the encode passthrough', async () => {
+      const requestInit: RequestInit = {}
+      const mockResponse = addUrlToResponse(
+        new Response('ok', {
+          status: 200,
+          headers: new Headers({
+            'content-type': 'text/plain',
+            'x-scalar-set-cookie': 'token=abc123def456; Path=/',
+          }),
+        }),
+        MOCK_URL,
+      )
+
+      globalFetchSpy.mockResolvedValueOnce(mockResponse)
+
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, requestInit],
+      })
+
+      expect(error).toBe(null)
+      if (!result || !('data' in result.response)) {
+        throw new Error('No data')
+      }
+      const [cookieStr] = result.response.cookieHeaderKeys
+      expect(cookieStr).toBe('token=abc123def456; Path=/')
+    })
+  })
+
+  describe('fetch dispatch (electron vs browser)', () => {
+    it('calls customFetch with a single Request object in non-Electron environments', async () => {
+      const customFetch = vi.fn().mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, {}))
+
+      await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, { method: 'GET' }],
+        customFetch,
+      })
+
+      expect(customFetch).toHaveBeenCalledTimes(1)
+      // buildSafeBodyRequest wraps the args into a single Request — not a spread (url, init)
+      const callArgs = customFetch.mock.calls[0]!
+      expect(callArgs).toHaveLength(1)
+      expect(callArgs[0]).toBeInstanceOf(Request)
+    })
+
+    it('strips the body from GET requests in non-Electron environments', async () => {
+      const customFetch = vi.fn().mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, {}))
+
+      await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, { method: 'GET', body: '{"key":"value"}' }],
+        customFetch,
+      })
+
+      const [requestArg] = customFetch.mock.calls[0] as [Request]
+      // buildSafeBodyRequest nulls the body for methods that cannot have one
+      expect(requestArg.body).toBe(null)
+    })
+
+    it.each(['POST', 'QUERY'])('preserves the body on %s requests in non-Electron environments', async (method) => {
+      const customFetch = vi.fn().mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, {}))
+
+      await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, { method, body: '{"key":"value"}' }],
+        customFetch,
+      })
+
+      const [requestArg] = customFetch.mock.calls[0] as [Request]
+      expect(requestArg.method).toBe(method)
+      expect(await requestArg.text()).toBe('{"key":"value"}')
+    })
+
+    it('calls customFetch with spread (url, init) args in Electron, bypassing buildSafeBodyRequest', async () => {
+      // In Electron, customFetch(...requestPayload) is used — two args, not a wrapped Request
+      vi.mocked(isElectron).mockReturnValueOnce(true)
+      const body = '{"key":"value"}'
+      const customFetch = vi.fn().mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, {}))
+
+      await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, { method: 'GET', body }],
+        customFetch,
+      })
+
+      const callArgs = customFetch.mock.calls[0] as [string, RequestInit]
+      expect(callArgs).toHaveLength(2)
+      expect(callArgs[0]).toBe(MOCK_URL)
+      expect(callArgs[1].body).toBe(body)
+    })
+
+    it('preserves GET body in Electron where the underlying runtime allows it', async () => {
+      vi.mocked(isElectron).mockReturnValueOnce(true)
+      const body = JSON.stringify({ data: 'test' })
+      const customFetch = vi.fn().mockResolvedValueOnce(createMockEchoResponse(MOCK_URL, {}))
+
+      await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, { method: 'GET', body }],
+        customFetch,
+      })
+
+      const [, initArg] = customFetch.mock.calls[0] as [string, RequestInit]
+      // Body must not be stripped — Electron's undici-based runtime accepts it
+      expect(initArg.body).toBe(body)
+    })
+  })
+  it('passes the network duration to response hooks without including hook execution time', async () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValueOnce(10).mockReturnValueOnce(135.5)
+    globalFetchSpy.mockResolvedValueOnce(addUrlToResponse(Response.json({ ok: true }), MOCK_URL))
+    const onResponseReceived = vi.fn((response: Response) => Promise.resolve(response))
+
+    try {
+      const [error, result] = await sendRequest({
+        isUsingProxy: false,
+        requestPayload: [MOCK_URL, { method: 'GET' }],
+        onResponseReceived,
+      })
+
+      expect(error).toBeNull()
+      expect(onResponseReceived.mock.calls[0]?.[0]).toBeInstanceOf(Response)
+      expect(onResponseReceived).toHaveBeenCalledWith(expect.any(Response), 125.5)
+      expect(result?.response.duration).toBe(125.5)
+    } finally {
+      now.mockRestore()
+    }
+  })
+
+  it('uses intercepted body, status and headers while retaining the fetched URL', async () => {
+    globalFetchSpy.mockResolvedValueOnce(addUrlToResponse(new Response('original'), `${MOCK_URL}/redirected?q=1`))
+
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [`${MOCK_URL}/start`, { method: 'GET' }],
+      onResponseReceived: async (response) => {
+        expect(await response.text()).toBe('original')
+        return Response.json({ replaced: true }, { status: 202, headers: { 'x-intercepted': 'yes' } })
+      },
+    })
+
+    expect(error).toBeNull()
+    expect(result?.response.status).toBe(202)
+    expect(result?.response.statusText).toBe('Accepted')
+    expect(result?.response.headers).toStrictEqual({ 'Content-Type': 'application/json', 'X-Intercepted': 'yes' })
+    expect(result?.response.path).toBe('/redirected?q=1')
+    expect(result?.response && 'data' in result.response ? result.response.data : undefined).toBe('{"replaced":true}')
+    expect(await result?.originalResponse.json()).toStrictEqual({ replaced: true })
+  })
+
+  it('uses intercepted no-content status without rendering a body', async () => {
+    globalFetchSpy.mockResolvedValueOnce(addUrlToResponse(Response.json({ original: true }), MOCK_URL))
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, { method: 'GET' }],
+      onResponseReceived: () => Promise.resolve(new Response(null, { status: 204 })),
+    })
+
+    expect(error).toBeNull()
+    expect(result?.response.status).toBe(204)
+    expect(await result?.originalResponse.text()).toBe('')
+  })
+
+  it('processes an intercepted response as a stream based on its new content type', async () => {
+    globalFetchSpy.mockResolvedValueOnce(addUrlToResponse(new Response('original'), MOCK_URL))
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, { method: 'GET' }],
+      onResponseReceived: () =>
+        Promise.resolve(
+          new Response('data: replaced\n\n', {
+            headers: { 'content-type': 'text/event-stream' },
+          }),
+        ),
+    })
+
+    expect(error).toBeNull()
+    if (!result || !('reader' in result.response)) {
+      throw new Error('Expected a streaming response')
+    }
+    const chunk = await result.response.reader.read()
+    expect(new TextDecoder().decode(chunk.value)).toBe('data: replaced\n\n')
+    expect(await result.response.reader.read()).toStrictEqual({ value: undefined, done: true })
+  })
+
+  it('reports interception errors as request failures', async () => {
+    globalFetchSpy.mockResolvedValueOnce(addUrlToResponse(new Response('original'), MOCK_URL))
+    const [error, result] = await sendRequest({
+      isUsingProxy: false,
+      requestPayload: [MOCK_URL, { method: 'GET' }],
+      onResponseReceived: () => Promise.reject(new Error('interception failed')),
+    })
+
+    expect(result).toBeNull()
+    expect(error?.message).toBe('interception failed')
+  })
+})

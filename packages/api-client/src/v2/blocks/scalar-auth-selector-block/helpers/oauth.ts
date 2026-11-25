@@ -1,0 +1,655 @@
+import type { ErrorResponse } from '@scalar/helpers/errors/normalize-error'
+import { replaceEnvVariables, replacePathVariables } from '@scalar/helpers/regex/replace-variables'
+import { isAllowedOAuthUrl } from '@scalar/helpers/url/is-allowed-oauth-url'
+import { isRelativePath } from '@scalar/helpers/url/is-relative-path'
+import { makeUrlAbsolute } from '@scalar/helpers/url/make-url-absolute'
+import { shouldUseProxy } from '@scalar/helpers/url/redirect-to-proxy'
+import type { OAuthFlowsObjectSecret } from '@scalar/workspace-store/request-example'
+import { getServerVariables } from '@scalar/workspace-store/request-example'
+import type { ServerObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { fromUint8Array } from 'js-base64'
+
+import type { CustomFetch } from '@/v2/blocks/operation-block/helpers/send-request'
+
+import { getOAuthCallbackData } from './oauth-callback'
+import { oauthClientAuthorization } from './oauth-client-authorization'
+import { type DeviceAuthorizationOptions, authorizeDevice } from './oauth-device-authorization'
+
+/** Oauth2 security schemes which are not implicit */
+type NonImplicitFlows = Omit<OAuthFlowsObjectSecret, 'implicit'>
+
+type PKCEState = {
+  codeVerifier: string
+  codeChallenge: string
+  codeChallengeMethod: string
+}
+
+type ActiveServerBase = { basePath: string } | { baseUrl: string } | Record<string, never>
+
+export type OAuth2Tokens = {
+  accessToken: string
+  refreshToken?: string
+}
+
+/**
+ * Captures the OAuth2 redirect for environments where the browser-popup polling
+ * approach cannot work (notably the Electron desktop app, where the renderer
+ * runs on `file://` and providers reject `file://` redirect URIs).
+ *
+ * The implementation opens the authorization URL in the system browser and
+ * resolves once the provider redirects back. Because the redirect target (for
+ * example an ephemeral loopback port) is only known to the host environment, the
+ * implementation appends the `redirect_uri` itself and reports back the exact
+ * value it used so the token exchange can send the matching `redirect_uri`.
+ */
+export type CaptureOAuth2Callback = (params: {
+  /** The fully built authorization URL, without a `redirect_uri` parameter. */
+  authorizationUrl: string
+}) => Promise<
+  ErrorResponse<{
+    /** The full callback URL the provider redirected to, including query and/or hash params. */
+    callbackUrl: string
+    /** The `redirect_uri` the host environment used, so the token exchange can match it. */
+    redirectUri: string
+  }>
+>
+
+/** Flow types that support token refresh (all except implicit) */
+type RefreshableFlows = Exclude<keyof OAuthFlowsObjectSecret, 'implicit'>
+
+/**
+ * Resolves the active server URL using OpenAPI server variables first, then
+ * Scalar environment variables.
+ */
+export const getServerUrl = (
+  activeServer: ServerObject | null,
+  environmentVariables: Record<string, string> = {},
+): string =>
+  replaceEnvVariables(
+    replacePathVariables(activeServer?.url ?? '', getServerVariables(activeServer)),
+    environmentVariables,
+  )
+
+/**
+ * Builds the base option used when OAuth URLs are relative to the active server.
+ *
+ * Relative server URLs become browser-only base paths because they need the
+ * current window location to resolve correctly.
+ */
+export const getActiveServerBase = (
+  activeServer: ServerObject | null,
+  environmentVariables: Record<string, string> = {},
+): ActiveServerBase => {
+  const serverUrl = getServerUrl(activeServer, environmentVariables)
+  if (!serverUrl) {
+    return {}
+  }
+
+  if (isRelativePath(serverUrl)) {
+    return typeof window === 'undefined' ? {} : { basePath: serverUrl }
+  }
+
+  return { baseUrl: serverUrl }
+}
+
+/**
+ * Generates a random string for PKCE code verifier
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc7636#page-8
+ */
+const generateCodeVerifier = (): string => {
+  // Generate 32 random bytes
+  const buffer = new Uint8Array(32)
+  crypto.getRandomValues(buffer)
+
+  // Base64URL encode the bytes
+  return fromUint8Array(buffer, true)
+}
+
+/**
+ * Creates a code challenge from the code verifier
+ */
+const generateCodeChallenge = async (verifier: string, encoding: 'SHA-256' | 'plain'): Promise<string> => {
+  if (encoding === 'plain') {
+    return verifier
+  }
+
+  // If crypto.subtle.digest is not a function, we cannot use SHA-256
+  if (typeof crypto?.subtle?.digest !== 'function') {
+    console.warn('SHA-256 is only supported when using https, using a plain text code challenge instead.')
+    return verifier
+  }
+
+  // ASCII encoding is just taking the lower 8 bits of each character
+  const encoder = new TextEncoder()
+  const data = encoder.encode(verifier)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+
+  // Base64URL encode the bytes
+  return fromUint8Array(new Uint8Array(digest), true)
+}
+
+/**
+ * Authorize oauth2 flow
+ *
+ * @returns the resolved oauth2 tokens
+ */
+export const authorizeOauth2 = async (
+  flows: OAuthFlowsObjectSecret,
+  type: keyof OAuthFlowsObjectSecret,
+  selectedScopes: string[],
+  /** We use the active server to set a base for relative redirect uris */
+  activeServer: ServerObject | null,
+  /** If we want to use the proxy */
+  proxyUrl: string,
+  /** Flattened environment variables used to resolve server URL templates like `{protocol}` */
+  environmentVariables: Record<string, string> = {},
+  /** Fetch used for the token request; the desktop app passes an IPC-backed fetch (see {@link authorizeServers}). */
+  customFetch?: CustomFetch,
+  /**
+   * Optional redirect capture for interactive flows (authorization code and implicit).
+   * When provided, the system browser plus a host-owned redirect target replaces the
+   * default popup-polling approach. Required for the Electron desktop app.
+   */
+  captureCallback?: CaptureOAuth2Callback,
+  deviceOptions?: DeviceAuthorizationOptions,
+): Promise<ErrorResponse<OAuth2Tokens>> => {
+  const flow = flows[type]
+
+  try {
+    if (!flow) {
+      return [new Error('Flow not found'), null]
+    }
+
+    if (type === 'deviceAuthorization' && flows.deviceAuthorization) {
+      return authorizeDevice(
+        flows.deviceAuthorization,
+        selectedScopes,
+        activeServer,
+        proxyUrl,
+        environmentVariables,
+        customFetch,
+        deviceOptions,
+      )
+    }
+    if (type === 'deviceAuthorization') {
+      return [new Error('Flow not found'), null]
+    }
+    const scopes = selectedScopes.join(' ')
+
+    // Client Credentials or Password Flow
+    if (type === 'clientCredentials' || type === 'password') {
+      return authorizeServers(
+        flows,
+        type,
+        scopes,
+        {
+          proxyUrl,
+          customFetch,
+        },
+        activeServer,
+        environmentVariables,
+      )
+    }
+
+    // Generate a random state string with the length of 8 characters
+    const state = (Math.random() + 1).toString(36).substring(2, 10)
+
+    const authUrl = flows[type]!['x-scalar-secret-auth-url'] ?? flows[type]!.authorizationUrl
+    if (!authUrl.trim()) {
+      return [new Error('Authorization URL is required'), null]
+    }
+    const authorizationUrl = makeUrlAbsolute(authUrl, getActiveServerBase(activeServer, environmentVariables))
+
+    const url = new URL(authorizationUrl)
+    if (!isAllowedOAuthUrl(url)) {
+      return [new Error('Authorization URL must use HTTPS or HTTP for local development URLs'), null]
+    }
+
+    /** Special PKCE state */
+    let pkce: PKCEState | null = null
+
+    // Params unique to the flows
+    if (type === 'implicit') {
+      url.searchParams.set('response_type', 'token')
+    } else if (type === 'authorizationCode') {
+      const typedFlow = flows[type]! // Safe to assert due to earlier check
+
+      url.searchParams.set('response_type', 'code')
+
+      // PKCE
+      if (typedFlow['x-usePkce'] !== 'no') {
+        const codeVerifier = generateCodeVerifier()
+        const codeChallenge = await generateCodeChallenge(codeVerifier, typedFlow['x-usePkce'])
+
+        // Set state for later verification
+        pkce = {
+          codeVerifier,
+          codeChallenge,
+          codeChallengeMethod: typedFlow['x-usePkce'] === 'SHA-256' ? 'S256' : 'plain',
+        }
+
+        // Set the code challenge and method on the url
+        url.searchParams.set('code_challenge', codeChallenge)
+        url.searchParams.set('code_challenge_method', pkce.codeChallengeMethod)
+      }
+    }
+
+    const typedFlow = flows[type]! // Safe to assert due to earlier check
+
+    // The capture path appends its own `redirect_uri` (it owns the target, for
+    // example an ephemeral loopback port), so we only set it here for the popup path.
+    if (!captureCallback) {
+      // Handle relative redirect uris
+      if (typedFlow['x-scalar-secret-redirect-uri'].startsWith('/')) {
+        const baseUrl =
+          getServerUrl(activeServer, environmentVariables) || window.location.origin + window.location.pathname
+        const redirectUri = new URL(typedFlow['x-scalar-secret-redirect-uri'], baseUrl).toString()
+
+        url.searchParams.set('redirect_uri', redirectUri)
+      } else {
+        url.searchParams.set('redirect_uri', typedFlow['x-scalar-secret-redirect-uri'])
+      }
+    }
+
+    if (flow['x-scalar-security-query']) {
+      Object.keys(flow['x-scalar-security-query']).forEach((key: string): void => {
+        const value = flow['x-scalar-security-query']?.[key]
+        if (!value) {
+          return
+        }
+        url.searchParams.set(key, value)
+      })
+    }
+
+    // Common to all flows
+    url.searchParams.set(
+      'client_id',
+      replaceEnvVariables(flow['x-scalar-secret-client-id'], environmentVariables).trim(),
+    )
+    url.searchParams.set('state', state)
+    if (scopes) {
+      url.searchParams.set('scope', scopes)
+    }
+
+    // Capture path: open the system browser and let the host environment catch
+    // the redirect (used by the desktop app, where popup polling cannot work).
+    if (captureCallback) {
+      const [captureError, capture] = await captureCallback({ authorizationUrl: url.toString() })
+
+      if (captureError || !capture) {
+        return [captureError ?? new Error('Failed to capture the OAuth2 redirect'), null]
+      }
+
+      const { accessToken, accessTokenParams, code, codeParams, error, errorDescription, refreshToken } =
+        getOAuthCallbackData(() => capture.callbackUrl, flow['x-tokenName'] || 'access_token')
+
+      if (error) {
+        return [new Error(`OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ''}`), null]
+      }
+
+      // Implicit Flow
+      if (accessToken) {
+        if ((accessTokenParams?.get('state') ?? null) !== state) {
+          return [new Error('State mismatch'), null]
+        }
+        return [null, { accessToken, ...(refreshToken ? { refreshToken } : {}) }]
+      }
+
+      // Authorization Code Server Flow
+      if (code && type === 'authorizationCode') {
+        if ((codeParams?.get('state') ?? null) !== state) {
+          return [new Error('State mismatch'), null]
+        }
+        return authorizeServers(
+          flows,
+          type,
+          scopes,
+          {
+            code,
+            pkce,
+            proxyUrl,
+            customFetch,
+            // The token request must echo the exact redirect_uri used in the authorization request.
+            redirectUri: capture.redirectUri,
+          },
+          activeServer,
+          environmentVariables,
+        )
+      }
+
+      return [new Error('No authorization code or access token was returned'), null]
+    }
+
+    const windowFeatures = 'left=100,top=100,width=800,height=600'
+    const authWindow = window.open(url, 'openAuth2Window', windowFeatures)
+
+    // Open up a window and poll until closed or we have the data we want
+    if (authWindow) {
+      // We need to return a promise here due to the setInterval
+      return new Promise<ErrorResponse<OAuth2Tokens>>((resolve) => {
+        const checkWindowClosed = setInterval(() => {
+          const { accessToken, accessTokenParams, code, codeParams, error, errorDescription, refreshToken } =
+            getOAuthCallbackData(() => authWindow.location.href, flow['x-tokenName'] || 'access_token')
+
+          // The window has closed OR we have what we are looking for so we stop polling
+          if (authWindow.closed || accessToken || code || error) {
+            clearInterval(checkWindowClosed)
+            authWindow.close()
+
+            if (error) {
+              resolve([new Error(`OAuth error: ${error}${errorDescription ? ` (${errorDescription})` : ''}`), null])
+              return
+            }
+
+            // Implicit Flow
+            if (accessToken) {
+              const _state = accessTokenParams?.get('state') ?? null
+
+              if (_state === state) {
+                resolve([null, { accessToken, ...(refreshToken ? { refreshToken } : {}) }])
+              } else {
+                resolve([new Error('State mismatch'), null])
+              }
+              return
+            }
+
+            // Authorization Code Server Flow
+            if (code && type === 'authorizationCode') {
+              const _state = codeParams?.get('state') ?? null
+
+              if (_state === state) {
+                void authorizeServers(
+                  flows,
+                  type,
+                  scopes,
+                  {
+                    code,
+                    pkce,
+                    proxyUrl,
+                    customFetch,
+                  },
+                  activeServer,
+                  environmentVariables,
+                )
+                  .then(resolve)
+                  .catch((error: unknown) => {
+                    resolve([
+                      error instanceof Error ? error : new Error('Failed to get an access token', { cause: error }),
+                      null,
+                    ])
+                  })
+              } else {
+                resolve([new Error('State mismatch'), null])
+              }
+              return
+            }
+
+            // User closed window without authorizing
+            resolve([new Error('Window was closed without granting authorization'), null])
+          }
+        }, 200)
+      })
+    }
+    return [new Error('Failed to open auth window'), null]
+  } catch (error) {
+    return [error instanceof Error ? error : new Error('Failed to authorize oauth2 flow', { cause: error }), null]
+  }
+}
+
+/**
+ * Makes the BE authorization call to grab the token server to server
+ * Used for clientCredentials and authorizationCode
+ */
+const authorizeServers = async (
+  flows: NonImplicitFlows,
+  type: keyof NonImplicitFlows,
+  scopes: string,
+  {
+    code,
+    pkce,
+    proxyUrl,
+    customFetch = fetch,
+    redirectUri,
+  }: {
+    code?: string
+    pkce?: PKCEState | null
+    proxyUrl?: string
+    customFetch?: CustomFetch
+    /** Overrides the stored redirect_uri (the capture path owns the real target). */
+    redirectUri?: string
+  } = {},
+  activeServer: ServerObject | null,
+  environmentVariables: Record<string, string> = {},
+): Promise<ErrorResponse<OAuth2Tokens>> => {
+  const flow = flows[type]
+
+  if (!flow) {
+    return [new Error('OAuth2 flow was not defined'), null]
+  }
+
+  const formData = new URLSearchParams()
+
+  // Only client credentials and password flows support scopes in the token request
+  if (scopes && (type === 'clientCredentials' || type === 'password')) {
+    formData.set('scope', scopes)
+  }
+
+  // Ignore surrounding copy/paste whitespace without changing stored credentials or other secrets.
+  const clientId = replaceEnvVariables(flow['x-scalar-secret-client-id'], environmentVariables).trim()
+  const clientSecret = replaceEnvVariables(flow['x-scalar-secret-client-secret'], environmentVariables).trim()
+  /** Where to add the credentials */
+  const addCredentialsToBody = flow['x-scalar-credentials-location'] === 'body'
+  /**
+   * PKCE and client authentication are independent: a confidential client may use both.
+   * We send the client_secret whenever one is set, regardless of PKCE (see RFC 9700 Section 2.1.1).
+   */
+  const hasClientSecret = Boolean(clientSecret)
+  /**
+   * Public authorization-code clients still need client_id in the token body.
+   * We only send it implicitly for that case to avoid conflicting with Basic auth.
+   */
+  const shouldSendClientIdInBody =
+    addCredentialsToBody || ((type === 'authorizationCode' || type === 'deviceAuthorization') && !hasClientSecret)
+
+  if (shouldSendClientIdInBody) {
+    formData.set('client_id', clientId)
+  }
+  if (addCredentialsToBody && hasClientSecret) {
+    formData.set('client_secret', clientSecret)
+  }
+  if (redirectUri) {
+    formData.set('redirect_uri', redirectUri)
+  } else if ('x-scalar-secret-redirect-uri' in flow && flow['x-scalar-secret-redirect-uri']) {
+    formData.set('redirect_uri', flow['x-scalar-secret-redirect-uri'])
+  }
+
+  // Authorization Code
+  if (code) {
+    formData.set('code', code)
+    formData.set('grant_type', 'authorization_code')
+
+    // PKCE
+    if (pkce) {
+      formData.set('code_verifier', pkce.codeVerifier)
+    }
+  }
+  // Password
+  else if (type === 'password') {
+    const typedFlow = flows[type]! // Safe to assert due to earlier check
+    formData.set('grant_type', 'password')
+    formData.set('username', typedFlow['x-scalar-secret-username'])
+    formData.set('password', typedFlow['x-scalar-secret-password'])
+  }
+  // Client Credentials
+  else {
+    formData.set('grant_type', 'client_credentials')
+  }
+
+  // Additional request body parameters
+  if (flow['x-scalar-security-body']) {
+    Object.entries(flow['x-scalar-security-body']).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        formData.set(key, String(value))
+      }
+    })
+  }
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    }
+
+    // Add client id + secret to headers for confidential clients.
+    if (!addCredentialsToBody && hasClientSecret) {
+      headers.Authorization = oauthClientAuthorization(clientId, clientSecret)
+    }
+
+    // Check if we should use the proxy
+    const tokenUrlValue = flow['x-scalar-secret-token-url'] ?? flow.tokenUrl
+    if (!tokenUrlValue.trim()) {
+      return [new Error('Token URL is required'), null]
+    }
+    const tokenUrl = makeUrlAbsolute(tokenUrlValue, getActiveServerBase(activeServer, environmentVariables))
+    const url = shouldUseProxy(proxyUrl, tokenUrl)
+      ? `${proxyUrl}?${new URLSearchParams([['scalar_url', tokenUrl]]).toString()}`
+      : tokenUrl
+
+    // Make the call
+    const resp = await customFetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+    const responseData = await resp.json()
+
+    // Use custom token name if specified, otherwise default to access_token
+    const tokenName = flow['x-tokenName'] || 'access_token'
+    const accessToken = responseData[tokenName]
+    const refreshToken = responseData.refresh_token
+
+    if (!accessToken) {
+      return [new Error(responseData.error_description ?? responseData.error ?? 'Failed to get an access token'), null]
+    }
+
+    return [null, { accessToken, ...(typeof refreshToken === 'string' ? { refreshToken } : {}) }]
+  } catch (error) {
+    return [
+      error instanceof Error
+        ? error
+        : new Error('Failed to get an access token. Please check your credentials.', { cause: error }),
+      null,
+    ]
+  }
+}
+
+/**
+ * Exchange a refresh token for a new access token using the `grant_type=refresh_token` flow.
+ *
+ * Uses the stored refresh token, client credentials, and the token URL (or refreshUrl when available)
+ * to request fresh tokens from the authorization server per RFC 6749 Section 6.
+ */
+export const refreshOauth2Token = async (
+  flows: OAuthFlowsObjectSecret,
+  type: RefreshableFlows,
+  /** If we want to use the proxy */
+  proxyUrl: string,
+  /** We use the active server to set a base for relative URLs */
+  activeServer: ServerObject | null,
+  /** Flattened environment variables used to resolve server URL templates */
+  environmentVariables: Record<string, string> = {},
+  /** Fetch used for the refresh request; the desktop app passes an IPC-backed fetch so it leaves the renderer's network stack. */
+  customFetch: CustomFetch = fetch,
+): Promise<ErrorResponse<OAuth2Tokens>> => {
+  const flow = flows[type]
+
+  if (!flow) {
+    return [new Error('OAuth2 flow was not defined'), null]
+  }
+
+  const refreshToken = flow['x-scalar-secret-refresh-token']
+  if (!refreshToken) {
+    return [new Error('No refresh token available'), null]
+  }
+
+  const formData = new URLSearchParams()
+  formData.set('grant_type', 'refresh_token')
+  formData.set('refresh_token', refreshToken)
+
+  // Ignore surrounding copy/paste whitespace without changing stored credentials or other secrets.
+  const clientId = replaceEnvVariables(flow['x-scalar-secret-client-id'], environmentVariables).trim()
+  const clientSecret = replaceEnvVariables(flow['x-scalar-secret-client-secret'], environmentVariables).trim()
+  const addCredentialsToBody = flow['x-scalar-credentials-location'] === 'body'
+  /** A confidential client keeps using its secret on refresh, even when PKCE is enabled. */
+  const hasClientSecret = Boolean(clientSecret)
+  /**
+   * Public authorization-code clients still need client_id in the refresh body per RFC 6749 Section 6.
+   * We only send it implicitly for that case to avoid conflicting with Basic auth.
+   */
+  const shouldSendClientIdInBody =
+    addCredentialsToBody || ((type === 'authorizationCode' || type === 'deviceAuthorization') && !hasClientSecret)
+
+  if (shouldSendClientIdInBody) {
+    formData.set('client_id', clientId)
+  }
+  if (addCredentialsToBody && hasClientSecret) {
+    formData.set('client_secret', clientSecret)
+  }
+
+  if (flow['x-scalar-security-body']) {
+    Object.entries(flow['x-scalar-security-body']).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        formData.set(key, String(value))
+      }
+    })
+  }
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    }
+
+    if (!addCredentialsToBody && hasClientSecret) {
+      headers.Authorization = oauthClientAuthorization(clientId, clientSecret)
+    }
+
+    const refreshUrl = flow.refreshUrl || (flow['x-scalar-secret-token-url'] ?? flow.tokenUrl)
+    if (!refreshUrl.trim()) {
+      return [new Error('Token URL is required'), null]
+    }
+    const absoluteRefreshUrl = makeUrlAbsolute(refreshUrl, getActiveServerBase(activeServer, environmentVariables))
+    const url = shouldUseProxy(proxyUrl, absoluteRefreshUrl)
+      ? `${proxyUrl}?${new URLSearchParams([['scalar_url', absoluteRefreshUrl]]).toString()}`
+      : absoluteRefreshUrl
+
+    const resp = await customFetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+    const responseData = await resp.json()
+
+    const tokenName = flow['x-tokenName'] || 'access_token'
+    const accessToken = responseData[tokenName]
+    const newRefreshToken = responseData.refresh_token
+
+    if (!accessToken) {
+      return [new Error(responseData.error_description ?? responseData.error ?? 'Token refresh failed'), null]
+    }
+
+    return [
+      null,
+      {
+        accessToken,
+        ...(typeof newRefreshToken === 'string' ? { refreshToken: newRefreshToken } : { refreshToken }),
+      },
+    ]
+  } catch (error) {
+    return [
+      error instanceof Error
+        ? error
+        : new Error('Failed to refresh the access token. Please re-authorize.', { cause: error }),
+      null,
+    ]
+  }
+}

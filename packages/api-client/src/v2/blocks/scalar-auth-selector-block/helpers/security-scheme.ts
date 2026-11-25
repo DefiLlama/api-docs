@@ -1,0 +1,269 @@
+import { objectEntries } from '@scalar/helpers/object/object-entries'
+import { generateHash } from '@scalar/helpers/string/generate-hash'
+import type { ApiClientTranslations } from '@scalar/types/api-reference'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import { isHidden } from '@scalar/workspace-store/helpers/is-hidden'
+import type { MergedSecuritySchemes, OAuthFlowsObjectSecret } from '@scalar/workspace-store/request-example'
+import type {
+  ComponentsObject,
+  OpenApiDocument,
+  SecurityRequirementObject,
+  SecuritySchemeObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+
+import { authOptions } from '@/v2/blocks/scalar-auth-selector-block/helpers/auth-options'
+import { en } from '@/v2/features/localization/translations'
+
+/**
+ * Minimal shape read by `isHidden`. Some scheme union members (AsyncAPI broker schemes) do not
+ * structurally carry the ignore extensions, so we cast to this before the check to satisfy the
+ * weak-type check without widening `isHidden` itself.
+ */
+type Hideable = { 'x-internal'?: boolean; 'x-scalar-ignore'?: boolean }
+
+/** A single security scheme option used in the auth dropdown */
+export type SecuritySchemeOption = {
+  id: string
+  label: string
+  value: SecurityRequirementObject
+  isDeletable?: boolean
+  payload?: SecuritySchemeObject
+}
+
+/** A group of security scheme options used in the auth dropdown */
+export type SecuritySchemeGroup = {
+  label: string
+  options: SecuritySchemeOption[]
+}
+
+const requirementSignature = (requirement: SecurityRequirementObject): string =>
+  JSON.stringify(Object.keys(requirement))
+
+/**
+ * Format a scheme object into a display object
+ *
+ * We also add a hash to the id to ensure it is unique across
+ * multiple requirements of the same scheme with different scopes
+ */
+export const formatScheme = ({ name, value }: { name: string; value: SecurityRequirementObject }) => ({
+  id: generateHash(JSON.stringify(value)),
+  label: name,
+  value,
+  isDeletable: true,
+})
+
+/** Formats complex security schemes */
+export const formatComplexScheme = (scheme: NonNullable<OpenApiDocument['security']>[number]) =>
+  formatScheme({
+    name: Object.keys(scheme).join(' & '),
+    value: scheme,
+  })
+
+/**
+ * Formats a security requirement into a SecuritySchemeOption.
+ * Handles both simple (single key) and complex (multiple keys) auth schemes.
+ */
+const formatSecurityRequirement = (
+  requirement: SecurityRequirementObject,
+  securitySchemes: NonNullable<ComponentsObject['securitySchemes']> | MergedSecuritySchemes,
+): SecuritySchemeOption | undefined => {
+  const keys = Object.keys(requirement)
+
+  // Complex auth (multiple keys)
+  if (keys.length > 1) {
+    // Drop the whole AND combination if any of its schemes is hidden via x-scalar-ignore — a
+    // partly hidden requirement cannot be configured, so it should not appear as an option.
+    const anyHidden = keys.some((key) => {
+      const scheme = getResolvedRef(securitySchemes[key])
+      return scheme ? isHidden(scheme as Hideable) : false
+    })
+    if (anyHidden) {
+      return undefined
+    }
+    return formatComplexScheme(requirement)
+  }
+
+  // Simple auth (single key)
+  if (keys[0]) {
+    const scheme = getResolvedRef(securitySchemes[keys[0]])
+    // Drop schemes that do not exist or are hidden from the auth UI via x-scalar-ignore.
+    if (!scheme || isHidden(scheme as Hideable)) {
+      return undefined
+    }
+    return formatScheme({ name: keys[0], value: requirement })
+  }
+
+  return undefined
+}
+
+/**
+ * Finds the oauth2 scheme best suited to power a bearer scheme's "Authorize via OAuth2" shortcut:
+ * the first scheme with an interactive grant (authorization code / implicit), the kind that sends
+ * a user to an IdP login. Prefers the authorization-code grant (which can refresh) over one
+ * offering only implicit, so the more capable flow wins even when it is declared later.
+ *
+ * This only surfaces a convenience shortcut on the bearer form — it never hides the oauth2 scheme,
+ * which stays independently selectable in the auth dropdown.
+ */
+export const getOauth2AcquisitionTarget = (
+  securitySchemes: NonNullable<ComponentsObject['securitySchemes']> | MergedSecuritySchemes,
+): {
+  name: string
+  flows: OAuthFlowsObjectSecret
+  flowType: 'authorizationCode' | 'implicit'
+  scopes: string[]
+} | null => {
+  let implicitFallback: {
+    name: string
+    flows: OAuthFlowsObjectSecret
+    flowType: 'implicit'
+    scopes: string[]
+  } | null = null
+
+  for (const [name, schemeRef] of Object.entries(securitySchemes)) {
+    const scheme = getResolvedRef(schemeRef)
+    // Skip schemes hidden from the auth UI via x-scalar-ignore, so the shortcut never
+    // targets a flow the user cannot see or configure.
+    if (scheme?.type !== 'oauth2' || isHidden(scheme)) {
+      continue
+    }
+    const flows = scheme.flows as OAuthFlowsObjectSecret | undefined
+    if (!flows) {
+      continue
+    }
+    const scopes = (scheme as { 'x-default-scopes'?: string[] })['x-default-scopes'] ?? []
+
+    // Authorization code can refresh, so it wins outright the moment we find one.
+    if (flows.authorizationCode && !isHidden(flows.authorizationCode)) {
+      return { name, flows, flowType: 'authorizationCode', scopes }
+    }
+    // Otherwise remember the first implicit-only scheme in case no auth-code flow turns up.
+    if (flows.implicit && !isHidden(flows.implicit) && !implicitFallback) {
+      implicitFallback = { name, flows, flowType: 'implicit', scopes }
+    }
+  }
+
+  return implicitFallback
+}
+
+/**
+ * Generates the options for the security scheme combobox
+ *
+ * Contains either a flat list, or different groups of required, available, and add new
+ */
+export const getSecuritySchemeOptions = (
+  security: NonNullable<OpenApiDocument['security']>,
+  securitySchemes: NonNullable<ComponentsObject['securitySchemes']> | MergedSecuritySchemes,
+  /** We need to add the selected schemes if they do not already exist in the calculated options */
+  selectedSchemes: SecurityRequirementObject[],
+  /** Allows adding authentication which is not in the document */
+  canAddNewAuth = false,
+  labels: Pick<ApiClientTranslations, 'authSelector' | 'authOptions'> = en,
+  allowedSecuritySchemes?: string[],
+): SecuritySchemeOption[] | SecuritySchemeGroup[] => {
+  if (allowedSecuritySchemes) {
+    const isAllowed = (requirement: SecurityRequirementObject): boolean =>
+      Object.keys(requirement).every((name) => allowedSecuritySchemes.includes(name))
+    return getSecuritySchemeOptions(
+      security.filter(isAllowed),
+      Object.fromEntries(Object.entries(securitySchemes).filter(([name]) => allowedSecuritySchemes.includes(name))),
+      selectedSchemes.filter(isAllowed),
+      // Generic creation cannot guarantee that the new scheme belongs to the allowlist.
+      false,
+      labels,
+    )
+  }
+
+  const selectedByRequirement = new Map(
+    selectedSchemes.map((selectedScheme) => [requirementSignature(selectedScheme), selectedScheme]),
+  )
+
+  /**
+   * Build required schemes formatted as options and track scheme names in a single pass.
+   * We use names (not full IDs) because we want to exclude any scheme that is already
+   * required, regardless of its specific scopes or hash.
+   */
+  const { requiredFormatted, requiredSchemeNames, existingIds } = security.reduce<{
+    requiredFormatted: SecuritySchemeOption[]
+    requiredSchemeNames: Set<string>
+    existingIds: Set<string>
+  }>(
+    (acc, requirement) => {
+      // If a required requirement is selected with scopes, use that selected value to
+      // keep a single option entry and avoid a phantom duplicate.
+      const requirementValue = selectedByRequirement.get(requirementSignature(requirement)) ?? requirement
+      const formatted = formatSecurityRequirement(requirementValue, securitySchemes)
+      if (formatted) {
+        acc.requiredFormatted.push(formatted)
+        acc.existingIds.add(formatted.id)
+      }
+      for (const name of Object.keys(requirement)) {
+        acc.requiredSchemeNames.add(name)
+      }
+      return acc
+    },
+    {
+      requiredFormatted: [],
+      requiredSchemeNames: new Set<string>(),
+      existingIds: new Set<string>(),
+    },
+  )
+
+  // Build available schemes (excluding schemes that are in the required list)
+  const availableFormatted: SecuritySchemeOption[] = []
+  for (const [name, schemeRef] of Object.entries(securitySchemes)) {
+    if (requiredSchemeNames.has(name)) {
+      continue
+    }
+
+    const scheme = getResolvedRef(schemeRef)
+    // Skip schemes hidden from the auth UI via x-scalar-ignore.
+    if (scheme && !isHidden(scheme as Hideable)) {
+      // Reuse the current selection so changing scopes does not create a second option.
+      // Defaults seed a new selection, but must not replace scopes the user deliberately cleared.
+      const value = selectedByRequirement.get(requirementSignature({ [name]: [] })) ?? {
+        [name]:
+          scheme.type === 'oauth2' || scheme.type === 'openIdConnect' ? [...(scheme['x-default-scopes'] ?? [])] : [],
+      }
+      const formatted = formatScheme({ name, value })
+      availableFormatted.push(formatted)
+      existingIds.add(formatted.id)
+    }
+  }
+
+  /**
+   * Add selected schemes to available if they do not already exist
+   * This ensures that selected schemes with specific scopes are always available as options
+   */
+  for (const selectedScheme of selectedSchemes) {
+    const formatted = formatSecurityRequirement(selectedScheme, securitySchemes)
+    if (formatted && !existingIds.has(formatted.id)) {
+      availableFormatted.push(formatted)
+      existingIds.add(formatted.id)
+    }
+  }
+
+  const options = [
+    { label: labels.authSelector.requiredGroup, options: requiredFormatted },
+    { label: labels.authSelector.availableGroup, options: availableFormatted },
+  ]
+
+  // We don't return the groups if we don't have any required schemes
+  if (!canAddNewAuth) {
+    return requiredFormatted.length ? options : availableFormatted
+  }
+
+  // Add new authentication options (unless explicitly hidden)
+  options.push({
+    label: labels.authSelector.addGroup,
+    options: objectEntries(authOptions).map(([key, value]) => ({
+      id: key,
+      label: labels.authOptions[key],
+      value: { [key]: [] },
+      payload: value.payload,
+      isDeletable: false,
+    })),
+  })
+
+  return options
+}

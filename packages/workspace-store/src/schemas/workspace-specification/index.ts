@@ -1,9 +1,10 @@
+import { Type } from '@scalar/typebox'
+import type { PartialDeep } from 'type-fest'
+
 import { compose } from '@/schemas/compose'
-import { OpenAPIDocumentSchema } from '@/schemas/v3.1/strict/openapi-document'
-import { WorkspaceMetaSchema } from '@/schemas/workspace'
-import { ConfigSchema } from '@/schemas/workspace-specification/config'
-import { InfoSchema } from '@/schemas/workspace-specification/info'
-import { Type, type Static } from '@sinclair/typebox'
+import type { OpenApiDocument } from '@/schemas/v3.2/strict/openapi-document'
+import { type WorkspaceMeta, WorkspaceMetaSchema } from '@/schemas/workspace'
+import { type Info, InfoSchema } from '@/schemas/workspace-specification/info'
 
 export const WorkspaceSpecificationSchema = compose(
   Type.Object({
@@ -17,10 +18,14 @@ export const WorkspaceSpecificationSchema = compose(
         }),
       ),
     ),
-    overrides: Type.Optional(Type.Record(Type.String(), compose(Type.Partial(OpenAPIDocumentSchema), ConfigSchema))),
+    overrides: Type.Optional(Type.Record(Type.String(), Type.Any())),
   }),
-  ConfigSchema,
   WorkspaceMetaSchema,
 )
 
-export type WorkspaceSpecification = Static<typeof WorkspaceSpecificationSchema>
+export type WorkspaceSpecification = {
+  workspace: 'draft'
+  info: Info
+  documents?: Record<string, { $ref: string }>
+  overrides?: Record<string, PartialDeep<OpenApiDocument>>
+} & WorkspaceMeta

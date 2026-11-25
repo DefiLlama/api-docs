@@ -1,0 +1,243 @@
+import type { ExampleObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
+
+import ExamplePicker from './ExamplePicker.vue'
+
+describe('ExamplePicker', () => {
+  const mockExamples: Record<string, ExampleObject> = {
+    'example-1': {
+      summary: 'First Example',
+      description: 'This is the first example',
+      value: { key: 'value1' },
+    },
+    'example-2': {
+      summary: 'Second Example',
+      description: 'This is the second example',
+      value: { key: 'value2' },
+    },
+    'example-3': {
+      // No summary, should fall back to key
+      description: 'Example without summary',
+      value: { key: 'value3' },
+    },
+  }
+
+  it.each([
+    ['Use-specific label', 'Use-specific label'],
+    ['', 'sample-name'],
+  ])('prefers the reference summary override %j', (summary, label) => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        modelValue: 'sample-name',
+        examples: {
+          'sample-name': {
+            $ref: '#/components/examples/Common',
+            summary,
+            '$ref-value': { summary: 'Shared label', value: 'sample' },
+          },
+        },
+      },
+    })
+    expect(wrapper.find('button').text()).toBe(label)
+  })
+
+  it('inherits a summary through a description-only reference', () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        modelValue: 'named',
+        examples: {
+          named: {
+            $ref: '#/components/examples/A',
+            '$ref-value': {
+              $ref: '#/components/examples/B',
+              description: 'Annotation',
+              '$ref-value': { summary: 'Shared label', value: 'sample' },
+            },
+          },
+        },
+      },
+    })
+    expect(wrapper.find('button').text()).toBe('Shared label')
+  })
+
+  it('renders with default state', () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: mockExamples,
+        modelValue: '',
+      },
+    })
+
+    expect(wrapper.find('[data-testid="example-picker"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Select an example')
+  })
+
+  it('renders dropdown button with correct text', () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: mockExamples,
+        modelValue: '',
+      },
+    })
+
+    const button = wrapper.find('[data-testid="example-picker"]')
+    expect(button.exists()).toBe(true)
+    expect(button.text()).toContain('Select an example')
+  })
+
+  it('handles empty examples object', () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: {},
+        modelValue: '',
+      },
+    })
+
+    expect(wrapper.text()).toContain('Select an example')
+  })
+
+  it('handles examples with missing summary', () => {
+    const examplesWithoutSummary: Record<string, ExampleObject> = {
+      'key-only': {
+        description: 'No summary provided',
+        value: { test: 'data' },
+      },
+    }
+
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: examplesWithoutSummary,
+        modelValue: '',
+      },
+    })
+
+    // The button should show "Select an example" when no example is selected
+    expect(wrapper.text()).toContain('Select an example')
+  })
+
+  it('handles null key in getLabel function', () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: mockExamples,
+        modelValue: '',
+      },
+    })
+
+    // Test with null key
+    expect(wrapper.find('button').text()).toBe('Select an example')
+  })
+
+  it('updates selected example when model value changes', async () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: mockExamples,
+        modelValue: '',
+      },
+    })
+
+    // Initially shows "Select an example"
+    expect(wrapper.text()).toContain('Select an example')
+
+    // Set a selected example
+    await wrapper.setProps({
+      examples: mockExamples,
+      modelValue: 'example-1',
+    })
+
+    await nextTick()
+
+    // The button should now show the selected example
+    expect(wrapper.text()).toContain('First Example')
+  })
+
+  it('updates model value when example is selected', async () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: mockExamples,
+        modelValue: '',
+      },
+    })
+
+    // Initially no example selected
+    expect(wrapper.props().modelValue).toBe('')
+
+    // Update the model value directly
+    await wrapper.setProps({
+      examples: mockExamples,
+      modelValue: 'example-2',
+    })
+
+    await nextTick()
+
+    // Verify the modelValue was updated
+    expect(wrapper.props().modelValue).toBe('example-2')
+  })
+
+  it('shows correct label for selected example', () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: mockExamples,
+        modelValue: 'example-1',
+      },
+    })
+
+    // Should show the summary when available
+    expect(wrapper.text()).toContain('First Example')
+
+    // Test with example that has no summary
+    const wrapper2 = mount(ExamplePicker, {
+      props: {
+        examples: mockExamples,
+        modelValue: 'example-3',
+      },
+    })
+
+    // Should fall back to the key when no summary
+    expect(wrapper2.text()).toContain('example-3')
+  })
+
+  it('handles examples with null or undefined values', async () => {
+    const problematicExamples: Record<string, ExampleObject> = {
+      'null-example': null as any,
+      'undefined-example': undefined as any,
+    }
+
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: problematicExamples,
+        modelValue: '',
+      },
+      attachTo: document.body,
+    })
+
+    const button = wrapper.find('button[aria-haspopup=listbox]')
+    await button.trigger('click')
+
+    expect(button.attributes('aria-controls')).toBeDefined()
+
+    // We have to grab the listbox off the body since it's teleported
+    const listbox = document.getElementById(button.attributes('aria-controls')!)
+    const items = listbox?.querySelectorAll('li')
+
+    expect(items!.length).toBe(2)
+    expect(items![0]?.textContent).toBe('null-example')
+    expect(items![1]?.textContent).toBe('undefined-example')
+  })
+  it('uses resolved summaries and falls back to names for empty summaries', async () => {
+    const wrapper = mount(ExamplePicker, {
+      props: {
+        examples: {
+          referenced: { $ref: '#/components/examples/Body', '$ref-value': { summary: 'Body summary', value: 'same' } },
+          fallback: { summary: '', value: 'same' },
+        },
+        modelValue: 'referenced',
+      },
+    })
+    expect(wrapper.get('button').text()).toBe('Body summary')
+    await wrapper.setProps({ modelValue: 'fallback' })
+    expect(wrapper.get('button').text()).toBe('fallback')
+    wrapper.unmount()
+  })
+})

@@ -1,62 +1,71 @@
 <script setup lang="ts">
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue'
-import { ScalarIcon } from '@scalar/components'
-import {
-  ScalarIconCaretDown,
-  ScalarIconCaretLeft,
-  ScalarIconCaretRight,
-} from '@scalar/icons'
+import { ScalarIconCaretRight } from '@scalar/icons'
 import { useElementHover } from '@vueuse/core'
-import { ref } from 'vue'
-
-import IntersectionObserver from '../IntersectionObserver.vue'
+import { ref, useId } from 'vue'
 
 defineProps<{
-  id?: string
   transparent?: boolean
+  modelValue: boolean
 }>()
 
-const button = ref()
-const isHovered = useElementHover(button)
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+}>()
+
+const header = ref<HTMLElement>()
+const isHovered = useElementHover(header)
+
+/** Names the toggle after the title, which renders beside the button rather than inside it. */
+const titleId = useId()
 </script>
 <template>
-  <IntersectionObserver
-    :id="id"
-    class="section-wrapper">
-    <Disclosure
-      v-slot="{ open }"
-      as="section"
-      class="section-accordion"
-      :class="{ 'section-accordion-transparent': transparent }">
+  <Disclosure
+    as="section"
+    class="section-accordion"
+    :class="{ 'section-accordion-transparent': transparent }">
+    <!--
+      `group/heading` reveals the title's copy-link button (see `Anchor`) while the row is
+      hovered: the title lets pointer events through to the toggle below it, so it never
+      matches `:hover` on its own.
+    -->
+    <div
+      ref="header"
+      class="section-accordion-header group/heading">
       <DisclosureButton
-        ref="button"
-        class="section-accordion-button">
-        <div class="section-accordion-button-content">
-          <slot name="title" />
-        </div>
-        <div
-          v-if="$slots.actions"
-          class="section-accordion-button-actions">
-          <slot
-            :active="isHovered || open"
-            name="actions" />
-        </div>
-        <ScalarIconCaretRight
-          class="section-accordion-chevron size-4.5 transition-transform"
-          :class="{ 'rotate-90': open }" />
-      </DisclosureButton>
-      <DisclosurePanel class="section-accordion-content">
-        <div
-          v-if="$slots.description"
-          class="section-accordion-description">
-          <slot name="description" />
-        </div>
-        <div class="section-accordion-content-card">
-          <slot />
-        </div>
-      </DisclosurePanel>
-    </Disclosure>
-  </IntersectionObserver>
+        :aria-labelledby="titleId"
+        class="section-accordion-button absolute inset-0 cursor-pointer border-none bg-transparent p-0"
+        @click="() => emit('update:modelValue', !modelValue)" />
+      <div
+        :id="titleId"
+        class="section-accordion-button-content pointer-events-none relative">
+        <slot name="title" />
+      </div>
+      <div
+        v-if="$slots.actions"
+        class="section-accordion-button-actions pointer-events-none relative">
+        <slot
+          :active="isHovered || modelValue"
+          name="actions" />
+      </div>
+      <ScalarIconCaretRight
+        class="section-accordion-chevron pointer-events-none size-4.5 transition-transform"
+        :class="{ 'rotate-90': modelValue }" />
+    </div>
+    <DisclosurePanel
+      v-if="modelValue"
+      class="section-accordion-content"
+      static>
+      <div
+        v-if="$slots.description"
+        class="section-accordion-description">
+        <slot name="description" />
+      </div>
+      <div class="section-accordion-content-card">
+        <slot />
+      </div>
+    </DisclosurePanel>
+  </Disclosure>
 </template>
 <style scoped>
 .section-wrapper {
@@ -71,6 +80,9 @@ const isHovered = useElementHover(button)
 
   border-radius: var(--scalar-radius-lg);
   background: var(--scalar-background-2);
+
+  /* Offset by header height to line up scroll position */
+  scroll-margin-top: var(--refs-viewport-offset);
 }
 
 .section-accordion-transparent {
@@ -78,14 +90,23 @@ const isHovered = useElementHover(button)
   border: var(--scalar-border-width) solid var(--scalar-border-color);
 }
 
-.section-accordion-button {
-  padding: 6px;
-}
-.section-accordion-button {
+.section-accordion-header {
+  position: relative;
+
   display: flex;
   align-items: center;
   gap: 6px;
+
+  padding: 6px;
   cursor: pointer;
+}
+
+/* The controls the header carries — the copy link in the title, the actions — keep their clicks. */
+.section-accordion-button-content
+  :is(a[href], button, input, select, textarea, [role='button'], [tabindex]),
+.section-accordion-button-actions
+  :is(a[href], button, input, select, textarea, [role='button'], [tabindex]) {
+  pointer-events: auto;
 }
 
 .section-accordion-button-content {
@@ -105,7 +126,7 @@ const isHovered = useElementHover(button)
   opacity: 1;
   color: var(--scalar-color-3);
 }
-.section-accordion-button:hover .section-accordion-chevron {
+.section-accordion-header:hover .section-accordion-chevron {
   color: var(--scalar-color-1);
 }
 .section-accordion-content {

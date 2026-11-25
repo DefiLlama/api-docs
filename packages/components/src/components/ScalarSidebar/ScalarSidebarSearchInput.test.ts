@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import ScalarSidebarSearchInput from './ScalarSidebarSearchInput.vue'
+import { describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+
+import ScalarSidebarSearchInput from './ScalarSidebarSearchInput.vue'
 
 describe('ScalarSidebarSearchInput', () => {
   it('renders with default props', () => {
@@ -85,7 +86,14 @@ describe('ScalarSidebarSearchInput', () => {
 
     // With value
     await wrapper.find('input').setValue('test')
-    expect(label.classes()).toContain('text-c-1')
+    expect(label.classes()).toContain('text-sidebar-c-1')
+  })
+
+  it('applies placeholder from props', () => {
+    const wrapper = mount(ScalarSidebarSearchInput, {
+      props: { placeholder: 'Filter items...' },
+    })
+    expect(wrapper.find('input').attributes('placeholder')).toBe('Filter items...')
   })
 
   it('forwards additional attributes to input element', () => {

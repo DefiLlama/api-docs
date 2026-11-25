@@ -1,20 +1,22 @@
 import defaultFonts from './fonts/fonts.css?inline'
 import alternateTheme from './presets/alternate.css?inline'
 import bluePlanetTheme from './presets/bluePlanet.css?inline'
+import customThemeStarter from './presets/custom-theme-starter.css?inline'
 import deepSpaceTheme from './presets/deepSpace.css?inline'
 import defaultTheme from './presets/default.css?inline'
 import elysiajsTheme from './presets/elysiajs.css?inline'
 import fastifyTheme from './presets/fastify.css?inline'
+import halloweenTheme from './presets/halloween.css?inline'
 import keplerTheme from './presets/kepler.css?inline'
+import laserwaveTheme from './presets/laserwave.css?inline'
 import marsTheme from './presets/mars.css?inline'
 import moonTheme from './presets/moon.css?inline'
-import laserwaveTheme from './presets/laserwave.css?inline'
 import purpleTheme from './presets/purple.css?inline'
 import saturnTheme from './presets/saturn.css?inline'
 import solarizedTheme from './presets/solarized.css?inline'
 
-import customThemeStarter from './presets/custom-theme-starter.css?inline'
 export { hasObtrusiveScrollbars } from './utilities/has-obtrusive-scrollbars'
+
 import { nanoid } from 'nanoid'
 
 // Export all presets for easier access
@@ -22,17 +24,18 @@ export {
   alternateTheme,
   bluePlanetTheme,
   deepSpaceTheme,
+  defaultFonts,
   defaultTheme,
   elysiajsTheme,
   fastifyTheme,
+  halloweenTheme,
   keplerTheme,
+  laserwaveTheme,
   marsTheme,
   moonTheme,
   purpleTheme,
   saturnTheme,
   solarizedTheme,
-  laserwaveTheme,
-  defaultFonts,
 }
 
 /** Theme definition for Scalar platform themes. Matches user provided theme definitions. */
@@ -69,6 +72,7 @@ export const themeIds = [
   'fastify',
   'mars',
   'laserwave',
+  'halloween',
   'none',
 ] as const
 
@@ -77,7 +81,7 @@ export const themeIds = [
 /**
  * User readable theme names / labels
  */
-export const themeLabels: Record<ThemeId, string> = {
+export const themeLabels = {
   default: 'Default',
   alternate: 'Alternate',
   moon: 'Moon',
@@ -91,8 +95,9 @@ export const themeLabels: Record<ThemeId, string> = {
   mars: 'Mars',
   deepSpace: 'Deep Space',
   laserwave: 'Laserwave',
-  none: '',
-}
+  halloween: 'Halloween',
+  none: 'None',
+} as const satisfies Record<ThemeId, string>
 
 /**
  * Formatted list of available theme presets.
@@ -102,7 +107,7 @@ export const themeLabels: Record<ThemeId, string> = {
  * Static UIDs must be assigned and never changed when a new theme is created.
  * Slugs should be formatted as kebab-case and cannot change after initial creation.
  */
-export const presets: Record<Exclude<ThemeId, 'none'>, Theme> = {
+export const presets = {
   default: {
     uid: 'qTQR9jSM8E-LihpyZzPOi',
     name: 'Default',
@@ -180,6 +185,13 @@ export const presets: Record<Exclude<ThemeId, 'none'>, Theme> = {
     theme: laserwaveTheme,
     slug: 'laserwave',
   },
+  halloween: {
+    uid: 'hW8oKq2Pz-Vb3nTj5LxRm',
+    name: 'Halloween',
+    description: 'Spooky season Scalar theme with a moonlit sky, bats, and pumpkin accents',
+    theme: halloweenTheme,
+    slug: 'halloween',
+  },
   elysiajs: {
     uid: 'nEVZkRmCylPkT0o9YJa7y',
     name: 'Elysia.js',
@@ -194,7 +206,7 @@ export const presets: Record<Exclude<ThemeId, 'none'>, Theme> = {
     theme: fastifyTheme,
     slug: 'fastify',
   },
-}
+} as const satisfies Record<Exclude<ThemeId, 'none'>, Theme>
 
 /** List of available theme presets */
 export const themePresets = Object.values(presets)

@@ -1,22 +1,37 @@
+<script lang="ts">
+/**
+ * Scalar Floating component
+ *
+ * Positions a floating element relative to a reference element
+ * using Floating UI. Handles placement, offset, flipping, and resizing.
+ *
+ * @example
+ * <ScalarFloating placement="bottom">
+ *   <button>Reference</button>
+ *   <template #floating>Floating content</template>
+ * </ScalarFloating>
+ */
+export default {}
+</script>
 <script setup lang="ts">
 import { getSideAxis } from '@floating-ui/utils'
 import {
-  type MiddlewareData,
   autoUpdate,
   flip,
   offset as offsetMiddleware,
   shift,
   size,
   useFloating,
+  type MiddlewareData,
 } from '@floating-ui/vue'
-import { type Ref, computed, ref } from 'vue'
+import { computed, nextTick, ref, type Ref } from 'vue'
 
 import { ScalarTeleport } from '../ScalarTeleport'
 import type { FloatingOptions } from './types'
 import { useResizeWithTarget } from './useResizeWithTarget'
 
 const {
-  placement = 'bottom',
+  placement,
   offset = 5,
   resize = false,
   middleware = [],
@@ -43,7 +58,7 @@ defineOptions({ inheritAttrs: false })
 const floatingRef: Ref<HTMLElement | null> = ref(null)
 const wrapperRef: Ref<HTMLElement | null> = ref(null)
 
-const targetRef = computed(() => {
+const targetRef = computed<HTMLElement | undefined>(() => {
   if (typeof window !== 'undefined' && wrapperRef.value) {
     // If target is a string (id), try to find it in the document
     if (typeof target === 'string') {
@@ -58,7 +73,11 @@ const targetRef = computed(() => {
       return target
     }
     // Fallback to div wrapper if no child element is provided
-    return wrapperRef.value.children?.[0] || wrapperRef.value
+    const firstChild = wrapperRef.value.children?.[0]
+    if (firstChild instanceof HTMLElement) {
+      return firstChild
+    }
+    return wrapperRef.value
   }
   // Return undefined if nothing is found
   return undefined
@@ -69,31 +88,76 @@ const targetSize = useResizeWithTarget(targetRef, {
 })
 
 const targetWidth = computed(() =>
-  getSideAxis(placement) === 'y' ? targetSize.width.value : undefined,
+  getSideAxis(placement ?? 'bottom') === 'y'
+    ? targetSize.width.value
+    : undefined,
 )
 
 const targetHeight = computed(() =>
-  getSideAxis(placement) === 'x' ? targetSize.height.value : undefined,
+  getSideAxis(placement ?? 'bottom') === 'x'
+    ? targetSize.height.value
+    : undefined,
 )
+
+/**
+ * Starts Floating UI's `autoUpdate` one tick after both elements exist.
+ *
+ * `useFloating` attaches `autoUpdate` from a synchronous watch the moment the
+ * template refs resolve, and `autoUpdate` positions the element right away.
+ * Template refs resolve in the post-render phase of a flush, so that first
+ * `computePosition` reads layout while the same flush is still mounting other
+ * components: every floating element mounted together (for example the closed
+ * listboxes of a schema with many compositions) forces its own style recalc and
+ * layout on a tree that was dirtied again in between. Waiting for `nextTick`
+ * runs every first positioning back-to-back once the flush has settled, so the
+ * browser recalculates the tree once for all of them. The tick resolves before
+ * the next paint, so an element that mounts open is positioned in the same task.
+ */
+const deferredAutoUpdate: typeof autoUpdate = (
+  reference,
+  floating,
+  update,
+  options,
+) => {
+  let cleanup: (() => void) | undefined
+  let disposed = false
+
+  void nextTick(() => {
+    if (!disposed) {
+      cleanup = autoUpdate(reference, floating, update, options)
+    }
+  })
+
+  return () => {
+    disposed = true
+    cleanup?.()
+  }
+}
+
 const { floatingStyles, middlewareData } = useFloating(targetRef, floatingRef, {
-  placement: computed(() => placement),
-  whileElementsMounted: autoUpdate,
+  placement: computed(() => placement ?? 'bottom'),
+  whileElementsMounted: deferredAutoUpdate,
   middleware: computed(() => [
     offsetMiddleware(offset),
-    flip(),
-    shift(),
+    flip({ padding: 48 }),
+    shift({ padding: 8 }),
     size({
       apply({ availableWidth, availableHeight, elements }) {
         // Assign the max width and height to the floating element
         // @see https://floating-ui.com/docs/size
         Object.assign(elements.floating.style, {
-          maxWidth: `${Math.max(0, availableWidth) - 25}px`,
-          maxHeight: `${Math.max(0, availableHeight) - 25}px`,
+          maxWidth: `${Math.max(0, availableWidth) - 16}px`,
+          maxHeight: `${Math.max(0, availableHeight) - 16}px`,
         })
       },
     }),
     ...middleware,
   ]),
+})
+
+defineExpose({
+  /** The resolved target element */
+  targetRef,
 })
 </script>
 <template>
@@ -108,7 +172,7 @@ const { floatingStyles, middlewareData } = useFloating(targetRef, floatingRef, {
     :to="typeof teleport === 'string' ? teleport : undefined">
     <div
       ref="floatingRef"
-      class="relative z-context"
+      class="z-context relative"
       :style="floatingStyles">
       <slot
         :data="middlewareData"

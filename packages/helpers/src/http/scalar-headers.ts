@@ -1,0 +1,8 @@
+export const X_SCALAR_COOKIE = 'x-scalar-cookie'
+export const X_SCALAR_SET_COOKIE = 'x-scalar-set-cookie'
+export const X_SCALAR_USER_AGENT = 'x-scalar-user-agent'
+export const X_SCALAR_DATE = 'x-scalar-date'
+export const X_SCALAR_DNT = 'x-scalar-dnt'
+export const X_SCALAR_REFERER = 'x-scalar-referer'
+export const X_SCALAR_MODIFIED_HEADERS = 'x-scalar-modified-headers'
+export const X_SCALAR_ORIGINAL_PREFIX = 'x-scalar-original-'

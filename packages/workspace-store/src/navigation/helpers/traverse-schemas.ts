@@ -1,41 +1,55 @@
+import { isObject } from '@scalar/helpers/object/is-object'
+
+import { getResolvedRef, mergeSiblingReferences } from '@/helpers/get-resolved-ref'
+import { isHidden } from '@/helpers/is-hidden'
+import { getNavigationTagNames } from '@/navigation/helpers/get-navigation-tag-names'
 import { getTag } from '@/navigation/helpers/get-tag'
+import { getXBadges } from '@/navigation/helpers/get-x-badges'
 import type { TagsMap, TraverseSpecOptions } from '@/navigation/types'
-import type { TraversedSchema } from '@/schemas/navigation'
-import type { OpenApiDocument } from '@/schemas/v3.1/strict/openapi-document'
-import type { SchemaObject } from '@/schemas/v3.1/strict/schema'
-import type { TagObject } from '@/schemas/v3.1/strict/tag'
+import type { ParentTag, TraversedSchema } from '@/schemas/navigation'
+import type { OpenApiDocument, SchemaObject } from '@/schemas/v3.2/strict/openapi-document'
 
 /** Creates a traversed schema entry from an OpenAPI schema object.
  *
  * @param ref - JSON pointer reference to the schema in the OpenAPI document
  * @param name - Name of the schema, defaults to 'Unknown'
- * @param titlesMap - Map to store schema IDs and titles for mobile header navigation
+ * @param entriesMap - Map to store schema IDs and titles for mobile header navigation
  * @param getModelId - Function to generate unique IDs for schemas
  * @returns A traversed schema entry with ID, title, name and reference
  */
-const createSchemaEntry = (
-  ref: string,
-  name = 'Unknown',
-  titlesMap: Map<string, string>,
-  getModelId: TraverseSpecOptions['getModelId'],
-  tag?: TagObject,
-  schema?: SchemaObject,
-): TraversedSchema => {
-  const id = getModelId({ name }, tag)
+const createSchemaEntry = ({
+  ref,
+  name,
+  generateId,
+  parentTag,
+  _schema,
+  parentId,
+}: {
+  ref: string
+  name: string
+  generateId: TraverseSpecOptions['generateId']
+  parentTag?: ParentTag
+  _schema?: SchemaObject
+  parentId: string
+}): TraversedSchema => {
+  const id = generateId({ name, type: 'model', parentTag, parentId, schema: _schema })
+  const schema = getResolvedRef(_schema)
 
   // Use schema.title if available, otherwise fall back to name
   // @see https://json-schema.org/draft/2020-12/json-schema-core#section-4.3.5
-  const title = (schema?.title as string) || name
+  const title = (isObject(schema) && 'title' in schema && (schema.title as string)) || name
+  const badges = getXBadges(schema)
 
-  titlesMap.set(id, title)
-
-  return {
+  const entry = {
     id,
     title,
     name,
     ref,
     type: 'model',
-  }
+    ...(badges ? { badges } : {}),
+  } satisfies TraversedSchema
+
+  return entry
 }
 
 /** Traverses the schemas in an OpenAPI document to build an array of model entries.
@@ -44,40 +58,65 @@ const createSchemaEntry = (
  * - Filter out internal schemas (marked with x-internal) and schemas to ignore (marked with x-scalar-ignore)
  * - Create model entries with unique references and IDs
  * - Store model IDs and titles for mobile header navigation
- *
- * @param content - The OpenAPI document to traverse
- * @param titlesMap - Map to store schema IDs and titles for mobile header navigation
- * @param getModelId - Function to generate unique IDs for schemas
- * @returns Array of traversed schema entries
  */
-export const traverseSchemas = (
-  content: OpenApiDocument,
+export const traverseSchemas = ({
+  document,
+  tagsMap,
+  generateId,
+  documentId,
+}: {
+  document: OpenApiDocument
   /** Map of tagNames and their entries */
-  tagsMap: TagsMap,
-  /** Map of titles for the mobile header */
-  titlesMap: Map<string, string>,
-  getModelId: TraverseSpecOptions['getModelId'],
-): TraversedSchema[] => {
-  const schemas = content.components?.schemas ?? {}
+  tagsMap: TagsMap
+  generateId: TraverseSpecOptions['generateId']
+  documentId: string
+}): TraversedSchema[] => {
+  const schemas = document.components?.schemas ?? {}
   const untagged: TraversedSchema[] = []
 
   for (const name in schemas) {
-    if (schemas[name]['x-internal'] || schemas[name]['x-scalar-ignore'] || !Object.hasOwn(schemas, name)) {
+    if (!Object.hasOwn(schemas, name)) {
       continue
     }
 
-    const ref = `#/content/components/schemas/${name}`
+    // Merge wrapper siblings onto the dereferenced schema so x-internal / x-scalar-ignore
+    // set alongside a $ref are honored (e.g. https://github.com/scalar/scalar/issues/9114).
+    const schema = getResolvedRef(schemas[name], mergeSiblingReferences)
+
+    if (isHidden(schema)) {
+      continue
+    }
+
+    const ref = `#/components/schemas/${name}`
 
     // Add to tags
-    if (schemas[name]['x-tags']) {
-      schemas[name]['x-tags'].forEach((tagName: string) => {
-        const { tag } = getTag(tagsMap, tagName)
-        tagsMap.get(tagName)?.entries.push(createSchemaEntry(ref, name, titlesMap, getModelId, tag))
+    const navigationTags = getNavigationTagNames(document, schema?.['x-tags'], tagsMap)
+    if (navigationTags.length) {
+      navigationTags.forEach((tagName: string) => {
+        const { tag, id: tagId } = getTag({ tagsMap, name: tagName, documentId, generateId })
+        tagsMap.get(tagName)?.entries.push(
+          createSchemaEntry({
+            ref,
+            name,
+            generateId,
+            parentTag: { tag, id: tagId },
+            _schema: getResolvedRef(schemas[name]),
+            parentId: documentId,
+          }),
+        )
       })
     }
     // Add to untagged
     else {
-      untagged.push(createSchemaEntry(ref, name, titlesMap, getModelId, undefined, schemas[name]))
+      untagged.push(
+        createSchemaEntry({
+          ref,
+          name,
+          generateId,
+          _schema: getResolvedRef(schemas[name]),
+          parentId: documentId,
+        }),
+      )
     }
   }
 

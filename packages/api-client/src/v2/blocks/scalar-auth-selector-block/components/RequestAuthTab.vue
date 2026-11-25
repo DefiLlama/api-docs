@@ -1,0 +1,802 @@
+<script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
+import { ScalarIconButton } from '@scalar/components/icon-button'
+import { useLoadingState } from '@scalar/components/loading'
+import { ScalarMarkdownSummary } from '@scalar/components/markdown'
+import { ScalarModal, useModal } from '@scalar/components/modal'
+import { ScalarIconGear } from '@scalar/icons'
+import { useToasts } from '@scalar/use-toasts'
+import type {
+  SecretsApiKey,
+  SecretsHttp,
+} from '@scalar/workspace-store/entities/auth'
+import type {
+  ApiReferenceEvents,
+  WorkspaceEventBus,
+} from '@scalar/workspace-store/events'
+import { canResetSecretField } from '@scalar/workspace-store/helpers/auth-secret-fields'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import {
+  getEnvironmentVariables,
+  type MergedSecuritySchemes,
+  type OAuthFlowsObjectSecret,
+  type SecuritySchemeObjectSecret,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import { getDocumentTypeLabel } from '@scalar/workspace-store/schemas/type-guards'
+import type {
+  ApiKeyObject,
+  SecurityRequirementObject,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { capitalize, computed, onMounted, ref } from 'vue'
+
+import { refreshOauth2Token } from '@/v2/blocks/scalar-auth-selector-block/helpers/oauth'
+import { getVisibleOrderedFlowKeys } from '@/v2/blocks/scalar-auth-selector-block/helpers/oauth-flows'
+import {
+  runOAuth2Authorize,
+  storeOAuth2Tokens,
+} from '@/v2/blocks/scalar-auth-selector-block/helpers/run-oauth2-authorize'
+import { getOauth2AcquisitionTarget } from '@/v2/blocks/scalar-auth-selector-block/helpers/security-scheme'
+import {
+  DataTable,
+  DataTableCell,
+  DataTableRow,
+} from '@/v2/components/data-table'
+import { useLocalization } from '@/v2/features/localization'
+
+import OAuth2, { type OAuth2Options } from './OAuth2.vue'
+import OAuth2Metadata from './OAuth2Metadata.vue'
+import OpenIDConnect from './OpenIDConnect.vue'
+import RequestAuthDataTableInput from './RequestAuthDataTableInput.vue'
+
+const {
+  environment,
+  isStatic,
+  proxyUrl,
+  selectedSecuritySchemas,
+  securitySchemes,
+  server,
+  eventBus,
+  options,
+  documentType = 'openapi',
+} = defineProps<{
+  /** Current environment configuration */
+  environment: XScalarEnvironment
+  /** Controls the display of certain borders which are used when we are non-collapsible */
+  isStatic: boolean
+  /** Proxy URL */
+  proxyUrl: string
+  /** Selected security schemes*/
+  selectedSecuritySchemas: SecurityRequirementObject
+  /** Merged security schemes from the document and the config together with the auth store secrets */
+  securitySchemes: MergedSecuritySchemes
+  /** Current server configuration */
+  server: ServerObject | null
+  /** Event bus for authentication updates */
+  eventBus: WorkspaceEventBus
+  /**  Any config options required for the OAuth2 flow */
+  options?: OAuth2Options
+  /** Type of the document the schemes belong to, used to label the missing-type warning */
+  documentType?: 'openapi' | 'asyncapi'
+}>()
+
+const emits = defineEmits<{
+  (
+    e: 'update:selectedScopes',
+    payload: Omit<ApiReferenceEvents['auth:update:selected-scopes'], 'meta'>,
+  ): void
+  (e: 'upsert:scope', payload: ApiReferenceEvents['auth:upsert:scopes']): void
+  (e: 'delete:scope', payload: ApiReferenceEvents['auth:delete:scopes']): void
+}>()
+
+const { translate } = useLocalization()
+
+type SecurityItem = {
+  scheme: SecuritySchemeObjectSecret | undefined
+  name: string
+  scopes: string[]
+  /** Ordered, non-hidden oauth2/openIdConnect flow keys for this scheme (empty for other types). */
+  visibleFlowKeys: (keyof OAuthFlowsObjectSecret)[]
+}
+
+/**
+ * Human-readable name of the document type.
+ * Used in the missing-type warning so it points at the correct document
+ * (e.g. "AsyncAPI") instead of always naming OpenAPI.
+ */
+const documentTypeLabel = computed<string>(() =>
+  getDocumentTypeLabel(documentType),
+)
+
+/**
+ * Resolves security schemes from the OpenAPI document and combines them with their selected scopes.
+ * Each item includes the scheme definition, name, and associated scopes.
+ */
+const security = computed<SecurityItem[]>(() =>
+  Object.entries(selectedSecuritySchemas).map(([name, scopes = []]) => {
+    const scheme = getResolvedRef(securitySchemes[name])
+    return {
+      scheme,
+      name,
+      scopes,
+      // Compute the visible, ordered flow keys once per scheme so the tabs, the label, and the
+      // active-flow tracking all agree on the same set (and we do not filter + sort on every access).
+      visibleFlowKeys:
+        scheme?.type === 'oauth2' || scheme?.type === 'openIdConnect'
+          ? getVisibleOrderedFlowKeys(scheme.flows)
+          : [],
+    }
+  }),
+)
+
+/** Tracks which OAuth2 flow is currently active when multiple flows are available. */
+const activeFlow = ref<string>('')
+
+/**
+ * Keeps the selected flow in sync with the currently visible flow keys. Validating against the
+ * visible set (not every declared flow) means a selection that becomes hidden — e.g. the document
+ * is updated to mark the active flow with `x-scalar-ignore` — resets, so the default (first visible)
+ * flow activates instead of leaving no tab selected.
+ */
+const selectedFlow = computed<string>(() => {
+  const visibleFlowKeys = security.value.flatMap((item) => item.visibleFlowKeys)
+
+  return visibleFlowKeys.some((key) => key === activeFlow.value)
+    ? activeFlow.value
+    : ''
+})
+
+const setActiveFlow = (flow: string): void => {
+  activeFlow.value = flow
+}
+
+/** Determines if multiple auth schemes are configured, which affects the UI layout. */
+const hasMultipleSchemes = computed<boolean>(() => security.value.length > 1)
+
+/**
+ * Generates a human-readable label for the security scheme.
+ * Intentionally omits the description here — it is rendered separately as
+ * rich text via ScalarMarkdownSummary so markdown formatting is preserved.
+ */
+const generateLabel = (
+  name: string,
+  scheme: SecuritySchemeObjectSecret,
+): string => {
+  const capitalizedName = capitalize(name)
+
+  switch (scheme.type) {
+    case 'apiKey':
+      return `${capitalizedName}: ${scheme.in}`
+
+    case 'openIdConnect':
+    case 'oauth2': {
+      const firstFlow = getVisibleOrderedFlowKeys(scheme.flows)[0]
+      const currentFlow = selectedFlow.value || firstFlow
+      if (!currentFlow) {
+        return capitalizedName
+      }
+      return `${capitalizedName}: ${currentFlow}`
+    }
+
+    case 'http':
+      return `${capitalizedName}: ${scheme.scheme}`
+
+    default:
+      return capitalizedName
+  }
+}
+
+/**
+ * Whether an API key scheme exposes an editable parameter name.
+ *
+ * OpenAPI `apiKey` and AsyncAPI `httpApiKey` (normalized to `apiKey`) name a query/header/cookie
+ * parameter, so the Name input is shown. AsyncAPI `apiKey` places the key in the broker `user` or
+ * `password` slot and has no parameter name, so the Name input is hidden and only the value is asked for.
+ */
+const apiKeyHasName = (scheme: { in?: string }): boolean =>
+  scheme.in !== 'user' && scheme.in !== 'password'
+
+/**
+ * The scheme's type when it is one we do not render inputs for (a type outside both the OpenAPI
+ * and AsyncAPI security scheme unions). Read through a helper so the fallback template branch,
+ * where the scheme type is narrowed to `never` after the supported cases, can still surface the type.
+ */
+const getUnsupportedSchemeType = (
+  scheme: SecurityItem['scheme'],
+): string | undefined => scheme?.type
+
+/**
+ * Determines if an OAuth2 flow tab should be active.
+ * The first flow is active by default if no flow is explicitly selected.
+ */
+const isFlowActive = (flowKey: string, index: number): boolean =>
+  selectedFlow.value === flowKey || (index === 0 && !selectedFlow.value)
+
+/** Computes the container class for static display mode. */
+const getStaticBorderClass = (): string | false => isStatic && 'border-t'
+
+const handleHttpSecretsUpdate = (
+  payload: Omit<Partial<SecretsHttp>, 'type'>,
+  name: string,
+): void =>
+  eventBus.emit('auth:update:security-scheme-secrets', {
+    payload: { type: 'http', ...payload },
+    name,
+  })
+
+const handleApiKeySecretsUpdate = (
+  payload: Omit<Partial<SecretsApiKey>, 'type'>,
+  name: string,
+): void =>
+  eventBus.emit('auth:update:security-scheme-secrets', {
+    payload: { type: 'apiKey', ...payload },
+    name,
+  })
+
+/** Name edits may update the document or a configured override; tokens remain secrets. */
+const handleApiKeySecuritySchemeUpdate = (
+  payload: Omit<Partial<ApiKeyObject>, 'type'>,
+  name: string,
+): void =>
+  eventBus.emit('auth:update:security-scheme', {
+    payload: { type: 'apiKey', ...payload },
+    name,
+  })
+
+/** Handles scope selection updates for OAuth2 */
+const handleScopesUpdate = (
+  name: string,
+  event: { scopes?: string[]; scope?: string; selected?: boolean },
+): void => {
+  emits('update:selectedScopes', {
+    id: Object.keys(selectedSecuritySchemas),
+    name,
+    ...event,
+  })
+}
+
+/** Handles scope-definition upserts (add / rename / description change) */
+const handleScopeUpsert = (
+  name: string,
+  event: Omit<ApiReferenceEvents['auth:upsert:scopes'], 'name'>,
+): void => {
+  emits('upsert:scope', { ...event, name })
+}
+
+/** Handles scope-definition deletes */
+const handleScopeDelete = (
+  name: string,
+  event: Omit<ApiReferenceEvents['auth:delete:scopes'], 'name'>,
+): void => {
+  emits('delete:scope', { ...event, name })
+}
+
+/**
+ * Computes dynamic classes for OAuth2 flow tabs based on active state.
+ */
+const getFlowTabClasses = (flowKey: string, index: number): string => {
+  const baseClasses =
+    'floating-bg text-c-3 relative cursor-pointer border-b border-transparent py-1 text-base font-medium'
+  const activeClasses = '!text-c-1 !rounded-none border-b !border-current'
+
+  return isFlowActive(flowKey, index)
+    ? `${baseClasses} ${activeClasses} ${isStatic ? 'opacity-100' : ''}`
+    : baseClasses
+}
+
+/**
+ * OAuth2 token-acquisition target (an oauth2 scheme with an interactive grant) sourced from
+ * the merged schemes. When the active scheme is HTTP bearer, this powers the inline
+ * "Authorize via OAuth2" shortcut: the flow's bearer token is written onto the bearer scheme,
+ * so the panel never switches to oauth2.
+ *
+ * The shortcut is purely a convenience, so it is offered for any interactive oauth2 scheme —
+ * including one that is also independently selectable in the dropdown (e.g. Scalar Galaxy's
+ * `oAuth2`). Whether that oauth2 scheme is *hidden* from the dropdown is a separate decision made
+ * in the selector; here we only surface the shortcut.
+ */
+const oauth2Target = computed(() => getOauth2AcquisitionTarget(securitySchemes))
+
+/** Resolved oauth2 scheme object, for embedding its config form behind the gear. */
+const oauth2Scheme = computed(() =>
+  oauth2Target.value
+    ? getResolvedRef(securitySchemes[oauth2Target.value.name])
+    : undefined,
+)
+
+const acquisitionLoader = useLoadingState()
+const { toast } = useToasts()
+const configModal = useModal()
+/**
+ * The modal sits between table rows, where the HTML parser does not accept its closed-state
+ * placeholder, so it only renders in the browser once the server markup has been hydrated.
+ */
+const isMounted = ref(false)
+onMounted(() => {
+  isMounted.value = true
+})
+/** Bearer scheme that opened the config modal, so its Authorize callback targets it. */
+const configBearerName = ref<string | undefined>()
+
+/** Runs the OAuth2 flow and writes the resulting bearer token onto the bearer scheme. */
+const handleAcquisitionAuthorize = async (
+  bearerName: string,
+): Promise<void> => {
+  const target = oauth2Target.value
+  if (!target || acquisitionLoader.isLoading) {
+    return
+  }
+  acquisitionLoader.start()
+  const [error] = await runOAuth2Authorize({
+    eventBus,
+    bearerSchemeName: bearerName,
+    oauth2Name: target.name,
+    flows: target.flows,
+    flowType: target.flowType,
+    scopes: target.scopes,
+    server,
+    proxyUrl,
+    environment,
+    options,
+  })
+  await acquisitionLoader.clear()
+  if (error) {
+    toast(
+      error?.message ?? translate('apiClient.requestAuthTab.failedToauthorize'),
+      'error',
+    )
+  }
+}
+
+/** Refreshes the OAuth2 token and rewrites it onto the bearer scheme. */
+const handleAcquisitionRefresh = async (bearerName: string): Promise<void> => {
+  const target = oauth2Target.value
+  // Only the authorization-code flow carries a refresh token; implicit can't be refreshed.
+  if (target?.flowType !== 'authorizationCode' || acquisitionLoader.isLoading) {
+    return
+  }
+  acquisitionLoader.start()
+  const [error, tokens] = await refreshOauth2Token(
+    target.flows,
+    target.flowType,
+    proxyUrl,
+    server,
+    getEnvironmentVariables(environment),
+    options?.customFetch,
+  )
+  await acquisitionLoader.clear()
+  if (tokens?.accessToken) {
+    storeOAuth2Tokens(eventBus, {
+      bearerSchemeName: bearerName,
+      oauth2Name: target.name,
+      flowType: target.flowType,
+      tokens,
+    })
+  } else if (error) {
+    toast(
+      error?.message ?? translate('apiClient.requestAuthTab.failedToRefresh'),
+      'error',
+    )
+  }
+}
+
+const openAcquisitionConfig = (bearerName: string): void => {
+  configBearerName.value = bearerName
+  configModal.show()
+}
+
+/** Closes the config modal and runs Authorize against the bearer scheme that opened it. */
+const handleConfigAuthorize = (): void => {
+  const bearerName = configBearerName.value
+  configModal.hide()
+  if (bearerName) {
+    void handleAcquisitionAuthorize(bearerName)
+  }
+}
+</script>
+<template>
+  <template
+    v-for="{ scheme, name, scopes, visibleFlowKeys } in security"
+    :key="name">
+    <!--
+      Header row for AND'ed schemes: label (bold) and description (rich text) are
+      combined.
+    -->
+    <DataTableRow v-if="hasMultipleSchemes && scheme">
+      <DataTableCell
+        :aria-label="generateLabel(name, scheme)"
+        class="max-h-[auto]">
+        <div class="bg-b-1 min-w-0 flex-1 px-3 py-1.25">
+          <p class="text-c-1 leading-5.5 font-medium">
+            {{ generateLabel(name, scheme) }}
+          </p>
+          <ScalarMarkdownSummary
+            v-if="scheme.description"
+            class="auth-description text-c-2 w-full"
+            :value="scheme.description" />
+        </div>
+      </DataTableCell>
+    </DataTableRow>
+
+    <!-- Description: shown for single auth schemes with descriptions -->
+    <DataTableRow v-if="scheme?.description && !hasMultipleSchemes">
+      <DataTableCell
+        :aria-label="scheme.description"
+        class="max-h-[auto]">
+        <ScalarMarkdownSummary
+          class="auth-description bg-b-1 text-c-2 min-w-0 flex-1 px-3 py-1.25"
+          :value="scheme.description" />
+      </DataTableCell>
+    </DataTableRow>
+
+    <!-- HTTP Authentication -->
+    <template v-if="scheme?.type === 'http'">
+      <!-- Bearer Token -->
+      <DataTableRow v-if="scheme.scheme === 'bearer'">
+        <RequestAuthDataTableInput
+          :canReset="
+            canResetSecretField(
+              scheme,
+              'x-scalar-secret-token',
+              scheme['x-scalar-secret-token'],
+            )
+          "
+          :containerClass="getStaticBorderClass()"
+          :environment
+          :modelValue="scheme['x-scalar-secret-token']"
+          :placeholder="translate('apiClient.requestAuthTab.token')"
+          type="password"
+          @reset="
+            eventBus.emit('auth:reset:security-scheme-secret', {
+              name,
+              field: 'x-scalar-secret-token',
+            })
+          "
+          @update:modelValue="
+            (v) => handleHttpSecretsUpdate({ 'x-scalar-secret-token': v }, name)
+          ">
+          {{ translate('apiClient.requestAuthTab.bearerToken') }}
+        </RequestAuthDataTableInput>
+      </DataTableRow>
+
+      <!-- OAuth2 token-acquisition shortcut (shown when an interactive oauth2 flow exists) -->
+      <DataTableRow v-if="scheme.scheme === 'bearer' && oauth2Target">
+        <!--
+          Authorize stays rightmost so it never moves: Refresh only appears once there is a token,
+          and it slots in between the gear and Authorize instead of pushing Authorize aside.
+        -->
+        <!-- A table row only holds cells: the HTML parser moves anything else out of the table. -->
+        <td class="contents">
+          <div class="flex h-8 items-center gap-2 border-t pr-1 pl-3 text-base">
+            <span class="text-c-1 mr-auto">{{
+              translate('apiClient.requestAuthTab.getAToken')
+            }}</span>
+            <ScalarIconButton
+              class="h-6 w-6 p-1.25"
+              :icon="ScalarIconGear"
+              :label="
+                translate('apiClient.requestAuthTab.configure', {
+                  name: oauth2Target.name,
+                })
+              "
+              @click="openAcquisitionConfig(name)" />
+            <ScalarButton
+              v-if="
+                scheme['x-scalar-secret-token'] &&
+                oauth2Target.flowType === 'authorizationCode'
+              "
+              class="px-3 py-1"
+              :disabled="acquisitionLoader.isLoading"
+              size="sm"
+              type="button"
+              variant="outlined"
+              @click="handleAcquisitionRefresh(name)">
+              {{ translate('apiClient.requestAuthTab.refresh') }}
+            </ScalarButton>
+            <ScalarButton
+              class="text-c-1 px-3 py-1"
+              :loader="acquisitionLoader"
+              size="sm"
+              type="button"
+              variant="gradient"
+              @click="handleAcquisitionAuthorize(name)">
+              {{
+                translate('apiClient.requestAuthTab.authorizeVia', {
+                  name: oauth2Target.name,
+                })
+              }}
+            </ScalarButton>
+          </div>
+        </td>
+      </DataTableRow>
+
+      <!-- HTTP Basic Authentication -->
+      <template v-else-if="scheme?.scheme === 'basic'">
+        <DataTableRow>
+          <RequestAuthDataTableInput
+            :canReset="
+              canResetSecretField(
+                scheme,
+                'x-scalar-secret-username',
+                scheme['x-scalar-secret-username'],
+              )
+            "
+            class="text-c-2"
+            :environment
+            :modelValue="scheme['x-scalar-secret-username']"
+            placeholder="janedoe"
+            required
+            @reset="
+              eventBus.emit('auth:reset:security-scheme-secret', {
+                name,
+                field: 'x-scalar-secret-username',
+              })
+            "
+            @update:modelValue="
+              (v) =>
+                handleHttpSecretsUpdate({ 'x-scalar-secret-username': v }, name)
+            ">
+            {{ translate('apiClient.requestAuthTab.username') }}
+          </RequestAuthDataTableInput>
+        </DataTableRow>
+        <DataTableRow>
+          <RequestAuthDataTableInput
+            :canReset="
+              canResetSecretField(
+                scheme,
+                'x-scalar-secret-password',
+                scheme['x-scalar-secret-password'],
+              )
+            "
+            :environment
+            :modelValue="scheme['x-scalar-secret-password']"
+            placeholder="********"
+            type="password"
+            @reset="
+              eventBus.emit('auth:reset:security-scheme-secret', {
+                name,
+                field: 'x-scalar-secret-password',
+              })
+            "
+            @update:modelValue="
+              (v) =>
+                handleHttpSecretsUpdate({ 'x-scalar-secret-password': v }, name)
+            ">
+            {{ translate('apiClient.requestAuthTab.password') }}
+          </RequestAuthDataTableInput>
+        </DataTableRow>
+      </template>
+    </template>
+
+    <!-- API Key Authentication -->
+    <template v-else-if="scheme?.type === 'apiKey'">
+      <DataTableRow v-if="apiKeyHasName(scheme)">
+        <RequestAuthDataTableInput
+          :containerClass="getStaticBorderClass()"
+          :environment
+          :modelValue="scheme.name ?? ''"
+          placeholder="api-key"
+          @update:modelValue="
+            (v) => handleApiKeySecuritySchemeUpdate({ name: v }, name)
+          ">
+          {{ translate('apiClient.requestAuthTab.name') }}
+        </RequestAuthDataTableInput>
+      </DataTableRow>
+      <DataTableRow>
+        <RequestAuthDataTableInput
+          :canReset="
+            canResetSecretField(
+              scheme,
+              'x-scalar-secret-token',
+              scheme['x-scalar-secret-token'],
+            )
+          "
+          :containerClass="
+            apiKeyHasName(scheme) ? undefined : getStaticBorderClass()
+          "
+          :environment
+          :modelValue="scheme['x-scalar-secret-token']"
+          placeholder="QUxMIFlPVVIgQkFTRSBBUkUgQkVMT05HIFRPIFVT"
+          type="password"
+          @reset="
+            eventBus.emit('auth:reset:security-scheme-secret', {
+              name,
+              field: 'x-scalar-secret-token',
+            })
+          "
+          @update:modelValue="
+            (v) =>
+              handleApiKeySecretsUpdate({ 'x-scalar-secret-token': v }, name)
+          ">
+          {{ translate('apiClient.requestAuthTab.value') }}
+        </RequestAuthDataTableInput>
+      </DataTableRow>
+    </template>
+
+    <!-- OAuth 2.0  / OpenID Connect Authentication -->
+    <template
+      v-else-if="scheme?.type === 'oauth2' || scheme?.type === 'openIdConnect'">
+      <OAuth2Metadata
+        v-if="
+          scheme.type === 'oauth2' && (!isStatic || scheme.oauth2MetadataUrl)
+        "
+        :customFetch="options?.customFetch"
+        :environment
+        :eventBus
+        :name
+        :proxyUrl
+        :scheme />
+
+      <!-- OpenID Connect -->
+      <OpenIDConnect
+        v-if="scheme?.type === 'openIdConnect' && !visibleFlowKeys.length"
+        :customFetch="options?.customFetch"
+        :environment
+        :eventBus
+        :getStaticBorderClass
+        :name
+        :proxyUrl
+        :scheme />
+
+      <!-- Flow selector tabs: shown when multiple visible flows are available -->
+      <DataTableRow v-if="visibleFlowKeys.length > 1">
+        <td class="contents">
+          <div class="flex min-h-8 border-t text-base">
+            <div class="flex h-8 max-w-full gap-2.5 overflow-x-auto px-3">
+              <button
+                v-for="(key, ind) in visibleFlowKeys"
+                :key="key"
+                :class="getFlowTabClasses(key, ind)"
+                type="button"
+                @click="setActiveFlow(key)">
+                <span class="relative z-10">{{ key }}</span>
+              </button>
+            </div>
+          </div>
+        </td>
+      </DataTableRow>
+
+      <!-- OAuth2 flow configuration -->
+      <template
+        v-for="(key, ind) in visibleFlowKeys"
+        :key="key">
+        <OAuth2
+          v-if="scheme.flows && isFlowActive(key, ind)"
+          :environment
+          :eventBus
+          :flows="scheme.flows"
+          :name
+          :options
+          :proxyUrl
+          :scheme
+          :selectedScopes="scopes"
+          :server
+          :type="key"
+          @delete:scope="(event) => handleScopeDelete(name, event)"
+          @update:selectedScopes="(event) => handleScopesUpdate(name, event)"
+          @upsert:scope="(event) => handleScopeUpsert(name, event)" />
+      </template>
+    </template>
+
+    <!--
+      The hints below are rows with a cell of their own: the HTML parser moves anything else out of
+      the table. `contents` keeps the row and the cell out of the layout.
+    -->
+    <!-- Browser WebSocket connections cannot apply these broker credentials. -->
+    <tr
+      v-else-if="
+        scheme?.type === 'userPassword' ||
+        scheme?.type === 'plain' ||
+        scheme?.type === 'scramSha256' ||
+        scheme?.type === 'scramSha512' ||
+        scheme?.type === 'X509' ||
+        scheme?.type === 'symmetricEncryption' ||
+        scheme?.type === 'asymmetricEncryption' ||
+        scheme?.type === 'gssapi'
+      "
+      class="contents">
+      <td class="contents">
+        <div
+          class="text-c-3 flex items-center justify-center border-t p-4 px-4 text-center text-xs text-balance">
+          {{ translate('apiClient.requestAuthTab.unsupportedCredentials') }}
+        </div>
+      </td>
+    </tr>
+
+    <!-- Mutual TLS credentials are chosen during the browser-managed TLS handshake. -->
+    <tr
+      v-else-if="scheme?.type === 'mutualTLS'"
+      class="contents">
+      <td class="contents">
+        <div
+          class="text-c-3 flex items-center justify-center border-t p-4 px-4 text-center text-xs text-balance">
+          {{ translate('apiClient.requestAuthTab.mutualTlsHint') }}
+        </div>
+      </td>
+    </tr>
+
+    <!-- Scheme has a type we do not render inputs for -->
+    <tr
+      v-else-if="getUnsupportedSchemeType(scheme)"
+      class="contents">
+      <td class="contents">
+        <div
+          class="text-c-3 flex items-center justify-center border-t p-4 px-4 text-center text-xs text-balance">
+          {{
+            translate('apiClient.requestAuthTab.unsupportedType', {
+              type: getUnsupportedSchemeType(scheme) ?? '',
+            })
+          }}
+        </div>
+      </td>
+    </tr>
+
+    <!-- Scheme is missing type -->
+    <tr
+      v-else
+      class="contents">
+      <td class="contents">
+        <div
+          class="text-c-3 flex items-center justify-center border-t p-4 px-4 text-center text-xs text-balance">
+          {{
+            translate('apiClient.requestAuthTab.missingType', {
+              type: documentTypeLabel,
+            })
+          }}
+        </div>
+      </td>
+    </tr>
+  </template>
+
+  <!-- OAuth2 configuration modal (opened from the bearer scheme's gear) -->
+  <ScalarModal
+    v-if="isMounted && oauth2Target && oauth2Scheme"
+    size="sm"
+    :state="configModal"
+    :title="
+      translate('apiClient.requestAuthTab.configure', {
+        name: oauth2Target.name,
+      })
+    ">
+    <DataTable
+      :columns="['']"
+      presentational>
+      <OAuth2
+        :environment
+        :eventBus
+        :flows="oauth2Target.flows"
+        hideActions
+        :name="oauth2Target.name"
+        :options
+        :proxyUrl
+        :scheme="oauth2Scheme"
+        :selectedScopes="oauth2Target.scopes"
+        :server
+        :type="oauth2Target.flowType"
+        @delete:scope="(event) => handleScopeDelete(oauth2Target!.name, event)"
+        @update:selectedScopes="
+          (event) => handleScopesUpdate(oauth2Target!.name, event)
+        "
+        @upsert:scope="
+          (event) => handleScopeUpsert(oauth2Target!.name, event)
+        " />
+    </DataTable>
+    <div class="flex h-8 items-center justify-end gap-2 border-t">
+      <ScalarButton
+        class="p-0 px-2 py-0.5"
+        size="sm"
+        variant="outlined"
+        @click="configModal.hide()">
+        {{ translate('apiClient.requestAuthTab.cancel') }}
+      </ScalarButton>
+      <ScalarButton
+        class="p-0 px-2 py-0.5"
+        :loader="acquisitionLoader"
+        size="sm"
+        @click="handleConfigAuthorize">
+        {{ translate('apiClient.requestAuthTab.authorize') }}
+      </ScalarButton>
+    </div>
+  </ScalarModal>
+</template>

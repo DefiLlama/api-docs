@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/vue3'
+import type { Meta, StoryObj } from '@storybook/vue3-vite'
 import { ref } from 'vue'
 
 import { useLoadingState } from '../ScalarLoading'
@@ -26,17 +26,17 @@ type Story = StoryObj<typeof meta>
 export const Base: Story = {}
 
 export const Loading: Story = {
-  render: () => ({
+  render: (args) => ({
     components: { ScalarSearchInput },
     setup() {
-      const loadingState = useLoadingState()
-      loadingState.startLoading()
-      return { loadingState }
+      const loader = useLoadingState()
+      loader.start()
+      return { args, loader }
     },
-    template: `<ScalarSearchInput modelValue="My search query" :loading="loadingState" />`,
+    template: `<ScalarSearchInput v-bind="args" modelValue="My search query" :loader />`,
   }),
 }
 
 export const CustomClasses: Story = {
-  args: { class: 'border-red' },
+  args: { class: 'border border-red rounded' },
 }

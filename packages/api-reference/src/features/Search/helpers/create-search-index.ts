@@ -1,0 +1,345 @@
+import { DEFAULT_MODELS_SECTION_LABEL, type ModelsSectionLabel } from '@scalar/types/api-reference'
+import type { AsyncApiDocument } from '@scalar/types/asyncapi/3.1'
+import { getPathItemOperation, getResolvedPathItem } from '@scalar/workspace-store/helpers/for-each-path-item-operation'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import { combineParams } from '@scalar/workspace-store/request-example'
+import type { TraversedEntry } from '@scalar/workspace-store/schemas/navigation'
+import { isAsyncApiDocument, isOpenApiDocument } from '@scalar/workspace-store/schemas/type-guards'
+import type {
+  MediaTypeObject,
+  OpenApiDocument,
+  OperationObject,
+  ResponsesObject,
+  SchemaObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+
+import type { FuseData } from '@/features/Search/types'
+import { getAsyncApiModelSchema } from '@/helpers/get-async-api-model-schema'
+import { isIntroductionEntry } from '@/helpers/is-introduction-entry'
+import { createSearchFieldExtractor, extractParameterDescriptions, extractParameterNames } from '@/helpers/openapi'
+
+import { createAsyncApiSearchEntry } from './create-async-api-search-entry'
+
+/** Documents the search index can ingest. */
+type SearchableDocument = OpenApiDocument | AsyncApiDocument
+
+/**
+ * Resolves a schema from `components.schemas` for either document type.
+ *
+ * OpenAPI and AsyncAPI keep reusable schemas in the same place, so model search entries can read
+ * property names and descriptions from both. AsyncAPI entries need extra handling (ref siblings,
+ * multi-format wrappers, boolean schemas), which lives in {@link getAsyncApiModelSchema}.
+ */
+function getModelSchema(document: SearchableDocument | undefined, name: string): SchemaObject | undefined {
+  if (isOpenApiDocument(document)) {
+    return getResolvedRef(document.components?.schemas?.[name])
+  }
+
+  if (isAsyncApiDocument(document)) {
+    return getAsyncApiModelSchema(document, name)
+  }
+
+  return undefined
+}
+
+function responseExampleValueToString(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  try {
+    return JSON.stringify(value)
+  } catch (_error) {
+    return ''
+  }
+}
+
+function mediaTypeExamplesToStrings(mediaType: MediaTypeObject): string[] {
+  const examplesFromNamedMap = Object.values(mediaType.examples ?? {})
+    .flatMap((example) => {
+      const resolvedExample = getResolvedRef(example)
+
+      if (!resolvedExample || !('value' in resolvedExample)) {
+        return []
+      }
+
+      return responseExampleValueToString(resolvedExample.value)
+    })
+    .filter((value) => value.length > 0)
+
+  const mediaTypeExample =
+    'example' in mediaType && mediaType.example !== undefined ? responseExampleValueToString(mediaType.example) : ''
+
+  return mediaTypeExample ? [mediaTypeExample, ...examplesFromNamedMap] : examplesFromNamedMap
+}
+
+function extractResponseExamples(responses: ResponsesObject | undefined): string[] {
+  if (!responses) {
+    return []
+  }
+
+  return Object.values(responses)
+    .flatMap((response) => {
+      const resolvedResponse = getResolvedRef(response)
+      if (!resolvedResponse?.content) {
+        return []
+      }
+
+      return Object.values(resolvedResponse.content).flatMap((mediaType) => {
+        const resolvedMediaType = getResolvedRef(mediaType)
+        if (!resolvedMediaType) {
+          return []
+        }
+
+        return mediaTypeExamplesToStrings(resolvedMediaType)
+      })
+    })
+    .filter((value) => value.length > 0)
+}
+
+type CreateSearchIndexOptions = {
+  labels?: SearchIndexLabels
+  modelsSectionLabel?: ModelsSectionLabel
+}
+
+type SearchIndexLabels = {
+  heading: string
+  tagGroup: string
+  webhook: string
+  webhooks: string
+  introduction: string
+}
+
+const DEFAULT_SEARCH_INDEX_LABELS = {
+  heading: 'Heading',
+  tagGroup: 'Tag Group',
+  webhook: 'Webhook',
+  webhooks: 'Webhooks',
+  introduction: 'Introduction',
+} satisfies SearchIndexLabels
+
+/**
+ * Create a search index from a list of entries.
+ */
+export function createSearchIndex(
+  document: SearchableDocument | undefined,
+  options?: CreateSearchIndexOptions,
+): FuseData[] {
+  const index: FuseData[] = []
+  const extractFields = createSearchFieldExtractor(isOpenApiDocument(document) && /^3\.[12]\./.test(document.openapi))
+  const modelsSectionTitle = options?.modelsSectionLabel ?? DEFAULT_MODELS_SECTION_LABEL
+  const labels = options?.labels ?? DEFAULT_SEARCH_INDEX_LABELS
+  const tagTitles = new Map(
+    isOpenApiDocument(document)
+      ? document.tags?.map((tag) => [tag.name, tag['x-displayName'] ?? tag.summary ?? tag.name])
+      : [],
+  )
+
+  const asyncApiEntries = new Set<string>()
+
+  /** Recursively processes entries and their children to build the search index. */
+  function processEntries(entriesToProcess: TraversedEntry[]): void {
+    entriesToProcess.forEach((entry) => {
+      if (isAsyncApiDocument(document) && entry.type.startsWith('asyncapi-')) {
+        // Messages can appear under multiple operations. Keep their first rendered anchor, and
+        // collapse repeated tag appearances without merging distinct channels sharing a message.
+        let key = entry.id
+        if (entry.type === 'asyncapi-message') {
+          key = JSON.stringify([entry.type, entry.channelName, entry.messageName])
+        } else if (entry.type === 'asyncapi-channel') {
+          key = JSON.stringify([entry.type, entry.channelName])
+        } else if (entry.type === 'asyncapi-operation') {
+          key = JSON.stringify([entry.type, entry.operationName])
+        }
+        if (!asyncApiEntries.has(key)) {
+          const result = createAsyncApiSearchEntry(document, entry)
+          if (result) {
+            index.push(result)
+            asyncApiEntries.add(key)
+          }
+        }
+      } else {
+        addEntryToIndex(entry, index, document, modelsSectionTitle, labels, extractFields, tagTitles)
+      }
+
+      // Recursively process children if they exist
+      if ('children' in entry && entry.children) {
+        processEntries(entry.children)
+      }
+    })
+  }
+
+  processEntries(document?.['x-scalar-navigation']?.children ?? [])
+
+  return index
+}
+
+/**
+ * Adds a single entry to the search index, handling all entry types recursively.
+ *
+ * AsyncAPI channels, operations, and messages are handled by the traversal above.
+ */
+function addEntryToIndex(
+  entry: TraversedEntry,
+  index: FuseData[],
+  document: SearchableDocument | undefined,
+  modelsSectionTitle: string,
+  labels: SearchIndexLabels,
+  extractFields: ReturnType<typeof createSearchFieldExtractor>,
+  tagTitles: ReadonlyMap<string, string>,
+): void {
+  // OpenAPI-only branches read fields that do not exist on AsyncAPI documents (paths, webhooks,
+  // components.schemas). Narrow once here so each branch can dereference safely.
+  const openApiDocument = isOpenApiDocument(document) ? document : undefined
+
+  // Operation
+  if (entry.type === 'operation') {
+    const pathItem = getResolvedPathItem(openApiDocument?.paths?.[entry.path])
+    const operation: OperationObject =
+      getResolvedRef(getPathItemOperation(openApiDocument?.paths?.[entry.path], entry.method)) ?? {}
+    const operationWithPathParams = {
+      ...operation,
+      parameters: combineParams(pathItem?.parameters, operation.parameters),
+    }
+
+    const parameters = extractParameterNames(operationWithPathParams.parameters ?? [])
+    const parameterDescriptions = extractParameterDescriptions(operationWithPathParams.parameters ?? [])
+    const { names: body, descriptions: bodyDescriptions } = extractFields.operation(operation)
+    const responseExamples = extractResponseExamples(operationWithPathParams.responses)
+
+    index.push({
+      type: 'operation',
+      title: entry.title,
+      id: entry.id,
+      description: operationWithPathParams.description || '',
+      method: entry.method,
+      path: entry.path,
+      body,
+      bodyDescriptions,
+      parameters,
+      parameterDescriptions,
+      responseExamples,
+      operationId: operationWithPathParams.operationId,
+      tags: operation.tags?.flatMap((name) => {
+        const title = tagTitles.get(name)
+        return title && title !== name ? [name, title] : [name]
+      }),
+      entry,
+    })
+
+    return
+  }
+
+  // Webhook
+  if (entry.type === 'webhook') {
+    const webhook = getResolvedRef(getPathItemOperation(openApiDocument?.webhooks?.[entry.name], entry.method)) ?? {}
+    const webhookDescription = webhook.description || ''
+    const { names, descriptions } = extractFields.operation(webhook)
+
+    index.push({
+      id: entry.id,
+      type: 'webhook',
+      title: entry.title,
+      description: 'Webhook',
+      method: entry.method,
+      body: names.length ? names : '',
+      bodyDescriptions: webhookDescription ? [webhookDescription, ...descriptions] : descriptions,
+      operationId: webhook.operationId,
+      entry,
+    })
+
+    return
+  }
+
+  // Model
+  if (entry.type === 'model') {
+    const schema = getModelSchema(document, entry.name)
+    const schemaDescription = schema?.description ?? ''
+    const { names: propertyNames, descriptions: propertyDescriptions } = extractFields.schema(
+      openApiDocument?.components?.schemas?.[entry.name] ?? schema,
+    )
+
+    index.push({
+      type: 'model',
+      title: entry.title,
+      description: modelsSectionTitle,
+      id: entry.id,
+      body: propertyNames,
+      bodyDescriptions: schemaDescription ? [schemaDescription, ...propertyDescriptions] : propertyDescriptions,
+      entry,
+    })
+
+    return
+  }
+
+  // Models heading
+  if (entry.type === 'models') {
+    index.push({
+      id: entry.id,
+      type: 'heading',
+      title: modelsSectionTitle,
+      description: labels.heading,
+      body: '',
+      entry,
+    })
+
+    return
+  }
+
+  // Tag
+  if (entry.type === 'tag' && entry.isWebhooks === true) {
+    index.push({
+      id: entry.id,
+      type: 'heading',
+      title: labels.webhooks,
+      description: labels.heading,
+      body: '',
+      entry,
+    })
+
+    return
+  }
+
+  // Regular tags, including OpenAPI 3.2 operation-less parent sections (which are `isGroup: true`
+  // but real tags), keep their own description.
+  if (entry.type === 'tag' && entry.isTagGroup !== true) {
+    index.push({
+      id: entry.id,
+      title: entry.title,
+      description: entry.description || '',
+      type: 'tag',
+      body: '',
+      entry,
+    })
+
+    return
+  }
+
+  // Legacy `x-tagGroups` wrappers are not real tags, so they carry the generic group label.
+  if (entry.type === 'tag' && entry.isTagGroup === true) {
+    index.push({
+      id: entry.id,
+      title: entry.title,
+      description: labels.tagGroup,
+      type: 'tag',
+      body: '',
+      entry,
+    })
+
+    return
+  }
+
+  // Headings from info.description
+  if (entry.type === 'text') {
+    index.push({
+      id: entry.id,
+      type: 'heading',
+      title: isIntroductionEntry(entry) ? labels.introduction : (entry.title ?? ''),
+      description: labels.heading,
+      body: '',
+      entry,
+    })
+
+    return
+  }
+}

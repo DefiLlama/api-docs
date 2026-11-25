@@ -1,10 +1,8 @@
 import galaxyContent from '@scalar/galaxy/latest.yaml?raw'
-import { describe, expect, it } from 'vitest'
+import type { AnyApiReferenceConfiguration } from '@scalar/types/api-reference'
+import { describe, expect, it, vi } from 'vitest'
 
-import { waitFor } from '@test/utils/wait-for'
-import type { ReferenceProps } from './types'
-
-describe.sequential('standalone', { retry: 3, timeout: 10000 }, () => {
+describe('standalone', { concurrent: false, retry: 3, timeout: 10000 }, () => {
   // Generates the required script tag on the fly:
   //
   // <script id="api-reference" type="application/json">
@@ -21,10 +19,10 @@ describe.sequential('standalone', { retry: 3, timeout: 10000 }, () => {
 
     await import('./standalone')
 
-    await waitFor(() => {
-      const reference = document.querySelector('.scalar-api-reference')
+    await vi.waitFor(() => {
+      const reference = document.querySelector('.scalar-api-reference .references-rendered')
       const header = reference?.querySelector('h1')
-      return header?.innerHTML === 'Example'
+      expect(header?.innerHTML).toBe('Example')
     })
   })
 
@@ -37,10 +35,10 @@ describe.sequential('standalone', { retry: 3, timeout: 10000 }, () => {
 
     document.dispatchEvent(new Event('scalar:reload-references'))
 
-    await waitFor(() => {
-      const reference = document.querySelector('.scalar-api-reference')
+    await vi.waitFor(() => {
+      const reference = document.querySelector('.scalar-api-reference .references-rendered')
       const header = reference?.querySelector('h1')
-      return header?.innerHTML === 'Example'
+      expect(header?.innerHTML).toBe('Example')
     })
   })
 
@@ -48,19 +46,20 @@ describe.sequential('standalone', { retry: 3, timeout: 10000 }, () => {
     const event = new CustomEvent('scalar:update-references-config', {
       detail: {
         configuration: {
-          // @ts-expect-error old format
           spec: {
             content: galaxyContent,
           },
         },
-      } satisfies ReferenceProps,
+      } satisfies {
+        configuration?: AnyApiReferenceConfiguration
+      },
     })
 
     document.dispatchEvent(event)
 
-    await waitFor(() => {
-      const header = document.querySelector('[data-v-app] h1')
-      return header?.innerHTML === 'Scalar Galaxy'
+    await vi.waitFor(() => {
+      const header = document.querySelector('[data-v-app] .references-rendered h1')
+      expect(header?.innerHTML).toBe('Scalar Galaxy')
     })
   })
 })

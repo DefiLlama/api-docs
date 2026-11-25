@@ -1,0 +1,192 @@
+import { isHttpMethod } from '@scalar/helpers/http/is-http-method'
+import type { WorkspaceStore } from '@scalar/workspace-store/client'
+import {
+  forEachPathItemOperation,
+  getPathItemOperation,
+} from '@scalar/workspace-store/helpers/for-each-path-item-operation'
+import { getPathEntries } from '@scalar/workspace-store/helpers/get-path-entries'
+import { getOperationEntries } from '@scalar/workspace-store/navigation'
+import type { TraversedEntry, TraversedExample } from '@scalar/workspace-store/schemas/navigation'
+import { isOpenApiDocument } from '@scalar/workspace-store/schemas/type-guards'
+
+/**
+ * Payload for routing and opening the API client modal.
+ *
+ * `path` and `method` are optional so a caller can update `documentSlug` on its own.
+ * `route()` fills in whichever fields are missing from its "default" placeholders, which
+ * resolve to the document's first operation instead of a route that does not exist.
+ */
+export type RoutePayload = {
+  /** API path, or webhook name when `isWebhook` is true. */
+  path?: string
+  method?: string
+  example?: string
+  documentSlug?: string
+  /** Resolve `path` from the OpenAPI webhooks map. */
+  isWebhook?: boolean
+}
+
+/** Raw input values that may contain "default" placeholders. */
+export type DefaultEntities = {
+  path: string
+  method: string
+  example: string
+  documentSlug: string
+  isWebhook?: boolean
+}
+
+/** Context for resolving route parameters from the workspace store. */
+type ResolverContext = {
+  store: WorkspaceStore
+  documentSlug: string | undefined
+}
+
+/** Type guard to check if an entry is an example. */
+const isExample = (entry: TraversedEntry): entry is TraversedExample => entry.type === 'example'
+
+/**
+ * Gets the document from the workspace store.
+ * Returns undefined if the document slug is not provided or the document does not exist.
+ * Modal routing is OpenAPI-only — AsyncAPI docs surface as undefined here.
+ */
+const getDocument = (ctx: ResolverContext) => {
+  const doc = ctx.store.workspace.documents[ctx.documentSlug ?? '']
+  return isOpenApiDocument(doc) ? doc : undefined
+}
+
+/**
+ * Resolves the document slug from a raw input value.
+ *
+ * When "default" is specified and no document exists with that slug,
+ * we fall back to the active document or the first available document.
+ * Modal routing is OpenAPI-only, so the fallback skips AsyncAPI documents —
+ * otherwise opening the modal with default params on a workspace that has
+ * an AsyncAPI active or first document would hand a slug back that
+ * `getDocument` then resolves to undefined, rendering the modal with
+ * `document: null` even when OpenAPI documents exist.
+ */
+export const resolveDocumentSlug = (store: WorkspaceStore, slug: string | undefined): string | undefined => {
+  const hasMatchingDocument = slug !== 'default' || store.workspace.documents[slug] !== undefined
+
+  if (hasMatchingDocument) {
+    return slug
+  }
+
+  // Prefer the active document when it is OpenAPI; otherwise pick the first
+  // OpenAPI document in the workspace.
+  const activeSlug = store.workspace['x-scalar-active-document']
+  if (activeSlug && isOpenApiDocument(store.workspace.documents[activeSlug])) {
+    return activeSlug
+  }
+
+  return Object.entries(store.workspace.documents).find(([, document]) => isOpenApiDocument(document))?.[0]
+}
+
+/**
+ * Resolves the path from a raw input value.
+ *
+ * When "default" is specified, returns the first available path in the document.
+ * This is useful for initial navigation when no specific path is requested.
+ */
+export const resolvePath = (ctx: ResolverContext, path: string | undefined, isWebhook = false): string | undefined => {
+  const document = getDocument(ctx)
+
+  if (!document) {
+    return undefined
+  }
+
+  if (path === 'default') {
+    return isWebhook ? Object.keys(document.webhooks ?? {})[0] : getPathEntries(document.paths)[0]?.[0]
+  }
+
+  return path
+}
+
+/**
+ * Resolves the HTTP method from a raw input value.
+ *
+ * When "default" is specified, returns the first valid HTTP method for the given path.
+ * This ensures we select a real method rather than metadata keys like "parameters" or "summary".
+ */
+export const resolveMethod = (
+  ctx: ResolverContext,
+  path: string | undefined,
+  method: string | undefined,
+  isWebhook = false,
+): string | undefined => {
+  const document = getDocument(ctx)
+
+  if (!document || !path) {
+    return undefined
+  }
+
+  const pathItem = isWebhook ? document.webhooks?.[path] : document.paths?.[path]
+  if (method === 'default' && !getPathItemOperation(pathItem, method)) {
+    const methods: string[] = []
+    forEachPathItemOperation(pathItem, (method) => methods.push(method))
+    return methods[0]
+  }
+
+  return method && (isHttpMethod(method) || getPathItemOperation(pathItem, method)) ? method : undefined
+}
+
+/**
+ * Resolves the example name from a raw input value.
+ *
+ * When "default" is specified, returns the first available example name.
+ * Falls back to "default" when no examples exist, which signals to use the default request body.
+ */
+export const resolveExampleName = (
+  ctx: ResolverContext,
+  operation: TraversedEntry | undefined,
+  exampleKey: string | undefined,
+): string => {
+  const document = getDocument(ctx)
+
+  if (!document || operation?.type !== 'operation') {
+    return 'default'
+  }
+
+  const examples = operation.children?.filter(isExample) ?? []
+  const matchingExample = examples.find((child) => child.name === exampleKey)
+
+  if (matchingExample) {
+    return matchingExample.name
+  }
+
+  if (exampleKey === 'default') {
+    return examples[0]?.name ?? 'default'
+  }
+
+  return 'default'
+}
+
+/**
+ * Resolves all route parameters from raw input values to their actual values.
+ *
+ * This function handles "default" placeholders by looking up actual values from the workspace store.
+ * It ensures the modal can be opened even when the caller does not know specific paths, methods, or examples.
+ */
+export const resolveRouteParameters = (store: WorkspaceStore, params: DefaultEntities): Partial<RoutePayload> => {
+  const documentSlug = resolveDocumentSlug(store, params.documentSlug)
+  const ctx: ResolverContext = { store, documentSlug }
+  const isWebhook = params.isWebhook ?? false
+
+  const path = resolvePath(ctx, params.path, isWebhook)
+  const method = resolveMethod(ctx, path, params.method, isWebhook)
+  const routeType = isWebhook ? { isWebhook: true as const } : {}
+
+  const traversedDocument = getDocument(ctx)?.['x-scalar-navigation']
+
+  if (!traversedDocument) {
+    return { documentSlug, path, method, example: 'default', ...routeType }
+  }
+
+  const operations = getOperationEntries(traversedDocument)
+  const operation = operations
+    .get(`${path}|${method}`)
+    ?.find((entry) => entry.type === (isWebhook ? 'webhook' : 'operation'))
+  const example = resolveExampleName(ctx, operation, params.example)
+
+  return { documentSlug, path, method, example, ...routeType }
+}

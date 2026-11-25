@@ -1,58 +1,85 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
-    "ignore": [
-      "node_modules",
-      "dist",
-      ".venv",
-      ".turbo",
-      ".nuxt",
-      ".vite",
-      ".output",
-      ".vite-ssg-temp",
-      "**/vite.config.ts.timestamp-*",
-      "package.json",
-      "scalar.config.json",
-      "**/test-results/**",
-      "**/build/**",
-      "**/cdn/**",
-      "**/cloudbuild.json",
-      "**/fixtures/**",
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/playwright-report/**",
-      "**/pnpm-lock.yaml",
-      "**/openapi3-examples/**",
-      "**/.docusaurus/**",
-      "examples/nestjs-api-reference-fastify/**",
-      "examples/nestjs-api-reference-express/**",
-      "*/storybook-static/*",
-      "**/httpsnippet-lite/**",
-      "**/.next/**",
-      "**/obj/**",
-      "**/bin/**",
-      "packages/openapi-parser/src/schemas/**/*.ts"
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!!.worktrees",
+      "!!.claude",
+      "!!.codex/worktrees",
+      "!**/.venv",
+      "!**/.turbo",
+      "!**/.nuxt",
+      "!**/.vite",
+      "!**/.output",
+      "!**/.vite-ssg-temp",
+      "!**/vite.config.ts.timestamp-*",
+      "!**/package.json",
+      "!**/test-results/**",
+      "!**/build/**",
+      "!**/cdn/**",
+      "!**/fixtures/**",
+      "!**/node_modules/**",
+      "!**/dist/**",
+      "!**/playwright-report/**",
+      "!**/playwright-results.json",
+      "!**/pnpm-lock.yaml",
+      "!**/.pnpm-store/**",
+      "!**/.docusaurus/**",
+      "!**/examples/nestjs-api-reference-fastify/**",
+      "!**/examples/nestjs-api-reference-express/**",
+      "!**/*/storybook-static/**/*",
+      "!**/.next/**",
+      "!**/.svelte-kit",
+      "!**/obj/**",
+      "!**/bin/**",
+      "!**/packages/openapi-validator/src/schemas/**/*.ts",
+      "!**/packages/openapi-parser/tests/openapi3-examples/**/*.{yml,yaml,json}",
+      "!**/packages/openapi-validator/tests/openapi3-examples/**/*.{yml,yaml,json}",
+      "!integrations/**/scalar.js",
+      "!integrations/**/standalone.js",
+      "!**/packages/api-reference/esm.js",
+      "!**/target/**",
+      "!**/*.svg",
+      "!integrations/docker/assets/index.html"
     ]
   },
-  "organizeImports": {
-    "enabled": true
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "identifierOrder": "lexicographic",
+            "groups": [":NODE:", ":BLANK_LINE:", ":PACKAGE:", ":BLANK_LINE:", ":ALIAS:", ":BLANK_LINE:", ":PATH:"]
+          }
+        }
+      }
+    }
   },
   "formatter": {
     "formatWithErrors": false,
-    "ignore": [
-      ".git",
-      ".svn",
-      ".hg",
-      ".tmp",
-      "node_modules",
-      "dist",
-      "generated",
-      "venv",
-      ".venv",
-      "playwright-report",
-      ".vite-ssg-temp",
-      "pnpm-lock.yaml",
-      "fixtures"
+    "includes": [
+      "**",
+      "!**/.git",
+      "!**/.svn",
+      "!**/.hg",
+      "!**/.tmp",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/generated",
+      "!**/venv",
+      "!**/.venv",
+      "!**/playwright-report",
+      "!**/.vite-ssg-temp",
+      "!**/pnpm-lock.yaml",
+      "!**/fixtures"
     ],
     "enabled": true,
     "lineEnding": "lf",
@@ -79,44 +106,48 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": false,
+      "preset": "none",
       "complexity": {
         "noExtraBooleanCast": "warn",
-        "noMultipleSpacesInRegularExpressionLiterals": "warn",
         "noUselessCatch": "warn",
         "noUselessTypeConstraint": "warn",
-        "noWith": "warn",
         "noForEach": "off",
         "useFlatMap": "warn",
         "useArrowFunction": "warn",
-        "useOptionalChain": "warn"
+        "useOptionalChain": "warn",
+        "noAdjacentSpacesInRegex": "warn",
+        "noArguments": "warn"
       },
       "correctness": {
-        "noConstAssign": "warn",
+        "noConstAssign": "error",
         "noConstantCondition": "warn",
+        "noConstantMathMinMaxClamp": "error",
         "noEmptyCharacterClassInRegex": "warn",
         "noEmptyPattern": "warn",
-        "noGlobalObjectCalls": "warn",
+        "noGlobalDirnameFilename": "error",
+        "noGlobalObjectCalls": "error",
         "noInnerDeclarations": "warn",
-        "noInvalidBuiltinInstantiation": "warn",
-        "noInvalidConstructorSuper": "warn",
+        "noInvalidBuiltinInstantiation": "error",
+        "noInvalidConstructorSuper": "error",
+        "noInvalidUseBeforeDeclaration": "error",
         "noNonoctalDecimalEscape": "warn",
-        "noPrecisionLoss": "warn",
-        "noSelfAssign": "warn",
-        "noSetterReturn": "warn",
+        "noPrecisionLoss": "error",
+        "noSelfAssign": "error",
+        "noSetterReturn": "error",
+        "noStringCaseMismatch": "error",
         "noSwitchDeclarations": "warn",
-        "noUnreachable": "warn",
-        "noUnreachableSuper": "warn",
-        "noUnsafeFinally": "warn",
-        "noUnsafeOptionalChaining": "warn",
+        "noUnreachable": "error",
+        "noUnreachableSuper": "error",
+        "noUnsafeFinally": "error",
+        "noUnsafeOptionalChaining": "error",
         "noUnusedLabels": "warn",
         "noUnusedPrivateClassMembers": "warn",
         "noUnusedVariables": "warn",
-        "useArrayLiterals": "warn",
-        "useIsNan": "warn",
-        "useValidForDirection": "warn",
+        "useIsNan": "error",
+        "useValidForDirection": "error",
         "useYield": "warn",
-        "noUnusedImports": "warn"
+        "noUnusedImports": "warn",
+        "useValidTypeof": "error"
       },
       "style": {
         "noNamespace": "warn",
@@ -131,58 +162,64 @@
         "useExportType": "warn",
         "noUnusedTemplateLiteral": "warn",
         "useShorthandFunctionType": "warn",
-        "noArguments": "warn",
-        "noVar": "warn",
-        "useConst": "warn"
+        "useConst": "warn",
+        "useArrayLiterals": "warn",
+        "noDescendingSpecificity": "warn",
+        "noNestedTernary": "warn"
       },
       "suspicious": {
-        "noAsyncPromiseExecutor": "warn",
-        "noCatchAssign": "warn",
-        "noClassAssign": "warn",
-        "noCompareNegZero": "warn",
+        "noAsyncPromiseExecutor": "error",
+        "noCatchAssign": "error",
+        "noClassAssign": "error",
+        "noCompareNegZero": "error",
         "noControlCharactersInRegex": "warn",
         "noDebugger": "warn",
-        "noDuplicateCase": "warn",
-        "noDuplicateClassMembers": "warn",
-        "noDuplicateObjectKeys": "warn",
-        "noDuplicateParameters": "warn",
+        "noDuplicateCase": "error",
+        "noDuplicateClassMembers": "error",
+        "noDuplicateObjectKeys": "error",
+        "noDuplicateParameters": "error",
         "noEmptyBlockStatements": "warn",
         "noExtraNonNullAssertion": "warn",
-        "noFallthroughSwitchClause": "warn",
-        "noFunctionAssign": "warn",
-        "noGlobalAssign": "warn",
-        "noImportAssign": "warn",
+        "noFallthroughSwitchClause": "error",
+        "noFunctionAssign": "error",
+        "noGlobalAssign": "error",
+        "noImportAssign": "error",
         "noMisleadingCharacterClass": "warn",
         "noMisleadingInstantiator": "warn",
+        "noMisrefactoredShorthandAssign": "error",
         "noPrototypeBuiltins": "warn",
-        "noRedeclare": "warn",
+        "noRedeclare": "error",
+        "noSelfCompare": "error",
         "noShadowRestrictedNames": "warn",
         "noSparseArray": "warn",
+        "noTsIgnore": "error",
         "noUnsafeDeclarationMerging": "warn",
-        "noUnsafeNegation": "warn",
-        "useGetterReturn": "warn",
+        "noUnsafeNegation": "error",
+        "useGetterReturn": "error",
         "useNamespaceKeyword": "warn",
-        "useValidTypeof": "warn",
         "noDoubleEquals": "warn",
         "noThenProperty": "warn",
         "useIsArray": "warn",
         "noExplicitAny": "off",
-        "noExportsInTest": "warn"
+        "noExportsInTest": "error",
+        "noWith": "warn",
+        "noVar": "warn",
+        "useAwait": "error",
+        "useGuardForIn": "warn"
       },
       "performance": {
         "noDelete": "off",
         "noReExportAll": "warn",
-        "noBarrelFile": "warn"
+        "noBarrelFile": "error"
       },
       "nursery": {
-        "noDescendingSpecificity": "warn",
-        "useGuardForIn": "warn"
+        "noFloatingPromises": "warn"
       }
     }
   },
   "overrides": [
     {
-      "include": ["**/*.vue"],
+      "includes": ["**/*.vue"],
       "formatter": {
         "enabled": false
       },
@@ -197,24 +234,119 @@
             "noUnusedImports": "off"
           }
         }
-      }
-    },
-    {
-      "include": ["**/tsconfig.*.json", "**/tsconfig.json"],
-      "json": {
-        "parser": {
-          "allowComments": true
+      },
+      "assist": {
+        "actions": {
+          "source": {
+            "organizeImports": "off"
+          }
         }
       }
     },
     {
-      "include": ["**/*.tsx"],
+      "includes": ["**/*.tsx"],
       "javascript": {
         "jsxRuntime": "reactClassic"
       }
     },
     {
-      "include": ["packages/api-reference/**/*.ts", "packages/openapi-parser/**/*.ts"],
+      "includes": ["packages/*/src/**", "!packages/*/src/**/*.{test,e2e}.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@test/*", "**/test/**"],
+                    "message": "Do not import test helpers inside source files"
+                  },
+                  {
+                    "group": ["@scalar/types"],
+                    "message": "Import from specific entry points (`/api-reference`, ...)"
+                  },
+                  {
+                    "group": ["@scalar/components"],
+                    "message": "Import from a component subpath (e.g. `@scalar/components/button`) instead of the package barrel."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/types/src/**", "!packages/types/src/zod.ts", "!packages/types/src/**/*.{test,e2e}.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@test/*", "**/test/**"],
+                    "message": "Do not import test helpers inside source files"
+                  },
+                  {
+                    "group": ["@scalar/types"],
+                    "message": "Import from specific entry points (`/api-reference`, ...)"
+                  },
+                  {
+                    "group": ["@scalar/components"],
+                    "message": "Import from a component subpath (e.g. `@scalar/components/button`) instead of the package barrel."
+                  },
+                  {
+                    "group": ["zod", "zod/**"],
+                    "message": "Import Zod from the local zod wrapper so its CSP configuration runs before schemas are created."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["projects/**/*.{ts,tsx}", "integrations/**/*.{ts,tsx}", "examples/**/*.{ts,tsx}", "!**/dist/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@scalar/components"],
+                    "message": "Import from a component subpath (e.g. `@scalar/components/button`) instead of the package barrel."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/*/src/**/index.{js,ts}",
+        "projects/*/src/**/index.{js,ts}",
+        "integrations/*/index.ts",
+        "integrations/*/src/**/index.ts",
+        "packages/highlight/src/{all,lazy}.ts"
+      ],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/packages/api-reference/**/*.ts", "**/packages/openapi-parser/**/*.ts"],
       "linter": {
         "rules": {
           "performance": {
@@ -222,6 +354,43 @@
           }
         }
       }
+    },
+    {
+      "includes": ["**/*.svelte", "**/*.astro"],
+      "assist": {
+        "actions": {
+          "source": {
+            "organizeImports": "off"
+          }
+        }
+      },
+      "linter": {
+        "rules": {
+          "style": {
+            "useConst": "off",
+            "useImportType": "off"
+          },
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off"
+          }
+        }
+      }
     }
-  ]
+  ],
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "markdown": {
+    "formatter": {
+      "enabled": false
+    }
+  },
+  "yaml": {
+    "formatter": {
+      "enabled": false
+    }
+  }
 }

@@ -1,26 +1,42 @@
-import { Type, type Static } from '@sinclair/typebox'
+import { Type } from '@scalar/typebox'
+
+import { type OAuthFlowDeviceAuthorization, OAuthFlowDeviceAuthorizationSchema } from '@/schemas/v3.2/strict/oauth-flow'
+
 import {
-  OAuthFlowImplicitSchema,
-  OAuthFlowPasswordSchema,
-  OAuthFlowClientCredentialsSchema,
+  type OAuthFlowAuthorizationCode,
   OAuthFlowAuthorizationCodeSchema,
+  type OAuthFlowClientCredentials,
+  OAuthFlowClientCredentialsSchema,
+  type OAuthFlowImplicit,
+  OAuthFlowImplicitSchema,
+  type OAuthFlowPassword,
+  OAuthFlowPasswordSchema,
 } from './oauth-flow'
-import { compose } from '@/schemas/compose'
 
 /**
  * Allows configuration of the supported OAuth Flows.
  */
-export const OAuthFlowsObjectSchema = compose(
-  Type.Object({
-    /** Configuration for the OAuth Implicit flow */
-    implicit: Type.Optional(OAuthFlowImplicitSchema),
-    /** Configuration for the OAuth Resource Owner Password flow */
-    password: Type.Optional(OAuthFlowPasswordSchema),
-    /** Configuration for the OAuth Client Credentials flow. Previously called application in OpenAPI 2.0. */
-    clientCredentials: Type.Optional(OAuthFlowClientCredentialsSchema),
-    /** Configuration for the OAuth Authorization Code flow. Previously called accessCode in OpenAPI 2.0. */
-    authorizationCode: Type.Optional(OAuthFlowAuthorizationCodeSchema),
-  }),
-)
+export const OAuthFlowsObjectSchemaDefinition = Type.Object({
+  /** Configuration for the OAuth Implicit flow */
+  /** Device authorization is retained by the shared runtime model for OpenAPI 3.2 documents. */
+  deviceAuthorization: Type.Optional(OAuthFlowDeviceAuthorizationSchema),
+  implicit: Type.Optional(OAuthFlowImplicitSchema),
+  /** Configuration for the OAuth Resource Owner Password flow */
+  password: Type.Optional(OAuthFlowPasswordSchema),
+  /** Configuration for the OAuth Client Credentials flow. Previously called application in OpenAPI 2.0. */
+  clientCredentials: Type.Optional(OAuthFlowClientCredentialsSchema),
+  /** Configuration for the OAuth Authorization Code flow. Previously called accessCode in OpenAPI 2.0. */
+  authorizationCode: Type.Optional(OAuthFlowAuthorizationCodeSchema),
+})
 
-export type OAuthFlowsObject = Static<typeof OAuthFlowsObjectSchema>
+export type OAuthFlowsObject = {
+  /** Configuration for the OAuth Implicit flow */
+  deviceAuthorization?: OAuthFlowDeviceAuthorization
+  implicit?: OAuthFlowImplicit
+  /** Configuration for the OAuth Resource Owner Password flow */
+  password?: OAuthFlowPassword
+  /** Configuration for the OAuth Client Credentials flow. Previously called application in OpenAPI 2.0. */
+  clientCredentials?: OAuthFlowClientCredentials
+  /** Configuration for the OAuth Authorization Code flow. Previously called accessCode in OpenAPI 2.0. */
+  authorizationCode?: OAuthFlowAuthorizationCode
+}

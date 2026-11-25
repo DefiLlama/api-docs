@@ -1,11 +1,40 @@
-import { getHeadingsFromMarkdown, getLowestHeadingLevel } from '@/navigation/helpers/utils'
-import type { Heading } from '@/navigation/types'
-import type { TraversedDescription } from '@/schemas/navigation'
+import type { AsyncApiInfoObject } from '@scalar/types/asyncapi/3.1'
 
-export const DEFAULT_INTRODUCTION_SLUG = 'introduction'
+import { getHeadingsFromMarkdown, getLowestHeadingLevel } from '@/navigation/helpers/utils'
+import type { TraverseSpecOptions } from '@/navigation/types'
+import type { TraversedDescription } from '@/schemas/navigation'
+import type { InfoObject } from '@/schemas/v3.2/strict/info'
+
+const DEFAULT_DESCRIPTION_ENTRY = {
+  TITLE: 'Introduction',
+  SLUG: 'introduction',
+} as const
+
+const getDefaultDescriptionEntry = (
+  generateId: TraverseSpecOptions['generateId'],
+  parentId: string,
+  info: InfoObject | AsyncApiInfoObject,
+) => {
+  const id = generateId({
+    type: 'text',
+    depth: 1,
+    slug: DEFAULT_DESCRIPTION_ENTRY.SLUG,
+    parentId: parentId,
+    info,
+    value: DEFAULT_DESCRIPTION_ENTRY.TITLE,
+  })
+
+  const entry = {
+    id,
+    title: DEFAULT_DESCRIPTION_ENTRY.TITLE,
+    type: 'text',
+  } satisfies TraversedDescription
+
+  return entry
+}
 
 /**
- * Creates a hierarchical navigation structure from markdown headings in an OpenAPI description.
+ * Creates a hierarchical navigation structure from markdown headings in an OpenAPI or AsyncAPI description.
  *
  * The function processes markdown headings to create a two-level navigation tree:
  * - Level 1: Main sections (based on the lowest heading level found)
@@ -15,61 +44,78 @@ export const DEFAULT_INTRODUCTION_SLUG = 'introduction'
  * is automatically added as the first entry.
  *
  * @param description - The markdown description text to process
- * @param titlesMap - Map to store heading IDs and titles for mobile header navigation
- * @param getHeadingId - Function to generate unique IDs for headings
- * @returns Array of navigation entries with their hierarchy
+ * @param generateId - Function to generate unique IDs for headings
+ * @param parentId - The ID of the parent entry
+ * @param info - OpenAPI or AsyncAPI Info Object
+ *
+ * @returns Array of TraversedDescription entries with their hierarchy
  */
-export const traverseDescription = (
-  description: string | undefined,
-  /** Map of titles for the mobile header */
-  titlesMap: Map<string, string>,
-  getHeadingId: (heading: Heading) => string,
-): TraversedDescription[] => {
-  if (!description?.trim()) {
-    return []
+export const traverseDescription = ({
+  generateId,
+  parentId,
+  info,
+}: {
+  generateId: TraverseSpecOptions['generateId']
+  parentId: string
+  info: InfoObject | AsyncApiInfoObject
+}): TraversedDescription[] => {
+  const description = info.description?.trim()
+
+  if (!description) {
+    // Return a single entry for the introduction section
+    return [getDefaultDescriptionEntry(generateId, parentId, info)]
   }
 
   const headings = getHeadingsFromMarkdown(description)
   const lowestLevel = getLowestHeadingLevel(headings)
 
   const entries: TraversedDescription[] = []
+
+  let descriptionHeadingsEntry: TraversedDescription | null = null
   let currentParent: TraversedDescription | null = null
 
   // Add "Introduction" as the first heading
-  if (description && !description.trim().startsWith('#')) {
-    const heading: Heading = {
-      depth: 1,
-      value: 'Introduction',
-      slug: DEFAULT_INTRODUCTION_SLUG,
-    }
-
-    const id = getHeadingId(heading)
-    const title = heading.value
-
-    entries.push({
-      id,
-      title,
-      type: 'text',
-    })
-    titlesMap.set(id, title)
+  if (!description.startsWith('#')) {
+    const entry = getDefaultDescriptionEntry(generateId, parentId, info)
+    entries.push(entry)
+    descriptionHeadingsEntry = entry
   }
 
-  // Traverse for the rest
+  // Go through each heading
   for (const heading of headings) {
+    // Skip if not a main or sub heading
     if (heading.depth !== lowestLevel && heading.depth !== lowestLevel + 1) {
       continue
     }
 
     const entry: TraversedDescription = {
-      id: getHeadingId(heading),
+      id: generateId({
+        type: 'text',
+        depth: heading.depth,
+        slug: heading.slug,
+        parentId: parentId,
+        info: info,
+        value: heading.value,
+      }),
       title: heading.value,
       type: 'text',
     }
-    titlesMap.set(entry.id, entry.title)
 
     if (heading.depth === lowestLevel) {
       entry.children = []
-      entries.push(entry)
+
+      // Add to description headings to the 'Introduction' entry
+      if (descriptionHeadingsEntry) {
+        if (!descriptionHeadingsEntry.children) {
+          descriptionHeadingsEntry.children = []
+        }
+        descriptionHeadingsEntry.children.push(entry)
+      }
+      // If no 'Introduction' entry, add to entries
+      else {
+        entries.push(entry)
+      }
+
       currentParent = entry
     } else if (currentParent) {
       currentParent.children?.push(entry)

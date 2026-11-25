@@ -1,5 +1,141 @@
 # @scalar/icons
 
+## 0.7.11
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.7.10
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.7.9
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+
+## 0.7.8
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.7.7
+
+### Patch Changes
+
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 0.7.6
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.7.5
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.7.4
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.7.3
+
+### Patch Changes
+
+- [#9310](https://github.com/scalar/scalar/pull/9310): The library icon resolver (`@scalar/icons/library`) now eagerly bundles the `interface-content-folder` SVG and pre-populates the icon cache with it. This is the default fallback used by `<SidebarItem>` whenever an item doesn't specify a custom `x-scalar-icon`, so the most common path through the sidebar no longer waits on a per-icon dynamic chunk to resolve. The other 83 SVGs in the library remain lazy.
+
+## 0.7.2
+
+### Patch Changes
+
+- [#8715](https://github.com/scalar/scalar/pull/8715): fix: correct main field in package.json to point to .js instead of non-existent .cjs files
+
+## 0.7.1
+
+### Patch Changes
+
+- [#8624](https://github.com/scalar/scalar/pull/8624): fix: use shallowref to prevent vue warning
+
+## 0.7.0
+
+### Minor Changes
+
+- [#8559](https://github.com/scalar/scalar/pull/8559): feat(icons): improve icon generation with direct re-exports and lazy-load library icons with caching
+
+## 0.6.4
+
+### Patch Changes
+
+- [#8563](https://github.com/scalar/scalar/pull/8563): fix: type declarations don't use the full path for imports
+
+## 0.6.3
+
+### Patch Changes
+
+- [#8529](https://github.com/scalar/scalar/pull/8529): rewrite declaration aliases in built type files
+
+## 0.6.2
+
+### Patch Changes
+
+- [#8508](https://github.com/scalar/scalar/pull/8508): fix: add sideEffects: false to enable tree-shaking for Webpack consumers
+
+## 0.6.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.6.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.5.3
+
+### Patch Changes
+
+- [#8134](https://github.com/scalar/scalar/pull/8134): fix(components): change caret position to right
+
+## 0.5.2
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+## 0.5.1
+
+### Patch Changes
+
+- [#7542](https://github.com/scalar/scalar/pull/7542): fix: move `generate-icons` script outside of src folder
+
+No need to include it in published packages
+
+- [#7542](https://github.com/scalar/scalar/pull/7542): fix: use named instead of star exports
+
+## 0.5.0
+
+### Minor Changes
+
+- [#7199](https://github.com/scalar/scalar/pull/7199) [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat: update vue to 3.5.21
+
+## 0.4.7
+
+### Patch Changes
+
+- b1ceaab: fix: order of package.json exports for icons
+
 ## 0.4.6
 
 ### Patch Changes

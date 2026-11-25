@@ -1,3 +1,1 @@
-import Sidebar from './Sidebar.vue'
-
-export { Sidebar }
+export { default as DeleteSidebarListElement } from './Actions/DeleteSidebarListElement.vue'

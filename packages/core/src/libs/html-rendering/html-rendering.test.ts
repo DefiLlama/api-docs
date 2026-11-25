@@ -1,21 +1,26 @@
 import {
-  type ApiReferenceConfiguration,
-  apiReferenceConfigurationSchema,
+  apiReferenceConfigurationWithSourceSchema,
   htmlRenderingConfigurationSchema,
-} from '@scalar/types/api-reference'
+} from '@scalar/schemas/api-reference'
+import type { ApiReferenceConfigurationWithSource } from '@scalar/types/api-reference'
+import { coerce } from '@scalar/validation'
 import { describe, expect, it } from 'vitest'
+
 import { getConfiguration, getHtmlDocument, getScriptTags } from './html-rendering'
 
 describe('html-rendering', () => {
   describe('getHtmlDocument', () => {
-    it('returns HTML document with default CDN and custom theme', () => {
+    it('returns HTML document with the default ESM build and custom theme', () => {
       const html = getHtmlDocument({ customCss: 'body { color: red }' })
       expect(html).toContain('<!doctype html>')
       expect(html).toContain('<title>Scalar API Reference</title>')
       expect(html).toContain('body { color: red }')
-      expect(html).toContain('https://cdn.jsdelivr.net/npm/@scalar/api-reference')
+      expect(html).toContain('<script type="module">')
+      expect(html).toContain(
+        "import { createApiReference } from 'https://cdn.jsdelivr.net/npm/@scalar/api-reference/esm.js'",
+      )
       expect(html).toContain('<div id="app"></div>')
-      expect(html).toContain("Scalar.createApiReference('#app'")
+      expect(html).toContain("createApiReference('#app'")
     })
 
     it('handles custom page title correctly', () => {
@@ -93,12 +98,21 @@ describe('html-rendering', () => {
       expect(html).toContain('"url": "https://api.example.com/spec"')
       expect(html).not.toContain('"content"')
     })
+
+    it('loads the ESM module build when bundle is enabled', () => {
+      const html = getHtmlDocument({ bundle: true })
+      expect(html).toContain('<script type="module">')
+      expect(html).toContain(
+        "import { createApiReference } from 'https://cdn.jsdelivr.net/npm/@scalar/api-reference/esm.js'",
+      )
+      expect(html).not.toContain('Scalar.createApiReference')
+    })
   })
 
   describe('getScriptTags', () => {
     it('returns script tags with default CDN', () => {
       const tags = getScriptTags(
-        apiReferenceConfigurationSchema.parse({}),
+        apiReferenceConfigurationWithSourceSchema({}),
         'https://cdn.jsdelivr.net/npm/@scalar/api-reference',
       )
       expect(tags).toContain('<!-- Load the Script -->')
@@ -107,24 +121,29 @@ describe('html-rendering', () => {
     })
 
     it('uses custom CDN when provided', () => {
-      const tags = getScriptTags(apiReferenceConfigurationSchema.parse({}), 'https://example.com/script.js')
+      const tags = getScriptTags(apiReferenceConfigurationWithSourceSchema({}), 'https://example.com/script.js')
       expect(tags).toContain('https://example.com/script.js')
     })
 
     it('preserves function properties in configuration', () => {
       const config = {
-        tagsSorter: (a: any, b: any) => a.name.localeCompare(b.name),
-        operationsSorter: (a: any, b: any) => a.path.localeCompare(b.path),
-        generateHeadingSlug: (heading: any) => `heading-${heading.slug}`,
-        generateModelSlug: (model: any) => `model-${model.name}`,
-        generateTagSlug: (tag: any) => `tag-${tag.name}`,
-        generateOperationSlug: (operation: any) => `${operation.method}-${operation.path}`,
-        generateWebhookSlug: (webhook: any) => `webhook-${webhook.name}`,
+        tagsSorter: (a, b) => a.name.localeCompare(b.name),
+        operationsSorter: (a, b) => a.path.localeCompare(b.path),
+        generateHeadingSlug: (heading) => `heading-${heading.slug}`,
+        generateModelSlug: (model) => `model-${model.name}`,
+        generateTagSlug: (tag) => `tag-${tag.name}`,
+        generateOperationSlug: (operation) => `${operation.method}-${operation.path}`,
+        generateWebhookSlug: (webhook) => `webhook-${webhook.name}`,
+        setPageTitle: ({ title }) => `API Reference - ${title}`,
         onLoaded: () => console.log('loaded'),
-        redirect: (path: string) => path.replace('/old', '/new'),
-        onSpecUpdate: (spec: string) => console.log('spec updated', spec),
-        onServerChange: (server: string) => console.log('server changed', server),
-      }
+        redirect: (path) => path.replace('/old', '/new'),
+        onServerChange: (server) => console.log('server changed', server),
+        onDocumentSelect: () => console.log('document changed'),
+        onBeforeRequest: ({ request }) => console.log('before request', request),
+        onShowMore: (tagId) => console.log('show more', tagId),
+        onSidebarClick: (href) => console.log('sidebar click', href),
+        onRequestSent: (request) => console.log('request sent', request),
+      } satisfies Partial<ApiReferenceConfigurationWithSource>
 
       const tags = getScriptTags(config, 'https://example.com/script.js')
 
@@ -136,10 +155,15 @@ describe('html-rendering', () => {
       expect(tags).toContain('"generateTagSlug": (tag) => `tag-${tag.name}`')
       expect(tags).toContain('"generateOperationSlug": (operation) => `${operation.method}-${operation.path}`')
       expect(tags).toContain('"generateWebhookSlug": (webhook) => `webhook-${webhook.name}`')
+      expect(tags).toContain('"setPageTitle": ({ title }) => `API Reference - ${title}`')
       expect(tags).toContain('"onLoaded": () => console.log("loaded")')
       expect(tags).toContain('"redirect": (path) => path.replace("/old", "/new")')
-      expect(tags).toContain('"onSpecUpdate": (spec) => console.log("spec updated", spec)')
       expect(tags).toContain('"onServerChange": (server) => console.log("server changed", server)')
+      expect(tags).toContain('"onDocumentSelect": () => console.log("document changed")')
+      expect(tags).toContain('"onBeforeRequest": ({ request }) => console.log("before request", request)')
+      expect(tags).toContain('"onShowMore": (tagId) => console.log("show more", tagId)')
+      expect(tags).toContain('"onSidebarClick": (href) => console.log("sidebar click", href)')
+      expect(tags).toContain('"onRequestSent": (request) => console.log("request sent", request)')
     })
 
     it('handle configuration properties that accept both string and function types', () => {
@@ -184,9 +208,9 @@ describe('html-rendering', () => {
       // Check that configuration is properly embedded
       expect(html).toContain('"theme": "kepler"')
       expect(html).toContain('"tagsSorter": (a, b) => a.name.localeCompare(b.name)')
-      expect(html).toContain(`"onLoaded": () => {
-          console.log("loaded");
-        }`)
+      // Check the onLoaded callback is included (whitespace may vary)
+      expect(html).toContain('"onLoaded":')
+      expect(html).toContain('console.log("loaded")')
     })
 
     it('handles mixed function and non-function properties', () => {
@@ -204,23 +228,49 @@ describe('html-rendering', () => {
       expect(tags).toContain('"tagsSorter": (a, b) => a.name.localeCompare(b.name)')
       expect(tags).toContain('"onLoaded": () => console.log("loaded")')
     })
+
+    it('preserves plugins array containing functions', () => {
+      const mockPlugin = () => ({
+        name: 'test-plugin',
+        extensions: [
+          {
+            name: 'x-custom-extension',
+            component: 'MockComponent',
+          },
+        ],
+      })
+
+      const config = {
+        theme: 'kepler' as const,
+        plugins: [mockPlugin],
+      }
+
+      const tags = getScriptTags(config, 'https://example.com/script.js')
+
+      // Check that plugins array is preserved with function
+      expect(tags).toContain('"plugins": [() => ({')
+      expect(tags).toContain('name: "test-plugin"')
+      expect(tags).toContain('extensions: [')
+      expect(tags).toContain('name: "x-custom-extension"')
+      expect(tags).toContain('component: "MockComponent"')
+    })
   })
 
   describe('getConfiguration', () => {
     it('returns configuration object', () => {
-      const config = getConfiguration({ theme: 'kepler' } as ApiReferenceConfiguration)
+      const config = getConfiguration({ theme: 'kepler' } as ApiReferenceConfigurationWithSource)
       expect(config).toEqual({ theme: 'kepler' })
     })
 
     it('does not remove content when url is not provided', () => {
       const content = { foo: 'bar' }
-      const config = getConfiguration(apiReferenceConfigurationSchema.parse({ content }))
+      const config = getConfiguration(apiReferenceConfigurationWithSourceSchema({ content }))
       expect(config).toMatchObject({ content })
     })
 
     it('removes content only when url is provided', () => {
       const config = getConfiguration(
-        apiReferenceConfigurationSchema.parse({
+        apiReferenceConfigurationWithSourceSchema({
           url: 'https://api.example.com/spec',
           content: { foo: 'bar' },
         }),
@@ -231,31 +281,31 @@ describe('html-rendering', () => {
 
     it('executes content when it is a function', () => {
       const contentFn = () => ({ foo: 'bar' })
-      const config = getConfiguration(apiReferenceConfigurationSchema.parse({ content: contentFn }))
+      const config = getConfiguration(apiReferenceConfigurationWithSourceSchema({ content: contentFn }))
       expect(config).toMatchObject({ content: { foo: 'bar' } })
     })
   })
 
   describe('getCdnUrl', () => {
     it('returns default CDN URL when not provided', () => {
-      const { cdn } = htmlRenderingConfigurationSchema.parse({})
+      const { cdn } = coerce(htmlRenderingConfigurationSchema, {})
       expect(cdn).toBe('https://cdn.jsdelivr.net/npm/@scalar/api-reference')
     })
 
     it('returns custom CDN URL when provided', () => {
-      const { cdn } = htmlRenderingConfigurationSchema.parse({ cdn: 'https://example.com/script.js' })
+      const { cdn } = coerce(htmlRenderingConfigurationSchema, { cdn: 'https://example.com/script.js' })
       expect(cdn).toBe('https://example.com/script.js')
     })
   })
 
   describe('getPageTitle', () => {
     it('returns default page title when not provided', () => {
-      const { pageTitle } = htmlRenderingConfigurationSchema.parse({})
+      const { pageTitle } = coerce(htmlRenderingConfigurationSchema, {})
       expect(pageTitle).toBe('Scalar API Reference')
     })
 
     it('returns custom page title when provided', () => {
-      const { pageTitle } = htmlRenderingConfigurationSchema.parse({ pageTitle: 'Custom Title' })
+      const { pageTitle } = coerce(htmlRenderingConfigurationSchema, { pageTitle: 'Custom Title' })
       expect(pageTitle).toBe('Custom Title')
     })
   })

@@ -1,5 +1,6 @@
+import type { PartialDeep } from 'type-fest'
+
 import type { SecurityScheme } from '../entities/security-scheme'
-import type { PartialDeep } from 'type-fest/source/partial-deep'
 
 /**
  * Authentication configuration for the API reference.
@@ -51,4 +52,18 @@ export type AuthenticationConfiguration = {
    *
    */
   securitySchemes?: Record<string, PartialDeep<SecurityScheme>>
+
+  /**
+   * Allows adding authentication which is not in the document.
+   * When true, generic options (API Key, HTTP Basic, OAuth2, etc.) are shown in the auth dropdown.
+   * @default false
+   */
+  createAnySecurityScheme?: boolean
+
+  /**
+   * Restricts visible authentication choices and forms to these scheme names.
+   * Omit to show all schemes; an empty array hides all choices, including generic creation.
+   * This does not change authentication sent with requests or API security requirements.
+   */
+  allowedSecuritySchemes?: string[]
 }

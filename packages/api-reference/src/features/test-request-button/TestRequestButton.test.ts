@@ -1,42 +1,25 @@
-import { CONFIGURATION_SYMBOL } from '@/hooks/useConfig'
+import { mockEventBus } from '@scalar/api-client/v2/helpers/test-utils'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
-import { computed, ref } from 'vue'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import TestRequestButton from './TestRequestButton.vue'
 
-const mockClient = ref({
-  open: vi.fn(),
-})
-
-vi.mock('@/features/api-client-modal', () => ({
-  useApiClient: () => ({
-    client: mockClient,
-  }),
-}))
-
 describe('TestRequestButton', () => {
-  it('renders nothing when hideTestRequestButton config is true', () => {
-    const wrapper = mount(TestRequestButton, {
-      global: {
-        provide: {
-          [CONFIGURATION_SYMBOL]: computed(() => ({
-            hideTestRequestButton: true,
-          })),
-        },
-      },
-      props: {
-        method: 'get',
-        path: '/test',
-      },
-    })
-    expect(wrapper.text()).toBe('')
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterAll(() => {
+    vi.resetAllMocks()
   })
 
   it('renders button with correct text and icon when operation is provided', () => {
     const wrapper = mount(TestRequestButton, {
       props: {
+        id: 'test-operation-1',
         method: 'get',
         path: '/test',
+        eventBus: mockEventBus,
       },
     })
 
@@ -49,8 +32,10 @@ describe('TestRequestButton', () => {
   it('has correct button attributes', () => {
     const wrapper = mount(TestRequestButton, {
       props: {
+        id: 'test-operation-2',
         method: 'post',
         path: '/users',
+        eventBus: mockEventBus,
       },
     })
 
@@ -60,19 +45,64 @@ describe('TestRequestButton', () => {
     expect(button.classes()).toContain('show-api-client-button')
   })
 
-  it('calls client.open with correct params when clicked', async () => {
+  it('emits ui:open:client-modal event with correct params when clicked', async () => {
     const wrapper = mount(TestRequestButton, {
       props: {
+        id: 'test-operation-3',
         method: 'delete',
         path: '/users/1',
+        eventBus: mockEventBus,
       },
     })
 
     await wrapper.find('button').trigger('click')
 
-    expect(mockClient.value.open).toHaveBeenCalledWith({
-      method: 'delete',
-      path: '/users/1',
+    expect(mockEventBus.emit).toHaveBeenCalledWith('ui:open:client-modal', {
+      id: 'test-operation-3',
+    })
+  })
+
+  it('emits ui:open:client-modal event with exampleName when provided', async () => {
+    const wrapper = mount(TestRequestButton, {
+      props: {
+        id: 'test-operation-4',
+        method: 'post',
+        path: '/users',
+        eventBus: mockEventBus,
+        exampleName: 'create-user-example',
+      },
+    })
+
+    await wrapper.find('button').trigger('click')
+
+    expect(mockEventBus.emit).toHaveBeenCalledWith('ui:open:client-modal', {
+      id: 'test-operation-4',
+      exampleName: 'create-user-example',
+    })
+  })
+
+  it('emits ui:open:client-modal event with request body composition selection when provided', async () => {
+    const wrapper = mount(TestRequestButton, {
+      props: {
+        id: 'test-operation-5',
+        method: 'post',
+        path: '/users',
+        eventBus: mockEventBus,
+        requestBodyCompositionSelection: {
+          anyOf: 1,
+          'payload.transform.oneOf': 0,
+        },
+      },
+    })
+
+    await wrapper.find('button').trigger('click')
+
+    expect(mockEventBus.emit).toHaveBeenCalledWith('ui:open:client-modal', {
+      id: 'test-operation-5',
+      requestBodyCompositionSelection: {
+        anyOf: 1,
+        'payload.transform.oneOf': 0,
+      },
     })
   })
 })

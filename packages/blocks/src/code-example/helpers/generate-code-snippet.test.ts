@@ -1,0 +1,376 @@
+import type { AvailableClient } from '@scalar/snippetz'
+import type { XCodeSample } from '@scalar/workspace-store/schemas/extensions/operation'
+import type { OperationObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { consoleErrorSpy } from '@test/vitest.setup'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { generateCodeSnippet } from './generate-code-snippet'
+
+describe('generateCodeSnippet', () => {
+  const mockOperation: OperationObject = {
+    responses: {
+      '200': {
+        description: 'OK',
+      },
+    },
+  }
+
+  const mockServer = { url: 'https://api.example.com' }
+
+  const baseParams = {
+    operation: mockOperation,
+    method: 'get' as const,
+    path: '/users',
+    server: mockServer,
+    customCodeSamples: [] as XCodeSample[],
+    contentType: undefined,
+    example: undefined,
+    securitySchemes: [],
+  }
+
+  it.each([undefined, 'basic'])('marks unresolved code files unavailable (example: %s)', (example) => {
+    expect(
+      generateCodeSnippet({
+        ...baseParams,
+        example,
+        clientId: 'custom/python',
+        customCodeSamples: [{ lang: 'python', example, source: { $ref: 'https://example.test/sample.py' } }],
+      }),
+    ).toBeNull()
+  })
+
+  it('matches linked samples by both example key and media type', () => {
+    const customCodeSamples: XCodeSample[] = [
+      { lang: 'python', example: 'basic', contentType: 'application/json', source: 'json_sample()' },
+      { lang: 'python', example: 'basic', contentType: 'text/plain', source: 'text_sample()' },
+      { lang: 'python', example: 'other', source: 'any_media_sample()' },
+    ]
+    expect(
+      generateCodeSnippet({
+        ...baseParams,
+        customCodeSamples,
+        clientId: 'custom/python',
+        example: 'basic',
+        contentType: 'text/plain',
+      }),
+    ).toBe('text_sample()')
+    expect(
+      generateCodeSnippet({
+        ...baseParams,
+        customCodeSamples,
+        clientId: 'custom/python',
+        example: 'other',
+        contentType: 'text/plain',
+      }),
+    ).toBe('any_media_sample()')
+    expect(
+      generateCodeSnippet({ ...baseParams, customCodeSamples, clientId: 'custom/python', example: 'missing' }),
+    ).toBeNull()
+  })
+
+  it('requires an exact media type match including parameters', () => {
+    expect(
+      generateCodeSnippet({
+        ...baseParams,
+        clientId: 'custom/python',
+        example: 'basic',
+        contentType: 'application/json; charset=utf-8',
+        customCodeSamples: [
+          { lang: 'python', example: 'basic', contentType: 'application/json', source: 'json_sample()' },
+        ],
+      }),
+    ).toBeNull()
+  })
+
+  it.each([undefined, 'form', 'cookie'] as const)(
+    'returns an actionable error for invalid 3.2 cookie style %s',
+    (style) => {
+      expect(
+        generateCodeSnippet({
+          ...baseParams,
+          clientId: 'js/fetch',
+          openapiVersion: '3.2.1',
+          operation: {
+            parameters: [
+              {
+                name: 'color',
+                in: 'cookie',
+                style,
+                explode: false,
+                required: true,
+                examples: { default: { value: ['blue', 'black'] } },
+              },
+            ],
+          },
+        }),
+      ).toBe(
+        `Cookie parameter "color" cannot serialize an array or object with style: ${style ?? 'form'} and explode: false because comma-separated cookie values are invalid. Use style: cookie with explode: true.`,
+      )
+    },
+  )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns empty string when clientId is undefined', () => {
+    const result = generateCodeSnippet({
+      ...baseParams,
+      clientId: undefined,
+    })
+
+    expect(result).toBe('')
+  })
+
+  it('returns generated code snippet when successful', () => {
+    const result = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'js/fetch',
+      path: '/users/{userId}',
+    })
+
+    expect(result).toBe("fetch('https://api.example.com/users/{userId}')")
+  })
+
+  it('resolves each custom code sample by its language-keyed id, even when languages match', () => {
+    const customCodeSamples: XCodeSample[] = [
+      {
+        lang: 'python',
+        label: 'Python',
+        source: 'response = svix.application.list()',
+      },
+      {
+        lang: 'python',
+        label: 'Python (Async)',
+        source: 'response = await svix.application.list()',
+      },
+    ]
+
+    // Two samples share a language, but each id resolves to its own source
+    expect(generateCodeSnippet({ ...baseParams, clientId: 'custom/python', customCodeSamples })).toBe(
+      'response = svix.application.list()',
+    )
+    expect(generateCodeSnippet({ ...baseParams, clientId: 'custom/python/1', customCodeSamples })).toBe(
+      'response = await svix.application.list()',
+    )
+  })
+
+  it('returns "Custom example not found" when custom clientId does not match any custom code sample', () => {
+    const customCodeSamples: XCodeSample[] = [
+      {
+        lang: 'python',
+        label: 'Python Example',
+        source: 'import requests',
+      },
+    ]
+
+    const result = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'custom/99',
+      customCodeSamples,
+    })
+
+    expect(result).toBe('Custom example not found')
+  })
+
+  it('returns error message when getSnippet fails', () => {
+    // Mock console.error to suppress expected error output
+    consoleErrorSpy.mockImplementation(() => {
+      // Intentionally empty to suppress console output
+    })
+
+    const result = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'js/fetch',
+      // @ts-expect-error - testing undefined
+      operation: undefined,
+    })
+
+    expect(result).toBe('Error generating code snippet')
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[generateCodeSnippet]', expect.any(Error))
+  })
+
+  it('generates code snippet with request body and content type', () => {
+    const code = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'python/requests',
+      operation: {
+        ...mockOperation,
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: {
+                    type: 'string',
+                    default: 'Marc',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      method: 'post',
+      contentType: 'application/json',
+      securitySchemes: [],
+    })
+
+    expect(code).toBe(`requests.post("https://api.example.com/users",
+    headers={
+      "Content-Type": "application/json"
+    },
+    json={
+      "name": "Marc"
+    }
+)`)
+  })
+
+  it('preserves duplicate multipart field names in python snippets', () => {
+    const code = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'python/requests',
+      operation: {
+        ...mockOperation,
+        requestBody: {
+          content: {
+            'multipart/form-data': {
+              examples: {
+                default: {
+                  value: [
+                    { name: 'file', value: '@first.png', isDisabled: false },
+                    { name: 'file', value: '@second.png', isDisabled: false },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      method: 'post',
+      path: '/uploads',
+      contentType: 'multipart/form-data',
+      example: 'default',
+      securitySchemes: [],
+    })
+
+    expect(code).toBe(`requests.post("https://api.example.com/uploads",
+    files=[
+      ("file", (None, "@first.png")),
+      ("file", (None, "@second.png"))
+    ]
+)`)
+  })
+
+  it('generates code snippet with different client formats', () => {
+    const code = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'node/axios',
+    })
+
+    expect(code).toBe(`import axios from 'axios'
+
+const options = {
+  method: 'GET',
+  url: 'https://api.example.com/users'
+}
+
+try {
+  const { data } = await axios.request(options)
+  console.log(data)
+} catch (error) {
+  console.error(error)
+}`)
+  })
+
+  it('includes optional query parameters in snippets when defaultDisabledParameters is false', () => {
+    const operationWithOptionalQuery: OperationObject = {
+      ...mockOperation,
+      parameters: [
+        {
+          name: 'q',
+          in: 'query',
+          required: false,
+          schema: {
+            type: 'string',
+            example: 'findme',
+          },
+        },
+      ],
+    }
+
+    const withOptional = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'js/fetch',
+      path: '/search',
+      operation: operationWithOptionalQuery,
+      defaultDisabledParameters: false,
+    })
+
+    expect(withOptional).toBe("fetch('https://api.example.com/search?q=findme')")
+  })
+
+  it('includes populated optional query parameters in snippets when defaultDisabledParameters is true', () => {
+    const operationWithOptionalQuery: OperationObject = {
+      ...mockOperation,
+      parameters: [
+        {
+          name: 'q',
+          in: 'query',
+          required: false,
+          schema: {
+            type: 'string',
+            example: 'findme',
+          },
+        },
+      ],
+    }
+
+    const withOptional = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'js/fetch',
+      path: '/search',
+      operation: operationWithOptionalQuery,
+      defaultDisabledParameters: true,
+    })
+
+    expect(withOptional).toBe("fetch('https://api.example.com/search?q=findme')")
+  })
+
+  it('processes different clientId formats without errors', () => {
+    const testCases: Array<{ input: AvailableClient; expectedClient: string }> = [
+      { input: 'js/fetch', expectedClient: 'fetch' },
+      { input: 'python/requests', expectedClient: 'requests' },
+      { input: 'node/axios', expectedClient: 'axios' },
+      { input: 'shell/curl', expectedClient: 'curl' },
+    ]
+
+    testCases.forEach(({ input, expectedClient }) => {
+      const result = generateCodeSnippet({
+        ...baseParams,
+        clientId: input,
+        path: '/test',
+      })
+
+      expect(result).toContain(expectedClient)
+    })
+  })
+
+  it('returns error message and logs error when exception is thrown', () => {
+    // Mock console.error to suppress expected error output
+    consoleErrorSpy.mockImplementation(() => {
+      // Intentionally empty to suppress console output
+    })
+
+    const result = generateCodeSnippet({
+      ...baseParams,
+      clientId: 'js/fetch',
+      // @ts-expect-error - testing invalid input
+      operation: null,
+    })
+
+    expect(result).toBe('Error generating code snippet')
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[generateCodeSnippet]', expect.any(Error))
+  })
+})

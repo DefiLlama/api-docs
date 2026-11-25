@@ -1,21 +1,27 @@
 <script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
 import {
-  ScalarButton,
-  ScalarIcon,
   ScalarListbox,
   type ScalarListboxOption,
-} from '@scalar/components'
+} from '@scalar/components/listbox'
+import { ScalarIconCaretDown } from '@scalar/icons'
 import { computed } from 'vue'
+
+import { useLocalization } from '@/v2/features/localization'
 
 const props = defineProps<{
   enum: string[]
   value: string
   controls: string | undefined
+  /** Read-only context associated with the select button. */
+  describedBy?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'change', v: string): void
 }>()
+
+const { translate } = useLocalization()
 
 const options = computed<ScalarListboxOption[]>(() =>
   props.enum.map((s) => ({ id: s, label: s })),
@@ -32,20 +38,20 @@ const selected = computed<ScalarListboxOption | undefined>({
     :options="options">
     <ScalarButton
       :aria-controls="controls"
-      class="h-8 p-1.5 font-normal"
+      :aria-describedby="describedBy"
+      class="group/button h-8 gap-1.5 p-1.5 text-base font-normal"
       variant="ghost">
       <span :class="{ 'text-c-1': value }">
         <span
           v-if="value"
-          class="sr-only">
-          Selected:
-        </span>
+          class="sr-only"
+          >{{ translate('apiClient.serverVariablesSelect.selected') }}</span
+        >
         {{ value || 'Select value' }}
       </span>
-      <ScalarIcon
-        class="ml-1"
-        icon="ChevronDown"
-        size="sm" />
+      <ScalarIconCaretDown
+        class="mt-0.25 size-3 transition-transform duration-100 group-aria-expanded/button:rotate-180"
+        weight="bold" />
     </ScalarButton>
   </ScalarListbox>
 </template>

@@ -15,6 +15,39 @@ The site is the Vue app in `examples/web`, built on top of the Scalar monorepo i
 
 Every user agent gets the same HTML homepage. There is no user-agent detection; the site is static.
 
+## Where the DefiLlama customizations live
+
+The Scalar packages in this repository match upstream [scalar/scalar](https://github.com/scalar/scalar), with one small exception listed below. Everything DefiLlama-specific lives in `examples/web`:
+
+| Behaviour | Where |
+| --- | --- |
+| API key bar, saved in the browser (`localStorage` key `scalar-api-key-default`) | `src/components/ApiKeyInput.vue`, `src/api-key-storage.ts` |
+| Free spec plus API-plan-only endpoints, or the full pro spec when a key is set | `src/spec-transform.ts` |
+| Key in the path (`pro-api.llama.fi/{key}/…`, and `/usage/{key}`) for snippets, Test Request and Copy URL, while the Server box shows the bare host | `src/spec-transform.ts` (gives each pro operation a server with the key in it) |
+| API Plan and Beta badges (from `x-api-plan-only` and `x-api-beta`) | `src/spec-transform.ts` (Scalar's `x-badges`), styled in `src/style.css` |
+| "Please set an API key" reply when Test Request has no key | `customFetch` in `src/pages/StandaloneApiReferencePage.vue` |
+| curl as the default code sample | `defaultHttpClient` in the same page |
+| Language picker next to the SDK install tabs, no "Open API Client" button | `showDefaultClientsWithSdkInstallation` and `hideClientButton` in the same page |
+| Introduction, Using AI?, Authentication and SDK side by side in the sidebar | `src/spec-transform.ts` (adds a hidden Introduction heading) and `src/style.css` |
+| Old operation links (`#tag/tvl/get/protocols`) still open the operation | `src/legacy-anchor.ts` |
+| Dark background around the reference in dark mode, readable markdown tables | `src/style.css` |
+
+The one patch inside Scalar is `packages/api-reference/src/components/OperationsList/OperationsListItem.vue`, between the `DefiLlama` comments. It shows the Deprecated, API Plan and Beta chips in each tag's endpoint list, which Scalar has no option for.
+
+## Syncing with upstream Scalar
+
+```bash
+git fetch upstream
+git merge upstream/main
+sh scripts/prune-upstream.sh
+```
+
+The repository only keeps what the docs site builds from. `scripts/prune-upstream.sh` removes the rest of upstream Scalar (its docs site, integrations, desktop app, examples, the packages the site does not depend on, and Scalar's release, editor and agent files), and also resolves the "deleted by us" conflicts upstream changes to those folders cause.
+
+The remaining 31 packages are all needed: `@scalar/api-reference` depends on them, and `pnpm install` fails if a listed workspace package is missing. `@scalar/snippetz` still writes generated files into `integrations/` and `documentation/` when it builds, so `scripts/snippetz-output-dirs.mjs` (run on `pnpm install`) creates those folders, git-ignored.
+
+The remaining conflicts should only be in files we own (README, CLAUDE.md, root `package.json`, `pnpm-workspace.yaml`, `lefthook.yml`, `.gitignore`), in `.github` (keep ours: upstream's workflows publish Scalar's packages and must not run here), and in `OperationsListItem.vue` (keep the `DefiLlama` block). Then run `pnpm install`, `pnpm build:web`, and check the page against the list above. If the build fails because a package is missing, the site has started depending on it: take it out of the script and restore it with `git checkout upstream/main -- packages/<name>`.
+
 ## Local development
 
 ```bash
@@ -23,7 +56,7 @@ pnpm dev:web        # http://localhost:5050
 pnpm build:web      # production build into examples/web/dist
 ```
 
-Node 22 (see `.nvmrc`). The build fails on purpose if any emitted HTML, CSS or JS file is larger than 2,000,000 bytes, which is Googlebot's per-resource fetch limit.
+Node 24 (see `.nvmrc`) and pnpm 12 (see `packageManager` in `package.json`). The build fails on purpose if any emitted HTML, CSS or JS file is larger than 2,000,000 bytes, which is Googlebot's per-resource fetch limit.
 
 ## Checking the specs against the live API
 

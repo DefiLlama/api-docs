@@ -1,84 +1,89 @@
-import type { UnknownObject } from '@/helpers/general'
-import type {
-  XScalarClientConfigCookie,
-  XScalarClientConfigCookies,
-} from '@/schemas/v3.1/strict/client-config-extensions/x-scalar-client-config-cookies'
+import type { CookieEvents } from '@/events/definitions/cookie'
+import type { Workspace, WorkspaceDocument } from '@/schemas'
+import { type XScalarCookie, xScalarCookieSchema } from '@/schemas/extensions/general/x-scalar-cookies'
+import { isAsyncApiDocument } from '@/schemas/type-guards'
+import { coerceValue } from '@/schemas/typebox-coerce'
+
+type Event<T extends keyof CookieEvents> = Omit<CookieEvents[T], 'collectionType'>
 
 /**
- * Cookie mutators for managing client configuration cookies in OpenAPI documents.
- * Provides functions to add and delete cookies from the document's x-scalar-client-config-cookies extension.
+ * Adds OR updates a cookie to the document or workspace.
  *
- * @param store - The workspace store containing the documents
- * @param documentName - The name of the document to operate on
- * @returns Object containing addCookie and deleteCookie functions
+ * @param document - current document if available
+ * @param workspace - current workspace if available
+ * @param payload - The cookie configuration to add or update
+ * @param index - Optional index for updating an existing cookie
+ * @param collectionType - Whether this is for a document or workspace
+ * @returns the parsed cookie that was added or updated or undefined if the collection is not found
  */
-export const cookieMutators = (
-  document?: UnknownObject & { 'x-scalar-client-config-cookies'?: XScalarClientConfigCookies },
-) => {
-  /**
-   * Adds a new cookie to the document's client configuration.
-   * If a cookie with the same name already exists, it will log a warning and return false.
-   *
-   * @param cookie - The cookie configuration to add
-   * @returns true if the cookie was added successfully, false if it already exists
-   *
-   * @example
-   * // Add a new authentication cookie
-   * const success = addCookie({
-   *   name: 'auth-token',
-   *   value: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-   *   domain: '.example.com',
-   *   path: '/'
-   * })
-   *
-   * if (success) {
-   *   console.log('Cookie added successfully')
-   * } else {
-   *   console.log('Cookie already exists')
-   * }
-   */
-  const addCookie = (cookie: XScalarClientConfigCookie) => {
-    if (!document) {
-      return false
-    }
-
-    if (!document['x-scalar-client-config-cookies']) {
-      document['x-scalar-client-config-cookies'] = {}
-    }
-
-    if (document['x-scalar-client-config-cookies'][cookie.name]) {
-      console.warn(`Cookie with name "${cookie.name}" already exists in the document.`)
-      return false
-    }
-
-    document['x-scalar-client-config-cookies'][cookie.name] = cookie
-    return true
+export const upsertCookie = (
+  collection: WorkspaceDocument | Workspace | null,
+  { payload, index }: Event<'cookie:upsert:cookie'>,
+): XScalarCookie | undefined => {
+  if (!collection || isAsyncApiDocument(collection)) {
+    return
   }
 
-  /**
-   * Removes a cookie from the document's x-scalar-client-config-cookies extension by its name.
-   * Returns false if the document or cookies object does not exist, otherwise deletes the cookie and returns true.
-   *
-   * @param cookieName - The name of the cookie to remove
-   *
-   * @example
-   * // Remove an authentication cookie
-   * deleteCookie('auth-token')
-   *
-   * // Remove a session cookie
-   * deleteCookie('session-id')
-   */
-  const deleteCookie = (cookieName: string) => {
-    if (!document || !document['x-scalar-client-config-cookies']) {
-      return false
-    }
-
-    delete document['x-scalar-client-config-cookies'][cookieName]
-    return true
+  if (!collection['x-scalar-cookies']) {
+    collection['x-scalar-cookies'] = []
   }
 
+  if (index !== undefined) {
+    // Update existing cookie at index
+    if (index < 0 || index >= collection['x-scalar-cookies'].length) {
+      return
+    }
+
+    // Ensure we parse the payload but keep the existing cookie data
+    const parsed = coerceValue(xScalarCookieSchema, {
+      ...collection['x-scalar-cookies'][index],
+      ...payload,
+    })
+
+    // Update
+    collection['x-scalar-cookies'][index] = parsed
+    return parsed
+  }
+
+  // Add new cookie
+  const parsed = coerceValue(xScalarCookieSchema, payload)
+  collection['x-scalar-cookies'].push(parsed)
+  return parsed
+}
+
+/**
+ * Deletes a cookie from the document or workspace by index.
+ *
+ * @param document - current document if available
+ * @param workspace - current workspace if available
+ * @param index - Index of the cookie to delete
+ * @param collectionType - Whether this is for a document or workspace
+ * @returns true if the cookie was deleted, false otherwise
+ */
+export const deleteCookie = (
+  collection: WorkspaceDocument | Workspace | null,
+  { index }: Event<'cookie:delete:cookie'>,
+): boolean => {
+  if (!collection || isAsyncApiDocument(collection) || !collection['x-scalar-cookies']) {
+    return false
+  }
+
+  if (index < 0 || index >= collection['x-scalar-cookies'].length) {
+    return false
+  }
+
+  collection['x-scalar-cookies'].splice(index, 1)
+  return true
+}
+
+export const cookieMutatorsFactory = ({ collection }: { collection: WorkspaceDocument | Workspace | null }) => {
   return {
-    addCookie,
-    deleteCookie,
+    upsertCookie: (payload: {
+      payload: Partial<XScalarCookie>
+      // Spelled out with an explicit `| undefined` so the published declarations keep accepting
+      // `index: undefined` for consumers that enable `exactOptionalPropertyTypes`.
+      index?: number | undefined
+    }) => upsertCookie(collection, payload),
+    deleteCookie: (payload: Event<'cookie:delete:cookie'>) => deleteCookie(collection, payload),
   }
 }

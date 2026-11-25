@@ -1,9 +1,10 @@
-import type { TraversedEntry } from '@/schemas/navigation'
-import type { OperationObject } from '@/schemas/v3.1/strict/path-operations'
-import type { TagObject } from '@/schemas/v3.1/strict/tag'
+import type { ModelsSectionLabel } from '@scalar/types/api-reference'
+
+import type { IdGenerator, TraversedEntry } from '@/schemas/navigation'
+import type { TagObject } from '@/schemas/v3.2/strict/openapi-document'
 
 /** Map of tagNames and their entries */
-export type TagsMap = Map<string, { tag: TagObject; entries: TraversedEntry[] }>
+export type TagsMap = Map<string, { id: string; parentId: string; tag: TagObject; entries: TraversedEntry[] }>
 
 type OperationSortValue = {
   method: string
@@ -12,6 +13,9 @@ type OperationSortValue = {
   /** @deprecated use method instead */
   httpVerb: string
 }
+
+/** Whether to use the operation summary or the operation path for sidebar and search titles */
+export type OperationTitleSource = 'summary' | 'path'
 
 /** Configuration options for traversing an OpenAPI specification document.
  *
@@ -22,49 +26,21 @@ type OperationSortValue = {
  */
 export type TraverseSpecOptions = {
   /** Controls how tags are sorted - either alphabetically or using a custom sort function */
-  tagsSorter: 'alpha' | ((a: TagObject, b: TagObject) => number)
+  tagsSorter?: 'alpha' | ((a: TagObject, b: TagObject) => number)
 
   /** Controls how operations are sorted - alphabetically, by method, or using a custom sort function */
-  operationsSorter: 'alpha' | 'method' | ((a: OperationSortValue, b: OperationSortValue) => number)
+  operationsSorter?: 'alpha' | 'method' | ((a: OperationSortValue, b: OperationSortValue) => number)
 
   /** Whether to hide model schemas from the navigation */
   hideModels: boolean
 
-  /** Function to generate unique IDs for markdown headings */
-  getHeadingId: (heading: {
-    depth: number
-    value: string
-    slug?: string
-  }) => string
+  /** User-facing label for the components.schemas section */
+  modelsSectionLabel: ModelsSectionLabel
 
-  /** Function to generate unique IDs for operations */
-  getOperationId: (
-    operation: {
-      path: string
-      method: string
-    } & OperationObject,
-    parentTag: TagObject,
-  ) => string
+  /** Whether to derive operation titles from the operation summary or the path */
+  operationTitleSource?: OperationTitleSource
 
-  /** Function to generate unique IDs for webhooks */
-  getWebhookId: (
-    webhook?: {
-      name: string
-      method?: string
-    },
-    parentTag?: TagObject,
-  ) => string
-
-  /** Function to generate unique IDs for models/schemas */
-  getModelId: (
-    model?: {
-      name: string
-    },
-    parentTag?: TagObject,
-  ) => string
-
-  /** Function to generate unique IDs for tags */
-  getTagId: (tag: TagObject) => string
+  generateId: IdGenerator
 }
 
 export type Heading = { depth: number; value: string; slug?: string }

@@ -1,5 +1,6 @@
 /* basic theme */
-:root {
+:root,
+:host {
   --scalar-text-decoration: underline;
   --scalar-text-decoration-hover: underline;
 }
@@ -9,8 +10,8 @@
   --scalar-background-3: #e7e7e7;
   --scalar-background-accent: #8ab4f81f;
 
-  --scalar-color-1: #2a2f45;
-  --scalar-color-2: #757575;
+  --scalar-color-1: #1b1b1b;
+  --scalar-color-2: #707070;
   --scalar-color-3: #8e8e8e;
 
   --scalar-color-accent: #0099ff;
@@ -31,24 +32,24 @@
   --scalar-border-color: #2d2d2d;
 }
 /* Document Sidebar */
-.light-mode .t-doc__sidebar,
-.dark-mode .t-doc__sidebar {
+.light-mode,
+.dark-mode {
   --scalar-sidebar-background-1: var(--scalar-background-1);
   --scalar-sidebar-color-1: var(--scalar-color-1);
   --scalar-sidebar-color-2: var(--scalar-color-2);
   --scalar-sidebar-border-color: var(--scalar-border-color);
 
   --scalar-sidebar-item-hover-background: var(--scalar-background-2);
-  --scalar-sidebar-item-hover-color: currentColor;
+  --scalar-sidebar-item-hover-color: var(--scalar-sidebar-color-2);
 
   --scalar-sidebar-item-active-background: var(--scalar-background-2);
-  --scalar-sidebar-color-active: var(--scalar-color-1);
+  --scalar-sidebar-color-active: var(--scalar-sidebar-color-1);
 
   --scalar-sidebar-indent-border: var(--scalar-sidebar-border-color);
   --scalar-sidebar-indent-border-hover: var(--scalar-sidebar-border-color);
   --scalar-sidebar-indent-border-active: var(--scalar-sidebar-border-color);
 
-  --scalar-sidebar-search-background: transparent;
+  --scalar-sidebar-search-background: color-mix(in srgb, var(--scalar-background-2), var(--scalar-background-1));
   --scalar-sidebar-search-color: var(--scalar-color-3);
   --scalar-sidebar-search-border-color: var(--scalar-border-color);
 }
@@ -57,19 +58,20 @@
   --scalar-color-green: #069061;
   --scalar-color-red: #ef0006;
   --scalar-color-yellow: #edbe20;
-  --scalar-color-blue: #0082d0;
-  --scalar-color-orange: #fb892c;
+  --scalar-color-blue: #0072bd;
+  --scalar-color-orange: #ff5800;
   --scalar-color-purple: #5203d1;
+  --scalar-color-query: #007b80;
 
   --scalar-link-color: var(--scalar-color-1);
   --scalar-link-color-hover: var(--scalar-link-color);
 
   --scalar-button-1: rgba(0, 0, 0, 1);
   --scalar-button-1-hover: rgba(0, 0, 0, 0.8);
-  --scalar-button-1-color: rgba(255, 255, 255, 0.9);
+  --scalar-button-1-color: #fff;
 
-  --scalar-tooltip-background: color-mix(in srgb, #1a1a1a, transparent 10%);
-  --scalar-tooltip-color: color-mix(in srgb, #fff, transparent 15%);
+  --scalar-tooltip-background: color-mix(in srgb, var(--scalar-background-1), transparent 10%);
+  --scalar-tooltip-color: var(--scalar-color-1);
 
   --scalar-color-alert: color-mix(in srgb, var(--scalar-color-orange), var(--scalar-color-1) 20%);
   --scalar-color-danger: color-mix(in srgb, var(--scalar-color-red), var(--scalar-color-1) 20%);
@@ -84,6 +86,7 @@
   --scalar-color-blue: #4eb3ec;
   --scalar-color-orange: #ff8d4d;
   --scalar-color-purple: #b191f9;
+  --scalar-color-query: #65d4cf;
 
   --scalar-link-color: var(--scalar-color-1);
   --scalar-link-color-hover: var(--scalar-link-color);
@@ -102,21 +105,81 @@
 }
 @supports (color: color(display-p3 1 1 1)) {
   .light-mode {
-    --scalar-color-accent: color(display-p3 0.0 0.6 1.0 / 1.0);
-    --scalar-color-green: color(display-p3 0.023529 0.564706 0.380392 / 1.0);
-    --scalar-color-red: color(display-p3 0.937255 0.0 0.023529 / 1.0);
-    --scalar-color-yellow: color(display-p3 0.929412 0.745098 0.12549 / 1.0);
-    --scalar-color-blue: color(display-p3 0.0 0.509804 0.815686 / 1.0);
-    --scalar-color-orange: color(display-p3 0.984314 0.537255 0.172549 / 1.0);
-    --scalar-color-purple: color(display-p3 0.321569 0.011765 0.819608 / 1.0);
+    --scalar-color-accent: color(display-p3 0 0.6 1 / 1);
+    --scalar-color-green: color(display-p3 0.023529 0.564706 0.380392 / 1);
+    --scalar-color-red: color(display-p3 0.937255 0 0.023529 / 1);
+    --scalar-color-yellow: color(display-p3 0.929412 0.745098 0.12549 / 1);
+    --scalar-color-blue: color(display-p3 0 0.447059 0.741176 / 1);
+    --scalar-color-orange: color(display-p3 1 0.4 0.02);
+    --scalar-color-purple: color(display-p3 0.321569 0.011765 0.819608 / 1);
   }
   .dark-mode {
     --scalar-color-accent: color(display-p3 0.07 0.67 1);
-    --scalar-color-green: color(display-p3 0.0 0.713725 0.282353 / 1.0);
-    --scalar-color-red: color(display-p3 0.862745 0.105882 0.098039 / 1.0);
-    --scalar-color-yellow: color(display-p3 1.0 0.788235 0.05098 / 1.0);
-    --scalar-color-blue: color(display-p3 0.305882 0.701961 0.92549 / 1.0);
-    --scalar-color-orange: color(display-p3 1.0 0.552941 0.301961 / 1.0);
-    --scalar-color-purple: color(display-p3 0.694118 0.568627 0.976471 / 1.0);
+    --scalar-color-green: color(display-p3 0 0.713725 0.282353 / 1);
+    --scalar-color-red: color(display-p3 0.862745 0.105882 0.098039 / 1);
+    --scalar-color-yellow: color(display-p3 1 0.788235 0.05098 / 1);
+    --scalar-color-blue: color(display-p3 0.305882 0.701961 0.92549 / 1);
+    --scalar-color-orange: color(display-p3 1 0.552941 0.301961 / 1);
+    --scalar-color-purple: color(display-p3 0.694118 0.568627 0.976471 / 1);
+  }
+}
+
+/**
+ * Syntax highlighting
+ *
+ * Code token colors by role, so a theme or a custom stylesheet can restyle highlighting without
+ * touching the UI hues. The defaults come from the theme's own hues, moved only as far as small
+ * code needs: darker on light backgrounds, lighter on dark ones. The chroma caps keep each color
+ * inside sRGB, because wide-gamut theme values drift back toward each other at these lightness
+ * levels. Red also turns cooler so it stays clear of orange.
+ *
+ * Browsers without relative colors get the plain theme hues.
+ */
+.light-mode,
+.dark-mode,
+.light-mode .dark-mode,
+.dark-mode .light-mode {
+  --scalar-code-keyword: var(--scalar-color-purple);
+  --scalar-code-string: var(--scalar-color-blue);
+  --scalar-code-number: var(--scalar-color-orange);
+  --scalar-code-function: var(--scalar-color-orange);
+  --scalar-code-builtin: var(--scalar-color-blue);
+  /* Without relative colors a navy cannot be derived, and plain blue would match strings. */
+  --scalar-code-type: var(--scalar-color-1);
+  --scalar-code-parameter: var(--scalar-color-red);
+  --scalar-code-property: var(--scalar-color-green);
+  --scalar-code-comment: var(--scalar-color-2);
+  --scalar-code-punctuation: var(--scalar-color-2);
+  --scalar-code-addition: var(--scalar-color-green);
+  --scalar-code-deletion: var(--scalar-color-red);
+}
+
+@supports (color: oklch(from white l c h)) {
+  .light-mode,
+  .dark-mode .light-mode {
+    --scalar-code-keyword: oklch(from var(--scalar-color-purple) min(l, 0.395) min(c, 0.22) h);
+    --scalar-code-string: oklch(from var(--scalar-color-blue) min(l, 0.55) min(c, 0.14) h);
+    --scalar-code-number: oklch(from var(--scalar-color-orange) min(l, 0.59) min(c, 0.17) calc(h + 3));
+    --scalar-code-function: oklch(from var(--scalar-color-orange) min(l, 0.59) min(c, 0.17) calc(h + 3));
+    --scalar-code-builtin: oklch(from var(--scalar-color-blue) min(l, 0.55) min(c, 0.14) h);
+    --scalar-code-type: oklch(from var(--scalar-color-blue) min(l, 0.33) min(c, 0.1) calc(h + 8));
+    --scalar-code-parameter: oklch(from var(--scalar-color-red) min(l, 0.5) min(c, 0.2) calc(h - 14));
+    --scalar-code-property: oklch(from var(--scalar-color-green) min(l, 0.51) min(c, 0.11) h);
+    --scalar-code-addition: oklch(from var(--scalar-color-green) min(l, 0.51) min(c, 0.11) h);
+    --scalar-code-deletion: oklch(from var(--scalar-color-red) min(l, 0.5) min(c, 0.2) calc(h - 14));
+  }
+
+  .dark-mode,
+  .light-mode .dark-mode {
+    --scalar-code-keyword: oklch(from var(--scalar-color-purple) max(l, 0.68) c h);
+    --scalar-code-string: oklch(from var(--scalar-color-blue) max(l, 0.68) c h);
+    --scalar-code-number: oklch(from var(--scalar-color-orange) max(l, 0.75) min(c, 0.16) h);
+    --scalar-code-function: oklch(from var(--scalar-color-orange) max(l, 0.75) min(c, 0.16) h);
+    --scalar-code-builtin: oklch(from var(--scalar-color-blue) max(l, 0.68) c h);
+    --scalar-code-type: oklch(from var(--scalar-color-blue) max(l, 0.85) min(c, 0.075) h);
+    --scalar-code-parameter: oklch(from var(--scalar-color-red) max(l, 0.68) min(c, 0.19) calc(h - 14));
+    --scalar-code-property: oklch(from var(--scalar-color-green) max(l, 0.68) c h);
+    --scalar-code-addition: oklch(from var(--scalar-color-green) max(l, 0.68) c h);
+    --scalar-code-deletion: oklch(from var(--scalar-color-red) max(l, 0.68) min(c, 0.19) calc(h - 14));
   }
 }

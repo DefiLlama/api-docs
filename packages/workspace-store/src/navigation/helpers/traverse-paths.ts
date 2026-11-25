@@ -1,12 +1,22 @@
+import { escapeJsonPointer } from '@scalar/json-magic/helpers/escape-json-pointer'
+
+import { forEachPathItemOperation, getPathItemOperationKey } from '@/helpers/for-each-path-item-operation'
+import { getPathEntries } from '@/helpers/get-path-entries'
+import { getResolvedRef, mergeSiblingReferences } from '@/helpers/get-resolved-ref'
+import { isHidden } from '@/helpers/is-hidden'
+import { getXBadges } from '@/navigation/helpers/get-x-badges'
+import { traverseOperationExamples } from '@/navigation/helpers/traverse-examples'
+import type { OperationTitleSource, TagsMap, TraverseSpecOptions } from '@/navigation/types'
+import { XScalarStabilityValues } from '@/schemas/extensions/operation'
+import type { ParentTag, TraversedExample, TraversedOperation } from '@/schemas/navigation'
+import type { OpenApiDocument, OperationObject } from '@/schemas/v3.2/strict/openapi-document'
+
+import { getNavigationTagNames } from './get-navigation-tag-names'
 import { getTag } from './get-tag'
-import type { TagsMap, TraverseSpecOptions } from '@/navigation/types'
-import { escapeJsonPointer } from '@scalar/openapi-parser'
-import { isHttpMethod } from '@scalar/helpers/http/is-http-method'
-import type { OpenApiDocument } from '@/schemas/v3.1/strict/openapi-document'
-import { isReference } from '@/schemas/v3.1/type-guard'
-import type { TagObject } from '@/schemas/v3.1/strict/tag'
-import type { OperationObject } from '@/schemas/v3.1/strict/path-operations'
-import type { TraversedOperation } from '@/schemas/navigation'
+
+export const isDeprecatedOperation = (operation: OperationObject) => {
+  return operation.deprecated || operation['x-scalar-stability'] === XScalarStabilityValues.Deprecated
+}
 
 /**
  * Creates a traversed operation entry from an OpenAPI operation object.
@@ -16,32 +26,66 @@ import type { TraversedOperation } from '@/schemas/navigation'
  * @param method - HTTP method of the operation
  * @param path - API path of the operation, defaults to 'Unknown'
  * @param tag - Tag object associated with the operation
- * @param titlesMap - Map to store operation IDs and titles for mobile header navigation
+ * @param entitiesMap - Map to store operation IDs and titles for mobile header navigation
  * @param getOperationId - Function to generate unique IDs for operations
  * @returns A traversed operation entry with ID, title, path, method and reference
  */
-const createOperationEntry = (
-  ref: string,
-  operation: OperationObject,
-  method: string,
-  path = 'Unknown',
-  tag: TagObject,
-  titlesMap: Map<string, string>,
-  getOperationId: TraverseSpecOptions['getOperationId'],
-): TraversedOperation => {
-  const id = getOperationId({ ...operation, method, path }, tag)
-  const title = operation.summary?.trim() ? operation.summary : path
+const createOperationEntry = ({
+  ref,
+  operation,
+  method,
+  path,
+  generateId,
+  parentId,
+  parentTag,
+  operationTitleSource,
+}: {
+  ref: string
+  operation: OperationObject
+  method: string
+  path: string
+  parentTag?: ParentTag
+  generateId: TraverseSpecOptions['generateId']
+  parentId: string
+  operationTitleSource?: OperationTitleSource
+}): TraversedOperation => {
+  const id = generateId({
+    type: 'operation',
+    operation,
+    parentTag,
+    method: method,
+    path: path,
+    parentId: parentId,
+  })
+  const title = operationTitleSource !== 'path' && operation.summary?.trim() ? operation.summary : path
 
-  titlesMap.set(id, title)
+  const isDeprecated = isDeprecatedOperation(operation)
+  const badges = getXBadges(operation)
 
-  return {
+  const examples: TraversedExample[] = traverseOperationExamples(operation).map((example) => ({
+    type: 'example',
+    id: generateId({
+      type: 'example',
+      parentId: id,
+      name: example,
+    }),
+    title: example,
+    name: example,
+  }))
+
+  const entry = {
     id,
     title,
     path,
     method,
     ref,
     type: 'operation',
-  }
+    isDeprecated,
+    ...(badges ? { badges } : {}),
+    children: examples.length ? examples : undefined,
+  } satisfies TraversedOperation
+
+  return entry
 }
 
 /**
@@ -50,58 +94,90 @@ const createOperationEntry = (
  * This function processes each path and its operations to:
  * - Filter out internal operations (marked with x-internal) and operations to ignore (marked with x-scalar-ignore)
  * - Group operations by their tags
- * - Create a default tag group for untagged operations
+ * - Collect operations without tags to be added at the document level
  * - Generate unique references and IDs for each operation
  *
  * TODO: filter out internal and scalar-ignore tags
  *
  * @param content - The OpenAPI document to traverse
  * @param tagsDict - Dictionary mapping tag names to their OpenAPI tag objects
- * @param titlesMap - Map to store operation IDs and titles for mobile header navigation
+ * @param entitiesMap - Map to store operation IDs and titles for mobile header navigation
  * @param getOperationId - Function to generate unique IDs for operations
- * @returns Map of tag names to arrays of traversed operations
+ * @returns Object containing the tagsMap and an array of untagged operations
  */
-export const traversePaths = (
-  content: OpenApiDocument,
+export const traversePaths = ({
+  document,
+  tagsMap,
+  generateId,
+  documentId,
+  operationTitleSource,
+}: {
+  document: OpenApiDocument
   /** Map of tags and their entries */
-  tagsMap: TagsMap,
-  /** Map of titles for the mobile header */
-  titlesMap: Map<string, string>,
-  getOperationId: TraverseSpecOptions['getOperationId'],
-) => {
-  // Traverse paths
-  Object.entries(content.paths ?? {}).forEach(([path, pathItem]) => {
-    const pathEntries = Object.entries(pathItem ?? {}) as [string, OperationObject][]
+  tagsMap: TagsMap
+  /** Function used to generate unique IDs for operations */
+  generateId: TraverseSpecOptions['generateId']
+  /** Document ID */
+  documentId: string
+  /** Whether to use the operation summary or the operation path for sidebar titles */
+  operationTitleSource?: OperationTitleSource
+}): { untaggedOperations: TraversedOperation[] } => {
+  const untaggedOperations: TraversedOperation[] = []
 
-    // Traverse operations
-    pathEntries.forEach(([method, operation]) => {
-      if (isReference(operation)) {
+  // Traverse paths
+  getPathEntries(document.paths).forEach(([path, pathItemRef]) => {
+    forEachPathItemOperation(pathItemRef, (method, operationRef) => {
+      const operation = getResolvedRef(operationRef, mergeSiblingReferences)
+      if (!operation) {
         return
       }
 
       // Skip if the operation is internal or scalar-ignore
-      if (operation['x-internal'] || operation['x-scalar-ignore'] || !isHttpMethod(method)) {
+      if (isHidden(operation)) {
         return
       }
 
-      const ref = `#/paths/${escapeJsonPointer(path)}/${method}`
+      const ref = `#/paths/${escapeJsonPointer(path)}/${getPathItemOperationKey(method)}`
 
       // Traverse tags
-      if (operation.tags?.length) {
-        operation.tags.forEach((tagName: string) => {
-          const { tag } = getTag(tagsMap, tagName)
-          tagsMap
-            .get(tagName)
-            ?.entries.push(createOperationEntry(ref, operation, method, path, tag, titlesMap, getOperationId))
+      const navigationTags = getNavigationTagNames(document, operation.tags, tagsMap)
+      if (navigationTags.length) {
+        navigationTags.forEach((tagName: string) => {
+          const { tag, id: tagId } = getTag({
+            tagsMap,
+            name: tagName,
+            documentId,
+            generateId,
+          })
+          tagsMap.get(tagName)?.entries.push(
+            createOperationEntry({
+              ref,
+              operation,
+              method,
+              path,
+              parentTag: { tag, id: tagId },
+              generateId,
+              parentId: tagId,
+              operationTitleSource,
+            }),
+          )
         })
-      }
-      // Add to default tag
-      else {
-        const { tag } = getTag(tagsMap, 'default')
-        tagsMap
-          .get('default')
-          ?.entries.push(createOperationEntry(ref, operation, method, path, tag, titlesMap, getOperationId))
+      } else {
+        // Collect operations without tags (no parentTag)
+        untaggedOperations.push(
+          createOperationEntry({
+            ref,
+            operation,
+            method,
+            path,
+            generateId,
+            parentId: documentId,
+            operationTitleSource,
+          }),
+        )
       }
     })
   })
+
+  return { untaggedOperations }
 }

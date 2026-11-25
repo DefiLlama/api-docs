@@ -1,5 +1,402 @@
 # @scalar/themes
 
+## 0.21.1
+
+### Patch Changes
+
+- [#11130](https://github.com/scalar/scalar/pull/11130): Update nanoid to version 6 for faster identifier generation while preserving existing identifier formats.
+
+## 0.21.0
+
+### Minor Changes
+
+- [#11126](https://github.com/scalar/scalar/pull/11126): Give syntax highlighting a fuller palette
+
+  Parameters, object members, type names and punctuation now have their own colors, plain code is easier to read, and the colors are adjusted so they stay readable and distinct in light and dark mode. They still come from the active theme's hues.
+
+  The colors live in `@scalar/themes` as `--scalar-code-*` variables named by role (`--scalar-code-keyword`, `--scalar-code-string`, `--scalar-code-parameter` and so on), so a theme or custom stylesheet can set its own syntax colors. The Moon theme sets darker and lighter values to stay readable on its tinted backgrounds.
+
+## 0.20.3
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+- [#11110](https://github.com/scalar/scalar/pull/11110): Add a `text-auto-contrast-*` Tailwind utility that picks readable black or white text for any background color, and use it for colored badges and the environment color checkmark.
+
+## 0.20.2
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.20.1
+
+### Patch Changes
+
+- [#11011](https://github.com/scalar/scalar/pull/11011): Make Vite configuration imports compatible with the native config loader.
+
+## 0.20.0
+
+### Minor Changes
+
+- [#10781](https://github.com/scalar/scalar/pull/10781): feat: add a Halloween theme preset with a moonlit sky, bats, and pumpkin accents
+
+## 0.19.3
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.19.2
+
+### Patch Changes
+
+- [#10608](https://github.com/scalar/scalar/pull/10608): Keep shared component styles from overriding host page body backgrounds and margins, including hosts using CSS layers. Keep full-page body styling in the standalone bundles.
+- [#10610](https://github.com/scalar/scalar/pull/10610): Apply base theme tokens and preset defaults inside shadow roots.
+- [#10614](https://github.com/scalar/scalar/pull/10614): Clean up lint warnings while preserving runtime behavior, and document intentional schema and type syntax.
+
+## 0.19.1
+
+### Patch Changes
+
+- [#10505](https://github.com/scalar/scalar/pull/10505): Apply formatting and lint compatibility changes for Biome 2.5.15.
+- [#10529](https://github.com/scalar/scalar/pull/10529): Align import and export ordering with the Biome checks.
+- [#10520](https://github.com/scalar/scalar/pull/10520): Sort imports and exports to satisfy the Biome checks.
+- [#10526](https://github.com/scalar/scalar/pull/10526): Align import and export ordering with the repository CI checks.
+
+## 0.19.0
+
+### Minor Changes
+
+- [#10493](https://github.com/scalar/scalar/pull/10493): Floating surfaces now paint their own background, border, and shadow instead of using an absolutely positioned backdrop layer. The `#backdrop` slot on `ScalarDropdown`, `ScalarPopover`, `ScalarListbox`, and `ScalarCombobox` is removed; style the floating element with `class` instead. `ScalarFloatingBackdrop`, `--scalar-lifted-brightness`, and the `brightness-lifted` utility are deprecated in favor of `bg-b-1 dark:bg-b-1.5`. `ScalarFloatingBackdrop` itself now uses the same surface styles, so it no longer clips its slot or draws a real border. A new `inset-shadow-border` utility draws the hairline border so it can stack with `shadow-*` without taking up layout space; Tailwind's default `inset-shadow-*` sizes are reset, matching the other theme namespaces.
+
+## 0.18.1
+
+### Patch Changes
+
+- [#10375](https://github.com/scalar/scalar/pull/10375): Raise muted text, code-string blue and the deprecated schema row to the 4.5:1 text contrast minimum across the shipped themes
+
+  An accessibility audit turned up text that is legible in the default theme but not in several of the presets, which pair the default greys and blues with an off-white page background. Nine presets and four integration themes get a hue-preserving nudge:
+  - Light `--scalar-color-2` now clears 4.5:1 on both the page background and the grey card background in every preset. That covers `alternate`, `bluePlanet`, `mars` and `saturn`, which paired the default grey with an off-white page, and `custom-theme-starter`, `deepSpace`, `elysiajs`, `fastify`, `kepler` and `purple`, which copied the default grey and were left behind when the default moved.
+  - Light `--scalar-color-blue`, which colours code strings, now clears 4.5:1 on the grey example background in `alternate`, `bluePlanet`, `deepSpace`, `elysiajs`, `fastify`, `kepler` and `moon`, and in the Docusaurus, NestJS, Next.js and SvelteKit themes.
+  - Dark `--scalar-color-blue` now clears 4.5:1 in `purple` and `saturn`, and in the Hono and Docusaurus dark themes.
+  - Deprecated schema rows no longer fade their contents to 75% opacity, which had dropped their muted text to 3.0:1. The diagonal stripes, the strikethrough on the property name and the Deprecated badge still mark the row.
+  - The AsyncAPI send and receive pills blend their label further toward the body text colour, so they read against the tinted fill in every preset but `laserwave`.
+  - `--scalar-focus-color` sits further from the accent so a keyboard focus ring clears 3:1 on `--scalar-background-3` as well, which some presets use for the selected sidebar item.
+
+  `laserwave` still misses in light mode, where it reuses its dark accents unchanged; bringing it up is a redesign of the preset rather than a nudge.
+
+- [#10375](https://github.com/scalar/scalar/pull/10375): fix: raise text and focus ring contrast flagged by an accessibility audit
+
+  The default light blue is a touch deeper so code strings and read-only labels meet 4.5:1, the required label darkens in light mode, keyboard focus rings now draw from a new `--scalar-focus-color` token that meets 3:1 against hovered and selected surfaces, and the schema union pipe, Default, Example and Pattern labels use the regular muted text colour.
+
+## 0.18.0
+
+### Minor Changes
+
+- [#10173](https://github.com/scalar/scalar/pull/10173): Support the OpenAPI 3.2 QUERY request method in workspace operations, navigation, server chunks, and request examples.
+
+  Give QUERY a dedicated color tuned to each theme preset in light and dark mode and place it after GET in the method picker. Server chunk extraction also recognizes uppercase method keys while retaining their authored case. QUERY is modeled in the 3.2 schemas only.
+
+### Patch Changes
+
+- [#10074](https://github.com/scalar/scalar/pull/10074): feat(api-reference): the tree schema layout
+
+  The tree layout replaces the bordered card per nesting level and the "Show Child Attributes" pill with the visual grammar of a tree: a continuous rail per depth that hangs from the parent property's text column, and a discrete disclosure control in each expandable property's own gutter. The control is a real button whose accessible name is the property name alone and whose child count rides `aria-describedby`; property descriptions stay visible instead of being swallowed into a button label. Types render as token runs — `array of Planet` instead of `array Planet[]`, with a `$ref` link as the type itself — collapsed objects show a preview of what they hold, short enums render inline in the type position or wrap as chips instead of a row per value, and a `$ref` cycle says `recursive` in its own signature line instead of offering a toggle that descends forever. Rails fade with depth, capped so the deepest ones never wash out into the page. In a narrow container — the same `max-width: 900px` query the sections already use — the indent tightens and the controls shrink, so a deep tree still fits and the outermost control clears the page edge instead of being clipped by it. Collapsed subtrees that were opened once stay reachable with find-in-page via `hidden="until-found"` where the engine supports it, against a budget shared by every tree in the reference, with Safari falling back to unmounting exactly as before.
+
+  Printing temporarily expands the whole tree and restores the reader's expansion state afterwards.
+
+## 0.17.4
+
+### Patch Changes
+
+- [#10026](https://github.com/scalar/scalar/pull/10026): Fix autofilled input text rendering hollow and near-illegible in dark mode. The reset clipped WebKit's autofill background to the glyphs without re-asserting `-webkit-text-fill-color`, so the glyph interiors showed that clipped background instead of the theme colour.
+
+## 0.17.3
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.17.2
+
+### Patch Changes
+
+- [#9737](https://github.com/scalar/scalar/pull/9737): fix: render hairline borders in Firefox on standard-DPI screens
+
+  Firefox rounds the 0.5px `--scalar-border-width` down to zero device pixels on non-retina displays, which makes `shadow-border` outlines invisible. The border width now falls back to 1px in Firefox below retina density, matching what other engines effectively render.
+
+- [#9782](https://github.com/scalar/scalar/pull/9782): Fix the tooltip rendering with a dark background in light mode. The light-mode tooltip tokens were hard-coded to a dark fill with light text, so the tooltip stayed black regardless of the active color mode. They now derive from `--scalar-background-1` and `--scalar-color-1`, so the tooltip follows the theme in both modes.
+
+  The tooltip surface is also polished to match the rest of the system: a standard hairline border and base shadow in both color modes (replacing the dark-mode-only inset border), a large radius, regular font weight, and tighter vertical padding. Horizontal and vertical padding are now separate variables so the placement offset applies to the correct axis.
+
+## 0.17.1
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.17.0
+
+### Minor Changes
+
+- [#9687](https://github.com/scalar/scalar/pull/9687): feat(themes): derive the border radius scale from `--scalar-radius`
+
+  The radius tokens used to be independent, so setting `--scalar-radius: 0` still left rounded corners
+  behind on anything using `--scalar-radius-lg`, `--scalar-radius-xl` or `rounded-full`. They now all
+  derive from `--scalar-radius`, which means overriding that single variable rescales every corner in the
+  interface, and `0` squares it off completely.
+
+  Two new tokens fill out the scale, `--scalar-radius-2xl` (12px) and `--scalar-radius-3xl` (16px), along
+  with `--scalar-radius-full` for pills and circles. The matching `rounded-2xl` and `rounded-3xl` Tailwind
+  utilities now emit CSS; previously they were silently dropped.
+
+  Every default value is unchanged, so nothing shifts unless you were relying on the old behaviour. If
+  your theme sets `--scalar-radius` on its own and expects the larger radii to stay put, set those tokens
+  explicitly. Override `--scalar-radius` on `:root`: a custom property substitutes `var()` at the element
+  where it is declared, so setting the base further down the tree moves it without moving anything derived
+  from it.
+
+- [#9687](https://github.com/scalar/scalar/pull/9687): feat(themes): cap container corners with `--scalar-radius-max`
+
+  A large `--scalar-radius` used to curve tall containers hard enough that they swallowed their own
+  content: dropdown panels clipped their last rows, and code blocks rendered as stadiums.
+
+  Every radius token except `--scalar-radius-full` now clamps to a new `--scalar-radius-max`, which
+  defaults to `20px`. A new `--scalar-radius-md` gives the base radius the same cap, and is what
+  `rounded`, `rounded-md` and form controls now use. Pills and circles are deliberately exempt, so
+  avatars, spinners and toggles stay round.
+
+  The reset no longer sets a `border-radius` on `:focus-visible`. It was reshaping the focused element
+  rather than its outline, which meant a large theme radius turned bare focus containers into pills the
+  moment they were focused. Outlines already follow an element's own corners, so focus rings now match
+  whatever shape the element actually has.
+
+  Defaults are unchanged: every default token sits at or below the cap, so nothing moves unless you were
+  already setting a very large radius.
+
+## 0.16.3
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.16.2
+
+### Patch Changes
+
+- [#9597](https://github.com/scalar/scalar/pull/9597): Add API Reference UI localization configuration with built-in English, Russian, Spanish, French, German, Simplified Chinese and Arabic translations, including automatic RTL direction for Arabic locales.
+
+  Update the shared theme reset so text inputs align to the logical start by default for RTL documents.
+
+  Add a `mergeObjects` deep-merge helper to `@scalar/helpers`, used by the localization layer to merge translation overrides onto the built-in locale.
+
+## 0.16.1
+
+### Patch Changes
+
+- [#9565](https://github.com/scalar/scalar/pull/9565): Apply the themed placeholder color and font to textarea placeholders so they match input placeholders
+
+## 0.16.0
+
+### Minor Changes
+
+- [#9415](https://github.com/scalar/scalar/pull/9415): Ship the Scalar design-system agent skill with the package.
+
+  `@scalar/themes` now bundles the `scalar-design-system` skill (design tokens, theming, a `@scalar/components` reference, and a Paper design-tool bridge) under `skills/`. Agents do not auto-discover skills inside `node_modules`, so link or copy `node_modules/@scalar/themes/skills/scalar-design-system` into your project's `.claude/skills` to use it.
+
+### Patch Changes
+
+- [#9371](https://github.com/scalar/scalar/pull/9371): Use the correct system fonts when withDefaultFonts is set to false
+
+## 0.15.6
+
+### Patch Changes
+
+- [#9268](https://github.com/scalar/scalar/pull/9268): fix button text color variables to use pure white instead of semi-transparent white in dark themes.
+
+## 0.15.5
+
+### Patch Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): fix(components): add `highlighted` Tailwind variant for Radix menu item highlight state
+
+  Adds a new `highlighted` custom Tailwind variant (matching `[data-highlighted]`) to `@scalar/themes` and uses it in `ScalarDropdownButton` to restore the hover and keyboard-navigation highlight in the workspace and team picker dropdowns.
+
+## 0.15.4
+
+### Patch Changes
+
+- [#9198](https://github.com/scalar/scalar/pull/9198): fix(components): add `highlighted` Tailwind variant for Radix menu item highlight state
+
+  Adds a new `highlighted` custom Tailwind variant (matching `[data-highlighted]`) to `@scalar/themes` and uses it in `ScalarDropdownButton` to restore the hover and keyboard-navigation highlight in the workspace and team picker dropdowns.
+
+## 0.15.3
+
+### Patch Changes
+
+- [#8769](https://github.com/scalar/scalar/pull/8769): feat(themes): add Tailwind v3 transform reset
+
+## 0.15.2
+
+### Patch Changes
+
+- [#8694](https://github.com/scalar/scalar/pull/8694): feat: add padding utilities to scalar themes
+- [#8634](https://github.com/scalar/scalar/pull/8634): feat: add saving ui component
+
+## 0.15.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.15.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.14.3
+
+### Patch Changes
+
+- [#8315](https://github.com/scalar/scalar/pull/8315): feat(theme): standardize tailwind line height behavior
+
+## 0.14.2
+
+### Patch Changes
+
+- [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+## 0.14.1
+
+### Patch Changes
+
+- [#8276](https://github.com/scalar/scalar/pull/8276): feat(components): standardize form inputs to have a height of 40px
+
+## 0.14.0
+
+### Minor Changes
+
+- [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+## 0.13.26
+
+### Patch Changes
+
+- [#7520](https://github.com/scalar/scalar/pull/7520) [`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf) Thanks [@hwkr](https://github.com/hwkr)! - feat(themes): apply sidebar variables at the top level
+
+## 0.13.25
+
+### Patch Changes
+
+- [#7458](https://github.com/scalar/scalar/pull/7458) [`35af6bf`](https://github.com/scalar/scalar/commit/35af6bfce4bc4ae3d0fc5783ea36e0165e964361) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: remove `@scalar/types` unused dependency
+
+## 0.13.24
+
+### Patch Changes
+
+- [#7306](https://github.com/scalar/scalar/pull/7306) [`5a108fc`](https://github.com/scalar/scalar/commit/5a108fcbc52ae7957731c23689896ba353b83d3b) Thanks [@hwkr](https://github.com/hwkr)! - feat(components): add ScalarThemeSwatches component
+
+- Updated dependencies [[`44aeef0`](https://github.com/scalar/scalar/commit/44aeef01073801165e339163462378b7b62ff68d), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47)]:
+  - @scalar/types@0.5.0
+
+## 0.13.23
+
+### Patch Changes
+
+- Updated dependencies [[`eb022f2`](https://github.com/scalar/scalar/commit/eb022f2c8f93c84a04c0093fefe8a1e05d6ec80d), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461)]:
+  - @scalar/types@0.4.0
+
+## 0.13.22
+
+### Patch Changes
+
+- Updated dependencies [f3e17d8]
+  - @scalar/types@0.3.2
+
+## 0.13.21
+
+### Patch Changes
+
+- 13dcd89: feat(themes): add text align to global reset
+- Updated dependencies [1e01464]
+  - @scalar/types@0.3.1
+
+## 0.13.20
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/types@0.3.0
+
+## 0.13.19
+
+### Patch Changes
+
+- 0b3c6fa: feat(api-reference): localhost development toolbar
+
+## 0.13.18
+
+### Patch Changes
+
+- Updated dependencies [005fba9]
+  - @scalar/types@0.2.16
+
+## 0.13.17
+
+### Patch Changes
+
+- 8f2a2f2: Bump some dependencies to latest
+
+## 0.13.16
+
+### Patch Changes
+
+- Updated dependencies [abe3842]
+  - @scalar/types@0.2.15
+
+## 0.13.15
+
+### Patch Changes
+
+- 2b22eab: feat(themes): convert default color 1 to grey scale
+- Updated dependencies [792c937]
+  - @scalar/types@0.2.14
+
+## 0.13.14
+
+### Patch Changes
+
+- Updated dependencies [50032be]
+  - @scalar/types@0.2.13
+
+## 0.13.13
+
+### Patch Changes
+
+- 6c24be9: feat(components): update scalar hotkey design
+- Updated dependencies [6a88108]
+  - @scalar/types@0.2.12
+
+## 0.13.12
+
+### Patch Changes
+
+- 952f471: fix(themes): don't style <a> in reset only in markdown
+- 3c1e3e3: fix: removes a level line height from reset
+- Updated dependencies [ccf875a]
+- Updated dependencies [94d6d0c]
+  - @scalar/types@0.2.11
+
+## 0.13.11
+
+### Patch Changes
+
+- fb62e1b: feat: adds global base style for anchor tag
+- Updated dependencies [fb62e1b]
+  - @scalar/types@0.2.10
+
 ## 0.13.10
 
 ### Patch Changes

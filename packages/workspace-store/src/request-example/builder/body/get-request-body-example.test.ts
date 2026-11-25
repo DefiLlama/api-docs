@@ -1,0 +1,606 @@
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import {
+  type RequestBodyObject,
+  RequestBodyObjectSchema,
+  type SchemaObject,
+  SchemaObjectSchema,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { describe, expect, it, vi } from 'vitest'
+
+import { getExampleFromBody, getSchemaExampleFromBody } from './get-request-body-example'
+
+describe('get-request-body-example', () => {
+  it('generates the required number of coordinates in a JSON request body', () => {
+    const schema: SchemaObject = {
+      type: 'object',
+      properties: { coordinates: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 } },
+      required: ['coordinates'],
+    }
+    const contentType = 'application/json'
+    expect(getSchemaExampleFromBody({ content: { [contentType]: { schema } } }, contentType)).toStrictEqual({
+      coordinates: [1, 1],
+    })
+  })
+
+  it.each(['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data'])(
+    'generates formatted strings in %s bodies while preserving other fallbacks',
+    (contentType) => {
+      const schema = coerceValue(SchemaObjectSchema, {
+        type: 'object',
+        properties: {
+          date: { type: 'string', format: 'date' },
+          datetime: { type: 'string', format: 'date-time' },
+          dates: { type: 'array', items: { type: 'string', format: 'date' } },
+          choice: { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }] },
+          email: { type: 'string', format: 'email' },
+          duration: { type: 'string', format: 'duration' },
+          ids: { type: 'array', items: { type: 'string', format: 'uuid4' } },
+          summary: { type: 'string' },
+          nullable: { type: ['string', 'null'] },
+          temperature: { type: 'integer' },
+        },
+      })
+      expect(getExampleFromBody({ content: { [contentType]: { schema } } }, contentType, 'default')).toStrictEqual({
+        value: {
+          date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          datetime: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+          dates: [expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)],
+          choice: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          email: 'hello@example.com',
+          duration: 'P1D',
+          ids: ['919108f7-52d1-4320-9bac-f847db4148a8'],
+          summary: '',
+          nullable: null,
+          temperature: 1,
+        },
+      })
+    },
+  )
+
+  it('generates formatted dates in XML bodies', () => {
+    const schema: SchemaObject = {
+      type: 'object',
+      xml: { name: 'event' },
+      properties: {
+        date: { type: 'string', format: 'date' },
+        datetime: { type: 'string', format: 'date-time' },
+      },
+    }
+    expect(getSchemaExampleFromBody({ content: { 'application/xml': { schema } } }, 'application/xml')).toEqual(
+      expect.stringMatching(
+        /^<\?xml version="1.0" encoding="UTF-8"\?>\n<event>\n {2}<date>\d{4}-\d{2}-\d{2}<\/date>\n {2}<datetime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z<\/datetime>\n<\/event>$/,
+      ),
+    )
+  })
+
+  it.each(['examples', 'example', 'default', 'const', 'enum'] as const)(
+    'preserves authored date values from %s',
+    (keyword) => {
+      const value = '2000-01-01'
+      const schema: SchemaObject = {
+        type: 'string',
+        format: 'date',
+        [keyword]: keyword === 'examples' || keyword === 'enum' ? [value] : value,
+      }
+      expect(getSchemaExampleFromBody({ content: { 'application/json': { schema } } }, 'application/json')).toBe(value)
+    },
+  )
+
+  it.each([false, true])('generates finite recursive array examples with a root reference: %s', (rootReference) => {
+    const schema: SchemaObject = {
+      type: 'object',
+      required: ['name'],
+      properties: { name: { type: 'string', example: 'Earth' } },
+    }
+    schema.properties!.planets = {
+      type: 'array',
+      minItems: 1,
+      items: { $ref: '#/components/schemas/Planet', '$ref-value': schema },
+    }
+    const input = rootReference ? { $ref: '#/components/schemas/Planet', '$ref-value': schema } : schema
+    const requestBody = { content: { 'application/json': { schema: input } } }
+    expect(getSchemaExampleFromBody(requestBody, 'application/json')).toStrictEqual({
+      name: 'Earth',
+      planets: [{ name: 'Earth' }],
+    })
+    expect(getExampleFromBody(requestBody, 'application/json', 'default')).toStrictEqual({
+      value: { name: 'Earth', planets: [{ name: 'Earth' }] },
+    })
+  })
+
+  it.each(['direct', 'reference', 'oneOf', 'anyOf'] as const)(
+    'omits recursive arrays whose items cannot be generated: %s',
+    (variant) => {
+      const planet: SchemaObject = {
+        type: 'object',
+        required: ['name'],
+        properties: { name: { type: 'string', example: 'Earth' } },
+      }
+      const items = {
+        direct: planet,
+        reference: planet,
+        oneOf: { type: 'object', oneOf: [planet] },
+        anyOf: { type: 'object', anyOf: [planet] },
+      } satisfies Record<typeof variant, SchemaObject>
+      const planets: SchemaObject = { type: 'array', minItems: 1, items: items[variant] }
+      planet.properties!.planets =
+        variant !== 'direct' ? { $ref: '#/components/schemas/Planets', '$ref-value': planets } : planets
+      const requestBody = { content: { 'application/json': { schema: planets } } }
+      expect(getSchemaExampleFromBody(requestBody, 'application/json')).toStrictEqual([{ name: 'Earth' }])
+      expect(getExampleFromBody(requestBody, 'application/json', 'default')).toStrictEqual({
+        value: [{ name: 'Earth' }],
+      })
+    },
+  )
+
+  it('omits optional object cycles without generating null and preserves repeated references', () => {
+    const schema: SchemaObject = {
+      type: 'object',
+      properties: { name: { type: 'string', example: 'Earth' } },
+    }
+    schema.properties!.parent = schema
+    expect(getSchemaExampleFromBody({ content: { 'application/json': { schema } } }, 'application/json')).toStrictEqual(
+      { name: 'Earth' },
+    )
+
+    const target: SchemaObject = { type: 'object', properties: { name: { type: 'string', example: 'Earth' } } }
+    const shared = { $ref: '#/components/schemas/Planet', '$ref-value': target }
+    const siblings: SchemaObject = { type: 'object', properties: { first: shared, second: shared } }
+    expect(
+      getSchemaExampleFromBody({ content: { 'application/json': { schema: siblings } } }, 'application/json'),
+    ).toStrictEqual({
+      first: { name: 'Earth' },
+      second: { name: 'Earth' },
+    })
+  })
+  it('retains structured stream data and supplies its framed wire representation', () => {
+    const dataValue = [{ id: 1 }, { id: 2 }]
+    const body = { content: { 'application/jsonl': { examples: { selected: { dataValue } } } } }
+    expect(getExampleFromBody(body, 'application/jsonl', 'selected')).toStrictEqual({
+      dataValue,
+      value: '{"id":1}\n{"id":2}\n',
+      serializedValue: '{"id":1}\n{"id":2}\n',
+    })
+  })
+
+  it.each([
+    {
+      contentType: 'text/event-stream',
+      value: { event: 'update', data: 'hello' },
+      expected: 'event: update\ndata: hello\n\n',
+    },
+    { contentType: 'application/jsonl', value: [{ id: 1 }, { id: 2 }], expected: '{"id":1}\n{"id":2}\n' },
+    { contentType: 'application/json-seq', value: [false, 0, null], expected: '\u001efalse\n\u001e0\n\u001enull\n' },
+    { contentType: 'application/jsonl', value: null, expected: 'null\n' },
+    { contentType: 'application/jsonl', value: false, expected: 'false\n' },
+    { contentType: 'application/jsonl', value: 0, expected: '0\n' },
+    { contentType: 'text/event-stream', value: 'data: unchanged\n\n', expected: 'data: unchanged\n\n' },
+  ])('frames authored stream content for $contentType: $value', ({ contentType, value, expected }) => {
+    const body = { content: { [contentType]: { example: value } } }
+    expect(getExampleFromBody(body, contentType, 'default')).toStrictEqual({ value: expected })
+  })
+
+  it.each([
+    { type: 'integer', value: 0 },
+    { type: 'boolean', value: false },
+    { type: 'string', value: '' },
+  ] as const)('preserves generated non-streaming $type examples', ({ type, value }) => {
+    const body = { content: { 'application/json': { schema: { type, const: value } } } }
+    expect(getExampleFromBody(body, 'application/json', 'default')).toStrictEqual({ value })
+  })
+
+  it('reports an authored SSE example whose records are all omitted', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const body = { content: { 'text/event-stream': { example: [{ unknown: true }] } } }
+      expect(getExampleFromBody(body, 'text/event-stream', 'default')).toStrictEqual({ value: '' })
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        'Skipped 1 SSE example item(s) with no valid event, id, retry, or data fields.',
+      )
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('generates a framed example from a referenced stream item schema', () => {
+    const body = {
+      content: {
+        'application/jsonl': {
+          itemSchema: {
+            $ref: '#/components/schemas/Entry',
+            '$ref-value': { type: 'object' as const, properties: { id: { type: 'integer' as const, const: 42 } } },
+          },
+        },
+      },
+    }
+    expect(getExampleFromBody(body, 'application/jsonl', 'default')).toStrictEqual({ value: '{"id":42}\n' })
+  })
+
+  it('keeps explicit wire-format string examples unchanged', () => {
+    const body = {
+      content: {
+        'application/jsonl': {
+          itemSchema: { type: 'integer' as const },
+          example: '1\n2\n',
+        },
+      },
+    }
+    expect(getExampleFromBody(body, 'application/jsonl', 'default')?.value).toBe('1\n2\n')
+  })
+
+  it('returns existing example when found in content.examples', () => {
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            myExample: {
+              value: { id: 123, name: 'Test User' },
+            },
+          },
+        },
+      },
+    }
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'myExample')
+
+    expect(result).toEqual({ value: { id: 123, name: 'Test User' } })
+  })
+
+  it('uses a resolved externalValue example', () => {
+    // The bundler resolves `externalValue` into `value`, so a resolved external example
+    // is used just like an inline one.
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            external: {
+              externalValue: 'https://example.com/pet.json',
+              value: { name: 'Kitty' },
+            },
+          },
+        },
+      },
+    }
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'external')
+
+    expect(result).toEqual({ externalValue: 'https://example.com/pet.json', value: { name: 'Kitty' } })
+  })
+
+  it('falls back to a schema example when an externalValue is not resolved', () => {
+    // Only `externalValue` is present (no resolved `value`), so we generate from the schema
+    // instead of returning an empty body.
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              id: { type: 'integer' },
+              name: { type: 'string' },
+            },
+          },
+          examples: {
+            external: {
+              externalValue: 'https://example.com/pet.json',
+            },
+          },
+        },
+      },
+    })
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'external')
+
+    expect(result).toEqual({ value: { id: 1, name: '' } })
+  })
+
+  it('generates example from schema when no example exists', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              id: { type: 'integer' },
+              name: { type: 'string' },
+            },
+          },
+        },
+      },
+    })
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'default')
+    expect(result).toEqual({ value: { id: 1, name: '' } })
+  })
+
+  it('returns null when content for contentType does not exist', () => {
+    const requestBody = {
+      content: {
+        'application/xml': {
+          schema: { type: 'object' },
+        },
+      },
+    } satisfies RequestBodyObject
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'default')
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null when neither example nor schema exists', () => {
+    const requestBody = {
+      content: {
+        'application/json': {},
+      },
+    }
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'default')
+
+    expect(result).toBeNull()
+  })
+
+  it('resolves $ref examples correctly', () => {
+    const requestBody = {
+      content: {
+        'application/json': {
+          examples: {
+            refExample: {
+              $ref: '#/components/examples/UserExample',
+              '$ref-value': {
+                value: { id: 456, email: 'ref@example.com' },
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'refExample')
+
+    expect(result).toEqual({ value: { id: 456, email: 'ref@example.com' } })
+  })
+
+  it('filters out readOnly properties when generating example from schema', () => {
+    const requestBody = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              id: { type: 'integer' },
+              name: { type: 'string' },
+              createdAt: { type: 'string', readOnly: true },
+              updatedAt: { type: 'string', readOnly: true },
+            },
+          },
+        },
+      },
+    } satisfies RequestBodyObject
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'default')
+
+    // readOnly properties should be filtered out
+    expect(result).toEqual({ value: { id: 1, name: '' } })
+    expect(result?.value).not.toHaveProperty('createdAt')
+    expect(result?.value).not.toHaveProperty('updatedAt')
+  })
+
+  it('uses requestBodyCompositionSelection when generating an example from schema', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {
+            anyOf: [
+              {
+                type: 'object',
+                properties: {
+                  source: { type: 'string', default: 'file' },
+                },
+              },
+              {
+                type: 'object',
+                properties: {
+                  source: { type: 'string', default: 'service' },
+                },
+              },
+            ],
+          },
+        },
+      },
+    })
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'default', { 'requestBody.anyOf': 1 })
+
+    expect(result).toEqual({ value: { source: 'service' } })
+  })
+
+  it('deep resolves nested refs when generating selected nested composition examples', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              payload: {
+                anyOf: [
+                  {
+                    $ref: '#/components/schemas/NestedFilePayload',
+                    '$ref-value': {
+                      type: 'object',
+                      properties: {
+                        payloadType: { type: 'string', const: 'file' },
+                        fileName: { type: 'string', example: 'buildings.geojson' },
+                        transform: {
+                          oneOf: [
+                            {
+                              $ref: '#/components/schemas/ReprojectTransform',
+                              '$ref-value': {
+                                type: 'object',
+                                properties: {
+                                  mode: { type: 'string', const: 'reproject' },
+                                  epsg: { type: 'integer', example: 4326 },
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                  {
+                    $ref: '#/components/schemas/NestedServicePayload',
+                    '$ref-value': {
+                      type: 'object',
+                      properties: {
+                        payloadType: { type: 'string', const: 'service' },
+                        layerName: { type: 'string', example: 'zoning' },
+                        transform: {
+                          oneOf: [
+                            {
+                              $ref: '#/components/schemas/BufferTransform',
+                              '$ref-value': {
+                                type: 'object',
+                                properties: {
+                                  mode: { type: 'string', const: 'buffer' },
+                                  distanceMeters: { type: 'integer', example: 25 },
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const result = getExampleFromBody(requestBody, 'application/json', 'default', {
+      'requestBody.payload.anyOf': 1,
+      'requestBody.payload.transform.oneOf': 0,
+    })
+
+    expect(result).toEqual({
+      value: {
+        payload: {
+          payloadType: 'service',
+          layerName: 'zoning',
+          transform: {
+            mode: 'buffer',
+            distanceMeters: 25,
+          },
+        },
+      },
+    })
+  })
+})
+
+describe('getSchemaExampleFromBody', () => {
+  it('generates the selected composition branch, ignoring any stored example', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {
+            oneOf: [
+              { type: 'object', properties: { name: { type: 'string' } } },
+              { type: 'object', properties: { label: { type: 'string' } } },
+            ],
+          },
+          // A stored example would shadow the schema in getExampleFromBody, but this helper always
+          // regenerates from the schema.
+          example: JSON.stringify({ name: 'Edited' }),
+        },
+      },
+    })
+
+    expect(getSchemaExampleFromBody(requestBody, 'application/json', { 'requestBody.oneOf': 1 })).toEqual({
+      label: '',
+    })
+  })
+
+  it('returns null for a value-less branch such as `type: null`', () => {
+    // getExampleFromSchema returns `null` (not `undefined`) here, so callers must handle both to
+    // avoid rendering the literal text `null`.
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/json': {
+          schema: {
+            oneOf: [{ type: 'object', properties: { name: { type: 'string' } } }, { type: 'null' }],
+          },
+        },
+      },
+    })
+
+    expect(getSchemaExampleFromBody(requestBody, 'application/json', { 'requestBody.oneOf': 1 })).toBeNull()
+  })
+
+  it('returns undefined when the content type has no schema', () => {
+    const requestBody = {
+      content: {
+        'application/json': {},
+      },
+    } satisfies RequestBodyObject
+
+    expect(getSchemaExampleFromBody(requestBody, 'application/json')).toBeUndefined()
+  })
+  it.each(['application/xml', 'text/xml', 'application/problem+xml; charset=utf-8'])(
+    'generates XML request bodies for %s',
+    (contentType) => {
+      const requestBody = coerceValue(RequestBodyObjectSchema, {
+        content: {
+          [contentType]: {
+            schema: {
+              type: 'object',
+              xml: { name: 'person' },
+              properties: { id: { example: 7, xml: { attribute: true } } },
+            },
+          },
+        },
+      })
+      const expected = '<?xml version="1.0" encoding="UTF-8"?>\n<person id="7"/>'
+      expect(getExampleFromBody(requestBody, contentType, 'default')).toStrictEqual({ value: expected })
+      expect(getSchemaExampleFromBody(requestBody, contentType)).toBe(expected)
+    },
+  )
+
+  it('serializes an explicit XML data example and preserves a serialized example', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/xml': {
+          schema: {
+            type: 'object',
+            xml: { name: 'person' },
+            properties: { id: { example: 7, xml: { attribute: true } } },
+          },
+          examples: { data: { value: { id: 0 } }, raw: { value: '<person id="9" />\n' } },
+        },
+      },
+    })
+    expect(getExampleFromBody(requestBody, 'application/xml', 'data')?.value).toBe(
+      '<?xml version="1.0" encoding="UTF-8"?>\n<person id="0"/>',
+    )
+    expect(getExampleFromBody(requestBody, 'application/xml', 'raw')?.value).toBe('<person id="9" />\n')
+  })
+
+  it('uses the selected XML composition for regeneration', () => {
+    const requestBody = coerceValue(RequestBodyObjectSchema, {
+      content: {
+        'application/xml': {
+          schema: {
+            oneOf: [
+              { type: 'string', example: 'a', xml: { name: 'first' } },
+              { type: 'string', example: 'b', xml: { name: 'second' } },
+            ],
+          },
+        },
+      },
+    })
+    expect(getSchemaExampleFromBody(requestBody, 'application/xml', { 'requestBody.oneOf': 1 })).toBe(
+      '<?xml version="1.0" encoding="UTF-8"?>\n<second>b</second>',
+    )
+  })
+})

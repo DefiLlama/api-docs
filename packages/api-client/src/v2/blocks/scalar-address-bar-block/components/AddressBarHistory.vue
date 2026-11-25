@@ -1,0 +1,107 @@
+<script setup lang="ts">
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue'
+import { ScalarFloating } from '@scalar/components/floating'
+import { ScalarIcon } from '@scalar/components/icon'
+import { formatMilliseconds } from '@scalar/helpers/formatters/format-milliseconds'
+import { httpStatusCodes } from '@scalar/helpers/http/http-status-codes'
+
+import { HttpMethod } from '@/components/HttpMethod'
+import ValueEmitter from '@/v2/components/layout/ValueEmitter.vue'
+import { useLocalization } from '@/v2/features/localization'
+
+import { getStatusCodeColor } from './httpStatusCodeColors'
+
+const { target } = defineProps<{
+  /** The id of the target to use for the popover (e.g. address bar) */
+  target: string
+  /** List of all request history items */
+  history: History[]
+}>()
+
+const emits = defineEmits<{
+  /** Select a request history item by index */
+  (e: 'select:history:item', payload: { index: number }): void
+  /** Update the open state of the history popover */
+  (e: 'update:open', value: boolean): void
+}>()
+
+const { translate } = useLocalization()
+
+export type History = {
+  method: string
+  path: string
+  duration: number
+  status: number
+}
+</script>
+<template>
+  <Menu
+    v-slot="{ open }"
+    as="div">
+    <!-- Emit the slot value back out the parent -->
+    <ValueEmitter
+      :value="open"
+      @change="(value) => emits('update:open', value)"
+      @unmount="emits('update:open', false)" />
+
+    <ScalarFloating
+      :offset="0"
+      resize
+      :target="target">
+      <!-- History -->
+      <MenuButton
+        v-if="history.length"
+        class="address-bar-history-button text-c-3 focus:text-c-1 relative mr-1 rounded-lg p-1.5">
+        <ScalarIcon
+          icon="History"
+          size="sm"
+          thickness="2.25" />
+        <span class="sr-only">{{
+          translate('apiClient.addressBarHistory.requestHistory')
+        }}</span>
+      </MenuButton>
+      <!-- History shadow and placement-->
+      <template
+        v-if="open"
+        #floating="{ width }">
+        <!-- History Item -->
+        <MenuItems
+          class="custom-scroll bg-b-1 dark:bg-b-1.5 grid max-h-[inherit] grid-cols-[44px_1fr_repeat(3,auto)] items-center rounded-b-lg border border-t-0 p-0.75 shadow-md"
+          static
+          :style="{ width }">
+          <MenuItem
+            v-for="(entry, index) in history"
+            :key="index"
+            as="button"
+            class="font-code ui-active:*:bg-b-2 text-c-2 contents text-sm font-medium *:flex *:h-8 *:cursor-pointer *:items-center *:rounded-none *:px-1.5 *:first:rounded-l *:last:rounded-r"
+            :value="index"
+            @click="emits('select:history:item', { index })">
+            <HttpMethod
+              class="text-[11px]"
+              :method="entry.method" />
+            <div class="min-w-0">
+              <div class="text-c-1 min-w-0 truncate">
+                {{ entry.path }}
+              </div>
+            </div>
+            <div>{{ formatMilliseconds(entry.duration) }}</div>
+            <div :class="[getStatusCodeColor(entry.status).color]">
+              {{ entry.status }}
+            </div>
+            <div>
+              {{ httpStatusCodes[entry.status]?.name }}
+            </div>
+          </MenuItem>
+        </MenuItems>
+      </template>
+    </ScalarFloating>
+  </Menu>
+</template>
+<style scoped>
+.address-bar-history-button:hover {
+  background: var(--scalar-background-3);
+}
+.address-bar-history-button:focus-within {
+  background: var(--scalar-background-2);
+}
+</style>

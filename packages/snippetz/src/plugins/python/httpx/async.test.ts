@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { pythonHttpxAsync } from './async'
 
 describe('pythonHttpxAsync', () => {
@@ -7,7 +8,7 @@ describe('pythonHttpxAsync', () => {
       url: 'https://example.com',
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com")`)
   })
 
@@ -17,7 +18,7 @@ describe('pythonHttpxAsync', () => {
       method: 'post',
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com")`)
   })
 
@@ -32,7 +33,7 @@ describe('pythonHttpxAsync', () => {
       ],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         headers={
           "Content-Type": "application/json"
@@ -46,7 +47,7 @@ describe('pythonHttpxAsync', () => {
       headers: [],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com")`)
   })
 
@@ -68,7 +69,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         headers={
           "Content-Type": "application/json"
@@ -94,7 +95,7 @@ describe('pythonHttpxAsync', () => {
       ],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         params={
           "foo": "bar",
@@ -118,7 +119,7 @@ describe('pythonHttpxAsync', () => {
       ],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         cookies={
           "foo": "bar",
@@ -133,7 +134,7 @@ describe('pythonHttpxAsync', () => {
       cookies: [],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com")`)
   })
 
@@ -150,7 +151,7 @@ describe('pythonHttpxAsync', () => {
       },
     )
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         auth=("user", "pass")
     )`)
@@ -175,7 +176,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         files=[
           ("file", open("test.txt", "rb"))
@@ -205,11 +206,41 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         files=[
           ("file", open("test.txt", "rb")),
           ("file", open("another.txt", "rb"))
+        ]
+    )`)
+  })
+
+  it('handles multipart form data with per-part content types', () => {
+    const result = pythonHttpxAsync.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: {
+        mimeType: 'multipart/form-data',
+        params: [
+          {
+            name: 'file',
+            fileName: 'test.txt',
+            contentType: 'text/plain',
+          },
+          {
+            name: 'metadata',
+            value: '{"foo":"bar"}',
+            contentType: 'application/json',
+          },
+        ],
+      },
+    })
+
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
+    await client.post("https://example.com",
+        files=[
+          ("file", ("test.txt", open("test.txt", "rb"), "text/plain")),
+          ("metadata", (None, "{\\"foo\\":\\"bar\\"}", "application/json"))
         ]
     )`)
   })
@@ -229,7 +260,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         data={
           "special chars!@#": "value"
@@ -247,9 +278,9 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
-        data=b"binary content"
+        content=b"binary content"
     )`)
   })
 
@@ -264,7 +295,7 @@ describe('pythonHttpxAsync', () => {
       ],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         headers={
           "Accept-Encoding": "gzip, deflate"
@@ -277,7 +308,7 @@ describe('pythonHttpxAsync', () => {
       url: 'https://example.com/path with spaces/[brackets]',
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get(
         "https://example.com/path with spaces/[brackets]"
     )`)
@@ -298,7 +329,7 @@ describe('pythonHttpxAsync', () => {
       ],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         params={
           "q": "hello world & more",
@@ -312,7 +343,7 @@ describe('pythonHttpxAsync', () => {
       url: '',
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("")`)
   })
 
@@ -321,7 +352,7 @@ describe('pythonHttpxAsync', () => {
       url: 'https://example.com',
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com")`)
   })
 
@@ -330,7 +361,7 @@ describe('pythonHttpxAsync', () => {
       url: 'https://example.com/' + 'a'.repeat(2000),
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get(
         "https://example.com/${'a'.repeat(2000)}"
     )`)
@@ -345,7 +376,7 @@ describe('pythonHttpxAsync', () => {
       ],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         headers={
           "X-Custom": "value1"
@@ -359,7 +390,7 @@ describe('pythonHttpxAsync', () => {
       headers: [{ name: 'X-Empty', value: '' }],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         headers={
           "X-Empty": ""
@@ -382,7 +413,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         files=[
           ("file", open("", "rb"))
@@ -411,7 +442,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         headers={
           "Content-Type": "application/json"
@@ -440,7 +471,7 @@ describe('pythonHttpxAsync', () => {
       ],
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.get("https://example.com",
         cookies={
           "special;cookie": "value with spaces"
@@ -470,7 +501,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         headers={
           "Content-Type": "application/json"
@@ -514,7 +545,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         headers={
           "Content-Type": "application/json"
@@ -554,7 +585,7 @@ describe('pythonHttpxAsync', () => {
       },
     })
 
-    expect(result).toBe(`with httpx.AsyncClient() as client:
+    expect(result).toBe(`async with httpx.AsyncClient() as client:
     await client.post("https://example.com",
         headers={
           "Content-Type": "application/json"
@@ -569,5 +600,47 @@ describe('pythonHttpxAsync', () => {
           ]
         }
     )`)
+  })
+  it.each(['GET', 'DELETE', 'HEAD', 'OPTIONS'])('sends text bodies with a %s request', (method) => {
+    const result = pythonHttpxAsync.generate({
+      url: 'https://example.com',
+      method,
+      postData: { mimeType: 'text/plain', text: 'hello' },
+    })
+
+    expect(result).toBe(
+      `async with httpx.AsyncClient() as client:\n    await client.request("${method}", "https://example.com", content="hello")`,
+    )
+  })
+
+  it('uses content for a raw text body', () => {
+    const result = pythonHttpxAsync.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      postData: { mimeType: 'text/plain', text: 'hello' },
+    })
+
+    expect(result).toBe(`async with httpx.AsyncClient() as client:\n    await client.post("https://example.com",
+        content="hello"
+    )`)
+  })
+
+  it.each(['GET', 'DELETE', 'HEAD', 'OPTIONS'])('sends +json bodies with a %s request', (method) => {
+    const result = pythonHttpxAsync.generate({
+      url: 'https://example.com',
+      method,
+      postData: { mimeType: 'application/vnd.api+json', text: '"hello"' },
+    })
+
+    expect(result).toBe(
+      `async with httpx.AsyncClient() as client:\n    await client.request("${method}", "https://example.com", json="hello")`,
+    )
+  })
+
+  it.each([
+    ['https://example.com/a"b', 'await client.get("https://example.com/a\\"b")'],
+    ['https://example.com/files/a\\b', 'await client.get("https://example.com/files/a\\\\b")'],
+  ])('escapes the request URL %s', (url, expected) => {
+    expect(pythonHttpxAsync.generate({ url })).toBe(`async with httpx.AsyncClient() as client:\n    ${expected}`)
   })
 })

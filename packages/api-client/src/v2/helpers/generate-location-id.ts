@@ -1,0 +1,29 @@
+import { isDefined } from '@scalar/helpers/array/is-defined'
+
+/**
+ * Generates a unique string ID for an API location, based on the document, path, method, and example.
+ * Filters out undefined values and serializes the composite array into a stable string.
+ *
+ * @param params - An object containing document, path, method, and optional example name.
+ * @returns A stringified array representing the unique location identifier.
+ *
+ * Example:
+ *   generateLocationId({ document: 'mydoc', path: '/users', method: 'get', example: 'default' })
+ *   // => '["mydoc","/users","get","default"]'
+ */
+export const generateLocationId = ({
+  document,
+  path,
+  method,
+  example,
+  isWebhook = false,
+}: {
+  document: string
+  path?: string
+  method?: string
+  example?: string
+  /** Namespace webhook entries without changing existing operation IDs. */
+  isWebhook?: boolean
+}) => {
+  return JSON.stringify([document, isWebhook ? 'webhook' : undefined, path, method, example].filter(isDefined))
+}

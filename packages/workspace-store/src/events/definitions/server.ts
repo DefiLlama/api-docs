@@ -1,0 +1,102 @@
+import type { ServerObject } from '@/schemas/v3.2/strict/openapi-document'
+
+export type ServerMeta =
+  | {
+      type: 'document'
+    }
+  | {
+      type: 'operation'
+      path: string
+      method: string
+    }
+
+export type ServerEvents = {
+  /**
+   * Initialize the servers with an empty array for the target collection
+   */
+  'server:initialize:servers': {
+    /** The meta information for the server */
+    meta: ServerMeta
+  }
+  /**
+   * Adds a new server, optionally setting it as the selected server and prefill the URL
+   */
+  'server:add:server': {
+    /** The URL of the server to add (optional) */
+    url?: string
+    /** Whether to set the server as the selected server (optional) */
+    select?: boolean
+    /** The meta information for the server */
+    meta: ServerMeta
+  }
+  /**
+   * Update the entire server object for the target collection
+   */
+  'server:update:server': {
+    /** The index of the server to update */
+    index: number
+    /** The new server payload to update */
+    server: Partial<ServerObject>
+    /** The meta information for the server */
+    meta: ServerMeta
+  }
+  /**
+   * Update the selected server variables for the target collection
+   */
+  'server:update:variables': {
+    /** The index of the server to update */
+    index: number
+    /** The key of the variable to update */
+    key: string
+    /** The new value of the variable */
+    value: string
+    /** The meta information for the server */
+    meta: ServerMeta
+  }
+  /**
+   * Update the selected server for the target collection
+   */
+  'server:update:selected': {
+    /** The URL of the server to select */
+    url: string
+    /** The meta information for the server */
+    meta: ServerMeta
+  }
+  /**
+   * Delete a server from the target collection
+   */
+  'server:delete:server': {
+    /** The index of the server to delete */
+    index: number
+    /** The meta information for the server */
+    meta: ServerMeta
+  }
+  /**
+   * Clear all servers from the target collection
+   */
+  'server:clear:servers': {
+    /** The meta information for the server */
+    meta: ServerMeta
+  }
+  /**
+   * Update the selected server for an AsyncAPI document.
+   *
+   * AsyncAPI servers are a named map (rather than an array of `url`), so the
+   * selection is identified by the server name instead of an index or URL.
+   */
+  'asyncapi-server:update:selected': {
+    /** The name (key in `document.servers`) of the server to select */
+    name: string
+  }
+  /**
+   * Update a server variable for an AsyncAPI document, identified by server name.
+   */
+  'asyncapi-server:update:variables': {
+    /** The name (key in `document.servers`) of the server to update */
+    name: string
+    /** The key of the variable to update */
+    key: string
+    /** The new value of the variable */
+    value: string
+  }
+}

@@ -1,0 +1,1331 @@
+import { describe, expect, it, test } from 'vitest'
+
+import { apply } from '@/diff/apply'
+import { type Difference, diff } from '@/diff/diff'
+import { merge } from '@/diff/merge'
+
+const deepClone = <T extends object>(obj: T) => JSON.parse(JSON.stringify(obj)) as T
+
+type DeepPartial<T> = T extends object
+  ? {
+      [P in keyof T]?: DeepPartial<T[P]>
+    }
+  : T
+
+describe('mergeDiff', () => {
+  test('should correctly merge the diffs and get conflicting changes', () => {
+    const baseDoc = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Simple API',
+        description: 'A small OpenAPI specification example',
+        version: '1.0.0',
+      },
+    }
+
+    const doc1 = {
+      ...baseDoc,
+      info: {
+        ...baseDoc.info,
+        title: 'New title',
+      },
+    }
+
+    const clonedBase = deepClone<Partial<typeof baseDoc>>(baseDoc)
+    const deletedInformation = clonedBase.info
+    delete clonedBase.info
+
+    const doc2 = {
+      ...clonedBase,
+    }
+
+    expect(merge(diff(baseDoc, doc1), diff(baseDoc, doc2))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              path: ['info', 'title'],
+              changes: doc1.info.title,
+              type: 'update',
+            },
+          ],
+          [{ path: ['info'], changes: deletedInformation, type: 'delete' }],
+        ],
+      ],
+    })
+
+    expect(merge(diff(baseDoc, doc2), diff(baseDoc, doc1))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [{ path: ['info'], changes: deletedInformation, type: 'delete' }],
+          [
+            {
+              path: ['info', 'title'],
+              changes: doc1.info.title,
+              type: 'update',
+            },
+          ],
+        ],
+      ],
+    })
+  })
+
+  test('should correctly merge the diffs and get deeply nested conflicting changes', () => {
+    const baseDoc = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Simple API',
+        description: 'A small OpenAPI specification example',
+        version: '1.0.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get a list of users',
+            operationId: 'getUsers',
+            responses: {
+              '200': {
+                description: 'A list of users',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'integer' },
+                          name: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc1 = {
+      ...baseDoc,
+      paths: {
+        ...baseDoc.paths,
+        '/users': {
+          ...baseDoc.paths?.['/users'],
+          delete: {
+            summary: 'Delete all users',
+            operationId: 'delete',
+            responses: {
+              '200': {
+                description: 'All users deleted successfully',
+              },
+            },
+          },
+        },
+        '/users/{id}': {
+          get: {
+            summary: 'Get a user by ID',
+            operationId: 'getUserById',
+            parameters: [
+              {
+                name: 'id',
+                in: 'path',
+                required: true,
+                schema: { type: 'integer' },
+              },
+            ],
+            responses: {
+              '200': {
+                description: 'User details',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'integer' },
+                        name: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+              '404': {
+                description: 'User not found',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const clonedBase = deepClone<DeepPartial<typeof baseDoc>>(baseDoc)
+    const deletedDescription = clonedBase.info?.description
+    delete clonedBase.info?.description
+
+    const doc2 = {
+      ...clonedBase,
+      paths: {
+        ...clonedBase.paths,
+        '/users': {
+          ...clonedBase.paths?.['/users'],
+          delete: {
+            summary: 'Delete all users',
+            operationId: 'deleteUsers',
+            responses: {
+              '200': {
+                description: 'All users deleted successfully',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    expect(merge(diff(baseDoc, doc1), diff(baseDoc, doc2))).toEqual({
+      diffs: [
+        {
+          path: ['paths', '/users/{id}'],
+          changes: doc1.paths['/users/{id}'],
+          type: 'add',
+        },
+        {
+          path: ['info', 'description'],
+          changes: deletedDescription,
+          type: 'delete',
+        },
+      ],
+      conflicts: [
+        [
+          [
+            {
+              path: ['paths', '/users', 'delete'],
+              changes: doc1.paths['/users'].delete,
+              type: 'add',
+            },
+          ],
+          [
+            {
+              path: ['paths', '/users', 'delete'],
+              changes: doc2.paths['/users'].delete,
+              type: 'add',
+            },
+          ],
+        ],
+      ],
+    })
+
+    expect(merge(diff(baseDoc, doc2), diff(baseDoc, doc1))).toEqual({
+      diffs: [
+        {
+          path: ['info', 'description'],
+          changes: deletedDescription,
+          type: 'delete',
+        },
+        {
+          path: ['paths', '/users/{id}'],
+          changes: doc1.paths['/users/{id}'],
+          type: 'add',
+        },
+      ],
+      conflicts: [
+        [
+          [
+            {
+              path: ['paths', '/users', 'delete'],
+              changes: doc2.paths['/users'].delete,
+              type: 'add',
+            },
+          ],
+          [
+            {
+              path: ['paths', '/users', 'delete'],
+              changes: doc1.paths['/users'].delete,
+              type: 'add',
+            },
+          ],
+        ],
+      ],
+    })
+  })
+
+  test('non conflicting addition of paths', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc1 = {
+      ...base,
+      paths: {
+        ...base.paths,
+        '/products': {
+          get: {
+            summary: 'Get products',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc2 = {
+      ...base,
+      paths: {
+        ...base.paths,
+        '/orders': {
+          get: {
+            summary: 'Get orders',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          path: ['paths', '/products'],
+          changes: doc1.paths['/products'],
+          type: 'add',
+        },
+        {
+          path: ['paths', '/orders'],
+          changes: doc2.paths['/orders'],
+          type: 'add',
+        },
+      ],
+      conflicts: [],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [
+        {
+          path: ['paths', '/orders'],
+          changes: doc2.paths['/orders'],
+          type: 'add',
+        },
+        {
+          path: ['paths', '/products'],
+          changes: doc1.paths['/products'],
+          type: 'add',
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('updates in the same path', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc1 = {
+      ...base,
+      paths: {
+        ...base.paths,
+        '/users': {
+          get: {
+            summary: 'Retrieve all users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc2 = {
+      ...base,
+      paths: {
+        ...base.paths,
+        '/users': {
+          get: {
+            summary: 'List all users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: doc1.paths['/users'].get.summary,
+              type: 'update',
+            },
+          ],
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: doc2.paths['/users'].get.summary,
+              type: 'update',
+            },
+          ],
+        ],
+      ],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: doc2.paths['/users'].get.summary,
+              type: 'update',
+            },
+          ],
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: doc1.paths['/users'].get.summary,
+              type: 'update',
+            },
+          ],
+        ],
+      ],
+    })
+  })
+
+  test('removing and modifying the same path', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const baseClone = deepClone<DeepPartial<typeof base>>(base)
+    const removePaths = baseClone.paths?.['/users']?.get?.summary
+    delete baseClone.paths?.['/users']?.get?.summary
+
+    const doc1 = {
+      ...baseClone,
+    }
+
+    const doc2 = {
+      ...base,
+      paths: {
+        ...base.paths,
+        '/users': {
+          ...base.paths['/users'],
+          get: {
+            ...base.paths['/users'].get,
+            summary: 'Get all registered users',
+          },
+        },
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: removePaths,
+              type: 'delete',
+            },
+          ],
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: doc2.paths['/users'].get.summary,
+              type: 'update',
+            },
+          ],
+        ],
+      ],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: doc2.paths['/users'].get.summary,
+              type: 'update',
+            },
+          ],
+          [
+            {
+              path: ['paths', '/users', 'get', 'summary'],
+              changes: removePaths,
+              type: 'delete',
+            },
+          ],
+        ],
+      ],
+    })
+  })
+
+  test('delete parent node and inner children node should only keep the higher level change', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc1 = deepClone<DeepPartial<typeof base>>(base)
+    delete doc1.paths?.['/users']?.get?.summary
+
+    const doc2 = deepClone<DeepPartial<typeof base>>(base)
+    const removePaths2 = doc2.paths?.['/users']
+    delete doc2.paths?.['/users']
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          path: ['paths', '/users'],
+          changes: removePaths2,
+          type: 'delete',
+        },
+      ],
+      conflicts: [],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [
+        {
+          path: ['paths', '/users'],
+          changes: removePaths2,
+          type: 'delete',
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('deleting the same path on both documents should not resolve in a conflict', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc1 = deepClone<DeepPartial<typeof base>>(base)
+    const doc2 = deepClone<DeepPartial<typeof base>>(base)
+
+    delete doc1.paths?.['/users']?.get
+    delete doc2.paths?.['/users']?.get
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          type: 'delete',
+          changes: base.paths['/users'].get,
+          path: ['paths', '/users', 'get'],
+        },
+      ],
+      conflicts: [],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [
+        {
+          type: 'delete',
+          changes: base.paths['/users'].get,
+          path: ['paths', '/users', 'get'],
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('adding the same key should not resolve in a conflict', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+    }
+
+    const doc1 = {
+      ...base,
+      info: {
+        ...base.info,
+        description: 'Provides a way to interact with the playground',
+      },
+    }
+
+    const doc2 = {
+      ...base,
+      info: {
+        ...base.info,
+        description: doc1.info.description,
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          type: 'add',
+          changes: doc1.info.description,
+          path: ['info', 'description'],
+        },
+      ],
+      conflicts: [],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [
+        {
+          type: 'add',
+          changes: doc1.info.description,
+          path: ['info', 'description'],
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('adding the same object should not resolve in a conflict', () => {
+    const base = {
+      openapi: '3.0.0',
+    }
+
+    const doc1 = {
+      ...base,
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+    }
+
+    const doc2 = {
+      ...base,
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          type: 'add',
+          changes: doc1.info,
+          path: ['info'],
+        },
+      ],
+      conflicts: [],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [
+        {
+          type: 'add',
+          changes: doc1.info,
+          path: ['info'],
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test("adding similar object that can't be merged in the same path should result in a conflict", () => {
+    const base = {
+      openapi: '3.0.0',
+    }
+
+    const doc1 = {
+      ...base,
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+    }
+
+    const doc2 = {
+      ...base,
+      info: {
+        title: 'Sample',
+        version: '1.0',
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              type: 'add',
+              changes: doc1.info,
+              path: ['info'],
+            },
+          ],
+          [
+            {
+              type: 'add',
+              changes: doc2.info,
+              path: ['info'],
+            },
+          ],
+        ],
+      ],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              type: 'add',
+              changes: doc2.info,
+              path: ['info'],
+            },
+          ],
+          [
+            {
+              type: 'add',
+              changes: doc1.info,
+              path: ['info'],
+            },
+          ],
+        ],
+      ],
+    })
+  })
+
+  test('adding the same value on the same path should not result in a conflict', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+      },
+    }
+
+    const doc1 = {
+      ...base,
+      info: {
+        ...base.info,
+        version: '1.0',
+      },
+    }
+
+    const doc2 = {
+      ...base,
+      info: {
+        ...base.info,
+        version: '1.0',
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          type: 'add',
+          changes: doc1.info.version,
+          path: ['info', 'version'],
+        },
+      ],
+      conflicts: [],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [
+        {
+          type: 'add',
+          changes: doc1.info.version,
+          path: ['info', 'version'],
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('should return multiple one to many conflicts for the related conflicts', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+        '/pets': {
+          get: {
+            summary: 'Get pets',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc1 = deepClone<DeepPartial<typeof base>>(base)
+    const deletedUsersChanges = doc1.paths?.['/users']
+    const deletedPetsChanges = doc1.paths?.['/pets']
+    delete doc1.paths?.['/users']
+    delete doc1.paths?.['/pets']
+
+    const doc2 = {
+      ...base,
+      info: {
+        ...base.info,
+      },
+      paths: {
+        ...base.paths,
+        '/users': {
+          ...base.paths['/users'],
+          get: {
+            ...base.paths['/users'].get,
+            summary: 'Updated summary',
+            responses: {
+              ...base.paths['/users'].get.responses,
+              200: {
+                ...base.paths['/users'].get.responses[200],
+                description: 'Updated Successful response',
+              },
+              400: {
+                description: 'Error response',
+              },
+            },
+          },
+        },
+        '/pets': {
+          ...base.paths['/pets'],
+          get: {
+            ...base.paths['/pets'].get,
+            summary: 'Updated summary',
+            responses: {
+              ...base.paths['/pets'].get.responses,
+              200: {
+                ...base.paths['/pets'].get.responses[200],
+                description: 'Updated Successful response',
+              },
+              400: {
+                description: 'Error response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              type: 'delete',
+              changes: deletedUsersChanges,
+              path: ['paths', '/users'],
+            },
+          ],
+          [
+            {
+              type: 'update',
+              changes: doc2.paths['/users'].get.summary,
+              path: ['paths', '/users', 'get', 'summary'],
+            },
+            {
+              type: 'update',
+              changes: doc2.paths['/users'].get.responses[200].description,
+              path: ['paths', '/users', 'get', 'responses', '200', 'description'],
+            },
+            {
+              type: 'add',
+              changes: doc2.paths['/users'].get.responses[400],
+              path: ['paths', '/users', 'get', 'responses', '400'],
+            },
+          ],
+        ],
+        [
+          [
+            {
+              type: 'delete',
+              changes: deletedPetsChanges,
+              path: ['paths', '/pets'],
+            },
+          ],
+          [
+            {
+              type: 'update',
+              changes: doc2.paths['/pets'].get.summary,
+              path: ['paths', '/pets', 'get', 'summary'],
+            },
+            {
+              type: 'update',
+              changes: doc2.paths['/pets'].get.responses[200].description,
+              path: ['paths', '/pets', 'get', 'responses', '200', 'description'],
+            },
+            {
+              type: 'add',
+              changes: doc2.paths['/pets'].get.responses[400],
+              path: ['paths', '/pets', 'get', 'responses', '400'],
+            },
+          ],
+        ],
+      ],
+    })
+
+    expect(merge(diff(base, doc2), diff(base, doc1))).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [
+            {
+              type: 'update',
+              changes: doc2.paths['/users'].get.summary,
+              path: ['paths', '/users', 'get', 'summary'],
+            },
+            {
+              type: 'update',
+              changes: doc2.paths['/users'].get.responses[200].description,
+              path: ['paths', '/users', 'get', 'responses', '200', 'description'],
+            },
+            {
+              type: 'add',
+              changes: doc2.paths['/users'].get.responses[400],
+              path: ['paths', '/users', 'get', 'responses', '400'],
+            },
+          ],
+          [
+            {
+              type: 'delete',
+              changes: deletedUsersChanges,
+              path: ['paths', '/users'],
+            },
+          ],
+        ],
+        [
+          [
+            {
+              type: 'update',
+              changes: doc2.paths['/pets'].get.summary,
+              path: ['paths', '/pets', 'get', 'summary'],
+            },
+            {
+              type: 'update',
+              changes: doc2.paths['/pets'].get.responses[200].description,
+              path: ['paths', '/pets', 'get', 'responses', '200', 'description'],
+            },
+            {
+              type: 'add',
+              changes: doc2.paths['/pets'].get.responses[400],
+              path: ['paths', '/pets', 'get', 'responses', '400'],
+            },
+          ],
+          [
+            {
+              type: 'delete',
+              changes: deletedPetsChanges,
+              path: ['paths', '/pets'],
+            },
+          ],
+        ],
+      ],
+    })
+  })
+
+  test('inner delete should not conflict with an outer update or addition', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+        '/pets': {
+          get: {
+            summary: 'Get pets',
+            responses: {
+              200: {
+                description: 'Successful response',
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const doc1 = deepClone<DeepPartial<typeof base>>(base)
+    const deletedUsersChanges = doc1.paths?.['/users']?.get?.responses
+    const deletedPetsChanges = doc1.paths?.['/pets']?.get?.responses
+    delete doc1.paths?.['/users']?.get?.responses
+    delete doc1.paths?.['/pets']?.get?.responses
+
+    const doc2 = {
+      ...base,
+      info: {
+        ...base.info,
+      },
+      paths: {
+        ...base.paths,
+        '/users': {
+          ...base.paths['/users'],
+          post: {
+            summary: 'Create a new user',
+          },
+        },
+        '/pets': {
+          ...base.paths['/pets'],
+        },
+      },
+    }
+
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          type: 'delete',
+          changes: deletedUsersChanges,
+          path: ['paths', '/users', 'get', 'responses'],
+        },
+        {
+          type: 'delete',
+          changes: deletedPetsChanges,
+          path: ['paths', '/pets', 'get', 'responses'],
+        },
+        {
+          type: 'add',
+          changes: doc2.paths['/users'].post,
+          path: ['paths', '/users', 'post'],
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('deleting different paths on both documents keeps every delete when the shared delete sits at different indices', () => {
+    const base = {
+      openapi: '3.0.0',
+      info: {
+        title: 'Sample API',
+        version: '1.0',
+      },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+          },
+        },
+        '/pets': {
+          get: {
+            summary: 'Get pets',
+          },
+        },
+        '/orders': {
+          get: {
+            summary: 'Get orders',
+          },
+        },
+      },
+    }
+
+    const doc1 = deepClone<DeepPartial<typeof base>>(base)
+    delete doc1.paths?.['/users']
+    delete doc1.paths?.['/pets']
+
+    const doc2 = deepClone<DeepPartial<typeof base>>(base)
+    delete doc2.paths?.['/pets']
+    delete doc2.paths?.['/orders']
+
+    // '/pets' is deleted by both documents, but it is the second entry of the first diff
+    // and the first entry of the second diff
+    expect(merge(diff(base, doc1), diff(base, doc2))).toEqual({
+      diffs: [
+        {
+          type: 'delete',
+          changes: base.paths['/users'],
+          path: ['paths', '/users'],
+        },
+        {
+          type: 'delete',
+          changes: base.paths['/pets'],
+          path: ['paths', '/pets'],
+        },
+        {
+          type: 'delete',
+          changes: base.paths['/orders'],
+          path: ['paths', '/orders'],
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('a shallower delete in the second diff drops only the matching deeper entry of the first', () => {
+    const diff1: Difference<unknown>[] = [
+      { path: ['x'], changes: 'x', type: 'delete' },
+      { path: ['paths', '/users', 'get'], changes: 'get', type: 'delete' },
+    ]
+    const diff2: Difference<unknown>[] = [
+      { path: ['paths', '/users'], changes: 'users', type: 'delete' },
+      { path: ['y'], changes: 'y', type: 'delete' },
+    ]
+
+    // The deeper delete is dropped because deleting '/users' already removes it,
+    // and the unrelated deletes on both sides survive untouched
+    expect(merge(diff1, diff2)).toEqual({
+      diffs: [
+        { path: ['x'], changes: 'x', type: 'delete' },
+        { path: ['paths', '/users'], changes: 'users', type: 'delete' },
+        { path: ['y'], changes: 'y', type: 'delete' },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('a deeper delete in the second diff drops only its own entry', () => {
+    const diff1: Difference<unknown>[] = [
+      { path: ['x'], changes: 'x', type: 'delete' },
+      { path: ['paths', '/users'], changes: 'users', type: 'delete' },
+    ]
+    const diff2: Difference<unknown>[] = [
+      { path: ['paths', '/users', 'get'], changes: 'get', type: 'delete' },
+      { path: ['y'], changes: 'y', type: 'delete' },
+    ]
+
+    expect(merge(diff1, diff2)).toEqual({
+      diffs: [
+        { path: ['x'], changes: 'x', type: 'delete' },
+        { path: ['paths', '/users'], changes: 'users', type: 'delete' },
+        { path: ['y'], changes: 'y', type: 'delete' },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('an identical delete at different indices is kept once and drops nothing else', () => {
+    const diff1: Difference<unknown>[] = [
+      { path: ['x'], changes: 'x', type: 'delete' },
+      { path: ['a'], changes: 'a', type: 'delete' },
+    ]
+    const diff2: Difference<unknown>[] = [
+      { path: ['a'], changes: 'a', type: 'delete' },
+      { path: ['y'], changes: 'y', type: 'delete' },
+    ]
+
+    expect(merge(diff1, diff2)).toEqual({
+      diffs: [
+        { path: ['x'], changes: 'x', type: 'delete' },
+        { path: ['a'], changes: 'a', type: 'delete' },
+        { path: ['y'], changes: 'y', type: 'delete' },
+      ],
+      conflicts: [],
+    })
+  })
+
+  test('an array and a plain object holding the same values on the same path produce a conflict', () => {
+    // The two sides describe the same values in different containers, so a key-by-key comparison
+    // finds nothing to disagree about even though one document ends up with a list and the other
+    // with a map. Only a conflict lets the user pick the container they meant.
+    const diff1: Difference<unknown>[] = [{ path: ['servers'], changes: { 0: 'https://example.com' }, type: 'update' }]
+    const diff2: Difference<unknown>[] = [{ path: ['servers'], changes: ['https://example.com'], type: 'update' }]
+
+    expect(merge(diff1, diff2)).toEqual({
+      diffs: [],
+      conflicts: [
+        [
+          [{ path: ['servers'], changes: { 0: 'https://example.com' }, type: 'update' }],
+          [{ path: ['servers'], changes: ['https://example.com'], type: 'update' }],
+        ],
+      ],
+    })
+  })
+
+  test('two arrays on the same path still merge without a conflict', () => {
+    const diff1: Difference<unknown>[] = [{ path: ['servers'], changes: ['https://example.com'], type: 'update' }]
+    const diff2: Difference<unknown>[] = [
+      { path: ['servers'], changes: ['https://example.com', 'https://staging.example.com'], type: 'update' },
+    ]
+
+    expect(merge(diff1, diff2)).toEqual({
+      diffs: [
+        {
+          path: ['servers'],
+          changes: ['https://example.com', 'https://staging.example.com'],
+          type: 'update',
+        },
+      ],
+      conflicts: [],
+    })
+  })
+
+  // `merge` folds two compatible changes together with `mergeObjects`, which writes in place, and
+  // the changes a diff carries point straight into the documents it compared. Merging therefore
+  // writes into the document behind the second diff list. The behavior is pinned here so a future
+  // switch to cloning is a deliberate change rather than a silent one.
+  describe('mutates the second diff list while merging', () => {
+    test('merges the changes of the first list into the entries of the second one', () => {
+      const diff1: Difference<unknown>[] = [{ path: ['info'], changes: { title: 'Pets' }, type: 'add' }]
+      const changes = { version: '1.0.0' }
+      const diff2: Difference<unknown>[] = [{ path: ['info'], changes, type: 'add' }]
+
+      merge(diff1, diff2)
+
+      expect(changes).toEqual({ version: '1.0.0', title: 'Pets' })
+    })
+
+    test('writes into the document the second diff list was built from', () => {
+      const remote = { info: { version: '1.0.0' } }
+
+      merge(diff({}, { info: { title: 'Pets' } }), diff({}, remote))
+
+      expect(remote).toEqual({ info: { version: '1.0.0', title: 'Pets' } })
+    })
+  })
+
+  it.each([
+    { reverseInputs: false, deleteFirst: false },
+    { reverseInputs: false, deleteFirst: true },
+    { reverseInputs: true, deleteFirst: false },
+    { reverseInputs: true, deleteFirst: true },
+  ])('preserves covered deletions in conflicts: %j', ({ reverseInputs, deleteFirst }) => {
+    const base = { a: { b: 1, a: 2 } }
+    const parent: Difference<unknown>[] = [{ path: ['a'], changes: base.a, type: 'delete' }]
+    const children: Difference<unknown>[] = [
+      { path: ['a', 'b'], changes: 14, type: 'update' },
+      { path: ['a', 'a'], changes: 2, type: 'delete' },
+    ]
+    const orderedChildren = deleteFirst ? [...children].reverse() : children
+    const result = reverseInputs ? merge(orderedChildren, parent) : merge(parent, orderedChildren)
+
+    expect(result).toStrictEqual({
+      diffs: [],
+      conflicts: [reverseInputs ? [orderedChildren, parent] : [parent, orderedChildren]],
+    })
+    expect(apply(structuredClone(base), result.conflicts[0]![reverseInputs ? 0 : 1])).toStrictEqual({
+      a: { b: 14 },
+    })
+    expect(apply(structuredClone(base), result.conflicts[0]![reverseInputs ? 1 : 0])).toStrictEqual({})
+  })
+
+  it.each([false, true])('preserves array deletion order with reversed inputs: %s', (reverseInputs) => {
+    const base = { values: [1, 2, 3, 4] }
+    const updated = { values: [9, 2] }
+    const parent = diff(base, {})
+    const children = diff(base, updated)
+    const result = reverseInputs ? merge(children, parent) : merge(parent, children)
+
+    expect(result).toStrictEqual({
+      diffs: [],
+      conflicts: [reverseInputs ? [children, parent] : [parent, children]],
+    })
+    expect(apply(structuredClone(base), result.conflicts[0]![reverseInputs ? 0 : 1])).toStrictEqual(updated)
+    expect(apply(structuredClone(base), result.conflicts[0]![reverseInputs ? 1 : 0])).toStrictEqual({})
+  })
+})

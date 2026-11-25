@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { dartHttp } from './http'
 
 describe('dartHttp', () => {
+  it.each(['customMethod', 'COPY', 'Get'])('uses a generic request for %s', (method) => {
+    expect(dartHttp.generate({ url: 'https://example.com', method })).toBe(`import 'package:http/http.dart' as http;
+
+void main() async {
+  final request = http.Request('${method}', Uri.parse('https://example.com'));
+  final response = await http.Response.fromStream(await request.send());
+  print(response.body);
+}`)
+  })
+
   it('returns a basic request', () => {
     const result = dartHttp.generate({
       url: 'https://example.com',
@@ -268,6 +278,24 @@ void main() async {
 }`)
   })
 
+  it('escapes quotes and dollar signs in auth credentials', () => {
+    const result = dartHttp.generate(
+      { url: 'https://example.com' },
+      { auth: { username: "o'neil", password: 'pa$word\\' } },
+    )
+
+    expect(result).toBe(`import 'package:http/http.dart' as http;
+
+void main() async {
+  final headers = <String,String>{
+    'Authorization': 'Basic ' + base64Encode(utf8.encode('o\\'neil:pa\\$word\\\\')),
+  };
+
+  final response = await http.get(Uri.parse('https://example.com'), headers: headers);
+  print(response.body);
+}`)
+  })
+
   it('handles undefined auth object', () => {
     const result = dartHttp.generate(
       {
@@ -308,12 +336,10 @@ void main() async {
     expect(result).toBe(`import 'package:http/http.dart' as http;
 
 void main() async {
-  final body = <String,String>{
-    'file': 'test.txt',
-    'field': 'value',
-  };
-
-  final response = await http.post(Uri.parse('https://example.com'), body: body);
+  final request = http.MultipartRequest("POST", Uri.parse("https://example.com"));
+  request.files.add(await http.MultipartFile.fromPath("file", "test.txt"));
+  request.files.add(http.MultipartFile.fromString("field", "value"));
+  final response = await http.Response.fromStream(await request.send());
   print(response.body);
 }`)
   })
@@ -501,11 +527,9 @@ void main() async {
     expect(result).toBe(`import 'package:http/http.dart' as http;
 
 void main() async {
-  final body = <String,String>{
-    'file': '',
-  };
-
-  final response = await http.post(Uri.parse('https://example.com'), body: body);
+  final request = http.MultipartRequest("POST", Uri.parse("https://example.com"));
+  request.files.add(await http.MultipartFile.fromPath("file", ""));
+  final response = await http.Response.fromStream(await request.send());
   print(response.body);
 }`)
   })
@@ -600,6 +624,82 @@ void main() async {
   final body = r'{"nested":{"array":[1,2,3],"object":{"foo":"bar"}},"simple":"value"}';
 
   final response = await http.post(Uri.parse('https://example.com'), headers: headers, body: body);
+  print(response.body);
+}`)
+  })
+  it('escapes single quotes and line breaks in a JSON body', () => {
+    const result = dartHttp.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'application/json' }],
+      postData: {
+        mimeType: 'application/json',
+        text: '{\n  "note": "it\'s $5"\n}',
+      },
+    })
+
+    expect(result).toContain(`final body = '{\\n  "note": "it\\'s \\$5"\\n}';`)
+  })
+
+  it('escapes single quotes in header values', () => {
+    const result = dartHttp.generate({
+      url: 'https://example.com',
+      headers: [{ name: 'X-Name', value: "it's" }],
+    })
+
+    expect(result).toContain(`'X-Name': 'it\\'s',`)
+  })
+
+  it('sends a plain text body', () => {
+    const result = dartHttp.generate({
+      url: 'https://example.com',
+      method: 'POST',
+      headers: [{ name: 'Content-Type', value: 'text/plain' }],
+      postData: {
+        mimeType: 'text/plain',
+        text: "it's plain",
+      },
+    })
+
+    expect(result).toContain(`final body = 'it\\'s plain';`)
+    expect(result).toContain("http.post(Uri.parse('https://example.com'), headers: headers, body: body)")
+  })
+  it.each(['GET', 'HEAD'])('sends text bodies with a %s request', (method) => {
+    const result = dartHttp.generate({
+      url: 'https://example.com',
+      method,
+      postData: { mimeType: 'text/plain', text: 'hello' },
+    })
+
+    expect(result).toBe(`import 'package:http/http.dart' as http;
+
+void main() async {
+  final body = 'hello';
+
+  final request = http.Request('${method}', Uri.parse('https://example.com'));
+  request.body = body;
+  final response = await http.Response.fromStream(await request.send());
+  print(response.body);
+}`)
+  })
+
+  it.each([
+    ["https://example.com/Customers('ALFKI')/$count", "'https://example.com/Customers(\\'ALFKI\\')/\\$count'"],
+    ['https://example.com/files/a\\b', "'https://example.com/files/a\\\\b'"],
+    ['https://example.com/${id}/$id', "'https://example.com/\\${id}/\\$id'"],
+  ])('escapes the request URL %s', (url, expected) => {
+    expect(dartHttp.generate({ url })).toBe(
+      `import 'package:http/http.dart' as http;\n\nvoid main() async {\n  final response = await http.get(Uri.parse(${expected}));\n  print(response.body);\n}`,
+    )
+  })
+
+  it('escapes the request URL of a generic request', () => {
+    const result = dartHttp.generate({ url: "https://example.com/Customers('ALFKI')/$count", method: 'PURGE' })
+    expect(result).toBe(`import 'package:http/http.dart' as http;
+
+void main() async {
+  final request = http.Request('PURGE', Uri.parse('https://example.com/Customers(\\'ALFKI\\')/\\$count'));
+  final response = await http.Response.fromStream(await request.send());
   print(response.body);
 }`)
   })

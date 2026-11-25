@@ -1,5 +1,820 @@
 # @scalar/use-codemirror
 
+## 0.14.20
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.14.19
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.14.18
+
+### Patch Changes
+
+- [#10925](https://github.com/scalar/scalar/pull/10925): Stabilize the color-picker edit-position regression test by completing syntax parsing after document changes.
+
+## 0.14.17
+
+### Patch Changes
+
+- [#10824](https://github.com/scalar/scalar/pull/10824): Maintain the CSS color picker locally and declare its Lezer dependency so imports work with strict package-manager layouts.
+- [#10734](https://github.com/scalar/scalar/pull/10734): Refresh color swatches when background parsing updates the syntax tree.
+
+## 0.14.16
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.14.15
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.14.14
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.14.13
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.14.12
+
+### Patch Changes
+
+- [#9487](https://github.com/scalar/scalar/pull/9487): Render the code fold gutter chevron icons. The marker SVGs had a `viewBox` but no width/height, so they collapsed to zero size and were invisible. Folding worked but had no visual affordance. The chevrons now render at a fixed size, sit centered in the fold gutter, and use a muted color that brightens on hover — in both light and dark mode.
+
+## 0.14.11
+
+### Patch Changes
+
+- [#8647](https://github.com/scalar/scalar/pull/8647): feat: move addressBar path change from debounce to blur
+
+## 0.14.10
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.14.9
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.9**
+  - [#8453](https://github.com/scalar/scalar/pull/8453): refactor: remove @ts-expect-error from ScalarTextArea
+
+## 0.14.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.8**
+
+## 0.14.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.7**
+
+## 0.14.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.6**
+  - [#8327](https://github.com/scalar/scalar/pull/8327): fix: markdown tables with specified width attributes in td/th break the layout
+
+## 0.14.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.5**
+
+## 0.14.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.4**
+
+## 0.14.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.3**
+
+## 0.14.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.2**
+  - [#8366](https://github.com/scalar/scalar/pull/8366): fix(components): clean up search components and add snapshots
+
+## 0.14.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.1**
+
+## 0.14.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.20.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.13.50
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.15**
+  - [#8319](https://github.com/scalar/scalar/pull/8319): fix(components): fix adjust sidebar section line height
+
+## 0.13.49
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.14**
+
+## 0.13.48
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.13**
+
+## 0.13.47
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.12**
+  - [#8290](https://github.com/scalar/scalar/pull/8290): chore: update deps
+
+## 0.13.46
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.11**
+  - [#8276](https://github.com/scalar/scalar/pull/8276): feat(components): standardize form inputs to have a height of 40px
+
+## 0.13.45
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.10**
+
+## 0.13.44
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.9**
+  - [#8248](https://github.com/scalar/scalar/pull/8248): feat: slugs for headings with nested content
+  - [#8248](https://github.com/scalar/scalar/pull/8248): feat: add optional chevron click handler for the sidebar
+
+## 0.13.43
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.8**
+
+## 0.13.42
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.7**
+
+## 0.13.41
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.6**
+
+## 0.13.40
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.5**
+
+## 0.13.39
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.4**
+  - [#8178](https://github.com/scalar/scalar/pull/8178): chore: package bump due to ci failure
+
+## 0.13.38
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.3**
+  - [#8155](https://github.com/scalar/scalar/pull/8155): fix(api-reference): bugs with cards rendering
+
+## 0.13.37
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.2**
+  - [#8134](https://github.com/scalar/scalar/pull/8134): fix(components): change caret position to right
+
+## 0.13.36
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.1**
+
+## 0.13.35
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.19.0**
+  - [#8081](https://github.com/scalar/scalar/pull/8081): feat(components): improve ScalarCodeBlock copy UI
+  - [#8065](https://github.com/scalar/scalar/pull/8065): feat(components): add editor to ScalarMenu and optionally remove docs
+
+## 0.13.34
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.18.0**
+  - [#8077](https://github.com/scalar/scalar/pull/8077): feat: support team workspaces
+
+## 0.13.33
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.6**
+  - [#8070](https://github.com/scalar/scalar/pull/8070): chore: remove the import modal and change the workspace picker to support groups
+
+## 0.13.32
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.5**
+
+## 0.13.31
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.4**
+
+## 0.13.30
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.3**
+
+## 0.13.29
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.2**
+  - [#7934](https://github.com/scalar/scalar/pull/7934): fix: z-index issues in addressBar
+
+## 0.13.28
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.1**
+
+## 0.13.27
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.17.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+## 0.13.26
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.32**
+
+## 0.13.25
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.31**
+
+## 0.13.24
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.30**
+
+## 0.13.23
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.29**
+
+## 0.13.22
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.28**
+
+## 0.13.21
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.27**
+
+## 0.13.20
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.26**
+  - [#7846](https://github.com/scalar/scalar/pull/7846): Fix dev dep issue
+
+## 0.13.19
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.25**
+
+## 0.13.18
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.24**
+  - [#7802](https://github.com/scalar/scalar/pull/7802): fix: Vue warning because of deprecated icon syntax
+
+## 0.13.17
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.23**
+
+## 0.13.16
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.22**
+
+## 0.13.15
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.21**
+
+## 0.13.14
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.20**
+
+## 0.13.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.19**
+  - [#7725](https://github.com/scalar/scalar/pull/7725): fix(components): support slot for nested items icon
+  - [#7693](https://github.com/scalar/scalar/pull/7693): feat: markdown default line height
+
+## 0.13.12
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.18**
+
+## 0.13.11
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.17**
+  - [#7680](https://github.com/scalar/scalar/pull/7680): feat(components): simplify nested sidebar items styles
+
+## 0.13.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.16**
+
+## 0.13.9
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.15**
+
+## 0.13.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.14**
+  - [#7654](https://github.com/scalar/scalar/pull/7654): fix(components): explicitly set line height for buttons and sections
+
+## 0.13.7
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.13**
+  - [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove internal unused export
+    - `CARD_Heading_SYMBOL`
+    - `FORM_GROUP_SYMBOL`
+    - `formatHotKey#isDefault`
+    - `LoadingCompletionOptions`
+    - `MaybeElement`
+    - `ScalarComboBox#isGroup`
+
+  - [#7584](https://github.com/scalar/scalar/pull/7584): fix: remove unused `@scalar/use-toasts` dependency
+  - [#7604](https://github.com/scalar/scalar/pull/7604): fix(components): improve sidebar groups
+  - [#7589](https://github.com/scalar/scalar/pull/7589): chore(components): upgrade to Storybook 10
+
+## 0.13.6
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.12**
+  - [#7562](https://github.com/scalar/scalar/pull/7562): feat(components): remove headless ui from dropdown component
+
+## 0.13.5
+
+### Patch Changes
+
+- [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.11**
+  - [#7581](https://github.com/scalar/scalar/pull/7581): fix: npm publish job
+
+## 0.13.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/components@0.16.10**
+  - [#7531](https://github.com/scalar/scalar/pull/7531): feat(components): add discrete sidebar group buttons
+
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/components@0.16.9
+
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [[`4ac6227`](https://github.com/scalar/scalar/commit/4ac62278d4205c34a1a302b756ef3632185876cf)]:
+  - @scalar/components@0.16.8
+
+## 0.13.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/components@0.16.7
+
+## 0.13.0
+
+### Minor Changes
+
+- [#7486](https://github.com/scalar/scalar/pull/7486) [`18a7bcd`](https://github.com/scalar/scalar/commit/18a7bcd8ad00f9f7ee09a562167593c7ed07e01d) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat: hooks are now only exported from root
+
+  replace `@scalar/use-codemirror/hooks` with `@scalar/use-codemirror`
+
+### Patch Changes
+
+- [#7486](https://github.com/scalar/scalar/pull/7486) [`18a7bcd`](https://github.com/scalar/scalar/commit/18a7bcd8ad00f9f7ee09a562167593c7ed07e01d) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: remove unused `codemirror` dependency
+
+- Updated dependencies []:
+  - @scalar/components@0.16.6
+
+## 0.12.49
+
+### Patch Changes
+
+- Updated dependencies [[`5aa0380`](https://github.com/scalar/scalar/commit/5aa0380adfcd173e58659fb5dd57df363d985583), [`62b5210`](https://github.com/scalar/scalar/commit/62b521092bafeb8e83e79222e13378c4a19defc8)]:
+  - @scalar/components@0.16.5
+
+## 0.12.48
+
+### Patch Changes
+
+- Updated dependencies [[`5a108fc`](https://github.com/scalar/scalar/commit/5a108fcbc52ae7957731c23689896ba353b83d3b), [`cded2d6`](https://github.com/scalar/scalar/commit/cded2d6c087418c3c44731d344d0827a87b78b74)]:
+  - @scalar/components@0.16.4
+
+## 0.12.47
+
+### Patch Changes
+
+- Updated dependencies [[`4bec1ba`](https://github.com/scalar/scalar/commit/4bec1ba332e919c4ee32dcfbfb07bd8ee42c4d74)]:
+  - @scalar/components@0.16.3
+
+## 0.12.46
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @scalar/components@0.16.2
+
+## 0.12.45
+
+### Patch Changes
+
+- [#7226](https://github.com/scalar/scalar/pull/7226) [`bffef40`](https://github.com/scalar/scalar/commit/bffef4092e40d12052f8538267af71bc99b7172f) Thanks [@amritk](https://github.com/amritk)! - feat: added overview page for client v2
+
+- Updated dependencies []:
+  - @scalar/components@0.16.1
+
+## 0.12.44
+
+### Patch Changes
+
+- Updated dependencies [[`348f8f6`](https://github.com/scalar/scalar/commit/348f8f6292ef41844fda1fdd3089a55d97adbc0e), [`c22fc4e`](https://github.com/scalar/scalar/commit/c22fc4e5acb49d648014a6100c724a5b33c59cde), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`8a5a6a0`](https://github.com/scalar/scalar/commit/8a5a6a052cc05b0902b05052c80cc429ebc5a730), [`704fa30`](https://github.com/scalar/scalar/commit/704fa302b2cdbb17b19ca2d742537ca163d58c1c), [`a26ced6`](https://github.com/scalar/scalar/commit/a26ced6f2897074f0c102d5ccbff55c6fd520e12), [`6a090a2`](https://github.com/scalar/scalar/commit/6a090a2e07ef961c56041c85ee9786180437593a), [`592533f`](https://github.com/scalar/scalar/commit/592533faf60b6a5ba27909a4ca0847ca9f04a96d), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461), [`c72a2c5`](https://github.com/scalar/scalar/commit/c72a2c59eb80e1f5e216c687229ff90bea88f554), [`0d9c945`](https://github.com/scalar/scalar/commit/0d9c945a696ea8b826d86f7b48ec6de4d85e64f0)]:
+  - @scalar/components@0.16.0
+
+## 0.12.43
+
+### Patch Changes
+
+- Updated dependencies [f8efecd]
+  - @scalar/components@0.15.1
+
+## 0.12.42
+
+### Patch Changes
+
+- Updated dependencies [63ff417]
+- Updated dependencies [a747da6]
+- Updated dependencies [c69cb71]
+- Updated dependencies [90d54b6]
+  - @scalar/components@0.15.0
+
+## 0.12.41
+
+### Patch Changes
+
+- Updated dependencies [a9f8d56]
+  - @scalar/components@0.14.40
+
+## 0.12.40
+
+### Patch Changes
+
+- @scalar/components@0.14.39
+
+## 0.12.39
+
+### Patch Changes
+
+- Updated dependencies [0b3c6fa]
+- Updated dependencies [bbceb27]
+  - @scalar/components@0.14.38
+
+## 0.12.38
+
+### Patch Changes
+
+- Updated dependencies [db5b649]
+  - @scalar/components@0.14.37
+
+## 0.12.37
+
+### Patch Changes
+
+- @scalar/components@0.14.36
+
+## 0.12.36
+
+### Patch Changes
+
+- @scalar/components@0.14.35
+
+## 0.12.35
+
+### Patch Changes
+
+- Updated dependencies [498f771]
+- Updated dependencies [8f2a2f2]
+  - @scalar/components@0.14.34
+
+## 0.12.34
+
+### Patch Changes
+
+- @scalar/components@0.14.33
+
+## 0.12.33
+
+### Patch Changes
+
+- @scalar/components@0.14.32
+
+## 0.12.32
+
+### Patch Changes
+
+- Updated dependencies [2249fe3]
+  - @scalar/components@0.14.31
+
+## 0.12.31
+
+### Patch Changes
+
+- @scalar/components@0.14.30
+
+## 0.12.30
+
+### Patch Changes
+
+- Updated dependencies [c470c60]
+  - @scalar/components@0.14.29
+
+## 0.12.29
+
+### Patch Changes
+
+- Updated dependencies [f918582]
+- Updated dependencies [422cb2b]
+  - @scalar/components@0.14.28
+
+## 0.12.28
+
+### Patch Changes
+
+- @scalar/components@0.14.27
+
+## 0.12.27
+
+### Patch Changes
+
+- @scalar/components@0.14.26
+
+## 0.12.26
+
+### Patch Changes
+
+- Updated dependencies [172e397]
+- Updated dependencies [d8b8a5b]
+- Updated dependencies [6c24be9]
+- Updated dependencies [638120c]
+- Updated dependencies [0804cfc]
+  - @scalar/components@0.14.25
+
+## 0.12.25
+
+### Patch Changes
+
+- Updated dependencies [58b9321]
+- Updated dependencies [fbafeab]
+  - @scalar/components@0.14.24
+
+## 0.12.24
+
+### Patch Changes
+
+- @scalar/components@0.14.23
+
+## 0.12.23
+
+### Patch Changes
+
+- Updated dependencies [dd00357]
+  - @scalar/components@0.14.22
+
+## 0.12.22
+
+### Patch Changes
+
+- Updated dependencies [f913898]
+- Updated dependencies [cf5d6a2]
+- Updated dependencies [1af32c0]
+- Updated dependencies [f3d0216]
+- Updated dependencies [af22451]
+  - @scalar/components@0.14.21
+
+## 0.12.21
+
+### Patch Changes
+
+- Updated dependencies [60c7bef]
+- Updated dependencies [cac47ea]
+  - @scalar/components@0.14.20
+
 ## 0.12.20
 
 ### Patch Changes

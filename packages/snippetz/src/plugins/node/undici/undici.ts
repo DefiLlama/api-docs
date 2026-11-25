@@ -1,6 +1,9 @@
-import { createSearchParams } from '@/utils/create-search-params'
-import { objectToString, Unquoted } from '@/utils/objectToString'
 import type { Plugin } from '@scalar/types/snippetz'
+
+import { mergeCookieHeaders } from '@/libs/cookies'
+import { buildFormData, formDataHeaders, urlSearchParams } from '@/libs/form-data'
+import { joinUrlAndQuery, normalizeMethod } from '@/libs/http'
+import { Raw, escapeJsString, objectToString } from '@/libs/javascript'
 
 /**
  * node/undici
@@ -17,7 +20,7 @@ export const nodeUndici: Plugin = {
     }
 
     // Normalization
-    normalizedRequest.method = normalizedRequest.method.toUpperCase()
+    normalizedRequest.method = normalizeMethod(normalizedRequest.method)
 
     // Reset undici defaults
     const options: Record<string, any> = {
@@ -25,26 +28,14 @@ export const nodeUndici: Plugin = {
     }
 
     // Query
-    const searchParams = createSearchParams(normalizedRequest.queryString)
-    const queryString = searchParams.size ? `?${searchParams.toString()}` : ''
+    const url = joinUrlAndQuery(normalizedRequest.url ?? '', normalizedRequest.queryString)
 
     // Headers
-    if (normalizedRequest.headers?.length) {
+    const headers = formDataHeaders({ ...normalizedRequest, headers: mergeCookieHeaders(normalizedRequest) })
+    if (headers?.length) {
       options.headers = {}
-
-      normalizedRequest.headers.forEach((header) => {
+      headers.forEach((header) => {
         options.headers![header.name] = header.value
-      })
-    }
-
-    // Cookies
-    if (normalizedRequest.cookies?.length) {
-      options.headers = options.headers || {}
-
-      normalizedRequest.cookies.forEach((cookie) => {
-        options.headers!['Set-Cookie'] = options.headers!['Set-Cookie']
-          ? `${options.headers!['Set-Cookie']}; ${cookie.name}=${cookie.value}`
-          : `${cookie.name}=${cookie.value}`
       })
     }
 
@@ -55,23 +46,38 @@ export const nodeUndici: Plugin = {
       }
     })
 
+    let prefix = ''
+
     // Add body
     if (normalizedRequest.postData) {
-      // Plain text
-      options.body = normalizedRequest.postData.text
+      if (normalizedRequest.postData.mimeType === 'multipart/form-data' && normalizedRequest.postData.params) {
+        prefix = `${buildFormData(normalizedRequest.postData.params, 'node').join('\n')}\n\n`
+        options.body = new Raw('formData')
+      } else if (
+        normalizedRequest.postData.mimeType === 'application/x-www-form-urlencoded' &&
+        normalizedRequest.postData.params
+      ) {
+        // The undici request API accepts a string body but not a URLSearchParams instance.
+        options.body = new Raw(`${urlSearchParams(normalizedRequest.postData.params)}.toString()`)
+      } else {
+        options.body = normalizedRequest.postData.text
+      }
 
       // JSON
       if (normalizedRequest.postData.mimeType === 'application/json') {
-        options.body = new Unquoted(`JSON.stringify(${objectToString(JSON.parse(options.body))})`)
+        options.body = new Raw(`JSON.stringify(${objectToString(JSON.parse(options.body))})`)
       }
     }
 
     // Transform to JSON
     const jsonOptions = Object.keys(options).length ? `, ${objectToString(options)}` : ''
 
-    // Code Template
-    return `import { request } from 'undici'
+    // Undici's encoder requires its own FormData class in a fresh Node process.
+    const imports = prefix ? 'request, FormData' : 'request'
 
-const { statusCode, body } = await request('${normalizedRequest.url}${queryString}'${jsonOptions})`
+    // Code Template
+    return `import { ${imports} } from 'undici'
+
+${prefix}const { statusCode, body } = await request('${escapeJsString(url)}'${jsonOptions})`
   },
 }

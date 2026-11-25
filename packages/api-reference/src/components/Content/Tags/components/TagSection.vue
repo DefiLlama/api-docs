@@ -1,0 +1,105 @@
+<script setup lang="ts">
+import { ScreenReader } from '@scalar/blocks/shared'
+import { ScalarMarkdown } from '@scalar/components/markdown'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import type { TraversedTag } from '@scalar/workspace-store/schemas/navigation'
+import { computed } from 'vue'
+
+import { Anchor } from '@/components/Anchor'
+import { LinkList } from '@/components/LinkList'
+import { OperationsList } from '@/components/OperationsList'
+import {
+  Section,
+  SectionColumn,
+  SectionColumns,
+  SectionContent,
+  SectionHeader,
+  SectionHeaderTag,
+} from '@/components/Section'
+import type { HeadingLevel } from '@/features/document-outline'
+import { ExternalDocs } from '@/features/external-docs'
+import { useLocalization } from '@/features/localization'
+import { SpecificationExtension } from '@/features/specification-extension'
+
+const {
+  tag,
+  headerId,
+  isCollapsed,
+  headingLevel = 1,
+} = defineProps<{
+  tag: TraversedTag
+  /**
+   * Resolved by the parent, which owns this tag and the operations beside it.
+   * Defaults to the top of the page, like any other block rendered on its own.
+   */
+  headingLevel?: HeadingLevel
+  headerId?: string
+  isCollapsed?: boolean
+  eventBus: WorkspaceEventBus | null
+}>()
+defineSlots<{
+  actions?: () => unknown
+}>()
+
+const { translate } = useLocalization()
+
+/**
+ * AsyncAPI tags carry `asyncapi-channel` children instead of `operation`/`webhook`,
+ * so their operations cards live in the individual channel sections.
+ */
+const hasChannels = computed(
+  () =>
+    tag.children?.some((child) => child.type === 'asyncapi-channel') ?? false,
+)
+</script>
+<template>
+  <Section
+    v-if="tag"
+    :id="tag.id"
+    role="none"
+    @intersecting="
+      () => eventBus?.emit('intersecting:nav-item', { id: tag.id })
+    ">
+    <SectionHeader>
+      <Anchor
+        @copyAnchorUrl="
+          () => eventBus?.emit('copy-url:nav-item', { id: tag.id })
+        ">
+        <SectionHeaderTag
+          :id="headerId"
+          :level="headingLevel">
+          {{ tag.title }}
+          <ScreenReader v-if="isCollapsed">
+            ({{ translate('navigation.collapsed') }})
+          </ScreenReader>
+        </SectionHeaderTag>
+      </Anchor>
+      <template
+        v-if="$slots.actions || tag.externalDocs"
+        #links>
+        <div class="flex items-start justify-end gap-3">
+          <LinkList v-if="tag.externalDocs">
+            <ExternalDocs :value="tag.externalDocs" />
+          </LinkList>
+          <slot name="actions" />
+        </div>
+      </template>
+    </SectionHeader>
+    <SectionContent>
+      <SectionColumns>
+        <SectionColumn>
+          <ScalarMarkdown
+            :clamp="isCollapsed ? 7 : undefined"
+            :value="tag?.description ?? ''"
+            withImages />
+        </SectionColumn>
+        <SectionColumn v-if="!hasChannels">
+          <OperationsList
+            :eventBus="eventBus"
+            :tag="tag" />
+        </SectionColumn>
+      </SectionColumns>
+    </SectionContent>
+    <SpecificationExtension :value="tag.xKeys" />
+  </Section>
+</template>

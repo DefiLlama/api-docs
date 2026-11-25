@@ -1,0 +1,1902 @@
+import { getOpenApiDocument } from '@test/helpers'
+import { assert, describe, expect, it } from 'vitest'
+
+import { createWorkspaceStore } from '@/client'
+import { getPathItemOperation, getResolvedPathItem } from '@/helpers/for-each-path-item-operation'
+import { getResolvedRef } from '@/helpers/get-resolved-ref'
+import type { OpenApiDocument } from '@/schemas/v3.2/strict/openapi-document'
+
+import {
+  createOperation,
+  createOperationDraftExample,
+  deleteOperation,
+  deleteOperationExample,
+  renameOperationExample,
+  updateOperationMeta,
+  updateOperationPathMethod,
+} from './operation'
+
+const createDocument = (initial?: Partial<OpenApiDocument>): OpenApiDocument => {
+  return {
+    openapi: '3.1.0',
+    info: { title: 'Test', version: '1.0.0' },
+    ...initial,
+    'x-scalar-original-document-hash': '123',
+  }
+}
+
+describe('updateOperationPathMethod (method only)', () => {
+  it('moves an imported additional operation and preserves its metadata', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'custom',
+      document: createDocument({ paths: { '/pets': { additionalOperations: { COPY: { summary: 'Copy' } } } } }),
+    })
+    store.buildSidebar('custom')
+    const document = getOpenApiDocument(store, 'custom')!
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'COPY', path: '/pets' },
+      payload: { method: 'customMethod', path: '/pets' },
+      blurTargetSelector: null,
+      callback: () => undefined,
+    })
+    expect(getPathItemOperation(document.paths?.['/pets'], 'COPY')).toBeUndefined()
+    expect(getResolvedRef(getPathItemOperation(document.paths?.['/pets'], 'customMethod'))?.summary).toBe('Copy')
+    expect(document['x-scalar-order']).toContain('custom/customMethod/pets')
+  })
+
+  const store = createWorkspaceStore()
+
+  it('replaces the x-scalar-order with the new ID', async () => {
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              description: 'Retrieve list of users',
+              parameters: [{ name: 'limit', in: 'query' }],
+            },
+            post: {
+              summary: 'Post users',
+              description: 'Create a new user',
+              parameters: [{ name: 'name', in: 'query' }],
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+    expect(document['x-scalar-order']).toStrictEqual([
+      'test/description/introduction',
+      'test/GET/users',
+      'test/POST/users',
+    ])
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users' },
+      payload: { method: 'put', path: '/users' },
+      blurTargetSelector: null,
+      callback: (_status) => {
+        return
+      },
+    })
+    expect(document['x-scalar-order']).toStrictEqual([
+      'test/description/introduction',
+      'test/PUT/users',
+      'test/POST/users',
+    ])
+
+    // The operation should now be under 'put'
+    expect(document.paths?.['/users']).toStrictEqual({
+      post: {
+        summary: 'Post users',
+        description: 'Create a new user',
+        parameters: [{ name: 'name', in: 'query' }],
+      },
+      put: {
+        summary: 'Get users',
+        description: 'Retrieve list of users',
+        parameters: [{ name: 'limit', in: 'query' }],
+      },
+    })
+  })
+
+  it('updates all operations in all tags while preserving the order', async () => {
+    await store.addDocument({
+      name: 'test2',
+      document: createDocument({
+        tags: [
+          {
+            name: 'products',
+            description: 'Products',
+          },
+          {
+            name: 'catalog',
+            description: 'Catalog',
+          },
+          {
+            name: 'admin',
+            description: 'Admin',
+          },
+        ],
+        paths: {
+          '/products': {
+            get: {
+              summary: 'Get products',
+              description: 'Retrieve list of products',
+              tags: ['products', 'catalog'],
+              parameters: [{ name: 'limit', in: 'query' }],
+            },
+            delete: {
+              summary: 'Delete product',
+              description: 'Remove a product',
+              tags: ['products', 'admin'],
+              parameters: [{ name: 'id', in: 'path' }],
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test2')
+    const document = getOpenApiDocument(store, 'test2')!
+    expect(document.tags?.[0]?.['x-scalar-order']).toStrictEqual([
+      'test2/tag/products/GET/products',
+      'test2/tag/products/DELETE/products',
+    ])
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/products' },
+      payload: { method: 'patch', path: '/products' },
+      blurTargetSelector: null,
+      callback: (_status) => {
+        return
+      },
+    })
+
+    expect(document.tags?.[0]?.['x-scalar-order']).toStrictEqual([
+      'test2/tag/products/PATCH/products',
+      'test2/tag/products/DELETE/products',
+    ])
+
+    // The operation should now be under 'patch' with all properties preserved
+    expect(document.paths?.['/products']).toStrictEqual({
+      delete: {
+        summary: 'Delete product',
+        description: 'Remove a product',
+        tags: ['products', 'admin'],
+        parameters: [{ name: 'id', in: 'path' }],
+      },
+      patch: {
+        summary: 'Get products',
+        description: 'Retrieve list of products',
+        tags: ['products', 'catalog'],
+        parameters: [{ name: 'limit', in: 'query' }],
+      },
+    })
+  })
+
+  it('calls callback with success status after updating method', async () => {
+    await store.addDocument({
+      name: 'test3',
+      document: createDocument({
+        paths: {
+          '/items': {
+            get: {
+              summary: 'Get items',
+              description: 'Retrieve items',
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test3')
+    const document = getOpenApiDocument(store, 'test3')!
+
+    let callbackResult: 'success' | 'no-change' | 'conflict' | undefined
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/items' },
+      payload: { method: 'post', path: '/items' },
+      blurTargetSelector: null,
+      callback: (status) => {
+        callbackResult = status
+      },
+    })
+
+    expect(callbackResult).toBe('success')
+    expect(getPathItemOperation(document.paths?.['/items'], 'post')).toBeDefined()
+    expect(getPathItemOperation(document.paths?.['/items'], 'get')).toBeUndefined()
+  })
+})
+
+describe('updateOperationPathMethod (path only)', () => {
+  it('moves operation to a new path and removes from old path', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              description: 'Retrieve all users',
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users' },
+      payload: { method: 'get', path: '/api/users' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/api/users': {
+        get: {
+          summary: 'Get users',
+          description: 'Retrieve all users',
+        },
+      },
+    })
+  })
+
+  it('preserves all operation properties when moving to new path', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/posts': {
+            post: {
+              summary: 'Create post',
+              description: 'Creates a new post',
+              operationId: 'createPost',
+              tags: ['posts'],
+              parameters: [{ name: 'X-Api-Key', in: 'header' }],
+              requestBody: {
+                content: {
+                  'application/json': {
+                    schema: { type: 'object' },
+                  },
+                },
+              },
+              responses: {
+                '201': { description: 'Created' },
+              },
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'post', path: '/posts' },
+      payload: { method: 'post', path: '/api/v2/posts' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/api/v2/posts': {
+        post: {
+          summary: 'Create post',
+          description: 'Creates a new post',
+          operationId: 'createPost',
+          tags: ['posts'],
+          parameters: [{ name: 'X-Api-Key', in: 'header' }],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { type: 'object' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Created' },
+          },
+        },
+      },
+    })
+  })
+
+  it('keeps other operations on old path when moving one operation', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+            },
+            post: {
+              summary: 'Create user',
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users' },
+      payload: { method: 'get', path: '/api/users' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/users': {
+        post: {
+          summary: 'Create user',
+        },
+      },
+      '/api/users': {
+        get: {
+          summary: 'Get users',
+        },
+      },
+    })
+  })
+
+  it('maintains the path params', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users/{id}': {
+            get: {
+              summary: 'Get users',
+              parameters: [
+                { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+                { name: 'name', in: 'query' },
+              ],
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users/{id}' },
+      payload: { method: 'get', path: '/events/{id}' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/events/{id}': {
+        get: {
+          summary: 'Get users',
+          parameters: [
+            { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+            { name: 'name', in: 'query' },
+          ],
+        },
+      },
+    })
+  })
+
+  it('handles partial path params', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users/{id}': {
+            get: {
+              summary: 'Get users',
+              parameters: [
+                { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+                { name: 'name', in: 'query' },
+              ],
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users/{id}' },
+      payload: { method: 'get', path: '/events/{id}/started{avar' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/events/{id}/started{avar': {
+        get: {
+          summary: 'Get users',
+          parameters: [
+            { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+            { name: 'name', in: 'query' },
+          ],
+        },
+      },
+    })
+  })
+
+  it('maintains swapped path params', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users/{id}/{limit}': {
+            get: {
+              summary: 'Get users',
+              parameters: [
+                { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+                { name: 'limit', in: 'path', examples: { test: { value: '10' } } },
+                { name: 'name', in: 'query' },
+              ],
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users/{id}/{limit}' },
+      payload: { method: 'get', path: '/events/{limit}/{id}' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/events/{limit}/{id}': {
+        get: {
+          summary: 'Get users',
+          parameters: [
+            { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+            { name: 'limit', in: 'path', examples: { test: { value: '10' } } },
+            { name: 'name', in: 'query' },
+          ],
+        },
+      },
+    })
+  })
+
+  it('renames path params', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users/{id}': {
+            get: {
+              summary: 'Get users',
+              parameters: [
+                { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+                { name: 'name', in: 'query' },
+              ],
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users/{id}' },
+      payload: { method: 'get', path: '/users/{limit}' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/users/{limit}': {
+        get: {
+          summary: 'Get users',
+          parameters: [
+            { name: 'limit', in: 'path', examples: { test: { value: '1212' } } },
+            { name: 'name', in: 'query' },
+          ],
+        },
+      },
+    })
+  })
+
+  it('creates new path params', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users/{id}': {
+            get: {
+              summary: 'Get users',
+              parameters: [
+                { name: 'id', in: 'path', examples: { test: { value: '1212' } } },
+                { name: 'name', in: 'query' },
+              ],
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/users/{id}' },
+      payload: { method: 'get', path: '/users/events/{limit}' },
+      blurTargetSelector: null,
+      callback: () => {
+        return
+      },
+    })
+
+    expect(document.paths).toStrictEqual({
+      '/users/events/{limit}': {
+        get: {
+          summary: 'Get users',
+          parameters: [
+            { name: 'name', in: 'query' },
+            { name: 'limit', in: 'path' },
+          ],
+        },
+      },
+    })
+  })
+
+  it('calls callback with success status after updating path', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/items': {
+            get: {
+              summary: 'Get items',
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    let callbackResult: 'success' | 'no-change' | 'conflict' | undefined
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/items' },
+      payload: { method: 'get', path: '/api/items' },
+      blurTargetSelector: null,
+      callback: (status) => {
+        callbackResult = status
+      },
+    })
+
+    expect(callbackResult).toBe('success')
+    expect(getPathItemOperation(document.paths?.['/api/items'], 'get')).toBeDefined()
+    expect(document.paths?.['/items']).toBeUndefined()
+  })
+
+  it('calls callback with conflict status when target path and method already exists', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/items': {
+            get: {
+              summary: 'Get items',
+            },
+          },
+          '/api/items': {
+            get: {
+              summary: 'Get API items',
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+    const document = getOpenApiDocument(store, 'test')!
+
+    let callbackResult: 'success' | 'no-change' | 'conflict' | undefined
+
+    updateOperationPathMethod(document, store, {
+      meta: { method: 'get', path: '/items' },
+      payload: { method: 'get', path: '/api/items' },
+      blurTargetSelector: null,
+      callback: (status) => {
+        callbackResult = status
+      },
+    })
+
+    expect(callbackResult).toBe('conflict')
+    // Original operations should remain unchanged
+    expect(getPathItemOperation(document.paths?.['/items'], 'get')?.summary).toBe('Get items')
+    expect(getPathItemOperation(document.paths?.['/api/items'], 'get')?.summary).toBe('Get API items')
+  })
+})
+
+describe('createOperation', () => {
+  it('creates a new operation at the specified path', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument(),
+    })
+    store.buildSidebar('test')
+
+    const normalizedPath = createOperation(store, {
+      documentName: 'test',
+      path: '/users',
+      method: 'get',
+      operation: {
+        summary: 'Get users',
+        description: 'Retrieve all users',
+      },
+    })
+
+    expect(normalizedPath).toBe('/users')
+    const document = getOpenApiDocument(store, 'test')!
+    expect(getPathItemOperation(document.paths?.['/users'], 'get')).toEqual({
+      summary: 'Get users',
+      description: 'Retrieve all users',
+    })
+  })
+
+  it('normalizes path by adding leading slash', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument(),
+    })
+    store.buildSidebar('test')
+
+    const normalizedPath = createOperation(store, {
+      documentName: 'test',
+      path: 'users',
+      method: 'post',
+      operation: {
+        summary: 'Create user',
+      },
+    })
+
+    expect(normalizedPath).toBe('/users')
+    const document = getOpenApiDocument(store, 'test')!
+    expect(getPathItemOperation(document.paths?.['/users'], 'post')).toBeDefined()
+  })
+
+  it('calls callback with success status', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument(),
+    })
+    store.buildSidebar('test')
+
+    let callbackResult: boolean | undefined
+
+    createOperation(store, {
+      documentName: 'test',
+      path: '/items',
+      method: 'get',
+      operation: {},
+      callback: (success) => {
+        callbackResult = success
+      },
+    })
+
+    expect(callbackResult).toBe(true)
+  })
+
+  it('returns undefined and calls callback with false when document does not exist', () => {
+    const store = createWorkspaceStore()
+
+    let callbackResult: boolean | undefined
+
+    const result = createOperation(store, {
+      documentName: 'nonexistent',
+      path: '/users',
+      method: 'get',
+      operation: {},
+      callback: (success) => {
+        callbackResult = success
+      },
+    })
+
+    expect(result).toBeUndefined()
+    expect(callbackResult).toBe(false)
+  })
+
+  it('returns undefined when store is null', () => {
+    const result = createOperation(null, {
+      documentName: 'test',
+      path: '/users',
+      method: 'get',
+      operation: {},
+    })
+
+    expect(result).toBeUndefined()
+  })
+
+  it('adds operation to existing path with other methods', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+            },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('test')
+
+    createOperation(store, {
+      documentName: 'test',
+      path: '/users',
+      method: 'post',
+      operation: {
+        summary: 'Create user',
+      },
+    })
+
+    const document = getOpenApiDocument(store, 'test')!
+    expect(getPathItemOperation(document.paths?.['/users'], 'get')).toEqual({ summary: 'Get users' })
+    expect(getPathItemOperation(document.paths?.['/users'], 'post')).toEqual({ summary: 'Create user' })
+  })
+
+  it('adds operation server to document servers when it does not exist', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        servers: [{ url: 'https://existing.example.com' }],
+      }),
+    })
+
+    createOperation(store, {
+      documentName: 'test',
+      path: '/users',
+      method: 'get',
+      operation: {
+        summary: 'Get users',
+        servers: [{ url: 'https://new.example.com' }],
+      },
+    })
+
+    const document = getOpenApiDocument(store, 'test')!
+    expect(document.servers).toHaveLength(2)
+    expect(document.servers).toContainEqual({ url: 'https://existing.example.com' })
+    expect(document.servers).toContainEqual({ url: 'https://new.example.com' })
+  })
+
+  it('does not duplicate server when operation server already exists in document', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        servers: [{ url: 'https://api.example.com' }],
+      }),
+    })
+
+    createOperation(store, {
+      documentName: 'test',
+      path: '/users',
+      method: 'get',
+      operation: {
+        summary: 'Get users',
+        servers: [{ url: 'https://api.example.com' }],
+      },
+    })
+
+    const document = getOpenApiDocument(store, 'test')!
+    expect(document.servers).toHaveLength(1)
+    expect(document.servers?.[0]?.url).toBe('https://api.example.com')
+  })
+
+  it('adds multiple operation servers to document servers', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        servers: [{ url: 'https://existing.example.com' }],
+      }),
+    })
+    store.buildSidebar('test')
+
+    createOperation(store, {
+      documentName: 'test',
+      path: '/users',
+      method: 'get',
+      operation: {
+        summary: 'Get users',
+        servers: [{ url: 'https://server1.example.com' }, { url: 'https://server2.example.com' }],
+      },
+    })
+
+    const document = getOpenApiDocument(store, 'test')!
+    expect(document.servers).toHaveLength(3)
+    expect(document.servers).toContainEqual({ url: 'https://existing.example.com' })
+    expect(document.servers).toContainEqual({ url: 'https://server1.example.com' })
+    expect(document.servers).toContainEqual({ url: 'https://server2.example.com' })
+  })
+
+  it('updates selected server to first operation server', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        servers: [{ url: 'https://existing.example.com' }],
+        'x-scalar-selected-server': 'https://existing.example.com',
+      }),
+    })
+    store.buildSidebar('test')
+
+    createOperation(store, {
+      documentName: 'test',
+      path: '/users',
+      method: 'get',
+      operation: {
+        summary: 'Get users',
+        servers: [{ url: 'https://new.example.com' }],
+      },
+    })
+
+    const document = getOpenApiDocument(store, 'test')!
+    expect(document['x-scalar-selected-server']).toBe('https://new.example.com')
+  })
+
+  it('does not update selected server when operation has no servers', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test',
+      document: createDocument({
+        servers: [{ url: 'https://existing.example.com' }],
+        'x-scalar-selected-server': 'https://existing.example.com',
+      }),
+    })
+
+    createOperation(store, {
+      documentName: 'test',
+      path: '/users',
+      method: 'get',
+      operation: {
+        summary: 'Get users',
+      },
+    })
+
+    const document = getOpenApiDocument(store, 'test')!
+    expect(document['x-scalar-selected-server']).toBe('https://existing.example.com')
+  })
+})
+
+// Note: Form row functions (addOperationRequestBodyFormRow, updateOperationRequestBodyFormRow,
+// deleteOperationRequestBodyFormRow) do not exist. Form data is handled through
+// updateOperationRequestBodyExample with array payloads.
+// These tests have been removed as they test non-existent functionality.
+
+describe('deleteOperation', () => {
+  it('deletes an operation from a path', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+            },
+            post: {
+              summary: 'Create user',
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperation(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(getPathItemOperation(document?.paths?.['/users'], 'get')).toBeUndefined()
+    expect(getPathItemOperation(document?.paths?.['/users'], 'post')).toBeDefined()
+  })
+
+  it('removes the path entry when the last operation is deleted', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperation(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(document?.paths?.['/users']).toBeUndefined()
+  })
+
+  it('keeps the path entry when path-level metadata remains after the last operation is deleted', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            parameters: [{ name: 'tenant', in: 'header' }],
+            get: {
+              summary: 'Get users',
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperation(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(getPathItemOperation(document?.paths?.['/users'], 'get')).toBeUndefined()
+    expect(getResolvedPathItem(document?.paths?.['/users'])?.parameters).toEqual([{ name: 'tenant', in: 'header' }])
+  })
+
+  it('no-ops when store is null', () => {
+    expect(() =>
+      deleteOperation(null, {
+        documentName: 'test-doc',
+        meta: { method: 'get', path: '/users' },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when document does not exist', () => {
+    const store = createWorkspaceStore()
+
+    expect(() =>
+      deleteOperation(store, {
+        documentName: 'non-existent',
+        meta: { method: 'get', path: '/users' },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when path does not exist', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+            },
+          },
+        },
+      }),
+    })
+
+    expect(() =>
+      deleteOperation(store, {
+        documentName: 'test-doc',
+        meta: { method: 'get', path: '/non-existent' },
+      }),
+    ).not.toThrow()
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(getPathItemOperation(document?.paths?.['/users'], 'get')).toBeDefined()
+  })
+
+  it('no-ops when operation does not exist on path', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+            },
+          },
+        },
+      }),
+    })
+
+    expect(() =>
+      deleteOperation(store, {
+        documentName: 'test-doc',
+        meta: { method: 'post', path: '/users' },
+      }),
+    ).not.toThrow()
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(getPathItemOperation(document?.paths?.['/users'], 'get')).toBeDefined()
+  })
+
+  it('deletes operation and leaves other paths intact', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: { summary: 'Get users' },
+            post: { summary: 'Create user' },
+          },
+          '/products': {
+            get: { summary: 'Get products' },
+          },
+        },
+      }),
+    })
+
+    deleteOperation(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(getPathItemOperation(document?.paths?.['/users'], 'get')).toBeUndefined()
+    expect(getPathItemOperation(document?.paths?.['/users'], 'post')).toBeDefined()
+    expect(getPathItemOperation(document?.paths?.['/products'], 'get')).toBeDefined()
+  })
+
+  it('deletes multiple operations sequentially', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: { summary: 'Get users' },
+            post: { summary: 'Create user' },
+            delete: { summary: 'Delete user' },
+          },
+        },
+      }),
+    })
+
+    deleteOperation(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+    })
+    deleteOperation(store, {
+      documentName: 'test-doc',
+      meta: { method: 'post', path: '/users' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(getPathItemOperation(document?.paths?.['/users'], 'get')).toBeUndefined()
+    expect(getPathItemOperation(document?.paths?.['/users'], 'post')).toBeUndefined()
+    expect(getPathItemOperation(document?.paths?.['/users'], 'delete')).toBeDefined()
+  })
+})
+
+describe('createOperationDraftExample', () => {
+  it('adds example name to x-draft-examples when array exists', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              'x-draft-examples': ['existing'],
+            },
+          },
+        },
+      }),
+    })
+
+    createOperationDraftExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+      exampleName: 'draft-1',
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    expect(operation?.['x-draft-examples']).toEqual(['existing', 'draft-1'])
+  })
+
+  it('creates x-draft-examples array when it does not exist', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+            },
+          },
+        },
+      }),
+    })
+
+    createOperationDraftExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+      exampleName: 'draft-1',
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    expect(operation?.['x-draft-examples']).toEqual(['draft-1'])
+  })
+
+  it('does not add duplicate when exampleName already in array', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              'x-draft-examples': ['draft-1', 'draft-2'],
+            },
+          },
+        },
+      }),
+    })
+
+    createOperationDraftExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users' },
+      exampleName: 'draft-1',
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    expect(operation?.['x-draft-examples']).toEqual(['draft-1', 'draft-2'])
+  })
+
+  it('no-ops when workspace is null', () => {
+    expect(() =>
+      createOperationDraftExample(null, {
+        documentName: 'test-doc',
+        meta: { method: 'get', path: '/users' },
+        exampleName: 'draft-1',
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when document does not exist', () => {
+    const store = createWorkspaceStore()
+
+    expect(() =>
+      createOperationDraftExample(store, {
+        documentName: 'non-existent',
+        meta: { method: 'get', path: '/users' },
+        exampleName: 'draft-1',
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when operation does not exist', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {},
+        },
+      }),
+    })
+
+    expect(() =>
+      createOperationDraftExample(store, {
+        documentName: 'test-doc',
+        meta: { method: 'get', path: '/users' },
+        exampleName: 'draft-1',
+      }),
+    ).not.toThrow()
+  })
+})
+
+describe('deleteOperationExample', () => {
+  it('removes example from x-draft-examples', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              'x-draft-examples': ['default', 'draft-1', 'draft-2'],
+              requestBody: { content: { 'application/json': {} } },
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users', exampleKey: 'draft-1' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    expect(operation?.['x-draft-examples']).toEqual(['default', 'draft-2'])
+  })
+
+  it('removes example from parameter-level examples', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              'x-draft-examples': ['default', 'custom'],
+              parameters: [
+                {
+                  name: 'limit',
+                  in: 'query',
+                  examples: {
+                    default: { value: '10' },
+                    custom: { value: '50' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users', exampleKey: 'custom' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    const param = getResolvedRef(operation?.parameters?.[0])
+    assert(param && 'examples' in param)
+    expect(param.examples?.default).toBeDefined()
+    expect(param.examples?.custom).toBeUndefined()
+    expect(operation?.['x-draft-examples']).toEqual(['default'])
+  })
+
+  it('removes example from request body content types', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            post: {
+              summary: 'Create user',
+              'x-draft-examples': ['default', 'custom'],
+              requestBody: {
+                content: {
+                  'application/json': {
+                    examples: {
+                      default: { value: '{"name":"John"}' },
+                      custom: { value: '{"name":"Jane"}' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'post', path: '/users', exampleKey: 'custom' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'post'))
+    const requestBody = getResolvedRef(operation?.requestBody)
+    const examples = requestBody?.content?.['application/json']?.examples
+    expect(examples?.default).toBeDefined()
+    expect(examples?.custom).toBeUndefined()
+    expect(operation?.['x-draft-examples']).toEqual(['default'])
+  })
+
+  it('removes example from multiple content types in request body', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            post: {
+              summary: 'Create user',
+              'x-draft-examples': ['default', 'custom'],
+              requestBody: {
+                content: {
+                  'application/json': {
+                    examples: {
+                      default: { value: '{}' },
+                      custom: { value: '{"json":true}' },
+                    },
+                  },
+                  'application/xml': {
+                    examples: {
+                      default: { value: '<user/>' },
+                      custom: { value: '<user><name>Test</name></user>' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'post', path: '/users', exampleKey: 'custom' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'post'))
+    const requestBody = getResolvedRef(operation?.requestBody)
+    expect(requestBody?.content?.['application/json']?.examples?.default).toBeDefined()
+    expect(requestBody?.content?.['application/json']?.examples?.custom).toBeUndefined()
+    expect(requestBody?.content?.['application/xml']?.examples?.default).toBeDefined()
+    expect(requestBody?.content?.['application/xml']?.examples?.custom).toBeUndefined()
+    expect(operation?.['x-draft-examples']).toEqual(['default'])
+  })
+
+  it('removes example from both parameters and request body', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            post: {
+              summary: 'Create user',
+              'x-draft-examples': ['default', 'custom'],
+              parameters: [
+                {
+                  name: 'X-Custom-Header',
+                  in: 'header',
+                  examples: {
+                    default: { value: 'header-default' },
+                    custom: { value: 'header-custom' },
+                  },
+                },
+              ],
+              requestBody: {
+                content: {
+                  'application/json': {
+                    examples: {
+                      default: { value: '{}' },
+                      custom: { value: '{"custom":true}' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'post', path: '/users', exampleKey: 'custom' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'post'))
+    const param = getResolvedRef(operation?.parameters?.[0])
+    const requestBody = getResolvedRef(operation?.requestBody)
+
+    assert(param && 'examples' in param)
+    expect(param.examples?.default).toBeDefined()
+    expect(param.examples?.custom).toBeUndefined()
+    expect(requestBody?.content?.['application/json']?.examples?.default).toBeDefined()
+    expect(requestBody?.content?.['application/json']?.examples?.custom).toBeUndefined()
+    expect(operation?.['x-draft-examples']).toEqual(['default'])
+  })
+
+  it('no-ops when store is null', () => {
+    expect(() =>
+      deleteOperationExample(null, {
+        documentName: 'test-doc',
+        meta: { method: 'get', path: '/users', exampleKey: 'default' },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when document does not exist', () => {
+    const store = createWorkspaceStore()
+
+    expect(() =>
+      deleteOperationExample(store, {
+        documentName: 'non-existent',
+        meta: { method: 'get', path: '/users', exampleKey: 'default' },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when operation does not exist', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {},
+        },
+      }),
+    })
+
+    expect(() =>
+      deleteOperationExample(store, {
+        documentName: 'test-doc',
+        meta: { method: 'get', path: '/users', exampleKey: 'default' },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when operation has no request body', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              parameters: [
+                {
+                  name: 'limit',
+                  in: 'query',
+                  examples: {
+                    default: { value: '10' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    })
+
+    expect(() =>
+      deleteOperationExample(store, {
+        documentName: 'test-doc',
+        meta: { method: 'get', path: '/users', exampleKey: 'default' },
+      }),
+    ).not.toThrow()
+
+    // Parameter example should still be deleted
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    const param = getResolvedRef(operation?.parameters?.[0])
+    assert(param && 'examples' in param)
+    expect(param.examples?.default).toBeUndefined()
+  })
+
+  it('leaves other examples intact when deleting one', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              'x-draft-examples': ['default', 'small', 'large'],
+              parameters: [
+                {
+                  name: 'limit',
+                  in: 'query',
+                  examples: {
+                    default: { value: '10' },
+                    small: { value: '5' },
+                    large: { value: '100' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    })
+
+    deleteOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users', exampleKey: 'small' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    const param = getResolvedRef(operation?.parameters?.[0])
+    assert(param && 'examples' in param)
+    expect(param.examples?.default).toBeDefined()
+    expect(param.examples?.small).toBeUndefined()
+    expect(param.examples?.large).toBeDefined()
+    expect(operation?.['x-draft-examples']).toEqual(['default', 'large'])
+  })
+})
+
+describe('renameOperationExample', () => {
+  it('renames an example across draft examples, parameters, and request body', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            post: {
+              summary: 'Create user',
+              'x-draft-examples': ['default', 'custom'],
+              parameters: [
+                {
+                  name: 'limit',
+                  in: 'query',
+                  examples: {
+                    default: { value: '10' },
+                    custom: { value: '50' },
+                  },
+                },
+              ],
+              requestBody: {
+                content: {
+                  'application/json': {
+                    examples: {
+                      default: { value: '{}' },
+                      custom: { value: '{"name":"Ada"}' },
+                    },
+                  },
+                },
+                'x-scalar-selected-content-type': {
+                  default: 'application/json',
+                  custom: 'application/json',
+                },
+              },
+            },
+          },
+        },
+      }),
+    })
+
+    renameOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'post', path: '/users', exampleKey: 'custom' },
+      payload: { name: 'renamed' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'post'))
+    const parameter = getResolvedRef(operation?.parameters?.[0])
+    const requestBody = getResolvedRef(operation?.requestBody)
+
+    expect(operation?.['x-draft-examples']).toEqual(['default', 'renamed'])
+    assert(parameter && 'examples' in parameter)
+    expect(parameter.examples?.custom).toBeUndefined()
+    expect(parameter.examples?.renamed).toBeDefined()
+    expect(requestBody?.content?.['application/json']?.examples?.custom).toBeUndefined()
+    expect(requestBody?.content?.['application/json']?.examples?.renamed).toBeDefined()
+    expect(requestBody?.['x-scalar-selected-content-type']?.custom).toBeUndefined()
+    expect(requestBody?.['x-scalar-selected-content-type']?.renamed).toBe('application/json')
+  })
+
+  it('does not rename when target example already exists', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              'x-draft-examples': ['default', 'custom'],
+              parameters: [
+                {
+                  name: 'limit',
+                  in: 'query',
+                  examples: {
+                    default: { value: '10' },
+                    custom: { value: '50' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    })
+
+    renameOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'get', path: '/users', exampleKey: 'custom' },
+      payload: { name: 'default' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'get'))
+    const parameter = getResolvedRef(operation?.parameters?.[0])
+
+    expect(operation?.['x-draft-examples']).toEqual(['default', 'custom'])
+    assert(parameter && 'examples' in parameter)
+    expect(parameter.examples?.custom).toBeDefined()
+    expect(parameter.examples?.default).toBeDefined()
+  })
+
+  it('does not rename when target key exists only in request body examples', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'test-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            post: {
+              summary: 'Create user',
+              requestBody: {
+                content: {
+                  'application/json': {
+                    examples: {
+                      custom: { value: '{"name":"Jane"}' },
+                      existing: { value: '{"name":"Ada"}' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    })
+
+    renameOperationExample(store, {
+      documentName: 'test-doc',
+      meta: { method: 'post', path: '/users', exampleKey: 'custom' },
+      payload: { name: 'existing' },
+    })
+
+    const document = getOpenApiDocument(store, 'test-doc')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/users'], 'post'))
+    const requestBody = getResolvedRef(operation?.requestBody)
+    const examples = requestBody?.content?.['application/json']?.examples
+
+    expect(examples?.custom).toBeDefined()
+    expect(examples?.existing).toBeDefined()
+  })
+})
+
+describe('updateOperationMeta', () => {
+  it('updates operation description when document and operation exist', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'meta-test',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get users',
+              description: 'Retrieve list of users',
+            },
+          },
+        },
+      }),
+    })
+    const document = getOpenApiDocument(store, 'meta-test')!
+
+    updateOperationMeta(store, document, {
+      meta: { method: 'get', path: '/users' },
+      payload: { description: 'Updated description' },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/users'], 'get'))
+    expect(operation?.description).toBe('Updated description')
+    expect(operation?.summary).toBe('Get users')
+  })
+
+  it('updates operation summary when provided in payload', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'meta-test-summary',
+      document: createDocument({
+        paths: {
+          '/pets': {
+            get: {
+              summary: 'List pets',
+              description: 'Returns all pets',
+            },
+          },
+        },
+      }),
+    })
+    const document = getOpenApiDocument(store, 'meta-test-summary')!
+
+    updateOperationMeta(store, document, {
+      meta: { method: 'get', path: '/pets' },
+      payload: { summary: 'Get all pets' },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/pets'], 'get'))
+    expect(operation?.summary).toBe('Get all pets')
+    expect(operation?.description).toBe('Returns all pets')
+  })
+
+  it('updates operation deprecated flag when provided in payload', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'meta-test-deprecated',
+      document: createDocument({
+        paths: {
+          '/legacy': {
+            get: {
+              summary: 'Legacy endpoint',
+              deprecated: false,
+            },
+          },
+        },
+      }),
+    })
+    const document = getOpenApiDocument(store, 'meta-test-deprecated')!
+
+    updateOperationMeta(store, document, {
+      meta: { method: 'get', path: '/legacy' },
+      payload: { deprecated: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/legacy'], 'get'))
+    expect(operation?.deprecated).toBe(true)
+    expect(operation?.summary).toBe('Legacy endpoint')
+  })
+
+  it('updates multiple meta fields at once', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'meta-test-multi',
+      document: createDocument({
+        paths: {
+          '/items': {
+            post: {
+              summary: 'Create',
+              description: 'Old description',
+              deprecated: false,
+            },
+          },
+        },
+      }),
+    })
+    const document = getOpenApiDocument(store, 'meta-test-multi')!
+
+    updateOperationMeta(store, document, {
+      meta: { method: 'post', path: '/items' },
+      payload: {
+        summary: 'Create item',
+        description: 'Creates a new item',
+        deprecated: true,
+      },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/items'], 'post'))
+    expect(operation?.summary).toBe('Create item')
+    expect(operation?.description).toBe('Creates a new item')
+    expect(operation?.deprecated).toBe(true)
+  })
+
+  it('does not mutate operation when document is null', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'meta-test-null-doc',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: { summary: 'Get users', description: 'Original' },
+          },
+        },
+      }),
+    })
+    store.buildSidebar('meta-test-null-doc')
+    const document = getOpenApiDocument(store, 'meta-test-null-doc')!
+
+    updateOperationMeta(store, null, {
+      meta: { method: 'get', path: '/users' },
+      payload: { description: 'Should not apply' },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/users'], 'get'))
+    expect(operation?.description).toBe('Original')
+  })
+
+  it('does not mutate operation when store is null', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'meta-test-null-store',
+      document: createDocument({
+        paths: {
+          '/users': {
+            get: { summary: 'Get users', description: 'Original' },
+          },
+        },
+      }),
+    })
+    const document = getOpenApiDocument(store, 'meta-test-null-store')!
+
+    updateOperationMeta(null, document, {
+      meta: { method: 'get', path: '/users' },
+      payload: { description: 'Should not apply' },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/users'], 'get'))
+    expect(operation?.description).toBe('Original')
+  })
+
+  it('does not mutate when operation is not found at path and method', () => {
+    const store = createWorkspaceStore()
+    const document = createDocument({
+      paths: {
+        '/users': {
+          get: { summary: 'Get users' },
+        },
+      },
+    })
+
+    updateOperationMeta(store, document, {
+      meta: { method: 'get', path: '/nonexistent' },
+      payload: { description: 'Should not apply' },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/users'], 'get'))
+    expect(operation?.summary).toBe('Get users')
+
+    expect(Object.keys(document.paths ?? {})).toEqual(['/users'])
+  })
+})

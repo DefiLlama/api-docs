@@ -1,108 +1,146 @@
 <script setup lang="ts">
-import type { HttpMethod as HttpMethodType } from '@scalar/helpers/http/http-methods'
-import { ScalarIconCaretRight } from '@scalar/icons'
-import { type OperationObject } from '@scalar/workspace-store/schemas/v3.1/strict/path-operations'
-import { type Dereference } from '@scalar/workspace-store/schemas/v3.1/type-guard'
+import {
+  SchemaGlyphPuck,
+  type SchemaRenderingProps,
+} from '@scalar/blocks/schema'
+import { toNodeKey, useSchemaExpansion } from '@scalar/blocks/schema/expansion'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import {
+  type OpenApiDocument,
+  type OperationObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed, toRef, useId } from 'vue'
 
 import { HttpMethod } from '@/components/HttpMethod'
 import OperationParameters from '@/features/Operation/components/OperationParameters.vue'
 import OperationResponses from '@/features/Operation/components/OperationResponses.vue'
-import type { Schemas } from '@/features/Operation/types/schemas'
+import type { OperationProps } from '@/features/Operation/Operation.vue'
 
-const { method, name, schemas, url, path, operationMethod } = defineProps<{
-  callback: Dereference<OperationObject>
-  method: HttpMethodType
-  path: string
-  operationMethod: HttpMethodType
-  name: string
-  schemas?: Schemas
-  url: string
-}>()
+const {
+  scrollTargetId = '',
+  expansion: expansionProp,
+  method,
+  name,
+  url,
+  options,
+  document,
+  breadcrumb,
+} = defineProps<
+  {
+    callback: OperationObject
+    method: string
+    name: string
+    url: string
+    eventBus: WorkspaceEventBus | null
+    /** The document the callback belongs to, used to resolve schema references for display */
+    document?: OpenApiDocument
+    /** Breadcrumb of this callback, making its body and responses addressable */
+    breadcrumb?: string[]
+    options: Pick<
+      OperationProps['options'],
+      | 'expandAllParameters'
+      | 'hideModels'
+      | 'orderRequiredPropertiesFirst'
+      | 'orderSchemaPropertiesBy'
+      | 'expandAllSchemaProperties'
+      | 'schemaKeyboardNav'
+      | 'showExtensions'
+      | 'maxVisibleRequestBodyProperties'
+      | 'hideModelNames'
+    >
+  } & SchemaRenderingProps
+>()
+
+/**
+ * A controlled disclosure keyed to the breadcrumb, so deep links can open the
+ * callback and its state survives remounts like any other node.
+ */
+const expansion =
+  expansionProp ?? useSchemaExpansion(toRef(() => scrollTargetId))
+const anonymousKey = useId()
+const nodeKey = computed(
+  (): string => toNodeKey(breadcrumb) || `~anonymous-${anonymousKey}`,
+)
+const panelId = useId()
+
+const isOpen = computed((): boolean => expansion.isExpanded(nodeKey.value, {}))
+
+const toggle = (): void => {
+  expansion.setExpanded(nodeKey.value, !isOpen.value)
+}
 </script>
 
 <template>
-  <details class="group callback-list-item">
-    <!-- Title -->
-    <summary
-      class="font-code bg-b-1 callback-sticky-offset callback-list-item-title sticky flex cursor-pointer flex-row items-center gap-2 border-t py-3 text-sm group-open:flex-wrap">
-      <ScalarIconCaretRight
-        class="callback-list-item-icon text-c-3 group-hover:text-c-1 absolute -left-5 size-4 transition-transform group-open:rotate-90" />
-      <HttpMethod
-        as="span"
-        class="request-method"
-        :method="method" />
-      <div
-        class="text-c-1 min-w-0 flex-1 truncate leading-3 group-open:whitespace-normal">
-        {{ name }}
-        <span class="text-c-2">
-          {{ url }}
+  <!-- A callback is one more row of the responses grammar — the whole row is
+       the disclosure button and the open body is a railed panel. No card
+       chrome, no sticky, no wrapping. -->
+  <div class="callback-list-item callback-list-item--tree">
+    <button
+      :aria-controls="isOpen ? panelId : undefined"
+      :aria-expanded="isOpen"
+      class="callback-item-trigger group/tree-control font-code flex w-full cursor-pointer items-baseline gap-1.5 border-none bg-transparent p-0 py-2.5 text-start text-sm leading-(--scalar-line-height-5)"
+      type="button"
+      @click="toggle">
+      <!-- The positioned ancestor is this inline wrapper, so the line anchor
+           centres the puck on the title's first line, not the padded button. -->
+      <span
+        class="callback-item-name relative flex min-w-0 flex-1 items-baseline gap-1.5">
+        <SchemaGlyphPuck
+          anchor="line"
+          class="callback-item-glyph"
+          :open="isOpen" />
+        <HttpMethod
+          as="span"
+          class="request-method font-bold"
+          :method="method" />
+        <span class="text-c-1 min-w-0 flex-1 truncate font-bold">
+          {{ name }}
+          <span class="text-c-2 font-normal">
+            {{ url }}
+          </span>
         </span>
-      </div>
-    </summary>
+      </span>
+    </button>
 
-    <!-- Body -->
-    <div class="callback-operation-container flex flex-col gap-2">
+    <!-- No rail, and no indent. What opens here is the operation's own set of
+         page-level sections (Parameters, Body, Responses), which is the same
+         level the operation itself renders them at, and that level never draws
+         a rail — the tree only starts one on the level below. The schema rows
+         inside each section still rail their own children, and their pucks
+         hang in the margin exactly as they do at the top of an operation.
+         The 24px gap paces the sections at the page's own rhythm, so their
+         page-layout top margins (the section roots, the heading `mt-3`s) are
+         zeroed from here; they would double up in this context. The sections
+         are page-level headings, so in here their titles and the body
+         description step down to the callback row's own 13px; at that size
+         the titles take the property names' weight so they still read as
+         headings. -->
+    <div
+      v-if="isOpen"
+      :id="panelId"
+      class="callback-operation-panel mt-1.5 mb-0.5 flex flex-col gap-6 [&_.parameter-list-title--tree]:mt-0! [&_.parameter-list-title--tree]:text-(length:--scalar-font-size-4)! [&_.parameter-list-title--tree]:font-(--scalar-bold)! [&_.request-body]:mt-0! [&_.request-body-description]:mt-0! [&_.request-body-description]:text-(length:--scalar-font-size-4)! [&_.request-body-header]:mt-0! [&_.request-body-title]:text-(length:--scalar-font-size-4)! [&_.request-body-title]:font-(--scalar-bold)! [&_.responses-title--tree]:mt-0! [&_.responses-title--tree]:text-(length:--scalar-font-size-4)! [&_.responses-title--tree]:font-(--scalar-bold)! [&>*]:mt-0!">
       <OperationParameters
-        :requestBody="callback.requestBody"
-        :parameters="callback.parameters"
-        :schemas="schemas" />
+        :breadcrumb="breadcrumb"
+        :document="document"
+        :eventBus="eventBus"
+        :expansion="expansion"
+        :options="options"
+        :parameters="callback.parameters ?? []"
+        :requestBody="getResolvedRef(callback.requestBody)"
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
 
-      <!-- Responses -->
       <OperationResponses
+        :breadcrumb="breadcrumb"
         :collapsableItems="false"
+        :document
+        :eventBus
+        :expansion="expansion"
+        :options
         :responses="callback.responses"
-        :schemas="schemas" />
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
     </div>
-  </details>
+  </div>
 </template>
-<style scoped>
-.callback-sticky-offset {
-  top: var(--refs-header-height, 0px);
-  z-index: 100;
-}
-.callback-operation-container :deep(.request-body-header) {
-  --scalar-font-size-2: var(--scalar-font-size-4);
-  margin-top: 0;
-  padding: 8px;
-  border-bottom: none;
-  border: 0.5px solid var(--scalar-border-color);
-  border-radius: var(--scalar-radius-lg) var(--scalar-radius-lg) 0 0;
-  background: color-mix(in srgb, var(--scalar-background-2) 50%, transparent);
-}
-.callback-operation-container :deep(.request-body-description) {
-  margin-top: 0;
-}
-.callback-operation-container :deep(ul li.property.property--level-1) {
-  padding: 8px;
-}
-.callback-operation-container :deep(.request-body-schema) {
-  background-color: var(--scalar-background-1);
-  border: var(--scalar-border-width) solid var(--scalar-border-color);
-  border-top: none;
-  overflow: hidden;
-  border-radius: 0 0 var(--scalar-radius-lg) var(--scalar-radius-lg);
-}
-.callback-operation-container :deep(.parameter-list) {
-  margin-top: 0;
-}
-.callback-operation-container :deep(.parameter-list-title) {
-  background: color-mix(in srgb, var(--scalar-background-2) 50%, transparent);
-  border-radius: var(--scalar-radius-lg) var(--scalar-radius-lg) 0 0;
-  padding: 8px;
-  margin-bottom: 0;
-  border: var(--scalar-border-width) solid var(--scalar-border-color);
-  border-bottom: none;
-  --scalar-font-size-2: var(--scalar-font-size-4);
-}
-.callback-operation-container :deep(.parameter-list-items) {
-  /* background: pink; */
-  border: var(--scalar-border-width) solid var(--scalar-border-color);
-  border-radius: 0 0 var(--scalar-radius-lg) var(--scalar-radius-lg);
-}
-.callback-operation-container :deep(.parameter-list-items > li:first-of-type) {
-  border-top: none;
-}
-.callback-operation-container :deep(.parameter-list-items > li) {
-  padding: 0 8px;
-}
-</style>

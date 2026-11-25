@@ -5,17 +5,22 @@ dist/
 .next
 .turbo
 .claude
+.wrangler/
 *.tgz
 *.tsbuildinfo
 __pycache__/
+*.egg-info/
 .output
 .nuxt
+.scalar/
 # Testing data
 test-*.json
 /test-results/
-/playwright-report/
+**/playwright-report/**
 /blob-report/
 /playwright/.cache/
+playwright-results.json
+**/test-results/**
 
 # Temporary Vite/Vitest config files
 *.config.ts.timestamp-*.mjs
@@ -23,5 +28,26 @@ rollup.config-*.mjs
 
 .DS_Store
 
-# Svelte
 .svelte-kit
+.astro
+
+.pnpm-store/
+.venv
+
+.idea
+**/.claude/settings.local.json
+
+# Nested Git worktrees
+/.worktrees/
+/.claude/worktrees/
+/.codex/worktrees/
+
+# Vitest reports and artifacts
+.vitest/
+
+# Local dependency audit reports
+/dependency-audit/
+
+# Created by scripts/snippetz-output-dirs.mjs for @scalar/snippetz's build output; the real folders are pruned
+/integrations/
+/documentation/

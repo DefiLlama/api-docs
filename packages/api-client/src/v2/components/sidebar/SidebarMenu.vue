@@ -1,0 +1,76 @@
+<script setup lang="ts">
+import {
+  ScalarMenu,
+  ScalarMenuLink,
+  ScalarMenuProducts,
+  ScalarMenuResources,
+  ScalarMenuSection,
+  ScalarMenuSupport,
+  ScalarMenuWorkspacePicker,
+  type WorkspaceGroup,
+} from '@scalar/components/menu'
+import { ScalarIconGear } from '@scalar/icons'
+
+import { useLocalization } from '@/v2/features/localization'
+
+const { activeWorkspace, workspaces } = defineProps<{
+  /**
+   * The currently active workspace.
+   * This represents the workspace that the user is currently working in.
+   */
+  activeWorkspace: { id: string }
+  /**
+   * The list of all available workspaces.
+   * Used to render options for workspace switching and selection.
+   */
+  workspaces: WorkspaceGroup[]
+}>()
+
+const emit = defineEmits<{
+  /** Emitted when the user wants to create a new workspace */
+  (e: 'create:workspace'): void
+  /** Emitted when the user selects a workspace */
+  (e: 'select:workspace', id?: string): void
+  /** Emitted when the user wants to open the settings */
+  (e: 'navigate:to:settings'): void
+}>()
+
+const { translate } = useLocalization()
+
+defineSlots<{
+  /** Slot for customizing the actions section of the sidebar menu. */
+  sidebarMenuActions?(): unknown
+}>()
+</script>
+<template>
+  <!-- Desktop app menu -->
+  <ScalarMenu>
+    <template #products>
+      <ScalarMenuProducts selected="client" />
+    </template>
+    <template #sections="{ close }">
+      <ScalarMenuSection>
+        <slot name="sidebarMenuActions">
+          <ScalarMenuWorkspacePicker
+            :modelValue="activeWorkspace.id"
+            :workspaceOptions="workspaces"
+            @createWorkspace="emit('create:workspace')"
+            @update:modelValue="(value) => emit('select:workspace', value)" />
+          <ScalarMenuLink
+            is="button"
+            :icon="ScalarIconGear"
+            @click="
+              () => {
+                close()
+                emit('navigate:to:settings')
+              }
+            ">
+            {{ translate('apiClient.sidebarMenu.settings') }}
+          </ScalarMenuLink>
+        </slot>
+      </ScalarMenuSection>
+      <ScalarMenuResources />
+      <ScalarMenuSupport />
+    </template>
+  </ScalarMenu>
+</template>

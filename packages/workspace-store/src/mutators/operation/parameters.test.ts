@@ -1,0 +1,1273 @@
+import { assert, describe, expect, it } from 'vitest'
+
+import { getPathItemOperation } from '@/helpers/for-each-path-item-operation'
+import { getResolvedRef } from '@/helpers/get-resolved-ref'
+import { getQuerystringParameter, serializeQuerystringParameter } from '@/helpers/querystring-parameter'
+import {
+  deleteAllOperationParameters,
+  deleteOperationParameter,
+  updateOperationExtraParameters,
+  upsertOperationParameter,
+} from '@/mutators/operation/parameters'
+import { buildRequestParameters } from '@/request-example/builder/header/build-request-parameters'
+import { getExample } from '@/request-example/builder/helpers/get-example'
+import type {
+  OpenApiDocument,
+  ParameterObject,
+  ParameterWithContentObject,
+  ParameterWithSchemaObject,
+} from '@/schemas/v3.2/strict/openapi-document'
+
+const createDocument = (initial?: Partial<OpenApiDocument>): OpenApiDocument => {
+  return {
+    openapi: '3.1.0',
+    info: { title: 'Test', version: '1.0.0' },
+    ...initial,
+    'x-scalar-original-document-hash': '123',
+  }
+}
+
+describe('upsertOperationParameter', () => {
+  it.each([
+    { document: createDocument({ openapi: '3.0.0' }), expected: [1] },
+    {
+      document: { ...createDocument(), 'x-scalar-document-type': 'custom', openapi: '3.0.0' },
+      expected: [2],
+    },
+    {
+      document: { ...createDocument(), 'x-scalar-document-type': 'custom', openapi: { version: 'custom' } },
+      expected: [2],
+    },
+  ])('uses dialect metadata only from OpenAPI documents: $document.openapi', ({ document, expected }) => {
+    const parameter: ParameterObject = {
+      name: 'numbers',
+      in: 'querystring',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'array',
+            items: { type: 'integer' },
+            minItems: 1,
+            maxItems: 1,
+            contains: { type: 'integer', const: 2 },
+          },
+        },
+      },
+    }
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: parameter,
+      meta: { method: 'get', path: '/', exampleKey: 'default' },
+      payload: { name: 'numbers', value: encodeURIComponent(JSON.stringify(expected)), isDisabled: false },
+    })
+    expect(getResolvedRef(parameter.examples?.default)?.dataValue).toStrictEqual(expected)
+  })
+
+  it.each(['deepObject', 'form'] as const)(
+    'keeps %s property toggles independent and preserves their values',
+    (style) => {
+      const parameter: ParameterWithSchemaObject = {
+        name: 'filters',
+        in: 'query',
+        style,
+        explode: true,
+        schema: { type: 'object', properties: { email: { type: 'string' }, city: { type: 'string' } } },
+        examples: {
+          default: { value: { email: 'alice', city: 'Paris' }, 'x-disabled': true },
+          other: { value: { email: 'other' }, 'x-disabled': true },
+        },
+      }
+      const meta = { method: 'get', path: '/licenses', exampleKey: 'default' } as const
+      const value = { email: 'alice', city: 'Paris' }
+      const update = (isDisabled: boolean): void => {
+        upsertOperationParameter(null, {
+          type: 'query',
+          originalParameter: parameter,
+          meta,
+          payload: { name: 'filters', value, isDisabled, propertyState: { path: ['city'], isDisabled } },
+        })
+      }
+      update(false)
+      expect([...buildRequestParameters([parameter]).urlParams]).toStrictEqual([
+        [style === 'deepObject' ? 'filters[city]' : 'city', 'Paris'],
+      ])
+      expect([...buildRequestParameters([parameter], 'other').urlParams]).toStrictEqual([])
+      update(true)
+      expect([...buildRequestParameters([parameter]).urlParams]).toStrictEqual([])
+      expect(getResolvedRef(parameter.examples?.default)?.value).toStrictEqual(value)
+      update(false)
+      expect([...buildRequestParameters([parameter]).urlParams]).toStrictEqual([
+        [style === 'deepObject' ? 'filters[city]' : 'city', 'Paris'],
+      ])
+    },
+  )
+
+  it('freezes untouched fields at their initial state and moves or removes overrides with a field', () => {
+    const parameter: ParameterWithSchemaObject = {
+      name: 'filters',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: { type: 'object', properties: { email: { type: 'string' }, user: { type: 'object' } } },
+    }
+    const meta = { method: 'get', path: '/licenses', exampleKey: 'default' } as const
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta,
+      payload: {
+        name: 'filters',
+        value: { user: { city: 'Paris' }, email: 'saved' },
+        isDisabled: false,
+        propertyState: { path: ['user', 'city'], isDisabled: false },
+      },
+    })
+    expect([...buildRequestParameters([parameter]).urlParams]).toStrictEqual([['filters[user][city]', 'Paris']])
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta,
+      payload: {
+        name: 'filters',
+        value: { user: { town: 'Paris' }, email: 'saved' },
+        isDisabled: false,
+        propertyState: { path: ['user', 'town'], previousPath: ['user', 'city'], isDisabled: false },
+      },
+    })
+    expect(getResolvedRef(parameter.examples?.default)?.['x-scalar-disabled-properties']).toStrictEqual({
+      '[]': true,
+      '["user","town"]': false,
+    })
+    expect([...buildRequestParameters([parameter]).urlParams]).toStrictEqual([['filters[user][town]', 'Paris']])
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta,
+      payload: {
+        name: 'filters',
+        value: { email: 'saved' },
+        isDisabled: false,
+        propertyState: { path: ['user', 'town'] },
+      },
+    })
+    expect(getResolvedRef(parameter.examples?.default)?.['x-scalar-disabled-properties']).toStrictEqual({ '[]': true })
+    expect([...buildRequestParameters([parameter]).urlParams]).toStrictEqual([])
+  })
+  it.each([
+    { authored: { dataValue: 'old', externalValue: 'old.json' }, expected: { value: 'new', 'x-disabled': false } },
+    {
+      authored: { serializedValue: 'term=old', dataValue: 'old' },
+      expected: { serializedValue: 'new', 'x-disabled': false },
+    },
+  ])('replaces the original example source when editing', ({ authored, expected }) => {
+    const parameter: ParameterObject = { name: 'term', in: 'query', examples: { default: authored } }
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta: { method: 'get', path: '/', exampleKey: 'default' },
+      payload: { name: 'term', value: 'new', isDisabled: false },
+    })
+    expect(parameter.examples?.default).toStrictEqual(expected)
+  })
+
+  it('keeps edited serialized query text verbatim, including names and encoding', () => {
+    const parameter: ParameterObject = {
+      name: 'term',
+      in: 'query',
+      examples: { default: { serializedValue: 'term=old' } },
+    }
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta: { method: 'get', path: '/', exampleKey: 'default' },
+      payload: { name: 'term', value: 'term=hello%20world&term=again', isDisabled: false },
+    })
+    expect(buildRequestParameters([parameter]).serializedQuery).toStrictEqual(['term=hello%20world&term=again'])
+  })
+
+  it('preserves environment substitution when enabling an unchanged whole-query preview', () => {
+    const parameter: ParameterObject = {
+      name: 'form',
+      in: 'querystring',
+      content: {
+        'application/x-www-form-urlencoded': {
+          examples: { default: { dataValue: { q: '{{term}}' }, 'x-disabled': true } },
+        },
+      },
+    }
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'form', value: 'q=%7B%7Bterm%7D%7D', isDisabled: false },
+    })
+    const querystring = getQuerystringParameter(parameter, 'default')!
+    expect(serializeQuerystringParameter(querystring, { term: 'a + b' })).toBe('q=a+%2B+b')
+  })
+
+  it('edits and toggles a whole query without double encoding or using its old media example', () => {
+    const parameter: ParameterObject = {
+      name: 'json',
+      in: 'querystring',
+      required: true,
+      content: { 'application/json': { examples: { default: { dataValue: { old: true } } } } },
+      examples: { default: { dataValue: { old: true } } },
+    }
+    const meta = { method: 'get', path: '/search', exampleKey: 'default' } as const
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta,
+      payload: { name: 'json', value: '%7B%22new%22%3Atrue%7D', isDisabled: false },
+    })
+    expect(parameter.examples).toStrictEqual({
+      default: { serializedValue: '%7B%22new%22%3Atrue%7D', 'x-disabled': false },
+    })
+    const querystring = getQuerystringParameter(parameter, 'default')!
+    expect(serializeQuerystringParameter(querystring)).toBe('%7B%22new%22%3Atrue%7D')
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: parameter,
+      meta,
+      payload: { name: 'json', value: '%7B%22new%22%3Atrue%7D', isDisabled: true },
+    })
+    expect(getQuerystringParameter(parameter, 'default')).toBeUndefined()
+  })
+
+  it('adds a query parameter with example and enabled state when it does not exist', () => {
+    const document = createDocument({
+      paths: {
+        '/search': {
+          get: {
+            parameters: [{ name: 'X-Trace', in: 'header' }],
+          },
+        },
+      },
+    })
+
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: null,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'q', value: 'john', isDisabled: false },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/search'], 'get'))
+    assert(op)
+    const params = (op.parameters ?? []).map((p) => getResolvedRef(p))
+    expect(params.length).toBe(2)
+    const last = params[params.length - 1]
+    expect(last).toMatchObject({ name: 'q', in: 'query', required: false })
+    assert(last && 'examples' in last && last.examples)
+    expect(getResolvedRef(last.examples.default)?.value).toBe('john')
+    expect(getResolvedRef(last.examples.default)?.['x-disabled']).toBe(false)
+  })
+
+  it('adds a path parameter and marks it required', () => {
+    const document = createDocument({
+      paths: {
+        '/users/{id}': {
+          get: {},
+        },
+      },
+    })
+
+    upsertOperationParameter(document, {
+      type: 'path',
+      originalParameter: null,
+      meta: { method: 'get', path: '/users/{id}', exampleKey: 'default' },
+      payload: { name: 'id', value: '123', isDisabled: false },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/users/{id}'], 'get'))
+    assert(op)
+    const params = (op.parameters ?? []).map((p) => getResolvedRef(p))
+    expect(params.length).toBe(1)
+    const only = params[0]
+    expect(only).toMatchObject({ name: 'id', in: 'path', required: true })
+    assert(only && 'examples' in only && only.examples)
+    expect(getResolvedRef(only.examples?.default)?.value).toBe('123')
+    // Note: When adding a new parameter, x-disabled is always set to false initially
+    expect(getResolvedRef(only.examples?.default)?.['x-disabled']).toBe(false)
+  })
+
+  it('updates an existing query parameter by passing originalParameter', () => {
+    const document = createDocument({
+      paths: {
+        '/search': {
+          get: {
+            parameters: [
+              { name: 'X-Trace', in: 'header' },
+              { name: 'q', in: 'query', examples: { default: { value: 'one' } } },
+              { name: 'p', in: 'query', examples: { default: { value: 'two' } } },
+            ],
+          },
+        },
+      },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/search'], 'get'))
+    assert(op)
+    const secondQueryParam = getResolvedRef(op.parameters?.[2])
+    assert(secondQueryParam)
+
+    // Update the second query parameter
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: secondQueryParam,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'page', value: '2', isDisabled: false },
+    })
+
+    const params = (op.parameters ?? []).map((p) => getResolvedRef(p))
+    // Header unchanged
+    expect(params[0]).toMatchObject({ name: 'X-Trace', in: 'header' })
+    // First query unchanged
+    const firstQuery = params[1]
+    assert(firstQuery && 'examples' in firstQuery && firstQuery.examples)
+    expect(firstQuery).toMatchObject({ name: 'q', in: 'query' })
+    expect(getResolvedRef(firstQuery.examples.default)?.value).toBe('one')
+    // Second query updated
+    const secondQuery = params[2]
+    assert(secondQuery && 'examples' in secondQuery && secondQuery.examples)
+    expect(secondQuery).toMatchObject({ name: 'page', in: 'query' })
+    expect(getResolvedRef(secondQuery.examples.default)?.value).toBe('2')
+    expect(getResolvedRef(secondQuery.examples.default)?.['x-disabled']).toBe(false)
+  })
+
+  it('updates value and disabled state when parameter exists', () => {
+    const document = createDocument({
+      paths: {
+        '/search': {
+          get: {
+            parameters: [{ name: 'q', in: 'query', examples: { default: { value: 'one' } } }],
+          },
+        },
+      },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/search'], 'get'))
+    assert(op)
+    const param = getResolvedRef(op.parameters?.[0])
+    assert(param)
+
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'q', value: 'ONE', isDisabled: false },
+    })
+
+    assert(param && 'examples' in param && param.examples)
+    expect(getResolvedRef(param.examples.default)?.value).toBe('ONE')
+    expect(getResolvedRef(param.examples.default)?.['x-disabled']).toBe(false)
+  })
+
+  it('updates name and creates new example for different exampleKey', () => {
+    const document = createDocument({
+      paths: {
+        '/search': {
+          get: {
+            parameters: [{ name: 'q', in: 'query', examples: { default: { value: 'one' } } }],
+          },
+        },
+      },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/search'], 'get'))
+    assert(op)
+    const param = getResolvedRef(op.parameters?.[0])
+    assert(param)
+
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'other' },
+      payload: { name: 'query', value: 'new value', isDisabled: false },
+    })
+
+    // Name should update
+    expect(param?.name).toBe('query')
+    // Both examples should exist
+    assert(param && 'examples' in param && param.examples)
+    expect(getResolvedRef(param.examples.other)?.value).toBe('new value')
+    expect(getResolvedRef(param.examples.default)?.value).toBe('one')
+  })
+
+  it('only updates the specific parameter passed as originalParameter', () => {
+    const document = createDocument({
+      paths: {
+        '/search': {
+          get: {
+            parameters: [
+              { name: 'X-Trace', in: 'header', examples: { default: { value: 'abc' } } },
+              { name: 'q', in: 'query', examples: { default: { value: 'one' } } },
+            ],
+          },
+        },
+      },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/search'], 'get'))
+    assert(op)
+    const queryParam = getResolvedRef(op.parameters?.[1])
+    assert(queryParam)
+
+    // Update only the query parameter
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: queryParam,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'query', value: '1', isDisabled: false },
+    })
+
+    const params = (op.parameters ?? []).map((p) => getResolvedRef(p))
+    expect(params[0]).toMatchObject({ name: 'X-Trace', in: 'header' })
+    const updatedQueryParam = params[1]
+    assert(updatedQueryParam && 'examples' in updatedQueryParam)
+    expect(updatedQueryParam?.name).toBe('query')
+    expect(getResolvedRef(updatedQueryParam?.examples?.default as any)?.value).toBe('1')
+  })
+
+  it('sends a populated JSON-content parameter and respects subsequent checkbox changes', () => {
+    const param: ParameterWithContentObject = {
+      name: 'filter',
+      in: 'query',
+      required: false,
+      content: {
+        'application/json': {
+          schema: { type: 'object' },
+          example: { status: null, labels: [] },
+        },
+      },
+    }
+    const value = '{"status":null,"labels":[]}'
+    expect([...buildRequestParameters([param]).urlParams]).toStrictEqual([['filter', value]])
+
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'filter', value, isDisabled: false },
+    })
+
+    expect(param).toStrictEqual({
+      name: 'filter',
+      in: 'query',
+      required: false,
+      content: {
+        'application/json': {
+          schema: { type: 'object' },
+          examples: { default: { value, 'x-disabled': false } },
+        },
+      },
+    })
+    expect(getExample(param, 'default', undefined)).toStrictEqual({ value, 'x-disabled': false })
+    expect([...buildRequestParameters([param]).urlParams]).toStrictEqual([['filter', value]])
+
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'filter', value, isDisabled: true },
+    })
+    expect(getExample(param, 'default', undefined)).toStrictEqual({ value, 'x-disabled': true })
+    expect(buildRequestParameters([param]).urlParams.toString()).toBe('')
+
+    const editedValue = '{"status":"active","labels":["new"]}'
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'filter', value: editedValue, isDisabled: false },
+    })
+    expect([...buildRequestParameters([param]).urlParams]).toStrictEqual([['filter', editedValue]])
+  })
+
+  it('creates a content example when the media type has none', () => {
+    const param: ParameterWithContentObject = {
+      name: 'message',
+      in: 'query',
+      content: { 'application/json': { schema: { type: 'object' } } },
+    }
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'message', value: '{"id":1}', isDisabled: false },
+    })
+    expect(param).toStrictEqual({
+      name: 'message',
+      in: 'query',
+      content: {
+        'application/json': {
+          schema: { type: 'object' },
+          examples: { default: { value: '{"id":1}', 'x-disabled': false } },
+        },
+      },
+    })
+  })
+
+  it.each([null, false, 0, ''])('preserves a falsy authored content example %s', (value) => {
+    const param: ParameterWithContentObject = {
+      name: 'filter',
+      in: 'query',
+      content: { 'application/json': { example: value } },
+    }
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'edited' },
+      payload: { name: 'filter', value: 'updated', isDisabled: false },
+    })
+    expect(getExample(param, 'default', undefined)).toStrictEqual({ value })
+  })
+
+  it('preserves a singular authored example when editing a different example', () => {
+    const param: ParameterWithContentObject = {
+      name: 'message',
+      in: 'query',
+      content: { 'text/plain': { example: 'original' } },
+    }
+
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'edited' },
+      payload: { name: 'message', value: 'updated', isDisabled: false },
+    })
+
+    expect(param.content).toStrictEqual({
+      'text/plain': {
+        examples: {
+          default: { value: 'original' },
+          edited: { value: 'updated', 'x-disabled': false },
+        },
+      },
+    })
+    expect(getExample(param, 'default', undefined)).toStrictEqual({ value: 'original' })
+    expect([...buildRequestParameters([param], 'edited').urlParams]).toStrictEqual([['message', 'updated']])
+  })
+
+  it('preserves named examples and metadata while updating a referenced content example', () => {
+    const example = { value: 'original', summary: 'Authored example' }
+    const param: ParameterWithContentObject = {
+      name: 'message',
+      in: 'query',
+      content: {
+        'text/plain': {
+          examples: {
+            selected: { $ref: '#/components/examples/message', '$ref-value': example },
+            other: { value: 'keep me' },
+          },
+        },
+      },
+    }
+
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'selected' },
+      payload: { name: 'message', value: 'updated', isDisabled: false },
+    })
+
+    expect(example).toStrictEqual({ value: 'updated', summary: 'Authored example', 'x-disabled': false })
+    expect(getExample(param, 'other', undefined)).toStrictEqual({ value: 'keep me' })
+    expect('examples' in param).toBe(false)
+  })
+
+  it('migrates previously saved edits without losing other examples or enabled states', () => {
+    // Older clients stored content-based edits alongside content. Model that persisted shape explicitly.
+    const param: ParameterWithContentObject & Pick<ParameterWithSchemaObject, 'examples'> = {
+      name: 'filter',
+      in: 'query',
+      examples: {
+        default: { value: '{"status":"saved"}', 'x-disabled': false },
+        other: { value: '{"status":"other"}', 'x-disabled': true },
+      },
+      content: {
+        'application/json': {
+          examples: {
+            default: { value: { status: 'authored' } },
+            untouched: { value: { status: 'untouched' } },
+          },
+        },
+      },
+    }
+    expect([...buildRequestParameters([param]).urlParams]).toStrictEqual([['filter', '{"status":"saved"}']])
+
+    upsertOperationParameter(null, {
+      type: 'query',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: 'filter', value: '{"status":"updated"}', isDisabled: false },
+    })
+
+    expect('examples' in param).toBe(false)
+    expect(param.content).toStrictEqual({
+      'application/json': {
+        examples: {
+          default: { value: '{"status":"updated"}', 'x-disabled': false },
+          other: { value: '{"status":"other"}', 'x-disabled': true },
+          untouched: { value: { status: 'untouched' } },
+        },
+      },
+    })
+    expect([...buildRequestParameters([param]).urlParams]).toStrictEqual([['filter', '{"status":"updated"}']])
+    expect(buildRequestParameters([param], 'other').urlParams.toString()).toBe('')
+  })
+
+  it('adds multiple parameters of different types', () => {
+    const document = createDocument({
+      paths: {
+        '/users': {
+          get: {},
+        },
+      },
+    })
+
+    upsertOperationParameter(document, {
+      type: 'header',
+      originalParameter: null,
+      meta: { method: 'get', path: '/users', exampleKey: 'default' },
+      payload: { name: 'Authorization', value: 'Bearer token', isDisabled: false },
+    })
+
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: null,
+      meta: { method: 'get', path: '/users', exampleKey: 'default' },
+      payload: { name: 'limit', value: '10', isDisabled: false },
+    })
+
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: null,
+      meta: { method: 'get', path: '/users', exampleKey: 'default' },
+      payload: { name: 'offset', value: '0', isDisabled: false },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/users'], 'get'))
+    assert(op)
+    const params = (op.parameters ?? []).map((p) => getResolvedRef(p))
+    expect(params.length).toBe(3)
+    expect(params[0]).toMatchObject({ name: 'Authorization', in: 'header' })
+    expect(params[1]).toMatchObject({ name: 'limit', in: 'query' })
+    expect(params[2]).toMatchObject({ name: 'offset', in: 'query' })
+    assert(params[2] && 'examples' in params[2] && params[2].examples)
+    // Note: When adding a new parameter, x-disabled is always set to false initially
+    expect(getResolvedRef(params[2].examples.default)?.['x-disabled']).toBe(false)
+  })
+
+  it('no-ops when document is null', () => {
+    expect(() =>
+      upsertOperationParameter(null, {
+        type: 'query',
+        originalParameter: null,
+        meta: { method: 'get', path: '/search', exampleKey: 'default' },
+        payload: { name: 'q', value: 'x', isDisabled: false },
+      }),
+    ).not.toThrow()
+  })
+
+  it('does not overwrite an existing parameter name with an empty string', () => {
+    // Regression: a stale blur event from CodeInputLite could call
+    // upsertOperationParameter with payload.name = '' before the key input
+    // had rendered its initial value, permanently blanking the name.
+    const document = createDocument({
+      paths: {
+        '/search': {
+          get: {
+            parameters: [{ name: 'x-scenario-id', in: 'header', examples: { default: { value: '200_success' } } }],
+          },
+        },
+      },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/search'], 'get'))
+    assert(op)
+    const param = getResolvedRef(op.parameters?.[0])
+    assert(param)
+
+    upsertOperationParameter(document, {
+      type: 'header',
+      originalParameter: param,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      payload: { name: '', value: '200_success', isDisabled: false },
+    })
+
+    // Name must be preserved; only value/disabled should update.
+    expect(param.name).toBe('x-scenario-id')
+    assert('examples' in param && param.examples)
+    expect(getResolvedRef(param.examples.default)?.value).toBe('200_success')
+  })
+
+  it('no-ops when operation does not exist and no originalParameter is provided', () => {
+    const document = createDocument({
+      paths: {
+        '/missing': {},
+      },
+    })
+
+    upsertOperationParameter(document, {
+      type: 'query',
+      originalParameter: null,
+      meta: { method: 'get', path: '/missing', exampleKey: 'default' },
+      payload: { name: 'q', value: 'x', isDisabled: false },
+    })
+
+    expect(document.paths?.['/missing']).toEqual({})
+  })
+})
+
+describe('deleteOperationParameter', () => {
+  it('deletes a specific parameter using originalParameter', () => {
+    const document = createDocument({
+      paths: {
+        '/search': {
+          get: {
+            parameters: [
+              { name: 'X-Trace', in: 'header', examples: { default: { value: 'a' } } },
+              { name: 'q', in: 'query', examples: { default: { value: 'one' } } },
+              { name: 'page', in: 'query', examples: { default: { value: '2' } } },
+            ],
+          },
+        },
+      },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/search'], 'get'))
+    assert(op)
+    const pageParam = getResolvedRef(op.parameters?.[2])
+    assert(pageParam)
+
+    // Delete the page parameter
+    deleteOperationParameter(document, {
+      originalParameter: pageParam,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+    })
+
+    const params = (op.parameters ?? []).map((p) => getResolvedRef(p))
+    expect(params.length).toBe(2)
+    expect(params[0]).toMatchObject({ name: 'X-Trace', in: 'header' })
+    expect(params[1]).toMatchObject({ name: 'q', in: 'query' })
+  })
+
+  it('no-ops when document is null', () => {
+    const testParam = { name: 'test', in: 'query' as const }
+    expect(() =>
+      deleteOperationParameter(null, {
+        originalParameter: testParam,
+        meta: { method: 'get', path: '/search', exampleKey: 'default' },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when operation does not exist', () => {
+    const document = createDocument({
+      paths: {
+        '/search': {},
+      },
+    })
+
+    const testParam = { name: 'test', in: 'query' as const }
+    deleteOperationParameter(document, {
+      originalParameter: testParam,
+      meta: { method: 'get', path: '/search', exampleKey: 'default' },
+    })
+
+    expect(document.paths?.['/search']).toEqual({})
+  })
+})
+
+describe('deleteAllOperationParameters', () => {
+  it('deletes all parameters of the specified type, preserving others', () => {
+    const document = createDocument({
+      paths: {
+        '/users/{id}': {
+          get: {
+            parameters: [
+              {
+                name: 'X-Trace',
+                in: 'header',
+                required: false,
+                examples: { default: { value: 'a', 'x-disabled': false } },
+              },
+              { name: 'q', in: 'query', required: false, examples: { default: { value: 'one', 'x-disabled': false } } },
+              {
+                name: 'page',
+                in: 'query',
+                required: false,
+                examples: { default: { value: '2', 'x-disabled': false } },
+              },
+              { name: 'id', in: 'path', required: true, examples: { default: { value: '123', 'x-disabled': false } } },
+            ],
+          },
+        },
+      },
+    })
+
+    deleteAllOperationParameters(document, {
+      type: 'query',
+      meta: { method: 'get', path: '/users/{id}' },
+    })
+
+    const op = getResolvedRef(getPathItemOperation(document.paths?.['/users/{id}'], 'get'))
+    assert(op)
+    const params = (op.parameters ?? []).map((p) => getResolvedRef(p))
+    // Should keep header and path, remove all queries
+    expect(params).toEqual([
+      { name: 'X-Trace', in: 'header', required: false, examples: { default: { value: 'a', 'x-disabled': false } } },
+      { name: 'id', in: 'path', required: true, examples: { default: { value: '123', 'x-disabled': false } } },
+    ])
+  })
+
+  it('no-ops when document is null', () => {
+    expect(() =>
+      deleteAllOperationParameters(null, {
+        type: 'query',
+        meta: { method: 'get', path: '/users/{id}' },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when operation does not exist', () => {
+    const document = createDocument({
+      paths: {
+        '/users': {},
+      },
+    })
+
+    deleteAllOperationParameters(document, {
+      type: 'query',
+      meta: { method: 'get', path: '/users' },
+    })
+
+    expect(document.paths?.['/users']).toEqual({})
+  })
+})
+
+describe('updateOperationExtraParameters', () => {
+  it('sets isDisabled for a default header parameter', () => {
+    const document = createDocument({
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+          },
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/users', method: 'get', exampleKey: 'default', name: 'Authorization' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/users'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.default?.Authorization).toBe(true)
+  })
+
+  it('sets isDisabled for a global cookie parameter', () => {
+    const document = createDocument({
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+          },
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'global',
+      in: 'cookie',
+      meta: { path: '/users', method: 'get', exampleKey: 'default', name: 'session' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/users'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']?.['global-cookies']?.default?.session).toBe(true)
+  })
+
+  it('initializes x-scalar-disable-parameters when it does not exist', () => {
+    const document = createDocument({
+      paths: {
+        '/products': {
+          post: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/products', method: 'post', exampleKey: 'example1', name: 'X-API-Key' },
+      payload: { isDisabled: false },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/products'], 'post'))
+    assert(operation)
+    expect(operation['x-scalar-disable-parameters']).toBeDefined()
+    expect(operation['x-scalar-disable-parameters']?.['default-headers']).toBeDefined()
+    expect(operation['x-scalar-disable-parameters']?.['default-headers']?.example1?.['X-API-Key']).toBe(false)
+  })
+
+  it('initializes default-headers when x-scalar-disable-parameters exists but default-headers does not', () => {
+    const document = createDocument({
+      paths: {
+        '/items': {
+          put: {
+            'x-scalar-disable-parameters': {},
+          },
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/items', method: 'put', exampleKey: 'default', name: 'Content-Type' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/items'], 'put'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.default?.['Content-Type']).toBe(true)
+  })
+
+  it('initializes global-cookies when x-scalar-disable-parameters exists but global-cookies does not', () => {
+    const document = createDocument({
+      paths: {
+        '/items': {
+          put: {
+            'x-scalar-disable-parameters': {},
+          },
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'global',
+      in: 'cookie',
+      meta: { path: '/items', method: 'put', exampleKey: 'default', name: 'auth_token' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/items'], 'put'))
+    expect(operation?.['x-scalar-disable-parameters']?.['global-cookies']?.default?.auth_token).toBe(true)
+  })
+
+  it('preserves existing settings for other keys when updating one', () => {
+    const document = createDocument({
+      paths: {
+        '/orders': {
+          get: {
+            'x-scalar-disable-parameters': {
+              'default-headers': {
+                default: {
+                  Authorization: true,
+                  'X-API-Version': false,
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/orders', method: 'get', exampleKey: 'default', name: 'X-Request-ID' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/orders'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.default).toEqual({
+      Authorization: true,
+      'X-API-Version': false,
+      'X-Request-ID': true,
+    })
+  })
+
+  it('updates an existing header parameter setting', () => {
+    const document = createDocument({
+      paths: {
+        '/customers': {
+          delete: {
+            'x-scalar-disable-parameters': {
+              'default-headers': {
+                default: {
+                  Authorization: false,
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/customers', method: 'delete', exampleKey: 'default', name: 'Authorization' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/customers'], 'delete'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.default?.Authorization).toBe(true)
+  })
+
+  it('handles multiple example keys independently', () => {
+    const document = createDocument({
+      paths: {
+        '/reports': {
+          get: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/reports', method: 'get', exampleKey: 'example1', name: 'Authorization' },
+      payload: { isDisabled: true },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/reports', method: 'get', exampleKey: 'example2', name: 'Authorization' },
+      payload: { isDisabled: false },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/reports'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.example1?.Authorization).toBe(true)
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.example2?.Authorization).toBe(false)
+  })
+
+  it('handles multiple headers in the same example key', () => {
+    const document = createDocument({
+      paths: {
+        '/analytics': {
+          post: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/analytics', method: 'post', exampleKey: 'default', name: 'Authorization' },
+      payload: { isDisabled: true },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/analytics', method: 'post', exampleKey: 'default', name: 'Content-Type' },
+      payload: { isDisabled: false },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/analytics', method: 'post', exampleKey: 'default', name: 'X-API-Key' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/analytics'], 'post'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.default).toEqual({
+      Authorization: true,
+      'Content-Type': false,
+      'X-API-Key': true,
+    })
+  })
+
+  it('handles multiple cookies in the same example key', () => {
+    const document = createDocument({
+      paths: {
+        '/analytics': {
+          post: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'global',
+      in: 'cookie',
+      meta: { path: '/analytics', method: 'post', exampleKey: 'default', name: 'session' },
+      payload: { isDisabled: true },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'global',
+      in: 'cookie',
+      meta: { path: '/analytics', method: 'post', exampleKey: 'default', name: 'csrf_token' },
+      payload: { isDisabled: false },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'global',
+      in: 'cookie',
+      meta: { path: '/analytics', method: 'post', exampleKey: 'default', name: 'tracking_id' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/analytics'], 'post'))
+    expect(operation?.['x-scalar-disable-parameters']?.['global-cookies']?.default).toEqual({
+      session: true,
+      csrf_token: false,
+      tracking_id: true,
+    })
+  })
+
+  it('handles both default headers and global cookies independently', () => {
+    const document = createDocument({
+      paths: {
+        '/mixed': {
+          get: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/mixed', method: 'get', exampleKey: 'default', name: 'Authorization' },
+      payload: { isDisabled: true },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'global',
+      in: 'cookie',
+      meta: { path: '/mixed', method: 'get', exampleKey: 'default', name: 'session' },
+      payload: { isDisabled: false },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/mixed'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.default?.Authorization).toBe(true)
+    expect(operation?.['x-scalar-disable-parameters']?.['global-cookies']?.default?.session).toBe(false)
+  })
+
+  it('defaults to false when isDisabled is undefined', () => {
+    const document = createDocument({
+      paths: {
+        '/webhook': {
+          post: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/webhook', method: 'post', exampleKey: 'default', name: 'X-Webhook-Secret' },
+      payload: { isDisabled: undefined },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/webhook'], 'post'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.default?.['X-Webhook-Secret']).toBe(false)
+  })
+
+  it('no-ops when document is null', () => {
+    expect(() =>
+      updateOperationExtraParameters(null, {
+        type: 'default',
+        in: 'header',
+        meta: { path: '/users', method: 'get', exampleKey: 'default', name: 'Authorization' },
+        payload: { isDisabled: true },
+      }),
+    ).not.toThrow()
+  })
+
+  it('no-ops when operation does not exist', () => {
+    const document = createDocument({
+      paths: {
+        '/users': {},
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/users', method: 'get', exampleKey: 'default', name: 'Authorization' },
+      payload: { isDisabled: true },
+    })
+
+    expect(document.paths?.['/users']).toEqual({})
+  })
+
+  it('no-ops when path does not exist', () => {
+    const document = createDocument({
+      paths: {
+        '/existing': {
+          get: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/nonexistent', method: 'get', exampleKey: 'default', name: 'Authorization' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/existing'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']).toBeUndefined()
+  })
+
+  it('preserves existing settings for different example keys', () => {
+    const document = createDocument({
+      paths: {
+        '/stats': {
+          get: {
+            'x-scalar-disable-parameters': {
+              'default-headers': {
+                example1: {
+                  Authorization: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'header',
+      meta: { path: '/stats', method: 'get', exampleKey: 'example2', name: 'X-API-Key' },
+      payload: { isDisabled: false },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/stats'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.example1?.Authorization).toBe(true)
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']?.example2?.['X-API-Key']).toBe(false)
+  })
+
+  it('no-ops when type and location combination is invalid', () => {
+    const document = createDocument({
+      paths: {
+        '/invalid': {
+          get: {},
+        },
+      },
+    })
+
+    updateOperationExtraParameters(document, {
+      type: 'default',
+      in: 'cookie',
+      meta: { path: '/invalid', method: 'get', exampleKey: 'default', name: 'invalid' },
+      payload: { isDisabled: true },
+    })
+
+    const operation = getResolvedRef(getPathItemOperation(document.paths?.['/invalid'], 'get'))
+    expect(operation?.['x-scalar-disable-parameters']).toEqual({})
+    expect(operation?.['x-scalar-disable-parameters']?.['default-headers']).toBeUndefined()
+    expect(operation?.['x-scalar-disable-parameters']?.['global-cookies']).toBeUndefined()
+  })
+})

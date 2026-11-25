@@ -1,2 +1,2 @@
-export * from './useColorMode'
-export * from './types'
+export type { ColorMode, DarkLightMode } from './useColorMode'
+export { useColorMode } from './useColorMode'

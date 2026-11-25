@@ -1,8 +1,0 @@
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "lib": ["esnext", "dom", "dom.iterable"]
-  },
-  "include": ["src", "playground"]
-}

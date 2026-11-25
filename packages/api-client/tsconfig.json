@@ -1,10 +1,13 @@
 {
-  "extends": "../../tsconfig.strict.json",
+  "extends": "../../tsconfig.json",
+  "include": ["src", "playground", "test", "vite.config.ts"],
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "types": ["vite/client"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@v2/*": ["./src/v2/*"],
+      "@test/*": ["./test/*"]
     }
-  },
-  "include": ["src", "playground"]
+  }
 }

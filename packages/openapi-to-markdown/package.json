@@ -16,70 +16,68 @@
     "llm",
     "swagger"
   ],
-  "version": "0.2.22",
+  "version": "1.7.12",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "scripts": {
-    "build": "scalar-build-vite",
-    "dev": "nodemon --exec \"vite-node playground/index.ts\" --ext ts,vue --quiet --watch ./",
-    "format": "scalar-format",
-    "format:check": "scalar-format-check",
-    "test": "vitest",
-    "types:build": "scalar-types-build-vue",
-    "types:check": "scalar-types-check-vue"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "dev": "cd playground && vite",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit && vue-tsc --noEmit -p playground/tsconfig.json"
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./*.css": {
-      "import": "./dist/*.css",
-      "require": "./dist/*.css",
-      "default": "./dist/*.css"
+    "./browser": {
+      "import": "./dist/browser.js",
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
     },
-    "./css/*.css": {
-      "import": "./dist/css/*.css",
-      "require": "./dist/css/*.css",
-      "default": "./dist/css/*.css"
+    "./markdown": {
+      "import": "./dist/markdown/index.js",
+      "types": "./dist/markdown/index.d.ts",
+      "default": "./dist/markdown/index.js"
     }
   },
   "files": [
     "dist",
     "CHANGELOG.md"
   ],
-  "module": "dist/index.js",
   "dependencies": {
-    "@scalar/components": "workspace:*",
-    "@scalar/oas-utils": "workspace:*",
-    "@scalar/openapi-parser": "workspace:*",
-    "@scalar/openapi-types": "workspace:*",
-    "@scalar/snippetz": "workspace:*",
-    "@scalar/types": "workspace:*",
-    "html-minifier-terser": "^7.2.0",
-    "object-to-xml": "^2.0.0",
-    "rehype-parse": "^9.0.0",
-    "rehype-remark": "^10.0.1",
-    "rehype-sanitize": "^6.0.0",
-    "rehype-stringify": "^10.0.0",
-    "remark-gfm": "^4.0.0",
-    "remark-stringify": "^11.0.0",
-    "unified": "^11.0.4",
-    "vue": "catalog:*"
+    "@scalar/helpers": "workspace:*",
+    "@scalar/json-magic": "workspace:*",
+    "@scalar/markdown": "workspace:*",
+    "@scalar/openapi-upgrader": "workspace:*",
+    "@scalar/workspace-store": "workspace:*"
   },
   "devDependencies": {
-    "@hono/node-server": "^1.11.0",
-    "@scalar/build-tooling": "workspace:*",
+    "@scalar/components": "workspace:*",
     "@scalar/galaxy": "workspace:*",
-    "@types/html-minifier-terser": "^7.0.2",
+    "@scalar/highlight": "workspace:*",
+    "@scalar/themes": "workspace:*",
+    "@tailwindcss/vite": "catalog:*",
+    "@types/mdast": "catalog:*",
     "@vitejs/plugin-vue": "catalog:*",
-    "@vue/test-utils": "^2.4.1",
-    "hono": "^4.6.5",
+    "marked": "^18.2.1",
+    "rehype-parse": "^9.0.1",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "catalog:*",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "catalog:*",
+    "tailwindcss": "catalog:*",
+    "tsx": "catalog:*",
+    "unified": "catalog:*",
     "vite": "catalog:*",
-    "vue": "catalog:*"
+    "vitest": "catalog:*",
+    "vue": "catalog:*",
+    "vue-tsc": "catalog:*"
   }
 }

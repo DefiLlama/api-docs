@@ -1,8 +1,19 @@
 import type { ApiReferencePlugin } from '@scalar/types/api-reference'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
 import { createPluginManager } from './plugin-manager'
 
 describe('plugin-manager', () => {
+  it('exposes Markdown hooks only from registered plugins', () => {
+    const markdown = vi.fn()
+    expect(createPluginManager({}).getMarkdownRenderHooks()).toStrictEqual([])
+    expect(
+      createPluginManager({
+        plugins: [() => ({ name: 'diagrams', extensions: [], markdown })],
+      }).getMarkdownRenderHooks(),
+    ).toStrictEqual([markdown])
+  })
+
   describe('createPluginManager', () => {
     it('initializes with no plugins', () => {
       const manager = createPluginManager({})
@@ -13,45 +24,511 @@ describe('plugin-manager', () => {
     it('registers and retrieves plugins correctly', () => {
       const mockPlugin: ApiReferencePlugin = () => ({
         name: 'testPlugin',
-        extensions: [{ name: 'x-test', value: 'testValue' }],
+        extensions: [{ name: 'x-test', component: 'testComponent' }],
       })
 
       const manager = createPluginManager({ plugins: [mockPlugin] })
       const extensions = manager.getSpecificationExtensions('x-test')
-      expect(extensions).toEqual([{ name: 'x-test', value: 'testValue' }])
+      expect(extensions).toEqual([{ name: 'x-test', component: 'testComponent' }])
     })
 
     it('filters extensions by name', () => {
       const mockPlugin: ApiReferencePlugin = () => ({
         name: 'testPlugin',
         extensions: [
-          { name: 'x-test', value: 'testValue' },
-          { name: 'x-other', value: 'otherValue' },
+          { name: 'x-test', component: 'testComponent' },
+          { name: 'x-other', component: 'otherComponent' },
         ],
       })
 
       const manager = createPluginManager({ plugins: [mockPlugin] })
       const extensions = manager.getSpecificationExtensions('x-test')
-      expect(extensions).toEqual([{ name: 'x-test', value: 'testValue' }])
+      expect(extensions).toEqual([{ name: 'x-test', component: 'testComponent' }])
     })
 
     it('registers multiple plugins correctly', () => {
       const mockPlugin1: ApiReferencePlugin = () => ({
         name: 'testPlugin1',
-        extensions: [{ name: 'x-test', value: 'testValue1' }],
+        extensions: [{ name: 'x-test', component: 'testComponent1' }],
       })
 
       const mockPlugin2: ApiReferencePlugin = () => ({
         name: 'testPlugin2',
-        extensions: [{ name: 'x-test', value: 'testValue2' }],
+        extensions: [{ name: 'x-test', component: 'testComponent2' }],
       })
 
       const manager = createPluginManager({ plugins: [mockPlugin1, mockPlugin2] })
       const extensions = manager.getSpecificationExtensions('x-test')
       expect(extensions).toEqual([
-        { name: 'x-test', value: 'testValue1' },
-        { name: 'x-test', value: 'testValue2' },
+        { name: 'x-test', component: 'testComponent1' },
+        { name: 'x-test', component: 'testComponent2' },
       ])
+    })
+  })
+
+  describe('getViewComponents', () => {
+    it('returns empty array when no plugins have views', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [{ name: 'x-test', component: 'testComponent' }],
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      const components = manager.getViewComponents('content.end', 'my-doc')
+      expect(components).toEqual([])
+    })
+
+    it('returns components for a specific view', () => {
+      const mockComponent = 'MockComponent'
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.end': [
+            {
+              component: mockComponent,
+              props: { customProp: 'test value' },
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      const components = manager.getViewComponents('content.end', 'my-doc')
+      expect(components).toEqual([
+        {
+          id: 'my-doc/plugin-view/testPlugin/content.end/0',
+          component: mockComponent,
+          props: { customProp: 'test value' },
+        },
+      ])
+    })
+
+    it('returns components from multiple plugins', () => {
+      const mockComponent1 = 'MockComponent1'
+      const mockComponent2 = 'MockComponent2'
+
+      const mockPlugin1: ApiReferencePlugin = () => ({
+        name: 'testPlugin1',
+        extensions: [],
+        views: {
+          'content.end': [
+            {
+              component: mockComponent1,
+              props: { value: 'first' },
+            },
+          ],
+        },
+      })
+
+      const mockPlugin2: ApiReferencePlugin = () => ({
+        name: 'testPlugin2',
+        extensions: [],
+        views: {
+          'content.end': [
+            {
+              component: mockComponent2,
+              props: { value: 'second' },
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin1, mockPlugin2] })
+      const components = manager.getViewComponents('content.end', 'my-doc')
+      expect(components).toEqual([
+        {
+          id: 'my-doc/plugin-view/testPlugin1/content.end/0',
+          component: mockComponent1,
+          props: { value: 'first' },
+        },
+        {
+          id: 'my-doc/plugin-view/testPlugin2/content.end/0',
+          component: mockComponent2,
+          props: { value: 'second' },
+        },
+      ])
+    })
+
+    it('returns empty array for non-existent view', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.end': [
+            {
+              component: 'MockComponent',
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      // @ts-expect-error testing invalid view
+      const components = manager.getViewComponents('non-existent-view', 'my-doc')
+      expect(components).toEqual([])
+    })
+
+    it('handles plugins with views and extensions', () => {
+      const mockComponent = 'MockComponent'
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [{ name: 'x-test', component: 'extensionComponent' }],
+        views: {
+          'content.end': [
+            {
+              component: mockComponent,
+              renderer: 'MockRenderer',
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+
+      const extensions = manager.getSpecificationExtensions('x-test')
+      expect(extensions).toEqual([{ name: 'x-test', component: 'extensionComponent' }])
+
+      const components = manager.getViewComponents('content.end', 'my-doc')
+      expect(components).toEqual([
+        {
+          id: 'my-doc/plugin-view/testPlugin/content.end/0',
+          component: mockComponent,
+          renderer: 'MockRenderer',
+        },
+      ])
+    })
+  })
+
+  describe('getViewComponents - content.start', () => {
+    it('returns empty array when no plugins have content.start views', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.end': [{ component: 'EndComponent' }],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      const components = manager.getViewComponents('content.start', 'my-doc')
+      expect(components).toEqual([])
+    })
+
+    it('returns components for content.start view', () => {
+      const mockComponent = 'StartComponent'
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.start': [
+            {
+              component: mockComponent,
+              props: { title: 'My Custom Page' },
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      const components = manager.getViewComponents('content.start', 'my-doc')
+      expect(components).toEqual([
+        {
+          id: 'my-doc/plugin-view/testPlugin/content.start/0',
+          component: mockComponent,
+          props: { title: 'My Custom Page' },
+        },
+      ])
+    })
+
+    it('returns components from both content.start and content.end independently', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.start': [{ component: 'StartComponent' }],
+          'content.end': [{ component: 'EndComponent' }],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      expect(manager.getViewComponents('content.start', 'my-doc')).toEqual([
+        { id: 'my-doc/plugin-view/testPlugin/content.start/0', component: 'StartComponent' },
+      ])
+      expect(manager.getViewComponents('content.end', 'my-doc')).toEqual([
+        { id: 'my-doc/plugin-view/testPlugin/content.end/0', component: 'EndComponent' },
+      ])
+    })
+  })
+
+  describe('document types', () => {
+    const documentType = (type: string) => ({
+      type,
+      detect: () => true,
+      traverse: () => [],
+      content: { component: {} },
+    })
+
+    it('returns no document types when no plugin contributes one', () => {
+      const manager = createPluginManager({ plugins: [() => ({ name: 'empty', extensions: [] })] })
+
+      expect(manager.getDocumentTypes()).toStrictEqual([])
+      expect(manager.getDocumentType('arazzo')).toBeUndefined()
+    })
+
+    it('collects document types from all plugins in registration order', () => {
+      const arazzo = documentType('arazzo')
+      const overlay = documentType('overlay')
+      const manager = createPluginManager({
+        plugins: [
+          () => ({ name: 'arazzo', extensions: [], documentTypes: [arazzo] }),
+          () => ({ name: 'overlay', extensions: [], documentTypes: [overlay] }),
+        ],
+      })
+
+      expect(manager.getDocumentTypes()).toStrictEqual([arazzo, overlay])
+      expect(manager.getDocumentType('overlay')).toBe(overlay)
+    })
+  })
+
+  describe('getSidebarEntries', () => {
+    it('returns empty array when no plugins have sidebar config', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.start': [{ component: 'StartComponent' }],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      expect(manager.getSidebarEntries('my-doc')).toEqual([])
+    })
+
+    it('returns empty array when sidebar.show is false', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.start': [
+            {
+              component: 'StartComponent',
+              sidebar: { show: false, label: 'Hidden Page' },
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      expect(manager.getSidebarEntries('my-doc')).toEqual([])
+    })
+
+    it('returns entries when sidebar.show is true', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.start': [
+            {
+              component: 'StartComponent',
+              sidebar: { show: true, label: 'Getting Started' },
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      expect(manager.getSidebarEntries('my-doc')).toEqual([
+        { id: 'my-doc/plugin-view/testPlugin/content.start/0', label: 'Getting Started', viewName: 'content.start' },
+      ])
+    })
+
+    it('returns entries for content.end views', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.end': [
+            {
+              component: 'EndComponent',
+              sidebar: { show: true, label: 'Changelog' },
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      expect(manager.getSidebarEntries('my-doc')).toEqual([
+        { id: 'my-doc/plugin-view/testPlugin/content.end/0', label: 'Changelog', viewName: 'content.end' },
+      ])
+    })
+
+    it('returns multiple sidebar entries from mixed views', () => {
+      const mockPlugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        views: {
+          'content.start': [
+            {
+              component: 'Page1',
+              sidebar: { show: true, label: 'Overview' },
+            },
+            {
+              component: 'Page2',
+              // No sidebar — should not appear
+            },
+          ],
+          'content.end': [
+            {
+              component: 'Footer',
+              sidebar: { show: true, label: 'Support' },
+            },
+          ],
+        },
+      })
+
+      const manager = createPluginManager({ plugins: [mockPlugin] })
+      expect(manager.getSidebarEntries('my-doc')).toEqual([
+        { id: 'my-doc/plugin-view/testPlugin/content.start/0', label: 'Overview', viewName: 'content.start' },
+        { id: 'my-doc/plugin-view/testPlugin/content.end/0', label: 'Support', viewName: 'content.end' },
+      ])
+    })
+  })
+
+  describe('lifecycle hooks', () => {
+    it('notifyInit calls onInit on all plugins with config', () => {
+      const onInit1 = vi.fn()
+      const onInit2 = vi.fn()
+
+      const plugin1: ApiReferencePlugin = () => ({
+        name: 'plugin1',
+        extensions: [],
+        hooks: { onInit: onInit1 },
+      })
+
+      const plugin2: ApiReferencePlugin = () => ({
+        name: 'plugin2',
+        extensions: [],
+        hooks: { onInit: onInit2 },
+      })
+
+      const manager = createPluginManager({ plugins: [plugin1, plugin2] })
+      const config = { theme: 'dark' }
+      manager.notifyInit(config)
+
+      expect(onInit1).toHaveBeenCalledWith({ config, auth: manager.getAuthState() })
+      expect(onInit2).toHaveBeenCalledWith({ config, auth: manager.getAuthState() })
+    })
+
+    it('notifyConfigChange calls onConfigChange on all plugins', () => {
+      const onConfigChange = vi.fn()
+
+      const plugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        hooks: { onConfigChange },
+      })
+
+      const manager = createPluginManager({ plugins: [plugin] })
+      const config = { theme: 'light' }
+      manager.notifyConfigChange(config)
+
+      expect(onConfigChange).toHaveBeenCalledWith({ config, auth: manager.getAuthState() })
+    })
+
+    it('notifyDestroy calls onDestroy on all plugins', () => {
+      const onDestroy = vi.fn()
+
+      const plugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        hooks: { onDestroy },
+      })
+
+      const manager = createPluginManager({ plugins: [plugin] })
+      manager.notifyDestroy()
+
+      expect(onDestroy).toHaveBeenCalled()
+    })
+
+    it('silently skips plugins without hooks', () => {
+      const plugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+      })
+
+      const manager = createPluginManager({ plugins: [plugin] })
+
+      expect(() => {
+        manager.notifyInit({ foo: 'bar' })
+        manager.notifyConfigChange({ foo: 'bar' })
+        manager.notifyDestroy()
+      }).not.toThrow()
+    })
+
+    it('silently skips plugins with partial hooks', () => {
+      const onInit = vi.fn()
+
+      const plugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        hooks: { onInit },
+      })
+
+      const manager = createPluginManager({ plugins: [plugin] })
+      manager.notifyInit({ foo: 'bar' })
+      manager.notifyConfigChange({ foo: 'bar' })
+      manager.notifyDestroy()
+
+      expect(onInit).toHaveBeenCalledOnce()
+    })
+  })
+
+  describe('getAuthState', () => {
+    it('returns an empty auth state when no accessor is provided', () => {
+      const manager = createPluginManager({})
+      const auth = manager.getAuthState()
+
+      expect(auth.export()).toEqual({})
+      expect(auth.getAuthSecrets('my-doc', 'bearer')).toBeUndefined()
+      expect(auth.getAuthSelectedSchemas({ type: 'document', documentName: 'my-doc' })).toBeUndefined()
+    })
+
+    it('returns the provided auth accessor', () => {
+      const auth = {
+        export: vi.fn(() => ({ 'my-doc': { secrets: {}, selected: { document: undefined, path: undefined } } })),
+        getAuthSecrets: vi.fn(() => ({ type: 'http', token: 'secret' })),
+        getAuthSelectedSchemas: vi.fn(() => ({ selectedIndex: 0, selectedSchemes: [{ bearer: [] }] })),
+      }
+
+      const manager = createPluginManager({ auth })
+
+      expect(manager.getAuthState()).toBe(auth)
+      expect(manager.getAuthState().getAuthSecrets('my-doc', 'bearer')).toEqual({ type: 'http', token: 'secret' })
+      expect(auth.getAuthSecrets).toHaveBeenCalledWith('my-doc', 'bearer')
+    })
+
+    it('passes the auth accessor to lifecycle hooks', () => {
+      const auth = {
+        export: vi.fn(() => ({})),
+        getAuthSecrets: vi.fn(() => undefined),
+        getAuthSelectedSchemas: vi.fn(() => undefined),
+      }
+      const onInit = vi.fn()
+      const onConfigChange = vi.fn()
+
+      const plugin: ApiReferencePlugin = () => ({
+        name: 'testPlugin',
+        extensions: [],
+        hooks: { onInit, onConfigChange },
+      })
+
+      const manager = createPluginManager({ plugins: [plugin], auth })
+      manager.notifyInit({ theme: 'dark' })
+      manager.notifyConfigChange({ theme: 'light' })
+
+      expect(onInit).toHaveBeenCalledWith({ config: { theme: 'dark' }, auth })
+      expect(onConfigChange).toHaveBeenCalledWith({ config: { theme: 'light' }, auth })
     })
   })
 })

@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
-import { isHttpMethod } from './is-http-method'
+import { describe, expect, it } from 'vitest'
+
 import { HTTP_METHODS } from './http-methods'
+import { isHttpMethod } from './is-http-method'
 
 describe('isHttpMethod', () => {
   describe('valid HTTP methods', () => {
@@ -51,7 +52,7 @@ describe('isHttpMethod', () => {
     })
 
     it('should return false for non-string inputs', () => {
-      const nonStringInputs = [123, true, false, {}, [], () => {}, Symbol('test')]
+      const nonStringInputs = [123, true, false, {}, [], () => undefined, Symbol('test')]
 
       nonStringInputs.forEach((input) => {
         expect(isHttpMethod(input as unknown as string)).toBe(false)

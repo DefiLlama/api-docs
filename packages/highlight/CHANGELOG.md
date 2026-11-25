@@ -1,0 +1,162 @@
+# @scalar/highlight
+
+## 0.8.1
+
+### Patch Changes
+
+- [#11158](https://github.com/scalar/scalar/pull/11158): Highlight a curl request body as JSON, keep curl values intact across `'\''`, and mark a line-ending backslash as punctuation in curl and Bash. Curl flags are now plain text with no class of their own, so `true`, `false` and `null` in a body keep their colour.
+
+  Support JSON bodies attached to long options with `=`, including across shell line continuations. Keep bracketed plain text and form fields as strings, and preserve escaped apostrophes in the surrounding JSON key or value scope.
+
+  Highlight valid JSON after grouped short options such as `-sd`, keep closed malformed bodies as strings, and leave numeric and dotted options unscoped. Keep grouped switches plain before options that take a value, respect shell argument boundaries around JSON bodies, and mark continuations inside double quotes as punctuation.
+
+## 0.8.0
+
+### Minor Changes
+
+- [#11126](https://github.com/scalar/scalar/pull/11126): Give syntax highlighting a fuller palette
+
+  Parameters, object members, type names and punctuation now have their own colors, plain code is easier to read, and the colors are adjusted so they stay readable and distinct in light and dark mode. They still come from the active theme's hues.
+
+  The colors live in `@scalar/themes` as `--scalar-code-*` variables named by role (`--scalar-code-keyword`, `--scalar-code-string`, `--scalar-code-parameter` and so on), so a theme or custom stylesheet can set its own syntax colors. The Moon theme sets darker and lighter values to stay readable on its tinted backgrounds.
+
+### Patch Changes
+
+- [#11154](https://github.com/scalar/scalar/pull/11154): Color operators like punctuation in syntax highlighting
+
+  Operators such as `=`, `->` and `::` now get an `hljs-operator` class and use the same quieter color as brackets and commas, so `client.planets()` and `Client::new()` read consistently. If you pair `@scalar/highlight/compat` with your own highlight.js theme, its `.hljs-operator` rules now apply too.
+
+## 0.7.0
+
+### Minor Changes
+
+- [#11124](https://github.com/scalar/scalar/pull/11124): Ship the `hljs-*` stylesheet as `@scalar/highlight/compat/code.css`
+
+  This is the `code.css` that `@scalar/code-highlight` ships, unchanged, moved next to the compat layer whose classes it styles. Import `@scalar/highlight/compat/code.css` instead of `@scalar/code-highlight/css/code.css`.
+
+  Scalar's own packages no longer use `@scalar/code-highlight`. Its code half has a replacement in `@scalar/highlight/compat` and its Markdown half in `@scalar/markdown`.
+
+## 0.6.1
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.6.0
+
+### Minor Changes
+
+- [#9939](https://github.com/scalar/scalar/pull/9939): Add a dedicated `curl` grammar, so curl command lines keep the colouring they had under `@scalar/code-highlight`.
+
+  `curl` was mapped to the bash grammar. That is a defensible reading — a curl invocation is a shell command line — but it loses the two tokens a reader actually looks for. `@scalar/code-highlight` ships a bespoke curl grammar, and `code.css` is written against it: `.hljs.language-curl .hljs-literal` and `.hljs.language-curl .hljs-string` both have curl-specific rules. Under bash, `curl` and the request method came out unscoped, so the command name lost its keyword colour and `POST` lost its symbol colour entirely.
+
+  The new grammar mirrors the reference: the command is a keyword, `--request`/`-X` and other flags are literals, the method they carry is a symbol, and `$(…)` inside a double-quoted value reads as a variable. Output now matches the reference class for class.
+
+  This also adds a `symbol` scope to the vocabulary, mapped to `hljs-symbol` in the compat layer — a scope highlight.js has and `code.css` already styles, and the natural home for Ruby symbols and Erlang atoms too.
+
+  A curl sample joins the shared test corpus, so the differential suites compare this grammar against the reference on every run.
+
+### Patch Changes
+
+- [#9939](https://github.com/scalar/scalar/pull/9939): feat(highlight): colour the names declarations bind in Java, C#, Go and Rust, and PowerShell parameters like shell flags
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+- [#9939](https://github.com/scalar/scalar/pull/9939): Fix JavaScript comparisons read as generic calls, and keep compiled grammars when a grammar is registered again
+
+  An identifier followed by `<` read as the start of a generic call, so `count` in `if (count <= max)` and `b` in `b <= 10` were painted as function names. The generic branch now requires a type argument list that closes and is followed by `(`, so `useState<number>(0)` still scopes and a comparison does not.
+
+  `registerLanguage` also evicted a grammar's compiled form whenever it was called, even with the grammar already registered under every one of its names. A caller that registers on every render recompiled on every render, which cost close to twenty times the highlight itself. Registering the same grammar again is now a no-op.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#10668](https://github.com/scalar/scalar/pull/10668): feat: close more gaps with TextMate grammars, and highlight faster
+  - Engine: only the wrapper group around each rule captures in a state's merged regex. Past 63 capture groups V8 allocates on every match, which cost large grammars such as C, C++, C#, PHP, Ruby and Python a third of their throughput or more.
+  - CSS: `var(--brand)` has the same scope as the `--brand:` it refers to. SCSS `$name` and Less `@name` read whole where they are used, and `$brand: red` at the top level reads as a value rather than a selector.
+  - JavaScript/TypeScript: the names in a parameter list read as parameters, destructuring and annotations included; `function f()` names a definition; `with { type: 'json' }` on an import is a keyword.
+  - Swift: `#/…/#` and `/…/` regex literals, and the `nonisolated`, `isolated`, `distributed`, `borrowing`, `consuming`, `sending` and `macro` modifiers.
+  - Diff: context (`diff -c`) and normal (`diff`) formats, svn `Index:` headers, and `#` comment lines.
+  - Ruby: a method called without parentheses, `list.length`, reads as a call, and `p`, `printf`, `warn` and friends as builtins.
+  - Go: a package-qualified type, `w http.ResponseWriter` or `*testing.T`, reads as a type where a type goes.
+  - nginx: log levels, event methods, rewrite flags, and the names of `upstream` and `map` blocks.
+  - Haskell: the names in an import list. Kotlin: `package` and `import` paths, and `tailrec`, `external` and `value class`. C++: calls with explicit template arguments, `any_cast<int>(x)`.
+  - Rust: `.await` is a keyword, `self` the receiver and `Self` a type, and `r#type` stays a name. Python: `case 200: return x` with its body on the same line is a keyword. TypeScript: `const id = <T,>(x: T) => x` names a function.
+
+## 0.4.0
+
+### Minor Changes
+
+- [#10621](https://github.com/scalar/scalar/pull/10621): Close more of the highlighting gap with TextMate grammars, without slowing anything outside Markdown.
+  - **Markdown** fenced code blocks are highlighted with the language they name (` ```ts `, `~~~sh`, any registered language or alias). Fences that name no registered language, and fences of four or more backticks, stay plain strings.
+  - `embed.language` can be `REMEMBERED`, which embeds whatever language the rule that entered the state remembered. Markdown fences use it.
+  - **SQL** scopes common T-SQL and PL/SQL keywords and types (`DECLARE`, `PRINT`, `GO`, `EXEC`, `RETURN`, `VARCHAR2`, `NUMBER`, …).
+  - **JavaScript and TypeScript** scope the name a `const`, `let` or `var` declares, read a regex after a control condition (`if (ok) /re/.test(s)`), and colour a tagged template's tag (`` gql`…` ``) as a call.
+  - **Shell** scopes unquoted arguments as strings, as TextMate grammars do.
+
+  TypeScript const assertions keep the following statement highlighted as code instead of consuming its keyword as a declared name.
+
+- [#10622](https://github.com/scalar/scalar/pull/10622): feat: highlight more embedded languages and keyword-named keys
+  - Markdown: front matter is highlighted as YAML, and HTML that starts a line as HTML. A `<script>`, `<pre>` or `<style>` block runs to its closing tag. The last line of front matter is no longer read as a heading.
+  - HTTP: a body that starts with `<` is highlighted as XML/HTML.
+  - PHP: `<script>` and `<style>` bodies in templates are highlighted as JavaScript and CSS, and a `<?= ?>` region inside them keeps the surrounding JavaScript or CSS state, so `"<?= $name ?>"` stays one string.
+  - Engine: an `embed` can declare `holes`, regions of the body the host grammar tokenizes while the embedded language reads across them.
+  - CSS: the condition of `@media`, `@supports`, `@container` and `@import` gets keywords, features, numbers and values.
+  - JavaScript/TypeScript: a keyword used as an object key (`{ type: 'object' }`, `{ default: 1 }`) reads as a property, `static of()` and `get(key)` read as method names, and `#private` fields are scoped.
+
+  Preserve source text when hole patterns contain capture groups, and keep PHP strings and comments from prematurely closing script or style bodies.
+
+- [#10612](https://github.com/scalar/scalar/pull/10612): Fix the highlighting breakages a comparison against Shiki and `@scalar/code-highlight` found, and add Julia.
+  - **PHP** snippets without `<?php` (every Guzzle, Laravel and curl sample snippetz generates) are read as code instead of rendering as plain text. Heredocs close only on their own marker.
+  - **Julia** has a grammar, so `julia/http` code samples are highlighted.
+  - **Shell**: `'\''`, the way snippetz writes an apostrophe inside a single-quoted curl body, no longer flips strings and code for the rest of the sample. Heredocs close only on their terminator, and a quoted marker (`<<'EOF'`) turns expansion off.
+  - **YAML** block scalars end where their indentation does, so prose such as `Note: …` inside a `description: |` stays a string. `#` starts a comment only after whitespace, commas stay inside plain scalars, and flow collections (`{a: 1, b: [x, y]}`) get their own state.
+  - **HTML, XML, SVG and Vue** highlight `<script>` and `<style>` bodies with the JavaScript and CSS grammars when those are registered. `<?xml …?>` is scoped as metadata instead of a comment, and unquoted attribute values as strings.
+  - **C#** raw strings close only on the run of quotes that opened them, so `""""…""""` can hold `"""`. **Rust** raw strings close on their own `#` run, and block comments nest. **R** raw strings and **OCaml** quoted strings close on their own delimiter, and OCaml no longer ends a comment at `"*)"`.
+  - **CSS** reads an unquoted `url(https://…)` as a string instead of starting a `//` comment.
+  - A lone `\r`, U+2028 or U+2029 inside a string no longer ends it early in any grammar.
+  - Unterminated `/*`, `<!--` and quotes, and runs of blank lines in JavaScript, no longer cost quadratic time.
+  - **JavaScript, TypeScript and JSX**: JSX children are read as text, so an apostrophe in `<p>Don't</p>` no longer opens a string to the end of the line. An element opens only where an expression can start, and TypeScript generics (`<T>(x: T) => x`, `<T extends X>`) and `<string>` assertions are not read as tags. A function assigned to a name (`const App = () => …`) is scoped as a function, and a capitalised name followed by a call (`function App()`, `Error('x')`, `new Date()`) is a call rather than a type.
+  - **Shell** command names (`curl`, `grep`, `./build.sh`) are scoped, except on a line that continues the one before it.
+  - **YAML** plain scalars that wrap onto the next line keep their string color.
+  - **Markdown** fences close only on a run at least as long as the opener, and HTML comments are scoped.
+  - `@scalar/highlight/compat` masks credentials on the token stream: a secret the tokenizer splits (`sk_live.abc123` unquoted) is masked, one containing `&` or `<` is masked, and a credential that reads like markup (`span`, `class`) no longer corrupts the HTML.
+
+  Grammars gain two features. `remember` lets a rule that enters a state remember a capture group, which that state matches again with `REMEMBERED` (`{{remembered}}`) — the cross-state stand-in for a backreference. `embed` hands a state's body to another registered language until a closing pattern.
+
+  Preserve multiline credential masking, including when line numbers are enabled. Keep defaulted TypeScript generics in code mode, and only embed JavaScript or CSS for complete `script` and `style` tag names so custom elements retain HTML highlighting.
+
+## 0.3.1
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+
+## 0.3.0
+
+### Minor Changes
+
+- [#10033](https://github.com/scalar/scalar/pull/10033): Add `toHast` to `@scalar/highlight/compat`, which highlights into hast element content rather than an HTML string.
+
+  `syntaxHighlight` is the right tool when the destination is HTML. A rehype plugin is the case it does not serve: handing back markup there means parsing it straight back into nodes. `toHast` returns the nodes directly, and `null` for a language with no registered grammar, so a caller can tell "nothing to highlight" from "highlighted to nothing" and leave the block alone.
+
+  Adjacent ranges resolving to the same class merge into one span, matching the string renderer — our scope vocabulary is finer than highlight.js's, so `keyword.declaration` followed by `keyword` has to arrive as a single `hljs-keyword` element rather than two siblings lowlight would never have produced. The tests hold both renderers to the same output span for span across the whole sample corpus, so the two cannot drift.
+
+  No runtime dependency is added: the hast types are type-only.
+
+## 0.2.1
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.2.0
+
+### Minor Changes
+
+- [#9923](https://github.com/scalar/scalar/pull/9923): Add `@scalar/highlight`, a zero-dependency syntax highlighter. A grammar is plain data describing a small state machine, each state compiles to one merged regular expression, and rendering goes straight to an HTML string without allocating token objects. Languages are separate modules, so importing `python` does not cost you `scala`.
+
+  Entry points are `.` (`highlight`, `highlightBlock`, `tokenize`, the registry and the scope vocabulary), `./core` for the engine alone, `./all` and `./lazy` for eager and code-split registration, `./langs/*` for a single grammar, `./style.css` for the stylesheet, and `./compat`, a drop-in for `@scalar/code-highlight`'s `syntaxHighlight` that emits the same `hljs-*` markup. Nothing currently consumes it — this only adds the package.
+
+### Patch Changes
+
+- [#9913](https://github.com/scalar/scalar/pull/9913): Add Julia (HTTP.jl) as a code example target. The new `julia/http` client generates HTTP.jl snippets, including headers, query parameters, cookies, basic auth, JSON bodies (as `Dict`s serialized with `JSON.json`), url-encoded bodies and `HTTP.Form` multipart uploads. Julia syntax highlighting and a Julia icon are included, so the client shows up in the code example picker like any other language.

@@ -1,0 +1,999 @@
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import { SchemaObjectSchema } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { encode as encodeBase64 } from 'js-base64'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { type RequestFactory, requestFactory } from '@/request-example/builder/request-factory'
+
+import { buildRequestBody } from './body/build-request-body'
+import { buildRequest, resolveExecutableRequestUrl } from './build-request'
+import { INVALID_REQUEST_FACTORY_URL, MISSING_REQUEST_SERVER_BASE } from './resolve-request-factory-url'
+import { buildRequestSecurity } from './security/build-request-security'
+
+const createFactory = (overrides: Partial<RequestFactory> = {}): RequestFactory => ({
+  options: {},
+  allowedReservedQueryParameters: new Set(),
+  baseUrl: 'https://api.example.com',
+  body: null,
+  cache: 'default',
+  cookies: [],
+  headers: new Headers(),
+  method: 'GET',
+  path: { raw: '/users', variables: {} },
+  proxyUrl: '',
+  query: new URLSearchParams(),
+  security: [],
+  ...overrides,
+})
+
+const unwrap = (factory: RequestFactory, options: Parameters<typeof buildRequest>[1]) => {
+  const result = buildRequest(factory, options)
+  expect(result.ok).toBe(true)
+  if (!result.ok) {
+    throw new Error('expected successful buildRequest')
+  }
+  return result.data
+}
+
+describe('buildRequest', () => {
+  it.each([
+    ['abc', 'token abc'],
+    ['', ''],
+    ['token abc', 'token token abc'],
+  ])('formats header API-key prefixes after resolving variables (%s)', (token, expected) => {
+    const scheme = {
+      type: 'apiKey',
+      in: 'header',
+      name: 'Authorization',
+      'x-scalar-token-prefix': 'token',
+      'x-scalar-secret-token': '{{token}}',
+    } as const
+    const security = buildRequestSecurity([scheme])
+    expect(security).toStrictEqual([{ in: 'header', name: 'Authorization', value: '{{token}}', tokenPrefix: 'token' }])
+    const result = unwrap(createFactory({ security }), { envVariables: { token } })
+    expect(new Headers(result.requestPayload[1]?.headers).get('Authorization')).toBe(expected)
+    expect(scheme['x-scalar-secret-token']).toBe('{{token}}')
+    result.controller.abort()
+  })
+
+  it.each([
+    ['https://example.com/api?token=a?b', '/users', { token: 'a?b' }],
+    [
+      'https://example.com/api',
+      '/users?redirect=https://example.com/callback?code=abc',
+      { redirect: 'https://example.com/callback?code=abc' },
+    ],
+    ['https://example.com/api?token=a?b?c', '/users?next=x?y?z', { token: 'a?b?c', next: 'x?y?z' }],
+  ])('preserves raw client URL query values from %s and %s', (baseUrl, path, expected) => {
+    const { request } = requestFactory({
+      exampleName: 'default',
+      method: 'get',
+      path,
+      environment: { color: '#FFFFFF', variables: [] },
+      globalCookies: [],
+      proxyUrl: '',
+      server: { url: baseUrl },
+      defaultHeaders: {},
+      isElectron: false,
+      selectedSecuritySchemes: [],
+      operation: {},
+    })
+    const result = unwrap(request, { envVariables: {} })
+    try {
+      expect(result.isUsingProxy).toBe(false)
+      expect(Object.fromEntries(new URL(result.requestPayload[0]).searchParams)).toEqual(expected)
+    } finally {
+      result.controller.abort()
+    }
+  })
+
+  it('preserves serialized parameter text through the final request URL and headers', () => {
+    const { request } = requestFactory({
+      exampleName: 'default',
+      method: 'get',
+      path: '/users/{id}',
+      environment: { color: '#FFFFFF', variables: [] },
+      globalCookies: [{ name: 'session', value: 'global' }],
+      proxyUrl: '',
+      server: { url: 'https://example.com' },
+      defaultHeaders: {},
+      isElectron: false,
+      selectedSecuritySchemes: [],
+      operation: {
+        parameters: [
+          { name: 'id', in: 'path', required: true, examples: { default: { serializedValue: 'a%2Fb' } } },
+          { name: 'term', in: 'query', examples: { default: { serializedValue: 'term=a%20b&term=c%2Fd' } } },
+          { name: 'flag', in: 'query', examples: { default: { dataValue: false } } },
+          { name: 'X-Audit', in: 'header', examples: { default: { serializedValue: 'hello-wire' } } },
+          { name: 'regular', in: 'cookie', examples: { default: { value: 'a b' } } },
+          { name: 'preferences', in: 'cookie', examples: { default: { serializedValue: 'a=1; b=hello%20world' } } },
+        ],
+      },
+    })
+    const [url, init] = unwrap(request, { envVariables: {} }).requestPayload
+    expect(url).toBe('https://example.com/users/a%2Fb?flag=false&term=a%20b&term=c%2Fd')
+    expect(new Headers(init.headers).get('X-Audit')).toBe('hello-wire')
+    expect(new Headers(init.headers).get('Cookie')).toBe('a=1; b=hello%20world; session=global; regular=a b')
+  })
+
+  it('sends XML roots, untyped defaults, and wildcard parameters consistently', async () => {
+    const requestBody = {
+      content: {
+        'multipart/mixed': {
+          examples: { default: { value: [{ id: 1 }, 'untyped', 'plain'] } },
+          schema: {
+            type: 'array' as const,
+            prefixItems: [
+              { type: 'object' as const, xml: { name: 'user' } },
+              coerceValue(SchemaObjectSchema, {}),
+              { type: 'string' as const },
+            ],
+          },
+          prefixEncoding: [{ contentType: 'application/xml' }, {}, { contentType: 'text/*; charset=utf-8' }],
+        },
+      },
+    }
+    const [, init] = unwrap(createFactory({ method: 'POST', body: buildRequestBody(requestBody) }), {
+      envVariables: {},
+    }).requestPayload
+    expect(init.body).toBeInstanceOf(Blob)
+    const wire = await (init.body as Blob).text()
+    expect(wire).toContain(
+      'Content-Type: application/xml\r\n\r\n<?xml version="1.0" encoding="UTF-8"?>\n<user>\n  <id>1</id>\n</user>',
+    )
+    expect(wire).toContain('Content-Type: application/octet-stream\r\n\r\nuntyped')
+    expect(wire).toContain('Content-Type: text/plain; charset=utf-8\r\n\r\nplain')
+  })
+
+  it('sends nested multipart bodies with matching boundaries and resolved variables', async () => {
+    const body = buildRequestBody({
+      content: {
+        'multipart/mixed': {
+          examples: { default: { value: [{ document: '{{name}}' }] } },
+          itemEncoding: { contentType: 'multipart/form-data', encoding: { document: { contentType: 'text/plain' } } },
+        },
+      },
+    })
+    const [, init] = unwrap(
+      createFactory({ method: 'POST', body, headers: new Headers({ 'Content-Type': 'multipart/mixed' }) }),
+      { envVariables: { name: 'Alice' } },
+    ).requestPayload
+    if (!(init.body instanceof Blob)) {
+      throw new Error('Expected a multipart Blob')
+    }
+    expect(new Headers(init.headers).get('content-type')).toBe(init.body.type)
+    const boundary = init.body.type.match(/boundary="?([^";]+)/)?.[1]
+    const wire = await init.body.text()
+    expect(wire.startsWith('--' + boundary + '\r\n')).toBe(true)
+    expect(wire.endsWith('--' + boundary + '--\r\n')).toBe(true)
+    expect(wire).toContain('name="document"\r\nContent-Type: text/plain\r\n\r\nAlice')
+  })
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('returns a url, requestInit, AbortController, and isUsingProxy flag', () => {
+    const factory = createFactory()
+    const { requestPayload, controller, isUsingProxy } = unwrap(factory, { envVariables: {} })
+    const [url, requestInit] = requestPayload
+
+    expect(url).toBeTypeOf('string')
+    expect(requestInit).toBeTypeOf('object')
+    expect(controller).toBeInstanceOf(AbortController)
+    expect(isUsingProxy).toBe(false)
+    expect(requestInit.signal?.aborted).toBe(false)
+    controller.abort()
+    expect(requestInit.signal?.aborted).toBe(true)
+  })
+
+  it('applies environment replacement to header values from the factory', () => {
+    const headers = new Headers()
+    headers.set('Authorization', 'Bearer {{token}}')
+
+    const [, requestInit] = unwrap(createFactory({ headers }), {
+      envVariables: { token: 'abc' },
+    }).requestPayload
+
+    expect((requestInit.headers as Headers).get('Authorization')).toBe('Bearer abc')
+  })
+
+  it('replaces environment variables in raw string bodies', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        method: 'POST',
+        body: { mode: 'raw', value: '{"id":"{{id}}"}' },
+      }),
+      { envVariables: { id: '42' } },
+    ).requestPayload
+
+    expect(requestInit.body).toBe('{"id":"42"}')
+  })
+
+  it('passes raw File and Blob bodies through without string replacement', async () => {
+    const file = new File(['payload'], 'data.bin', { type: 'application/octet-stream' })
+    const [, fileInit] = unwrap(
+      createFactory({
+        method: 'POST',
+        body: { mode: 'raw', value: file },
+      }),
+      { envVariables: { unused: 'x' } },
+    ).requestPayload
+    expect(await (fileInit.body as File).arrayBuffer()).toEqual(await file.arrayBuffer())
+
+    const blob = new Blob(['hello'])
+    const [, blobInit] = unwrap(
+      createFactory({
+        method: 'POST',
+        body: { mode: 'raw', value: blob },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+    expect(await (blobInit.body as Blob).text()).toBe('hello')
+  })
+
+  it('appends blob parts in multipart bodies without altering the blob bytes', async () => {
+    const blob = new Blob(['blob-data'], { type: 'text/plain' })
+    const [url, requestInit] = unwrap(
+      createFactory({
+        method: 'POST',
+        body: {
+          mode: 'formdata',
+          value: [{ type: 'blob', key: 'payload', value: blob }],
+        },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    const form = await new Request(url, requestInit).formData()
+    const part = form.get('payload')
+    expect(part).toBeInstanceOf(Blob)
+    expect(await (part as Blob).text()).toBe('blob-data')
+  })
+
+  it('builds multipart form bodies with env substitution for text parts only', async () => {
+    const file = new File(['f'], 'x.txt', { type: 'text/plain' })
+    const [url, requestInit] = unwrap(
+      createFactory({
+        method: 'POST',
+        body: {
+          mode: 'formdata',
+          value: [
+            { type: 'text', key: '{{k}}', value: '{{v}}' },
+            { type: 'file', key: 'upload', value: file },
+          ],
+        },
+      }),
+      { envVariables: { k: 'field', v: 'value' } },
+    ).requestPayload
+
+    const form = await new Request(url, requestInit).formData()
+    expect(form.get('field')).toBe('value')
+    expect(form.get('upload')).toBeInstanceOf(File)
+  })
+
+  it('builds urlencoded bodies with env substitution', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        method: 'POST',
+        body: {
+          mode: 'urlencoded',
+          value: [
+            { key: '{{a}}', value: '{{b}}' },
+            { key: 'c', value: 'd' },
+          ],
+        },
+      }),
+      { envVariables: { a: 'alpha', b: 'beta' } },
+    ).requestPayload
+
+    const params = requestInit.body as URLSearchParams
+    expect(params.get('alpha')).toBe('beta')
+    expect(params.get('c')).toBe('d')
+  })
+
+  it('sets null body when the factory has no body', () => {
+    const [, requestInit] = unwrap(createFactory({ body: null }), { envVariables: {} }).requestPayload
+    expect(requestInit.body).toBe(null)
+  })
+
+  it('sets security API key headers using env-substituted header names and values', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'header', name: '{{hdr}}', value: '{{tok}}' }],
+      }),
+      { envVariables: { hdr: 'X-Key', tok: 'secret' } },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Key')).toBe('secret')
+  })
+
+  it('prefixes Basic auth with base64-encoded credentials after env substitution', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'header', name: 'Authorization', format: 'basic', value: '{{u}}:{{p}}' }],
+      }),
+      { envVariables: { u: 'alice', p: 'bob' } },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Authorization')).toBe(`Basic ${encodeBase64('alice:bob')}`)
+  })
+
+  it('prefixes bearer tokens after env substitution', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'header', name: 'Authorization', format: 'bearer', value: '{{jwt}}' }],
+      }),
+      { envVariables: { jwt: 'eyJ' } },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Authorization')).toBe('Bearer eyJ')
+  })
+
+  it.each([' \ttoken\r\n ', ' \t{{jwt}}\n '])('trims surrounding whitespace from bearer token %j', (value) => {
+    const factory = createFactory({
+      security: [{ in: 'header', name: 'Authorization', format: 'bearer', value }],
+    })
+    const [, requestInit] = unwrap(factory, { envVariables: { jwt: ' \ttoken\r\n ' } }).requestPayload
+
+    expect((requestInit.headers as Headers).get('Authorization')).toBe('Bearer token')
+    expect(factory.security[0]?.value).toBe(value)
+  })
+
+  it('preserves whitespace in Basic auth credentials', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'header', name: 'Authorization', format: 'basic', value: '{{u}}:{{p}}' }],
+      }),
+      { envVariables: { u: ' alice ', p: ' password ' } },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Authorization')).toBe(`Basic ${encodeBase64(' alice : password ')}`)
+  })
+
+  it('preserves whitespace in query API keys', () => {
+    const [url] = unwrap(createFactory({ security: [{ in: 'query', name: 'api_key', value: '{{key}}' }] }), {
+      envVariables: { key: ' secret ' },
+    }).requestPayload
+
+    expect(new URL(url).searchParams.get('api_key')).toBe(' secret ')
+  })
+
+  it('merges security query parameters with env substitution into the request URL', () => {
+    const [url] = unwrap(
+      createFactory({
+        security: [{ in: 'query', name: '{{q}}', value: '{{v}}' }],
+        query: new URLSearchParams(),
+      }),
+      { envVariables: { q: 'token', v: 'abc' } },
+    ).requestPayload
+
+    expect(new URL(url).searchParams.get('token')).toBe('abc')
+  })
+
+  it('lets operation security query params override query params when names collide', () => {
+    const query = new URLSearchParams()
+    query.set('token', 'from-operation')
+
+    const [url] = unwrap(
+      createFactory({
+        security: [{ in: 'query', name: 'token', value: 'from-security' }],
+        query,
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect(new URL(url).searchParams.get('token')).toBe('from-security')
+  })
+
+  it('substitutes environment variables in operation query keys and values', () => {
+    const query = new URLSearchParams()
+    query.set('{{k}}', '{{v}}')
+
+    const [url] = unwrap(createFactory({ query }), {
+      envVariables: { k: 'sort', v: 'name' },
+    }).requestPayload
+
+    expect(new URL(url).searchParams.get('sort')).toBe('name')
+  })
+
+  it('preserves repeated query parameters when building the request URL', () => {
+    const query = new URLSearchParams()
+    query.append('bbox', '13')
+    query.append('bbox', '48')
+    query.append('bbox', '18')
+    query.append('bbox', '52')
+
+    const [url] = unwrap(createFactory({ query }), {
+      envVariables: {},
+    }).requestPayload
+
+    expect(new URL(url).searchParams.getAll('bbox')).toEqual(['13', '48', '18', '52'])
+  })
+
+  it('encodes path variables after env substitution and substitutes them into the path', () => {
+    const [url] = unwrap(
+      createFactory({
+        path: {
+          raw: '/users/{id}/posts',
+          variables: { id: '{{userId}}' },
+        },
+      }),
+      { envVariables: { userId: 'a/b' } },
+    ).requestPayload
+
+    expect(url).toContain('/users/a%2Fb/posts')
+  })
+
+  it('replaces environment variables in baseUrl before merging with the path', () => {
+    const [url] = unwrap(
+      createFactory({
+        baseUrl: 'https://{{host}}.example.com',
+        path: { raw: '/v1', variables: {} },
+      }),
+      { envVariables: { host: 'staging-api' } },
+    ).requestPayload
+
+    expect(url.startsWith('https://staging-api.example.com/v1')).toBe(true)
+  })
+
+  it('merges an existing Cookie header with cookies from the factory list', () => {
+    const headers = new Headers()
+    headers.set('Cookie', 'existing=1')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        headers,
+        cookies: [{ name: 'next', value: '2', domain: 'api.example.com' }],
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    const cookie = (requestInit.headers as Headers).get('Cookie') ?? ''
+    expect(cookie).toContain('existing=1')
+    expect(cookie).toContain('next=2')
+  })
+
+  it('includes security scheme cookies in the Cookie header', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'cookie', name: 'session', value: 'sid-1' }],
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Cookie')).toContain('session=sid-1')
+  })
+
+  it('filters disabled cookies out of the Cookie header', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        cookies: [
+          { name: 'a', value: '1', domain: 'api.example.com', isDisabled: false },
+          { name: 'b', value: '2', domain: 'api.example.com', isDisabled: true },
+        ],
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    const cookie = (requestInit.headers as Headers).get('Cookie') ?? ''
+    expect(cookie).toContain('a=1')
+    expect(cookie).not.toContain('b=2')
+  })
+
+  it('substitutes environment variables in cookie names and values before building the header', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        cookies: [{ name: '{{n}}', value: '{{v}}', domain: 'api.example.com' }],
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+      }),
+      { envVariables: { n: 'x', v: 'y' } },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Cookie')).toContain('x=y')
+  })
+
+  it('uses X-Scalar-Cookie when the proxy is used', () => {
+    const { requestPayload, isUsingProxy } = unwrap(
+      createFactory({
+        proxyUrl: 'https://proxy.scalar.com',
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        cookies: [{ name: 'c', value: '1', domain: 'api.example.com' }],
+      }),
+      { envVariables: {} },
+    )
+    const [, requestInit] = requestPayload
+
+    expect(isUsingProxy).toBe(true)
+    expect((requestInit.headers as Headers).get('X-Scalar-Cookie')).toContain('c=1')
+    expect((requestInit.headers as Headers).get('Cookie')).toBe(null)
+  })
+
+  it('uses X-Scalar-Cookie when options.isElectron is true', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        options: { isElectron: true },
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        cookies: [{ name: 'c', value: '1', domain: 'api.example.com' }],
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Scalar-Cookie')).toContain('c=1')
+  })
+
+  it('rewrites the Date header as X-Scalar-Date when the proxy is used', () => {
+    const headers = new Headers()
+    headers.set('Date', 'Wed, 21 Oct 2015 07:28:00 GMT')
+
+    const { requestPayload, isUsingProxy } = unwrap(
+      createFactory({
+        proxyUrl: 'https://proxy.scalar.com',
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    )
+    const [, requestInit] = requestPayload
+
+    expect(isUsingProxy).toBe(true)
+    expect((requestInit.headers as Headers).get('X-Scalar-Date')).toBe('Wed, 21 Oct 2015 07:28:00 GMT')
+    expect((requestInit.headers as Headers).get('Date')).toBe(null)
+  })
+
+  it('rewrites the DNT and Referer headers as X-Scalar-* when the proxy is used', () => {
+    const headers = new Headers()
+    headers.set('DNT', '1')
+    headers.set('Referer', 'https://app.scalar.com/request')
+
+    const { requestPayload, isUsingProxy } = unwrap(
+      createFactory({
+        proxyUrl: 'https://proxy.scalar.com',
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    )
+    const [, requestInit] = requestPayload
+
+    expect(isUsingProxy).toBe(true)
+    expect((requestInit.headers as Headers).get('X-Scalar-DNT')).toBe('1')
+    expect((requestInit.headers as Headers).get('X-Scalar-Referer')).toBe('https://app.scalar.com/request')
+    expect((requestInit.headers as Headers).get('DNT')).toBe(null)
+    expect((requestInit.headers as Headers).get('Referer')).toBe(null)
+  })
+
+  it('rewrites the Date header as X-Scalar-Date when options.isElectron is true', () => {
+    const headers = new Headers()
+    headers.set('Date', 'Wed, 21 Oct 2015 07:28:00 GMT')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        options: { isElectron: true },
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Scalar-Date')).toBe('Wed, 21 Oct 2015 07:28:00 GMT')
+    expect((requestInit.headers as Headers).get('Date')).toBe(null)
+  })
+
+  it('rewrites the DNT and Referer headers as X-Scalar-* when options.isElectron is true', () => {
+    const headers = new Headers()
+    headers.set('DNT', '1')
+    headers.set('Referer', 'https://app.scalar.com/request')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        options: { isElectron: true },
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Scalar-DNT')).toBe('1')
+    expect((requestInit.headers as Headers).get('X-Scalar-Referer')).toBe('https://app.scalar.com/request')
+    expect((requestInit.headers as Headers).get('DNT')).toBe(null)
+    expect((requestInit.headers as Headers).get('Referer')).toBe(null)
+  })
+
+  it('keeps the Date header untouched when the proxy is not used', () => {
+    const headers = new Headers()
+    headers.set('Date', 'Wed, 21 Oct 2015 07:28:00 GMT')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Date')).toBe('Wed, 21 Oct 2015 07:28:00 GMT')
+    expect((requestInit.headers as Headers).get('X-Scalar-Date')).toBe(null)
+  })
+
+  it('rewrites the User-Agent header as X-Scalar-User-Agent when the proxy is used', () => {
+    const headers = new Headers()
+    headers.set('User-Agent', 'ScalarTest/1.0')
+
+    const { requestPayload, isUsingProxy } = unwrap(
+      createFactory({
+        proxyUrl: 'https://proxy.scalar.com',
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    )
+    const [, requestInit] = requestPayload
+
+    expect(isUsingProxy).toBe(true)
+    expect((requestInit.headers as Headers).get('X-Scalar-User-Agent')).toBe('ScalarTest/1.0')
+    expect((requestInit.headers as Headers).get('User-Agent')).toBe(null)
+  })
+
+  it('rewrites the User-Agent header as X-Scalar-User-Agent when options.isElectron is true', () => {
+    const headers = new Headers()
+    headers.set('User-Agent', 'ScalarTest/1.0')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        options: { isElectron: true },
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Scalar-User-Agent')).toBe('ScalarTest/1.0')
+    expect((requestInit.headers as Headers).get('User-Agent')).toBe(null)
+  })
+
+  it('does not set X-Scalar-User-Agent in Electron when User-Agent is absent', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        options: { isElectron: true },
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Scalar-User-Agent')).toBe(null)
+  })
+
+  it('keeps the User-Agent header untouched when neither proxy nor Electron is used', () => {
+    const headers = new Headers()
+    headers.set('User-Agent', 'ScalarTest/1.0')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+        headers,
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Scalar-User-Agent')).toBe(null)
+    expect((requestInit.headers as Headers).get('User-Agent')).toBe('ScalarTest/1.0')
+  })
+
+  it('rewrites the request URL through the proxy when shouldUseProxy is true', () => {
+    const { requestPayload, isUsingProxy } = unwrap(
+      createFactory({
+        proxyUrl: 'https://proxy.scalar.com',
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/r', variables: {} },
+      }),
+      { envVariables: {} },
+    )
+    const [url] = requestPayload
+
+    expect(isUsingProxy).toBe(true)
+    const parsed = new URL(url)
+    expect(`${parsed.origin}${parsed.pathname}`).toMatch(/^https:\/\/proxy\.scalar\.com\/?$/)
+    expect(parsed.searchParams.get('scalar_url')).toContain('https://api.example.com')
+  })
+
+  it('applies allowReserved decoding for marked query parameter keys', () => {
+    const query = new URLSearchParams()
+    query.set('sort', 'name:asc')
+
+    const [url] = unwrap(
+      createFactory({
+        query,
+        allowedReservedQueryParameters: new Set(['sort']),
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect(url).toContain('sort=name:asc')
+    expect(new URL(url).searchParams.get('sort')).toBe('name:asc')
+  })
+
+  it('skips security header when disableSecurity is true', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'header', name: 'Authorization', format: 'bearer', value: 'my-token' }],
+        options: { disableSecurity: true },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Authorization')).toBe(null)
+  })
+
+  it('skips security query params when disableSecurity is true', () => {
+    const [url] = unwrap(
+      createFactory({
+        security: [{ in: 'query', name: 'api_key', value: 'secret' }],
+        options: { disableSecurity: true },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect(new URL(url).searchParams.get('api_key')).toBe(null)
+  })
+
+  it('skips security cookies when disableSecurity is true', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'cookie', name: 'session', value: 'sid-1' }],
+        options: { disableSecurity: true },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Cookie')).toBe(null)
+  })
+
+  it('still applies security when disableSecurity is false', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'header', name: 'Authorization', format: 'bearer', value: 'tok' }],
+        options: { disableSecurity: false },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('Authorization')).toBe('Bearer tok')
+  })
+
+  it('still applies security when options is undefined', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [{ in: 'header', name: 'X-Key', value: 'val' }],
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Key')).toBe('val')
+  })
+
+  it('preserves non-security headers when disableSecurity is true', () => {
+    const headers = new Headers()
+    headers.set('X-Custom', 'keep-me')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        headers,
+        security: [{ in: 'header', name: 'Authorization', format: 'bearer', value: 'drop-me' }],
+        options: { disableSecurity: true },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect((requestInit.headers as Headers).get('X-Custom')).toBe('keep-me')
+    expect((requestInit.headers as Headers).get('Authorization')).toBe(null)
+  })
+
+  it('preserves non-security cookies when disableSecurity is true', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        cookies: [{ name: 'app', value: 'keep', domain: 'api.example.com' }],
+        security: [{ in: 'cookie', name: 'auth', value: 'drop' }],
+        options: { disableSecurity: true },
+        baseUrl: 'https://api.example.com',
+        path: { raw: '/', variables: {} },
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    const cookie = (requestInit.headers as Headers).get('Cookie') ?? ''
+    expect(cookie).toContain('app=keep')
+    expect(cookie).not.toContain('auth=drop')
+  })
+
+  it('forwards cache mode and uppercases the method in the requestInit', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        method: 'patch',
+        cache: 'no-store',
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect(requestInit.method).toBe('PATCH')
+    expect(requestInit.cache).toBe('no-store')
+  })
+
+  it('appends multiple security headers with the same name instead of overwriting', () => {
+    const [, requestInit] = unwrap(
+      createFactory({
+        security: [
+          { in: 'header', name: 'Authorization', format: 'bearer', value: 'token-a' },
+          { in: 'header', name: 'Authorization', format: 'bearer', value: 'token-b' },
+        ],
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    const values = (requestInit.headers as Headers).get('Authorization')
+    expect(values).toContain('Bearer token-a')
+    expect(values).toContain('Bearer token-b')
+  })
+
+  it('appends multiple security query params with the same name instead of overwriting', () => {
+    const [url] = unwrap(
+      createFactory({
+        security: [
+          { in: 'query', name: 'api_key', value: 'key-1' },
+          { in: 'query', name: 'api_key', value: 'key-2' },
+        ],
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    expect(new URL(url).searchParams.getAll('api_key')).toStrictEqual(['key-1', 'key-2'])
+  })
+
+  it('preserves existing header values when appending security headers', () => {
+    const headers = new Headers()
+    headers.set('X-Custom', 'existing')
+
+    const [, requestInit] = unwrap(
+      createFactory({
+        headers,
+        security: [{ in: 'header', name: 'X-Custom', value: 'from-security' }],
+      }),
+      { envVariables: {} },
+    ).requestPayload
+
+    const values = (requestInit.headers as Headers).get('X-Custom')
+    expect(values).toContain('existing')
+    expect(values).toContain('from-security')
+  })
+
+  it('returns err when resolved server base is empty', () => {
+    const result = buildRequest(createFactory({ baseUrl: '' }), { envVariables: {} })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toBe(MISSING_REQUEST_SERVER_BASE)
+      expect(result.message).toContain('No server URL')
+    }
+  })
+
+  it('succeeds when resolved server base is empty but allowMissingRequestServerBase is true', () => {
+    const data = unwrap(createFactory({ baseUrl: '' }), {
+      envVariables: {},
+      allowMissingRequestServerBase: true,
+    })
+    expect(data.requestPayload[0]).toBeTypeOf('string')
+  })
+
+  it('returns err when a path parameter cannot be percent-encoded', () => {
+    const result = buildRequest(
+      createFactory({
+        path: {
+          raw: '/users/{id}',
+          variables: { id: '\uD800' },
+        },
+      }),
+      { envVariables: {} },
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toBe(INVALID_REQUEST_FACTORY_URL)
+    }
+  })
+})
+
+describe('resolveExecutableRequestUrl', () => {
+  it('includes security query params in the URL like buildRequest', () => {
+    const url = resolveExecutableRequestUrl(
+      createFactory({
+        security: [{ in: 'query', name: 'api_key', value: 'secret' }],
+      }),
+      {},
+    )
+    expect(new URL(url).searchParams.get('api_key')).toBe('secret')
+  })
+
+  it('matches buildRequest URL when the request is not proxied', () => {
+    const factory = createFactory({
+      path: { raw: '/users/{id}', variables: { id: '7' } },
+      proxyUrl: '',
+    })
+    expect(resolveExecutableRequestUrl(factory, {})).toBe(unwrap(factory, { envVariables: {} }).requestPayload[0])
+  })
+  it('sends repeated multipart parts with JSON media types, file bytes, and environment substitution', async () => {
+    const body = buildRequestBody({
+      content: {
+        'multipart/form-data': {
+          encoding: { files: { contentType: 'text/plain' } },
+          examples: {
+            default: {
+              value: {
+                tags: ['a', 'b'],
+                objects: [{ name: '{{name}}' }, { name: 'second' }],
+                files: [new File(['one'], 'one.txt'), new File(['two'], 'two.txt')],
+              },
+            },
+          },
+        },
+      },
+    })
+    const [url, init] = unwrap(createFactory({ method: 'POST', body }), {
+      envVariables: { name: 'first' },
+    }).requestPayload
+    const form = await new Request(url, init).formData()
+    expect(form.getAll('tags')).toEqual(['a', 'b'])
+    expect(form.getAll('objects')).toEqual(['{"name":"first"}', '{"name":"second"}'])
+    const wire = await new Request(url, init).text()
+    expect(wire).toContain('name="objects"\r\nContent-Type: application/json\r\n')
+    expect(wire).not.toContain('filename="blob"')
+    expect(
+      await Promise.all(
+        form.getAll('files').map(async (part) => {
+          if (typeof part === 'string') {
+            throw new Error('Expected an uploaded file')
+          }
+          return { name: part.name, type: part.type, text: await part.text() }
+        }),
+      ),
+    ).toEqual([
+      { name: 'one.txt', type: 'text/plain', text: 'one' },
+      { name: 'two.txt', type: 'text/plain', text: 'two' },
+    ])
+  })
+  it('keeps typed multipart fields and their boundary when routing through a proxy', async () => {
+    const result = unwrap(
+      createFactory({
+        method: 'POST',
+        proxyUrl: 'https://proxy.scalar.com',
+        body: {
+          mode: 'formdata',
+          value: [{ type: 'text', key: '{{field}}', value: '{"name":"{{name}}"}', contentType: 'application/json' }],
+        },
+      }),
+      { envVariables: { field: 'metadata', name: 'Ada' } },
+    )
+    expect(result.isUsingProxy).toBe(true)
+    const [url, init] = result.requestPayload
+    const request = new Request(url, init)
+    expect(request.headers.get('content-type')).toBe((init.body as Blob).type)
+    expect(Array.from((await request.formData()).entries())).toEqual([['metadata', '{"name":"Ada"}']])
+  })
+})

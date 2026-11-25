@@ -1,0 +1,216 @@
+import { createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getBooleanSchema } from '@scalar/workspace-store/helpers/get-boolean-schema'
+import type { SchemaObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+
+import Model from './Model.vue'
+
+describe('Model', () => {
+  it.each([
+    { layout: 'classic', value: true },
+    { layout: 'classic', value: false },
+    { layout: 'modern', value: true },
+    { layout: 'modern', value: false },
+  ] as const)('explains a $value allOf model member in the $layout layout', ({ layout, value }) => {
+    const wrapper = mount(Model, {
+      props: {
+        id: 'boolean-allof-model',
+        name: 'Boolean allOf model',
+        schema: { allOf: [value] } as unknown as SchemaObject,
+        eventBus: createWorkspaceEventBus(),
+        isCollapsed: false,
+        options: layout === 'classic' ? mockConfigClassic : mockConfigModern,
+      },
+    })
+    expect(wrapper.text()).toContain(value ? 'Accepts any value.' : 'Accepts no value.')
+  })
+
+  it.each([
+    { layout: 'classic', value: true },
+    { layout: 'classic', value: false },
+    { layout: 'modern', value: true },
+    { layout: 'modern', value: false },
+  ] as const)('renders a $value boolean model in the $layout layout', ({ layout, value }) => {
+    const wrapper = mount(Model, {
+      props: {
+        id: 'boolean-model',
+        name: 'Boolean model',
+        schema: getBooleanSchema(value),
+        eventBus: createWorkspaceEventBus(),
+        isCollapsed: false,
+        options: {
+          layout,
+          hideModels: false,
+          orderRequiredPropertiesFirst: false,
+          orderSchemaPropertiesBy: 'alpha',
+          expandAllSchemaProperties: false,
+          schemaKeyboardNav: false,
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('Boolean model')
+    expect(wrapper.text()).toContain(value ? 'Accepts any value.' : 'Accepts no value.')
+  })
+
+  const mockDocument = {
+    'x-scalar-original-document-hash': 'test-hash',
+    openapi: '3.1.0',
+    info: {
+      title: 'Test API',
+      version: '1.0.0',
+    },
+    components: {
+      schemas: {
+        User: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'User ID',
+            },
+            name: {
+              type: 'string',
+              description: 'User name',
+            },
+          },
+          required: ['id'],
+        },
+        Pet: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'integer',
+              description: 'Pet ID',
+            },
+            name: {
+              type: 'string',
+              description: 'Pet name',
+            },
+          },
+        },
+      },
+    },
+  }
+
+  const eventBus = createWorkspaceEventBus()
+
+  const mockConfigClassic = {
+    layout: 'classic' as const,
+    hideModels: false,
+    orderRequiredPropertiesFirst: false,
+    orderSchemaPropertiesBy: 'alpha' as const,
+    expandAllSchemaProperties: false,
+    schemaKeyboardNav: false,
+  }
+
+  const mockConfigModern = {
+    layout: 'modern' as const,
+    hideModels: false,
+    orderRequiredPropertiesFirst: false,
+    orderSchemaPropertiesBy: 'alpha' as const,
+    expandAllSchemaProperties: false,
+    schemaKeyboardNav: false,
+  }
+
+  describe('layout rendering', () => {
+    it('renders ClassicLayout when config.layout is classic', () => {
+      const wrapper = mount(Model, {
+        props: {
+          id: 'user',
+          name: 'User',
+          eventBus,
+          schema: mockDocument.components?.schemas?.User as SchemaObject,
+          isCollapsed: false,
+          options: mockConfigClassic,
+        },
+      })
+
+      // Check that the component renders and contains "Models" text
+      expect(wrapper.text()).toContain('User')
+
+      // Check that it contains schema names
+      expect(wrapper.text()).toContain('User')
+      expect(wrapper.findComponent({ name: 'ClassicLayout' }).exists()).toBe(true)
+      expect(wrapper.findComponent({ name: 'ModernLayout' }).exists()).toBe(false)
+    })
+
+    it('renders ModernLayout when config.layout is modern', () => {
+      const wrapper = mount(Model, {
+        props: {
+          id: 'user',
+          name: 'User',
+          eventBus,
+          schema: mockDocument.components?.schemas?.User as SchemaObject,
+          isCollapsed: false,
+          options: mockConfigModern,
+        },
+      })
+
+      // Check that the component renders and contains "Models" text
+      expect(wrapper.text()).toContain('User')
+
+      // Check that it contains schema names
+      expect(wrapper.text()).toContain('User')
+      expect(wrapper.findComponent({ name: 'ClassicLayout' }).exists()).toBe(false)
+      expect(wrapper.findComponent({ name: 'ModernLayout' }).exists()).toBe(true)
+    })
+
+    it('Hides content when isCollapsed is true', () => {
+      const wrapper = mount(Model, {
+        props: {
+          id: 'user',
+          name: 'User',
+          eventBus,
+          schema: mockDocument.components?.schemas?.User as SchemaObject,
+          isCollapsed: true,
+          options: mockConfigModern,
+        },
+      })
+
+      expect(wrapper.findComponent({ name: 'CompactSection' }).props('modelValue')).toBe(false)
+      expect(wrapper.findComponent({ name: 'CompactSection' }).text()).not.toContain('id')
+      expect(wrapper.findComponent({ name: 'CompactSection' }).text()).not.toContain('name')
+    })
+
+    it('Shows content when isCollapsed is false', () => {
+      const wrapper = mount(Model, {
+        props: {
+          id: 'user',
+          name: 'User',
+          eventBus,
+          schema: mockDocument.components?.schemas?.User as SchemaObject,
+          isCollapsed: false,
+          options: mockConfigModern,
+        },
+      })
+
+      expect(wrapper.findComponent({ name: 'CompactSection' }).props('modelValue')).toBe(true)
+      expect(wrapper.findComponent({ name: 'CompactSection' }).text()).toContain('id')
+      expect(wrapper.findComponent({ name: 'CompactSection' }).text()).toContain('name')
+    })
+
+    it('names the collapse trigger after the title it renders, not the schema key', () => {
+      const wrapper = mount(Model, {
+        props: {
+          id: 'user',
+          name: 'User',
+          eventBus,
+          schema: { title: 'UserDetailsHeader', type: 'object' } as SchemaObject,
+          isCollapsed: false,
+          options: mockConfigModern,
+        },
+      })
+
+      // The trigger is named from the heading it renders (the title), so the accessible
+      // name always matches the visible text and cannot regress to the schema key —
+      // otherwise it would announce a label that never appears on screen, a WCAG 2.5.3
+      // (Label in Name) failure.
+      const trigger = wrapper.get('button')
+      const labelledby = trigger.attributes('aria-labelledby')
+
+      expect(labelledby).toBeTruthy()
+      expect(wrapper.get(`[id="${labelledby}"]`).text()).toContain('UserDetailsHeader')
+    })
+  })
+})

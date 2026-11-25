@@ -1,10 +1,14 @@
-import type { TraversedWebhook } from '@/schemas/navigation'
-import { getTag } from './get-tag'
+import { forEachPathItemOperation, getPathItemOperationKey } from '@/helpers/for-each-path-item-operation'
+import { getResolvedRef, mergeSiblingReferences } from '@/helpers/get-resolved-ref'
+import { isHidden } from '@/helpers/is-hidden'
+import { getXBadges } from '@/navigation/helpers/get-x-badges'
+import { isDeprecatedOperation } from '@/navigation/helpers/traverse-paths'
 import type { TagsMap, TraverseSpecOptions } from '@/navigation/types'
-import type { OpenApiDocument } from '@/schemas/v3.1/strict/openapi-document'
-import type { OperationObject } from '@/schemas/v3.1/strict/path-operations'
-import type { TagObject } from '@/schemas/v3.1/strict/tag'
-import { isReference } from '@/schemas/v3.1/type-guard'
+import type { ParentTag, TraversedWebhook } from '@/schemas/navigation'
+import type { OpenApiDocument, OperationObject, TagObject } from '@/schemas/v3.2/strict/openapi-document'
+
+import { getNavigationTagNames } from './get-navigation-tag-names'
+import { getTag } from './get-tag'
 
 /** Creates a traversed webhook entry from an OpenAPI webhook object.
  *
@@ -12,31 +16,55 @@ import { isReference } from '@/schemas/v3.1/type-guard'
  * @param method - HTTP method of the webhook
  * @param name - Name of the webhook, defaults to 'Unknown'
  * @param title - Title of the webhook, defaults to 'Unknown'
- * @param titlesMap - Map to store webhook IDs and titles for mobile header navigation
+ * @param entitiesMap - Map to store webhook IDs and titles for mobile header navigation
  * @param getWebhookId - Function to generate unique IDs for webhooks
  * @param tag - Optional tag object associated with the webhook
  * @returns A traversed webhook entry with ID, title, name, method and reference
  */
-const createWebhookEntry = (
-  ref: string,
-  method: string,
-  name = 'Unknown',
-  title = 'Unknown',
-  titlesMap: Map<string, string>,
-  getWebhookId: TraverseSpecOptions['getWebhookId'],
-  tag?: TagObject,
-): TraversedWebhook => {
-  const id = getWebhookId({ name, method }, tag)
-  titlesMap.set(id, title)
+const createWebhookEntry = ({
+  ref,
+  method,
+  name,
+  title,
+  generateId,
+  parentTag,
+  webhook,
+  isDeprecated,
+  parentId,
+}: {
+  ref: string
+  method: string
+  webhook: OperationObject
+  name: string
+  title: string
+  generateId: TraverseSpecOptions['generateId']
+  tag?: TagObject
+  parentId: string
+  parentTag?: ParentTag
+  isDeprecated?: boolean
+}): TraversedWebhook => {
+  const id = generateId({
+    type: 'webhook',
+    name,
+    method,
+    webhook: webhook,
+    parentTag,
+    parentId: parentId,
+  })
+  const badges = getXBadges(webhook)
 
-  return {
+  const entry = {
     id,
     title,
     name,
     ref,
     method: method,
     type: 'webhook',
-  }
+    isDeprecated,
+    ...(badges ? { badges } : {}),
+  } satisfies TraversedWebhook
+
+  return entry
 }
 
 /** Traverses the webhooks in an OpenAPI document to build an array of webhook entries.
@@ -50,49 +78,75 @@ const createWebhookEntry = (
  * @param content - The OpenAPI document to traverse
  * @param tagsMap - Map of tag names to arrays of traversed entries from operations
  * @param tagsDict - Dictionary mapping tag names to their OpenAPI tag objects
- * @param titlesMap - Map to store webhook IDs and titles for mobile header navigation
+ * @param entitiesMap - Map to store webhook IDs and titles for mobile header navigation
  * @param getWebhookId - Function to generate unique IDs for webhooks
  * @returns Array of untagged webhook entries
  */
-export const traverseWebhooks = (
-  content: OpenApiDocument,
+export const traverseWebhooks = ({
+  document,
+  tagsMap,
+  generateId,
+  untaggedWebhooksParentId,
+  documentId,
+}: {
+  /** Openapi document */
+  document: OpenApiDocument
   /** The tag map from from traversing paths */
-  tagsMap: TagsMap,
-  /** Map of titles for the mobile title */
-  titlesMap: Map<string, string>,
-  getWebhookId: TraverseSpecOptions['getWebhookId'],
-): TraversedWebhook[] => {
+  tagsMap: TagsMap
+  generateId: TraverseSpecOptions['generateId']
+  untaggedWebhooksParentId: string
+  documentId: string
+}): TraversedWebhook[] => {
   const untagged: TraversedWebhook[] = []
 
   // Traverse webhooks
-  Object.entries(content.webhooks ?? {}).forEach(([name, pathItemObject]) => {
-    const pathEntries = Object.entries(pathItemObject ?? {}) as [string, OperationObject][]
-
-    pathEntries.forEach(([method, operation]) => {
-      if (isReference(operation)) {
+  Object.entries(document.webhooks ?? {}).forEach(([name, pathItemRef]) => {
+    forEachPathItemOperation(pathItemRef, (method, operationRef) => {
+      const operation = getResolvedRef(operationRef, mergeSiblingReferences)
+      if (!operation) {
         return
       }
-
-      const ref = `#/webhooks/${name}/${method}`
 
       // Skip if the operation is internal or scalar-ignore
-      if (operation['x-internal'] || operation['x-scalar-ignore']) {
+      if (isHidden(operation)) {
         return
       }
 
-      if (operation.tags?.length) {
-        operation.tags.forEach((tagName: string) => {
-          const { tag } = getTag(tagsMap, tagName)
-          tagsMap
-            .get(tagName)
-            ?.entries.push(
-              createWebhookEntry(ref, method, name, operation.summary ?? name, titlesMap, getWebhookId, tag),
-            )
+      const ref = `#/webhooks/${name}/${getPathItemOperationKey(method)}`
+
+      const navigationTags = getNavigationTagNames(document, operation.tags, tagsMap)
+      if (navigationTags.length) {
+        navigationTags.forEach((tagName: string) => {
+          const { tag, id: tagId } = getTag({ tagsMap, name: tagName, documentId, generateId })
+          tagsMap.get(tagName)?.entries.push(
+            createWebhookEntry({
+              ref,
+              method,
+              name,
+              title: operation.summary ?? name,
+              webhook: operation,
+              generateId: generateId,
+              parentTag: { tag, id: tagId },
+              parentId: tagId,
+              isDeprecated: isDeprecatedOperation(operation),
+            }),
+          )
         })
       }
       // Add to untagged
       else {
-        untagged.push(createWebhookEntry(ref, method, name, operation.summary ?? name, titlesMap, getWebhookId))
+        untagged.push(
+          createWebhookEntry({
+            ref,
+            method,
+            name,
+            title: operation.summary ?? name,
+            generateId,
+            isDeprecated: isDeprecatedOperation(operation),
+            webhook: operation,
+            parentId: untaggedWebhooksParentId,
+          }),
+        )
       }
     })
   })

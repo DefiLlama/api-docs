@@ -1,0 +1,1829 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { coerce } from '@/coerce'
+import {
+  type LazySchema,
+  type LiteralSchema,
+  type ObjectSchema,
+  type OptionalSchema,
+  type Schema,
+  type StringSchema,
+  any,
+  array,
+  boolean,
+  evaluate,
+  fn,
+  intersection,
+  lazy,
+  literal,
+  notDefined,
+  nullable,
+  number,
+  object,
+  optional,
+  record,
+  string,
+  union,
+  unknown,
+} from '@/schema'
+
+describe('any', () => {
+  const T = any()
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+  it('Should upcast from boolean', () => {
+    const value = false
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+  it('Should preserve', () => {
+    const value = { a: 1, b: 2 }
+    const result = coerce(T, value)
+    expect(result).toEqual({ a: 1, b: 2 })
+  })
+})
+
+describe('unknown', () => {
+  const T = unknown()
+  it('passes through string', () => {
+    const value = 'hello'
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('passes through number', () => {
+    const value = 1
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('passes through boolean', () => {
+    const value = false
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('passes through object', () => {
+    const value = {}
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('passes through array', () => {
+    const value = [1]
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('passes through undefined', () => {
+    const value = undefined
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('passes through null', () => {
+    const value = null
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('preserves complex value', () => {
+    const value = { a: 1, b: 2 }
+    expect(coerce(T, value)).toEqual({ a: 1, b: 2 })
+  })
+})
+
+describe('fn', () => {
+  const T = fn()
+  it('passes through a function', () => {
+    const value = () => 42
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('passes through an async function', () => {
+    const value = async () => 42
+    expect(coerce(T, value)).toBe(value)
+  })
+  it('returns a no-op function for a non-function value', () => {
+    const result = coerce(T, 'not a function')
+    expect(typeof result).toBe('function')
+    expect(result()).toBe(undefined)
+  })
+  it('returns a no-op function for null', () => {
+    const result = coerce(T, null)
+    expect(typeof result).toBe('function')
+  })
+  it('returns a no-op function for undefined', () => {
+    const result = coerce(T, undefined)
+    expect(typeof result).toBe('function')
+  })
+})
+
+describe('array', () => {
+  const T = array(number())
+  const E: number[] = []
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toEqual([1])
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should preserve', () => {
+    const value = [6, 7, 8]
+    const result = coerce(T, value)
+    expect(result).toEqual([6, 7, 8])
+  })
+})
+
+describe('boolean', () => {
+  const T = boolean()
+  const E = false
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 0
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toBe(true)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should preserve', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toBe(true)
+  })
+
+  it('uses schema default when value is not a boolean', () => {
+    const withDefault = boolean({ default: true })
+    expect(coerce(withDefault, 42)).toBe(true)
+    expect(coerce(withDefault, null)).toBe(true)
+    expect(coerce(withDefault, undefined)).toBe(true)
+    expect(coerce(withDefault, 'hello')).toBe(true)
+  })
+
+  it('ignores schema default when value is a valid boolean', () => {
+    const withDefault = boolean({ default: true })
+    expect(coerce(withDefault, false)).toBe(false)
+    expect(coerce(withDefault, true)).toBe(true)
+  })
+
+  it('falls back to false when no default is set', () => {
+    expect(coerce(boolean(), 123)).toBe(false)
+  })
+})
+
+describe('literal', () => {
+  const T = literal('hello')
+  const E = 'hello'
+  it('Should upcast from string', () => {
+    const value = 'world'
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should preseve', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toBe('hello')
+  })
+})
+
+describe('null', () => {
+  const T = nullable()
+  const E = null
+  it('Should upcast from string', () => {
+    const value = 'world'
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should preseve', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(null)
+  })
+})
+
+describe('number', () => {
+  const T = number()
+  const E = 0
+  it('Should upcast from string', () => {
+    const value = 'world'
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toBe(1)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should preseve', () => {
+    const value = 123
+    const result = coerce(T, value)
+    expect(result).toBe(123)
+  })
+
+  it('uses schema default when value is not a number', () => {
+    const withDefault = number({ default: 42 })
+    expect(coerce(withDefault, 'hello')).toBe(42)
+    expect(coerce(withDefault, null)).toBe(42)
+    expect(coerce(withDefault, undefined)).toBe(42)
+  })
+
+  it('ignores schema default when value is a valid number', () => {
+    const withDefault = number({ default: 42 })
+    expect(coerce(withDefault, 7)).toBe(7)
+    expect(coerce(withDefault, 0)).toBe(0)
+  })
+
+  it('falls back to 0 when no default is set', () => {
+    expect(coerce(number(), 'nope')).toBe(0)
+  })
+})
+
+describe('object', () => {
+  const T = object({
+    a: number(),
+    b: number(),
+    c: number(),
+    x: number(),
+    y: number(),
+    z: number(),
+  })
+  const E = {
+    x: 0,
+    y: 0,
+    z: 0,
+    a: 0,
+    b: 0,
+    c: 0,
+  }
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from number', () => {
+    const value = E
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should preserve', () => {
+    const value = { x: 7, y: 8, z: 9, a: 10, b: 11, c: 12 }
+    const result = coerce(T, value)
+    expect(result).toEqual({
+      x: 7,
+      y: 8,
+      z: 9,
+      a: 10,
+      b: 11,
+      c: 12,
+    })
+  })
+  it('Should upcast partial object with incorrect properties', () => {
+    const value = { x: {}, y: 8, z: 9 }
+    const result = coerce(T, value)
+    expect(result).toEqual({
+      x: 0,
+      y: 8,
+      z: 9,
+      a: 0,
+      b: 0,
+      c: 0,
+    })
+  })
+  it('Should upcast and preserve partial object and omit unknown properties', () => {
+    const value = { x: 7, y: 8, z: 9, unknown: 'foo' }
+    const result = coerce(T, value)
+    expect(result).toEqual({
+      x: 7,
+      y: 8,
+      z: 9,
+      a: 0,
+      b: 0,
+      c: 0,
+    })
+  })
+  it('Should upcast and remove additional properties', () => {
+    const result = coerce(
+      object({
+        x: number(),
+        y: number(),
+      }),
+      {
+        x: 1,
+        y: 2,
+        z: { b: 1 },
+      },
+    )
+    expect(result).toEqual({
+      x: 1,
+      y: 2,
+    })
+  })
+  it('omits optional properties when the value is undefined', () => {
+    const T = object({
+      id: number(),
+      name: optional(string()),
+    })
+    expect(coerce(T, { id: 1 })).toEqual({ id: 1 })
+    expect(coerce(T, { id: 1, name: undefined })).toEqual({ id: 1 })
+    expect(coerce(T, { id: 1, name: 'x' })).toEqual({ id: 1, name: 'x' })
+  })
+})
+
+describe('record', () => {
+  const T = record(
+    string(),
+    object({
+      x: number(),
+      y: number(),
+      z: number(),
+    }),
+  )
+  const E = {}
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from number', () => {
+    const value = E
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should preserve', () => {
+    const value = {
+      a: { x: 1, y: 2, z: 3 },
+      b: { x: 4, y: 5, z: 6 },
+    }
+    const result = coerce(T, value)
+    expect(result).toEqual(value)
+  })
+  it('Should preserve and patch invalid records', () => {
+    const value = {
+      a: { x: 1, y: 2, z: 3 },
+      b: { x: 4, y: 5, z: {} },
+      c: [1, 2, 3],
+      d: 1,
+      e: { x: 1, y: 2, w: 9000 },
+    }
+    const result = coerce(T, value)
+    expect(result).toEqual({
+      a: { x: 1, y: 2, z: 3 },
+      b: { x: 4, y: 5, z: 0 },
+      c: { x: 0, y: 0, z: 0 },
+      d: { x: 0, y: 0, z: 0 },
+      e: { x: 1, y: 2, z: 0 },
+    })
+  })
+})
+
+describe('string', () => {
+  const T = string()
+  const E = ''
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toBe('hello')
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should preserve', () => {
+    const value = 'foo'
+    const result = coerce(T, value)
+    expect(result).toBe(value)
+  })
+
+  it('uses schema default when value is not a string', () => {
+    const withDefault = string({ default: 'fallback' })
+    expect(coerce(withDefault, 42)).toBe('fallback')
+    expect(coerce(withDefault, null)).toBe('fallback')
+    expect(coerce(withDefault, undefined)).toBe('fallback')
+  })
+
+  it('ignores schema default when value is a valid string', () => {
+    const withDefault = string({ default: 'fallback' })
+    expect(coerce(withDefault, 'actual')).toBe('actual')
+  })
+
+  it('falls back to empty string when no default is set', () => {
+    expect(coerce(string(), 123)).toBe('')
+  })
+})
+
+describe('union', () => {
+  const A = object({
+    type: literal('A'),
+    x: number(),
+    y: number(),
+    z: number(),
+  })
+  const B = object({
+    type: literal('B'),
+    a: string(),
+    b: string(),
+    c: string(),
+  })
+  const T = union([A, B])
+  const E = {
+    type: 'A',
+    x: 0,
+    y: 0,
+    z: 0,
+  }
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should preserve A', () => {
+    const value = { type: 'A', x: 1, y: 2, z: 3 }
+    const result = coerce(T, value)
+    expect(result).toEqual(value)
+  })
+  it('Should preserve B', () => {
+    const value = { type: 'B', a: 'a', b: 'b', c: 'c' }
+    const result = coerce(T, value)
+    expect(result).toEqual(value)
+  })
+  it('Should infer through heuristics #1', () => {
+    const value = { type: 'A', a: 'a', b: 'b', c: 'c' }
+    const result = coerce(T, value)
+    expect(result).toEqual({ type: 'A', x: 0, y: 0, z: 0 })
+  })
+  it('Should infer through heuristics #2', () => {
+    const value = { type: 'B', x: 1, y: 2, z: 3 }
+    const result = coerce(T, value)
+    expect(result).toEqual({ type: 'B', a: '', b: '', c: '' })
+  })
+  it('Should infer through heuristics #3', () => {
+    const value = { type: 'A', a: 'a', b: 'b', c: null }
+    const result = coerce(T, value)
+    expect(result).toEqual({ type: 'A', x: 0, y: 0, z: 0 })
+  })
+  it('Should infer through heuristics #4', () => {
+    const value = { type: 'B', x: 1, y: 2, z: {} }
+    const result = coerce(T, value)
+    expect(result).toEqual({ type: 'B', a: '', b: '', c: '' })
+  })
+  it('Should infer through heuristics #5', () => {
+    const value = { type: 'B', x: 1, y: 2, z: null }
+    const result = coerce(T, value)
+    expect(result).toEqual({ type: 'B', a: '', b: '', c: '' })
+  })
+  it('Should infer through heuristics #6', () => {
+    const value = { x: 1 }
+    const result = coerce(T, value)
+    expect(result).toEqual({ type: 'A', x: 1, y: 0, z: 0 })
+  })
+  it('Should infer through heuristics #7', () => {
+    const value = { a: null } // property existing should contribute
+    const result = coerce(T, value)
+    expect(result).toEqual({ type: 'B', a: '', b: '', c: '' })
+  })
+  it('should correctly score nested union types #1', () => {
+    const A = union([
+      union([
+        object({
+          type: literal('a'),
+          name: string(),
+          in: string(),
+        }),
+        object({
+          type: literal('b'),
+          description: optional(string()),
+          nested: object({
+            a: string(),
+            b: optional(string()),
+          }),
+        }),
+      ]),
+      object({
+        $ref: string(),
+        description: optional(string()),
+      }),
+    ])
+
+    expect(
+      coerce(A, {
+        type: 'b',
+        description: 'Hello World',
+        nested: {
+          b: 'hello',
+        },
+      }),
+    ).toEqual({
+      type: 'b',
+      description: 'Hello World',
+      nested: { a: '', b: 'hello' },
+    })
+  })
+
+  it('should correctly score nested union types #2', () => {
+    const A = union([
+      union([
+        object({
+          prop1: string(),
+          prop2: string(),
+          prop3: string(),
+        }),
+        object({
+          prop1: string(),
+          prop4: string(),
+          prop5: string(),
+        }),
+      ]),
+      union([
+        object({
+          prop6: string(),
+          prop7: string(),
+          prop8: string(),
+        }),
+        object({
+          prop1: string(),
+          prop9: string(),
+          prop10: string(),
+        }),
+      ]),
+    ])
+
+    // Picks the first union variant when the score is equal
+    expect(
+      coerce(A, {
+        prop1: '',
+      }),
+    ).toEqual({
+      prop1: '',
+      prop2: '',
+      prop3: '',
+    })
+
+    expect(
+      coerce(A, {
+        prop1: '',
+        prop4: '',
+      }),
+    ).toEqual({
+      prop1: '',
+      prop4: '',
+      prop5: '',
+    })
+
+    expect(
+      coerce(A, {
+        prop6: '',
+      }),
+    ).toEqual({
+      prop6: '',
+      prop7: '',
+      prop8: '',
+    })
+  })
+
+  it('should correctly score nested union types #3', () => {
+    const A = union([
+      object({
+        prop1: string(),
+        prop2: string(),
+        prop3: string(),
+      }),
+      object({
+        prop4: string(),
+        prop5: string(),
+        prop6: string(),
+      }),
+      union([
+        object({
+          prop4: string(),
+          prop5: string(),
+          prop6: string(),
+        }),
+        object({
+          prop1: string(),
+          prop2: string(),
+          prop7: string(),
+          prop8: string(),
+        }),
+      ]),
+    ])
+
+    expect(
+      coerce(A, {
+        prop1: '',
+        prop2: '',
+        prop7: '',
+      }),
+    ).toEqual({
+      prop1: '',
+      prop2: '',
+      prop7: '',
+      prop8: '',
+    })
+  })
+
+  it('should correctly score nested union types #4', () => {
+    const A = union([
+      object({
+        prop1: string(),
+        prop2: string(),
+        prop3: string(),
+      }),
+      union([
+        object({
+          prop4: string(),
+          prop5: string(),
+          prop6: string(),
+        }),
+        union([
+          object({
+            prop1: string(),
+            prop2: string(),
+            prop7: string(),
+            prop8: string(),
+          }),
+          union([
+            object({
+              prop1: string(),
+              prop2: string(),
+              prop9: string(),
+              prop10: string(),
+            }),
+            object({
+              prop1: string(),
+              prop2: string(),
+              prop11: string(),
+              prop12: string(),
+            }),
+          ]),
+        ]),
+      ]),
+    ])
+
+    expect(
+      coerce(A, {
+        prop1: '',
+        prop2: '',
+        prop9: '',
+      }),
+    ).toEqual({
+      prop1: '',
+      prop2: '',
+      prop9: '',
+      prop10: '',
+    })
+  })
+
+  it('should correctly score object unions with shared properties #1', () => {
+    const schema = union([
+      object({
+        summary: optional(string()),
+        description: optional(string()),
+        parameters: optional(array(any())),
+        responses: optional(record(string(), any())),
+        requestBody: optional(any()),
+      }),
+      object({
+        $ref: string(),
+        summary: optional(string()),
+      }),
+    ])
+
+    expect(
+      coerce(schema, {
+        summary: 'Test Summary',
+        parameters: {},
+      }),
+    ).toEqual({
+      summary: 'Test Summary',
+      parameters: [],
+    })
+  })
+
+  it('should correctly score object unions with shared properties #2', () => {
+    const A = union([
+      object({
+        prop1: string(),
+        prop2: string(),
+        prop3: string(),
+      }),
+      object({
+        prop1: string(),
+        prop2: string(),
+        prop4: string(),
+        prop5: string(),
+        prop6: string(),
+        prop7: string(),
+        prop8: string(),
+        prop9: string(),
+        prop10: string(),
+      }),
+    ])
+
+    expect(
+      coerce(A, {
+        prop1: '',
+        prop2: '',
+        prop7: '',
+      }),
+    ).toEqual({
+      prop1: '',
+      prop2: '',
+      prop4: '',
+      prop5: '',
+      prop6: '',
+      prop7: '',
+      prop8: '',
+      prop9: '',
+      prop10: '',
+    })
+  })
+
+  it('should correctly score object union for objects with all optional properties', () => {
+    const A = union([
+      object({
+        prop1: optional(string()),
+        prop2: optional(string()),
+        prop3: optional(string()),
+      }),
+      object({
+        $ref: string(),
+      }),
+    ])
+
+    expect(
+      coerce(A, {
+        $ref: 'https://example.com/schema',
+      }),
+    ).toEqual({
+      $ref: 'https://example.com/schema',
+    })
+  })
+
+  it('prefers property-less object schema over boolean for empty objects', () => {
+    const T = union([boolean(), object({})])
+    expect(coerce(T, {})).toEqual({})
+    expect(coerce(T, true)).toBe(true)
+    expect(coerce(T, false)).toBe(false)
+  })
+
+  it('picks the branch whose type discriminator matches a union of literals', () => {
+    const T = union([
+      object({
+        type: literal('a'),
+        a: string(),
+      }),
+      object({
+        type: union([literal('b'), literal('c')]),
+        b: string(),
+      }),
+    ])
+    expect(coerce(T, { type: 'a' })).toEqual({ type: 'a', a: '' })
+    expect(coerce(T, { type: 'b' })).toEqual({ type: 'b', b: '' })
+    expect(coerce(T, { type: 'c' })).toEqual({ type: 'c', b: '' })
+  })
+})
+
+describe('intersection', () => {
+  const T = intersection([
+    object({
+      a: number(),
+      b: number(),
+    }),
+    object({
+      c: string(),
+      d: string(),
+    }),
+  ])
+  it('merges coerced properties from each object schema', () => {
+    const result = coerce(T, { a: 1, b: 2, c: 'x', d: 'y' })
+    expect(result).toEqual({ a: 1, b: 2, c: 'x', d: 'y' })
+  })
+  it('fills missing keys per branch from the same input value', () => {
+    const result = coerce(T, { a: 'nope', c: 123 })
+    expect(result).toEqual({ a: 0, b: 0, c: '', d: '' })
+  })
+  it('later branch wins on overlapping keys', () => {
+    const overlap = intersection([object({ x: number() }), object({ x: string() })])
+    const result = coerce(overlap, { x: 1 })
+    expect(result).toEqual({ x: '' })
+  })
+  it('wins in a union when every member validates and summed score beats narrower members', () => {
+    const A = object({ type: literal('A'), onlyA: number() })
+    const B = object({ type: literal('B'), onlyB: string() })
+    const both = intersection([
+      object({ type: literal('A'), shared: number() }),
+      object({ shared: number(), extra: string() }),
+    ])
+    const T = union([A, B, both])
+    // Intersection merges only its declared keys; it outscores A here because both sub-objects validate.
+    expect(coerce(T, { type: 'A', onlyA: 1, shared: 2, extra: 'ok' })).toEqual({
+      type: 'A',
+      shared: 2,
+      extra: 'ok',
+    })
+  })
+  it('correctly picks the branch on an intersection with nested unions #1', () => {
+    const T = intersection([
+      union([object({ type: literal('a'), a: string() }), object({ type: literal('b'), b: string() })]),
+      object({ c: string() }),
+    ])
+    expect(coerce(T, { type: 'a', a: 'x', c: 'y' })).toEqual({ type: 'a', a: 'x', c: 'y' })
+    expect(coerce(T, { type: 'b', b: 'x', c: 'y' })).toEqual({ type: 'b', b: 'x', c: 'y' })
+    expect(coerce(T, { c: 'y' })).toEqual({ type: 'a', a: '', c: 'y' })
+  })
+  it('correctly picks the branch on an intersection with nested unions #2', () => {
+    const T = intersection([
+      union([
+        object({ type: literal('a'), a: optional(string()) }),
+        object({ type: literal('b'), b: optional(string()) }),
+      ]),
+      object({ c: optional(string()), d: optional(string()) }),
+    ])
+    expect(coerce(T, { a: 'a' })).toEqual({ type: 'a', a: 'a' })
+    expect(coerce(T, { a: 'a', c: 'c' })).toEqual({ type: 'a', a: 'a', c: 'c' })
+  })
+
+  it('merges coerced properties through nested intersection members', () => {
+    const extensions = intersection([object({ env: optional(string()) }), object({ order: optional(number()) })], {
+      typeName: 'Extensions',
+    })
+    const document = intersection([
+      object({
+        openapi: literal('3.1.0'),
+        info: object({ title: string(), version: string() }),
+      }),
+      object({ navigation: optional(boolean()) }),
+      extensions,
+    ])
+
+    expect(
+      coerce(document, {
+        openapi: '3.1.0',
+        info: { title: 'API', version: '1.0.0' },
+        navigation: true,
+        env: 'staging',
+        order: 2,
+      }),
+    ).toStrictEqual({
+      openapi: '3.1.0',
+      info: { title: 'API', version: '1.0.0' },
+      navigation: true,
+      env: 'staging',
+      order: 2,
+    })
+    expect(coerce(document, { openapi: '3.1.0', info: { title: 'API' }, order: 'nope' })).toStrictEqual({
+      openapi: '3.1.0',
+      info: { title: 'API', version: '' },
+      order: 0,
+    })
+  })
+
+  it('accumulates scores from nested intersection members in unions', () => {
+    const extensions = intersection([object({ shared: number() }), object({ extra: string() })])
+    const document = intersection([object({ id: literal('doc') }), extensions])
+    const T = union([object({ id: literal('other') }), document])
+    expect(coerce(T, { id: 'doc', shared: 1, extra: 'ok' })).toStrictEqual({
+      id: 'doc',
+      shared: 1,
+      extra: 'ok',
+    })
+  })
+})
+
+describe('notDefined', () => {
+  const T = notDefined()
+  const E = undefined
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toBe(E)
+  })
+  it('Should preserve', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toBe(undefined)
+  })
+})
+
+describe('lazy', () => {
+  const T = lazy(() => object({ x: number() }))
+  const E = { x: 0 }
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should preserve', () => {
+    const value = { x: 1 }
+    const result = coerce(T, value)
+    expect(result).toEqual(value)
+  })
+
+  it('invokes a lazy factory only once per coerce call and reuses the inner schema reference', () => {
+    let calls = 0
+    const resolved: object[] = []
+    const Self: any = lazy(() => {
+      calls++
+      const inner = object({ name: string(), child: optional(Self) })
+      resolved.push(inner)
+      return inner
+    })
+
+    const node: { name: string; child?: unknown } = { name: 'root' }
+    node.child = node
+
+    coerce(Self, node)
+
+    // The factory must be called exactly once even though the cyclic value
+    // re-enters `Self` during recursion — that is what makes the (value, schema)
+    // cycle cache keys line up and prevents infinite recursion.
+    expect(calls).toBe(1)
+    expect(resolved).toHaveLength(1)
+  })
+
+  it('caches each lazy schema factory independently within a single coerce call', () => {
+    let aCalls = 0
+    let bCalls = 0
+    const A: any = lazy(() => {
+      aCalls++
+      return object({ kind: literal('a'), next: optional(B) })
+    })
+    const B: any = lazy(() => {
+      bCalls++
+      return object({ kind: literal('b'), next: optional(A) })
+    })
+
+    const a: { kind: string; next?: unknown } = { kind: 'a' }
+    const b: { kind: string; next?: unknown } = { kind: 'b' }
+    a.next = b
+    b.next = a
+
+    coerce(A, a)
+
+    // Distinct lazy schemas get distinct cache slots — each factory runs once.
+    expect(aCalls).toBe(1)
+    expect(bCalls).toBe(1)
+  })
+
+  it('does not leak the lazy resolution cache across coerce calls', () => {
+    let calls = 0
+    const Reset = lazy(() => {
+      calls++
+      return object({ name: string() })
+    })
+
+    coerce(Reset, { name: 'first' })
+    expect(calls).toBe(1)
+
+    // A second top-level call must build a fresh lazyCache, so the factory
+    // runs again rather than reusing the resolved schema from the prior call.
+    coerce(Reset, { name: 'second' })
+    expect(calls).toBe(2)
+  })
+})
+
+describe('evaluate', () => {
+  const T = evaluate((value) => value, object({ x: number() }))
+  const E = { x: 0 }
+  it('Should upcast from string', () => {
+    const value = 'hello'
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from number', () => {
+    const value = 1
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from boolean', () => {
+    const value = true
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from object', () => {
+    const value = {}
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from array', () => {
+    const value = [1]
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from undefined', () => {
+    const value = undefined
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from null', () => {
+    const value = null
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should upcast from date', () => {
+    const value = new Date(100)
+    const result = coerce(T, value)
+    expect(result).toEqual(E)
+  })
+  it('Should preserve', () => {
+    const value = { x: 1 }
+    const result = coerce(T, value)
+    expect(result).toEqual(value)
+  })
+})
+
+describe('cyclic structures', () => {
+  type NamedNode<Name extends string | number = string | number> = { name: Name; child?: NamedNode<Name> | null }
+  type KindA = { kind: 'a'; next?: KindB }
+  type KindB = { kind: 'b'; next?: KindA | null }
+  type NamedNodeSchema = LazySchema<
+    () => ObjectSchema<{
+      name: StringSchema
+      child: OptionalSchema<LazySchema<() => NamedNodeSchema>>
+    }>
+  >
+  type KindASchema = LazySchema<
+    () => ObjectSchema<{
+      kind: LiteralSchema<'a'>
+      next: OptionalSchema<LazySchema<() => KindBSchema>>
+    }>
+  >
+  type KindBSchema = LazySchema<
+    () => ObjectSchema<{
+      kind: LiteralSchema<'b'>
+      next: OptionalSchema<LazySchema<() => KindASchema>>
+    }>
+  >
+
+  it('terminates on a self-referential value paired with a recursive lazy schema', () => {
+    // Cyclic reference to the same schema
+    const T: NamedNodeSchema = lazy(() => object({ name: string(), child: optional(lazy(() => T)) }))
+
+    const node: NamedNode = { name: 'root' }
+    node.child = node
+
+    const expected: NamedNode<string> = { name: 'root', child: null }
+    expected.child = expected
+
+    expect(() => coerce(T, node)).not.toThrow()
+    const result = coerce(T, node)
+
+    expect(result).toStrictEqual(expected)
+    expect(result).not.toBe(node)
+    expect(result.child).toStrictEqual(expected)
+  })
+
+  it('coerces properties before returning the original reference on a cycle', () => {
+    const T: NamedNodeSchema = lazy(() => object({ name: string({ default: 'Marc' }), child: optional(lazy(() => T)) }))
+
+    const node: NamedNode = { name: 42 }
+    node.child = node
+
+    const result = coerce(T, node)
+
+    const expected: NamedNode<string> = { name: 'Marc', child: null }
+    expected.child = expected
+
+    expect(result).toStrictEqual(expected)
+    expect(result.child).toStrictEqual(expected)
+  })
+
+  it('terminates on mutually-recursive lazy schemas with cyclic data', () => {
+    const SchemaA: KindASchema = lazy(() => object({ kind: literal('a'), next: optional(lazy(() => SchemaB)) }))
+    const SchemaB: KindBSchema = lazy(() => object({ kind: literal('b'), next: optional(lazy(() => SchemaA)) }))
+
+    const a: KindA = { kind: 'a' }
+    const b: KindB = { kind: 'b' }
+    a.next = b
+    b.next = a
+
+    const expected: KindA & { next: KindB } = {
+      kind: 'a',
+      next: {
+        kind: 'b',
+        next: null,
+      },
+    }
+
+    expected.next.next = expected
+
+    expect(() => coerce(SchemaA, a)).not.toThrow()
+    const result = coerce(SchemaA, a)
+    expect(result).toStrictEqual(expected)
+    expect(result.next?.next).toBe(result)
+  })
+
+  it('preserves a cyclic reference when a property uses any()', () => {
+    const T = object({
+      id: number(),
+      parent: optional(any()),
+    })
+
+    const node = { id: 1, parent: undefined as { id: number; parent?: unknown } | undefined }
+    node.parent = node
+
+    const result = coerce(T, node)
+    expect(result).toStrictEqual({ id: 1, parent: node })
+    expect(result).not.toBe(node)
+    expect(result.parent).toBe(node)
+  })
+
+  it('terminates when record values form a cycle', () => {
+    const nodeSchema = object({ next: optional(any()) })
+    const T = record(string(), nodeSchema)
+
+    const a: { next?: unknown } = {}
+    const b: { next?: unknown } = { next: a }
+    a.next = b
+
+    expect(() => coerce(T, { left: a, right: b })).not.toThrow()
+    const result = coerce(T, { left: a, right: b })
+    expect(result).toStrictEqual({
+      left: { next: b },
+      right: { next: a },
+    })
+    expect(result.left?.next).toBe(b)
+    expect(result.right?.next).toBe(a)
+  })
+
+  it('handles cyclic references when using intersection and union types', () => {
+    const T = intersection([
+      union([object({ type: literal('a'), a: string() }), object({ type: literal('b'), b: string() })]),
+      object({ c: string() }),
+    ])
+    type CyclicInput = { hello: string; a?: CyclicInput }
+    const input: CyclicInput = { hello: '', a: undefined }
+    input.a = input
+    expect(() => coerce(T, input)).not.toThrow()
+    const result = coerce(T, input)
+    expect(result).toStrictEqual({ type: 'a', a: '', c: '' })
+  })
+
+  it('coerces a recursive schema', () => {
+    const T: NamedNodeSchema = lazy(() => object({ name: string(), child: optional(lazy(() => T)) }))
+    const input: NamedNode & { child: NamedNode & { child: NamedNode } } = {
+      name: 1,
+      child: { name: 'child', child: { name: 'grandchild' } },
+    }
+    input.child.child.child = input
+
+    const result = coerce(T, input)
+
+    const expected: NamedNode<string> & { child: NamedNode<string> & { child: NamedNode<string> } } = {
+      name: '',
+      child: { name: 'child', child: { name: 'grandchild' } },
+    }
+
+    expected.child.child.child = expected
+
+    expect(result).toStrictEqual(expected)
+  })
+
+  it('terminates on a recursive lazy union scored against a cyclic value', () => {
+    // Without cycle detection inside scoreUnion the union branch score would
+    // recurse forever: lazy -> union -> object -> property -> lazy -> ...
+    const T: any = lazy(() => union([object({ child: optional(lazy(() => T)) }), string()]))
+
+    const node: { child?: unknown } = {}
+    node.child = node
+
+    expect(() => coerce(T, node)).not.toThrow()
+    const result = coerce(T, node)
+    expect(result).toBeDefined()
+    expect((result as { child?: unknown }).child).toBe(result)
+  })
+
+  it('terminates on a recursive lazy union with a discriminated branch', () => {
+    // Both branches contain the recursive `self` property, so naive scoring would
+    // descend through every branch ad infinitum even with a discriminator.
+    const T: any = lazy(() =>
+      union([
+        object({ kind: literal('a'), self: optional(lazy(() => T)) }),
+        object({ kind: literal('b'), self: optional(lazy(() => T)) }),
+      ]),
+    )
+
+    const node: { kind: string; self?: unknown } = { kind: 'a' }
+    node.self = node
+
+    expect(() => coerce(T, node)).not.toThrow()
+    const result = coerce(T, node) as { kind: 'a' | 'b'; self?: unknown }
+    expect(result.kind).toBe('a')
+    expect(result.self).toBe(result)
+  })
+
+  it('terminates on mutually-recursive lazy unions with cyclic data', () => {
+    const A: any = lazy(() => union([object({ tag: literal('a'), next: optional(lazy(() => B)) }), string()]))
+    const B: any = lazy(() => union([object({ tag: literal('b'), next: optional(lazy(() => A)) }), string()]))
+
+    const a: { tag: string; next?: unknown } = { tag: 'a' }
+    const b: { tag: string; next?: unknown } = { tag: 'b' }
+    a.next = b
+    b.next = a
+
+    expect(() => coerce(A, a)).not.toThrow()
+    const result = coerce(A, a) as { tag: 'a'; next?: { tag: 'b'; next?: unknown } }
+    expect(result.tag).toBe('a')
+    expect(result.next?.tag).toBe('b')
+    expect(result.next?.next).toBe(result)
+  })
+})
+
+describe('coerce', () => {
+  it('keeps the first branch when literal and optional scores tie', () => {
+    const schema = union([
+      object({ tag: optional(literal('first')), selected: string({ default: 'first' }) }),
+      object({ tag: optional(literal('second')), selected: string({ default: 'second' }) }),
+    ])
+
+    expect(coerce(schema, { tag: undefined })).toStrictEqual({ selected: 'first' })
+    expect(coerce(schema, { tag: null })).toStrictEqual({ tag: 'first', selected: 'first' })
+    expect(coerce(schema, { tag: 'second' })).toStrictEqual({ tag: 'second', selected: 'second' })
+  })
+
+  it('scores arrays by their container even when their items need coercion', () => {
+    const schema = union([literal('fallback'), array(number({ default: 42 }))])
+
+    expect(coerce(schema, ['invalid'])).toStrictEqual([42])
+    expect(coerce(schema, null)).toBe('fallback')
+  })
+
+  it('scores records by their container even when their entries need coercion', () => {
+    const schema = union([literal('fallback'), record(string(), number({ default: 42 }))])
+
+    expect(coerce(schema, { entry: 'invalid' })).toStrictEqual({ entry: 42 })
+    expect(coerce(schema, Object.assign(Object.create(null), { entry: 'invalid' }))).toStrictEqual({ entry: 42 })
+    expect(coerce(schema, new Date(0))).toBe('fallback')
+    expect(coerce(schema, [])).toBe('fallback')
+  })
+
+  it.each([false, true])('preserves matching record values with reversed branches: %s', (reverse) => {
+    const branches = [record(string(), number()), record(string(), string())]
+    const schema = union(reverse ? [...branches].reverse() : branches)
+
+    expect(coerce(schema, { greeting: 'hello' })).toStrictEqual({ greeting: 'hello' })
+    expect(coerce(schema, { count: 42 })).toStrictEqual({ count: 42 })
+    expect(coerce(schema, Object.assign(Object.create(null), { greeting: 'hello' }))).toStrictEqual({
+      greeting: 'hello',
+    })
+  })
+
+  it('chooses the record branch matching more values', () => {
+    const schema = union([record(string(), number()), record(string(), string())])
+
+    expect(coerce(schema, { first: 'hello', second: 'world', count: 42 })).toStrictEqual({
+      first: 'hello',
+      second: 'world',
+      count: '',
+    })
+  })
+
+  it('keeps record scores below matching object shapes', () => {
+    const schema = union([object({ name: string() }), record(string(), string())])
+
+    expect(coerce(schema, { name: 'Ada', extra: 'ignored' })).toStrictEqual({ name: 'Ada' })
+  })
+
+  it('scores nested record values', () => {
+    const schema = union([record(string(), record(string(), number())), record(string(), record(string(), string()))])
+
+    expect(coerce(schema, { messages: { greeting: 'hello' } })).toStrictEqual({
+      messages: { greeting: 'hello' },
+    })
+  })
+
+  it('keeps the first record branch when entry scores tie', () => {
+    const schema = union([record(string(), number({ default: 42 })), record(string(), boolean({ default: true }))])
+
+    expect(coerce(schema, {})).toStrictEqual({})
+    expect(coerce(schema, { entry: null })).toStrictEqual({ entry: 42 })
+  })
+
+  it('terminates when scoring recursive record branches against cyclic values', () => {
+    const schema: Schema = lazy(() => union([record(string(), schema), string()]))
+    const value: Record<string, unknown> = {}
+    value.self = value
+
+    const result = coerce(schema, value)
+
+    expect(result).toStrictEqual(value)
+    expect((result as Record<string, unknown>).self).toBe(result)
+  })
+
+  it('bounds scoring work for deeply nested recursive record unions', () => {
+    let calls = 0
+    const count = (value: unknown): unknown => {
+      if (++calls > 1_000) {
+        throw new Error('Runaway record scoring')
+      }
+      return value
+    }
+    const schema: Schema = lazy(() =>
+      union([record(string(), evaluate(count, schema)), record(string(), evaluate(count, schema)), string()]),
+    )
+    const value = Array.from({ length: 12 }).reduce<unknown>((child) => ({ child }), 'leaf')
+
+    expect(coerce(schema, value)).toStrictEqual(value)
+    expect(calls).toBeLessThan(1_000)
+  })
+
+  it('scores literal matches strictly without coercing the discriminator', () => {
+    const schema = union([
+      object({ tag: literal(false), value: string({ default: 'boolean' }) }),
+      object({ tag: literal(0), value: string({ default: 'number' }) }),
+      object({ tag: literal('0'), value: string({ default: 'string' }) }),
+    ])
+
+    expect(coerce(schema, { tag: 0 })).toStrictEqual({ tag: 0, value: 'number' })
+    expect(coerce(schema, { tag: '0' })).toStrictEqual({ tag: '0', value: 'string' })
+    expect(coerce(schema, { tag: null })).toStrictEqual({ tag: false, value: 'boolean' })
+    expect(coerce(schema, { tag: false })).toStrictEqual({ tag: false, value: 'boolean' })
+  })
+
+  it('lets a discriminator below the scoring depth budget pick the branch', () => {
+    // `kind` sits four object levels below the union node, past the point where scoring stops
+    // descending. Discriminators are still scored there, so `b` wins. Without that, both
+    // branches tie and the first one (`a`) is picked.
+    const branch = (kind: 'a' | 'b'): Schema =>
+      object({ l1: object({ l2: object({ l3: object({ kind: literal(kind), label: string() }) }) }) })
+    const T = union([branch('a'), branch('b')])
+
+    const result = coerce<Schema>(T, { l1: { l2: { l3: { kind: 'b', label: 'x' } } } })
+
+    expect(result).toEqual({ l1: { l2: { l3: { kind: 'b', label: 'x' } } } })
+  })
+
+  it('decides a deeply nested union from its own position, not the document root', () => {
+    // The union is four object levels into the value. Each union node starts its own scoring pass,
+    // so depth from the document root never spends the budget or stops a type check.
+    const wrap = (inner: Schema): Schema => object({ l1: object({ l2: object({ l3: object({ inner }) }) }) })
+
+    const toRecord = wrap(union([object({ a: string() }), record(string(), number())]))
+    expect(coerce(toRecord, { l1: { l2: { l3: { inner: { q: 1 } } } } })).toEqual({
+      l1: { l2: { l3: { inner: { q: 1 } } } },
+    })
+
+    const stringUnion = wrap(union([object({ x: string() }), string()]))
+    expect(coerce(stringUnion, { l1: { l2: { l3: { inner: 'hi' } } } })).toEqual({
+      l1: { l2: { l3: { inner: 'hi' } } },
+    })
+  })
+
+  it('keeps self-referential union scoring small on the same value', () => {
+    // Every branch leads straight back to `T` with the same value. The in-progress guard stops the
+    // re-entry. Without it, scoring fans out about 2^64 times before the lazy budget stops it.
+    let calls = 0
+    const count = (value: unknown): unknown => {
+      // Fail fast instead of hanging the test run if the fan-out comes back.
+      if (++calls > 1_000) {
+        throw new Error('Runaway union scoring')
+      }
+      return value
+    }
+    const T: Schema = lazy(() => union([object({}), evaluate(count, T), evaluate(count, T)]))
+
+    expect(coerce(T, {})).toEqual({})
+    expect(calls).toBeLessThan(20)
+  })
+
+  it('leaves the value as-is when a schema cycle never reaches an object', () => {
+    // `T` and `string()` both match, so the first branch (`T` again) keeps being picked with the same
+    // value. No object, array or record node is ever reached, so only the depth cap stops it.
+    const T: Schema = lazy(() => union([T, string()]))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      expect(coerce(T, 's')).toBe('s')
+      expect(warn).toHaveBeenCalledTimes(1)
+
+      const list: unknown[] = []
+      expect(coerce(T, list)).toBe(list)
+      expect(warn).toHaveBeenCalledTimes(2)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('warns for each call when the caller reuses a cycle cache', () => {
+    const schema: Schema = lazy(() => union([schema, string()]))
+    const cache = new WeakMap<object, Map<Schema, unknown>>()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      expect(coerce(schema, 'first', cache)).toBe('first')
+      expect(coerce(schema, 'second', cache)).toBe('second')
+      expect(warn).toHaveBeenCalledTimes(2)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('leaves the deepest levels of a very deeply nested value as-is', () => {
+    const T: Schema = lazy(() => object({ name: string(), next: optional(T) }))
+    let value: Record<string, unknown> = { name: 'leaf' }
+    for (let i = 0; i < 5_000; i++) {
+      value = { name: `node-${i}`, next: value }
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      const result = coerce(T, value) as Record<string, unknown>
+
+      expect(result).not.toBe(value)
+      expect(result.name).toBe('node-4999')
+      // Warns once per `coerce` call, not once per truncated subtree.
+      expect(warn).toHaveBeenCalledTimes(1)
+
+      // Walk down to the first value that was returned untouched.
+      let original: Record<string, unknown> = value
+      let coerced: Record<string, unknown> = result
+      while (coerced !== original) {
+        original = original.next as Record<string, unknown>
+        coerced = coerced.next as Record<string, unknown>
+      }
+      expect(original.name).toMatch(/^node-/)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('warns once when several subtrees are cut off in one call', () => {
+    const T: Schema = lazy(() => object({ name: string(), left: optional(T), right: optional(T) }))
+    const chain = (depth: number): Record<string, unknown> => {
+      let value: Record<string, unknown> = { name: 'leaf' }
+      for (let i = 0; i < depth; i++) {
+        value = { name: `node-${i}`, left: value }
+      }
+      return value
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      coerce(T, { name: 'root', left: chain(600), right: chain(600) })
+
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})

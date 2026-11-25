@@ -16,21 +16,22 @@
     "swagger",
     "petstore"
   ],
-  "version": "0.5.4",
+  "version": "0.7.4",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
-    "dev": "npx @scalar/cli document serve ./src/documents/3.1.yaml --watch",
-    "lint:check": "eslint .",
-    "lint:fix": "eslint .  --fix",
-    "test": "vitest",
-    "types:build": "tsc -p tsconfig.build.json",
-    "types:check": "tsc --noEmit --skipLibCheck"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && tsx scripts/post-build.ts",
+    "dev": "pnpx @scalar/cli document serve ./src/documents/3.1.yaml --watch",
+    "dev:live": "cd src/documents && pnpx http-server --cors",
+    "lint": "npx @scalar/cli document lint src/documents/3.1.yaml --rule ./galaxy.ruleset.yaml",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit",
+    "validate": "bash scripts/validate.sh"
   },
   "type": "module",
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -39,17 +40,22 @@
     },
     "./3.1.yaml": "./dist/3.1.yaml",
     "./3.1.json": "./dist/3.1.json",
+    "./3.2.yaml": "./dist/3.2.yaml",
+    "./3.2.json": "./dist/3.2.json",
     "./latest.yaml": "./dist/latest.yaml",
-    "./latest.json": "./dist/latest.json"
+    "./latest.json": "./dist/latest.json",
+    "./asyncapi/3.0.yaml": "./dist/asyncapi/3.0.yaml",
+    "./asyncapi/3.0.json": "./dist/asyncapi/3.0.json",
+    "./asyncapi/latest.yaml": "./dist/asyncapi/latest.yaml",
+    "./asyncapi/latest.json": "./dist/asyncapi/latest.json"
   },
   "files": [
     "dist",
     "CHANGELOG.md"
   ],
-  "module": "./dist/index.js",
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
-    "@scalar/openapi-parser": "workspace:*",
-    "vite": "catalog:*"
+    "@scalar/helpers": "workspace:*",
+    "vite": "catalog:*",
+    "yaml": "catalog:*"
   }
 }

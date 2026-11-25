@@ -1,0 +1,511 @@
+<script setup lang="ts">
+import { ScalarButton } from '@scalar/components/button'
+import { ScalarIcon } from '@scalar/components/icon'
+import { ScalarIconButton } from '@scalar/components/icon-button'
+import { ScalarIconGlobe, ScalarIconTrash } from '@scalar/icons'
+import type { ApiReferenceEvents } from '@scalar/workspace-store/events'
+import { isFileSchema } from '@scalar/workspace-store/helpers/is-file-schema'
+import { unpackProxyObject } from '@scalar/workspace-store/helpers/unpack-proxy'
+import { resolve } from '@scalar/workspace-store/resolve'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type {
+  ParameterObject,
+  SchemaObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { isArraySchema } from '@scalar/workspace-store/schemas/v3.2/strict/type-guards'
+import { computed, ref, useTemplateRef, watch } from 'vue'
+
+import { getFileName } from '@/v2/blocks/request-block/helpers/files'
+import { validateParameter } from '@/v2/blocks/request-block/helpers/validate-parameter'
+import { CodeInputLite } from '@/v2/components/code-input'
+import {
+  DataTableCell,
+  DataTableCheckbox,
+  DataTableInputSelect,
+  DataTableRow,
+} from '@/v2/components/data-table'
+import { DatePicker, type DatePickerType } from '@/v2/components/date-picker'
+import { useLocalization } from '@/v2/features/localization'
+
+import RequestTableTooltip from './RequestTableTooltip.vue'
+import RequestTableFileList, {
+  type RequestTableFile,
+} from './RequestTableFileList.vue'
+
+const {
+  data,
+  environment,
+  hasCheckboxDisabled,
+  deferKeyUpdates,
+  invalidParams,
+  showUploadButton,
+  allowUnknownFileUploads = true,
+} = defineProps<{
+  data: TableRow
+  /** Keep key edits local until blur when the row identity depends on its name. */
+  deferKeyUpdates?: boolean
+  hasCheckboxDisabled?: boolean
+  invalidParams?: Set<string>
+  label?: string
+  environment: XScalarEnvironment
+  showUploadButton?: boolean
+  /** Unknown fields remain editable as files only in free-form multipart requests. */
+  allowUnknownFileUploads?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'upsertRow', payload: TableRowUpsertPayload): void
+  (e: 'deleteRow'): void
+  (e: 'uploadFile'): void
+  (e: 'removeFile', fileIndex?: number): void
+  (e: 'updateFile', fileIndex: number, isDisabled: boolean): void
+  (e: 'navigate', route: NonNullable<TableRow['globalRoute']>): void
+  /** Select a value for a grouped global cookie preset. */
+  (e: 'selectPreset', value: string): void
+}>()
+
+const { translate } = useLocalization()
+
+const valueInput = useTemplateRef('valueInput')
+const fileList = useTemplateRef('fileList')
+defineExpose({
+  focusValue: (): void => {
+    if (data.files) {
+      fileList.value?.focusUpload()
+    } else {
+      valueInput.value?.focus()
+    }
+  },
+})
+
+export type TableRow = {
+  /** The parameter or field name/key */
+  name: string
+  /** The parameter value, can be a string, file, or null */
+  value: string | File | null
+  /** Selected files grouped for display; source rows remain separate multipart parts. */
+  files?: RequestTableFile[]
+  /** Optional description for the parameter */
+  description?: string
+  /** Optional route for global parameters (e.g., cookies shared across workspace) */
+  globalRoute?: ApiReferenceEvents['ui:navigate']
+  /** Whether the parameter is disabled/inactive */
+  isDisabled?: boolean
+  /** Whether an optional parameter is disabled because it has no explicit x-disabled value */
+  isDisabledByDefault?: boolean
+  /** OpenAPI schema object with type, validation rules, examples, etc. */
+  schema?: SchemaObject
+  /** Explicit media type for this multipart field. */
+  contentType?: string
+  /** Preserve array values even while their JSON text is temporarily invalid. */
+  isArray?: boolean
+  /** Text representation used by array enum controls. */
+  arrayEncoding?: 'json' | 'comma-separated'
+  /** Whether the parameter is required */
+  isRequired?: boolean
+  /**
+   * Whether the parameter is readonly and can not be modifies directly
+   * User can still override the parameter which is going to show up with the linethrough style
+   */
+  isReadonly?: boolean
+  /** Whether the parameter is overridden later on */
+  isOverridden?: boolean
+  /** Track the original parameter so we can update it */
+  originalParameter?: ParameterObject
+  /** Path to a value inside the original parameter example for expanded object parameters */
+  sourceParameterValuePath?: string[]
+  /**
+   * Selectable values for a grouped global cookie preset. When set, the value cell renders a
+   * dropdown to switch between predefined values (for example a `Culture` cookie with `PL`/`EN`)
+   * instead of an editable input.
+   */
+  presetOptions?: string[]
+}
+
+export type TableRowUpsertPayload = {
+  name: string
+  value: string | File
+  isDisabled: boolean
+  shouldRenameExpandedRow?: boolean
+}
+
+/**
+ * Track local state for the row
+ *
+ * Now this is required because of the way we get default values from the schema.
+ * If we have a default value in data.value, then we update isDisabled to true. We lose the default value since now
+ * we have an example where value: ''. This is why we need to track the local state and update all of the params at the
+ * same time.
+ */
+const name = ref<string>(data.name ?? '')
+const value = ref<string | File>(unpackProxyObject(data.value) ?? '')
+const isDisabled = ref<boolean>(data.isDisabled ?? false)
+
+// Keep the above state synced with the data prop
+watch(
+  () => data.name,
+  (newName) => {
+    // Do not overwrite a valid local name with an empty incoming prop — this
+    // can happen when the placeholder row (appended by displayData) is briefly
+    // mapped onto this component instance before Vue re-keys the list.
+    if (!newName && name.value && !deferKeyUpdates) {
+      return
+    }
+    name.value = newName ?? ''
+  },
+)
+watch(
+  () => data.value,
+  (newValue) => (value.value = unpackProxyObject(newValue) ?? ''),
+)
+watch(
+  () => data.isDisabled,
+  (newIsDisabled) => (isDisabled.value = newIsDisabled ?? false),
+)
+
+/** Check if the value is a File instance */
+const isFile = computed(() => value.value instanceof File)
+
+/** Whether this row’s schema accepts a file part. */
+const canUploadFile = computed<boolean>(() =>
+  data.schema
+    ? isFileSchema(data.schema, true, data.contentType)
+    : allowUnknownFileUploads,
+)
+
+const fileUploadLabel = computed<string>(() =>
+  translate(
+    data.schema && isArraySchema(data.schema)
+      ? 'apiClient.requestTableRow.selectFiles'
+      : 'apiClient.requestTableRow.selectFile',
+  ),
+)
+
+const hasMixedFileSelection = computed<boolean>(() =>
+  Boolean(
+    data.files?.some((file) => file.isDisabled) &&
+    data.files.some((file) => !file.isDisabled),
+  ),
+)
+
+/** Display value handles File instances and shows filename instead */
+const displayValue = computed(
+  () =>
+    (isFile.value
+      ? getFileName(value.value as File)
+      : (value.value as string)) ?? '',
+)
+
+const defaultValue = computed(() => data.schema?.default as string)
+
+/** See if we can extract enum values from the schema */
+const enumValue = computed<unknown[]>(() => {
+  if (!data.schema) {
+    return []
+  }
+
+  // Grab the enum from the schema
+  if (data.schema.enum) {
+    return data.schema.enum.map((item) => String(item))
+  }
+
+  // Grab the enum from the items schema
+  if ('items' in data.schema) {
+    const resolved = resolve.schema(data.schema.items)
+    if (resolved?.enum) {
+      return data.arrayEncoding === 'json'
+        ? resolved.enum
+        : resolved.enum.map((item) => String(item))
+    }
+  }
+
+  return []
+})
+
+const typeValue = computed(() =>
+  data.schema && 'type' in data.schema ? data.schema.type : undefined,
+)
+
+/**
+ * Which date/time picker (if any) this value should offer, based on the
+ * schema `format`. Free-text entry and `{{variables}}` keep working — the
+ * picker is an optional shortcut that writes a formatted value back into the
+ * same input.
+ */
+const dateFormat = computed<DatePickerType | undefined>(() => {
+  const format =
+    data.schema && 'format' in data.schema ? data.schema.format : undefined
+  const pickerFormats: DatePickerType[] = ['date', 'date-time', 'time']
+  return pickerFormats.includes(format as DatePickerType)
+    ? (format as DatePickerType)
+    : undefined
+})
+
+const validationResult = computed(() =>
+  validateParameter(data.schema, value.value),
+)
+
+/** Handle row updates while preserving existing properties */
+const handleUpdateRow = (
+  payload: Partial<{ name: string; value: string; isDisabled: boolean }>,
+  options: { shouldRenameExpandedRow?: boolean; commitKey?: boolean } = {},
+): void => {
+  // Update our local state
+  if (payload.name !== undefined) {
+    name.value = payload.name
+  }
+  if (payload.value !== undefined) {
+    value.value = payload.value
+
+    // Optional parameters start unchecked, but entering a value expresses intent to send it.
+    // Explicit x-disabled values stay unchanged so a deliberate opt-out is preserved.
+    if (data.isDisabledByDefault) {
+      isDisabled.value = false
+    }
+  }
+
+  // Is disabled should only be updated when explicitly provided in the payload
+  if (payload.isDisabled !== undefined) {
+    isDisabled.value = payload.isDisabled
+  }
+
+  if (
+    payload.name !== undefined &&
+    (deferKeyUpdates || data.sourceParameterValuePath) &&
+    !options.shouldRenameExpandedRow &&
+    !options.commitKey
+  ) {
+    return
+  }
+
+  // Emit all of the local state
+  emit('upsertRow', {
+    name: name.value,
+    value: value.value,
+    isDisabled: isDisabled.value,
+    ...(options.shouldRenameExpandedRow
+      ? { shouldRenameExpandedRow: true }
+      : {}),
+  })
+}
+
+/**
+ * Commit a key edit when the input loses focus. Body and expanded-object rows defer their rename to blur (see
+ * handleUpdateRow), so we only emit when the key actually changed. Focusing and blurring the field
+ * without typing should not re-emit the row or silently reset its disabled state. The current
+ * disabled state is passed through so a renamed row keeps it.
+ */
+const handleKeyBlur = (newName: string): void => {
+  if (newName === data.name) {
+    return
+  }
+  // Do not emit an update that would blank the parameter name — this can fire
+  // when CodeInputLite blurs before it has rendered its initial value.
+  if (!newName && data.name && (!deferKeyUpdates || name.value !== '')) {
+    return
+  }
+
+  handleUpdateRow(
+    { name: newName, isDisabled: isDisabled.value },
+    {
+      shouldRenameExpandedRow: Boolean(data.sourceParameterValuePath),
+      commitKey: true,
+    },
+  )
+}
+
+/** Save a pending body key before the send shortcut reaches the request handler. */
+const handleKeydown = (event: KeyboardEvent): void => {
+  if (
+    deferKeyUpdates &&
+    event.key === 'Enter' &&
+    (event.metaKey || event.ctrlKey)
+  ) {
+    handleKeyBlur(name.value)
+  }
+}
+</script>
+
+<template>
+  <DataTableRow
+    :id="data.name"
+    :class="{
+      alert: validationResult.ok === false,
+      error: validationResult.ok === false && invalidParams?.has(data.name),
+    }">
+    <DataTableCheckbox
+      :ariaLabel="
+        translate('apiClient.requestTableRow.include', {
+          name: data.name || translate('apiClient.requestTableRow.row'),
+        })
+      "
+      class="!border-r"
+      :class="{ 'max-h-none': data.files }"
+      :disabled="hasCheckboxDisabled ?? false"
+      :indeterminate="hasMixedFileSelection"
+      :modelValue="!isDisabled"
+      @update:modelValue="(v) => handleUpdateRow({ isDisabled: !v })" />
+
+    <!-- Name -->
+    <DataTableCell :class="{ 'max-h-none': data.files }">
+      <CodeInputLite
+        :aria-label="
+          translate('apiClient.requestTableRow.keyLabel', { name: label ?? '' })
+        "
+        :disabled="data.isReadonly"
+        :environment="environment"
+        :modelValue="name"
+        :placeholder="translate('apiClient.requestTableRow.key')"
+        :required="Boolean(data.isRequired)"
+        @blur="(v) => handleKeyBlur(v)"
+        @keydown.capture="handleKeydown"
+        @navigate="(route) => emit('navigate', route)"
+        @update:modelValue="(v) => handleUpdateRow({ name: v })" />
+    </DataTableCell>
+
+    <!-- Value -->
+    <DataTableCell
+      v-if="data.files"
+      class="col-span-2 max-h-none"
+      :colspan="2">
+      <RequestTableFileList
+        ref="fileList"
+        :disabled="data.isReadonly"
+        :files="data.files"
+        :name="name"
+        @removeFile="(index) => emit('removeFile', index)"
+        @updateFile="(index, disabled) => emit('updateFile', index, disabled)"
+        @uploadFile="emit('uploadFile')">
+        <RequestTableTooltip
+          v-if="data.schema"
+          :description="data.description"
+          :schema="data.schema"
+          :value="value" />
+      </RequestTableFileList>
+    </DataTableCell>
+    <DataTableCell v-else>
+      <!-- Preset switcher for grouped global cookies that share a name -->
+      <DataTableInputSelect
+        v-if="data.presetOptions?.length"
+        :canAddCustomValue="false"
+        :modelValue="displayValue"
+        :value="data.presetOptions"
+        @update:modelValue="(v) => emit('selectPreset', v)" />
+      <CodeInputLite
+        v-else
+        ref="valueInput"
+        :aria-label="
+          translate('apiClient.requestTableRow.valueLabel', {
+            name: label ?? '',
+          })
+        "
+        :arrayEncoding="data.arrayEncoding"
+        class="pr-6 group-hover:pr-10 group-has-[.code-input-lite__editor:focus]:pr-10"
+        :default="defaultValue"
+        :disabled="data.isReadonly"
+        :enum="enumValue"
+        :environment="environment"
+        :examples="
+          data.schema?.examples?.map((example) => String(example)) ?? []
+        "
+        :linethrough="data.isOverridden"
+        :modelValue="displayValue"
+        :placeholder="translate('apiClient.requestTableRow.value')"
+        :type="typeValue"
+        withFakeData
+        @navigate="(route) => emit('navigate', route)"
+        @update:modelValue="(v) => handleUpdateRow({ value: v })">
+        <template #icon>
+          <ScalarButton
+            v-if="
+              Boolean(data.name || value) &&
+              !data.isRequired &&
+              data.isReadonly !== true
+            "
+            :aria-label="
+              translate('apiClient.requestTableRow.deleteRow', {
+                name: data.name || translate('apiClient.requestTableRow.row'),
+              })
+            "
+            class="text-c-2 hover:text-c-1 hover:bg-b-2 z-context -mr-0.5 hidden h-fit rounded p-1 group-hover:flex group-has-[.code-input-lite__editor:focus]:flex"
+            size="sm"
+            variant="ghost"
+            @click="emit('deleteRow')">
+            <ScalarIconTrash class="size-3.5" />
+          </ScalarButton>
+
+          <ScalarIconButton
+            v-if="data.globalRoute !== undefined"
+            class="text-c-2 hover:text-c-1 hover:bg-b-2 z-context -mr-0.5 h-fit"
+            :icon="ScalarIconGlobe"
+            :label="translate('apiClient.requestTableRow.globalCookieHint')"
+            size="xs"
+            tooltip="top"
+            variant="ghost"
+            @click="emit('navigate', data.globalRoute)" />
+
+          <DatePicker
+            v-if="dateFormat && data.isReadonly !== true"
+            :fieldName="data.name || label"
+            :modelValue="displayValue"
+            :type="dateFormat"
+            @update:modelValue="(v) => handleUpdateRow({ value: v })" />
+
+          <RequestTableTooltip
+            v-if="data.isReadonly"
+            :description="translate('apiClient.requestTableRow.readOnlyHint')"
+            :value="null" />
+          <RequestTableTooltip
+            v-else-if="data.schema"
+            :description="data.description"
+            :schema="data.schema"
+            :value />
+        </template>
+      </CodeInputLite>
+    </DataTableCell>
+
+    <!-- File upload -->
+    <DataTableCell
+      v-if="showUploadButton && !data.files"
+      class="group/upload flex items-center justify-center whitespace-nowrap">
+      <template v-if="isFile">
+        <div
+          class="text-c-2 flex w-full max-w-[100%] items-center justify-center overflow-hidden p-1">
+          <span
+            class="truncate"
+            :title="displayValue"
+            >{{ displayValue }}</span
+          >
+        </div>
+        <button
+          class="bg-b-2 mt-1 block rounded p-0.5 text-center text-xs font-medium md:pointer-events-none md:absolute md:inset-x-1 md:top-1/2 md:mt-0 md:-translate-y-1/2 md:opacity-0 md:group-hover/upload:pointer-events-auto md:group-hover/upload:opacity-100"
+          type="button"
+          @click="emit('removeFile')">
+          {{ translate('apiClient.requestTableRow.delete') }}
+        </button>
+      </template>
+      <template v-else-if="canUploadFile">
+        <div class="p-0.5">
+          <ScalarButton
+            :aria-label="
+              translate('apiClient.requestTableRow.uploadFor', {
+                action: fileUploadLabel,
+                name: name || translate('apiClient.requestTableRow.row'),
+              })
+            "
+            class="bg-b-2 hover:bg-b-3 text-c-2 h-fit border-0 py-px shadow-none"
+            size="sm"
+            variant="outlined"
+            @click="emit('uploadFile')">
+            <span>{{ fileUploadLabel }}</span>
+            <ScalarIcon
+              class="ml-1"
+              icon="Upload"
+              size="xs"
+              thickness="2.5" />
+          </ScalarButton>
+        </div>
+      </template>
+    </DataTableCell>
+  </DataTableRow>
+</template>

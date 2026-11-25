@@ -2,4 +2,70 @@
 
 body {
   margin: 0;
+  /* Follows Scalar's light and dark theme, so the frame around the reference is not white in dark mode */
+  background: var(--scalar-background-1);
+}
+
+/*
+ * Scalar lays markdown tables out with fixed, equal-ish columns and breaks words anywhere, which
+ * squeezed the "Using AI?" table into "Reso-urce" and "llms.t-xt". Size columns by their content again.
+ */
+.scalar-app .markdown table {
+  table-layout: auto;
+}
+.scalar-app .markdown th,
+.scalar-app .markdown td {
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/*
+ * DefiLlama look for Scalar's x-badges (API Plan, Beta), matching the badges we had before the
+ * Scalar upgrade: coloured bold text on a light tint, instead of Scalar's solid fill.
+ * The colours come from spec-transform.ts, which sets --badge-color on each badge.
+ */
+.scalar-app .badge[style*="--badge-color"] {
+  background: color-mix(in srgb, var(--badge-color), transparent 90%);
+  color: var(--badge-color);
+  border-color: transparent;
+  font-weight: var(--scalar-bold);
+  font-size: var(--scalar-micro);
+}
+
+/* The sidebar only ever showed the Beta badge, as small purple caps. API Plan stays out of it. */
+.scalar-app .sidebar-badge:not([style*="9333ea"]) {
+  display: none;
+}
+.scalar-app .sidebar-badge[style*="9333ea"] {
+  /* Pinned under the GET badge on the right, where it sat before the Scalar upgrade */
+  position: absolute;
+  top: 26px;
+  right: 8px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #9333ea;
+  font-size: 9px;
+  font-weight: var(--scalar-bold);
+  line-height: 1;
+  text-transform: uppercase;
+}
+.scalar-app a:has(.sidebar-badge[style*="9333ea"]) {
+  position: relative;
+  min-height: 40px;
+}
+
+/*
+ * spec-transform.ts adds an Introduction heading so the sidebar stays flat. The page never showed
+ * that heading, so it stays hidden; its section still works as the #description/introduction target.
+ */
+.scalar-app .introduction-description-heading h2[id$="description/introduction"] {
+  display: none;
+}
+
+/* Deprecated operations keep a readable title. The red Deprecated badge already says it. */
+.scalar-app .operation-title.deprecated,
+.scalar-app .operation-title.deprecated * {
+  text-decoration: none;
 }

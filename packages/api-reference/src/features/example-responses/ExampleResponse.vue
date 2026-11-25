@@ -1,36 +1,135 @@
 <script lang="ts" setup>
-import { ScalarCodeBlock } from '@scalar/components'
-import { getExampleFromSchema } from '@scalar/oas-utils/spec-getters'
-import type { OpenAPI } from '@scalar/openapi-types'
+import { ScalarCodeBlock } from '@scalar/components/code-block'
+import { ScalarMarkdown } from '@scalar/components/markdown'
+import { ScalarVirtualCodeBlock } from '@scalar/components/virtual-code-block'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import type { XmlDiagnostic } from '@scalar/workspace-store/request-example'
+import type {
+  ExampleObject,
+  MediaTypeObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed } from 'vue'
 
-defineProps<{
-  response: OpenAPI.ResponseObject
+import { useLocalization } from '@/features/localization'
+
+import { getExampleContent } from './helpers/get-example-content'
+import {
+  type ExampleLanguage,
+  getExampleLanguage,
+} from './helpers/get-example-language'
+
+const {
+  example,
+  response,
+  content,
+  contentType = 'application/json',
+  language: contentLanguage,
+  openapiVersion,
+  jsonSchemaDialect,
+  generationError,
+  pending = false,
+} = defineProps<{
+  response: MediaTypeObject | undefined
+  example: ExampleObject | undefined
+  /** Reuse the card's formatted value so generation and copying cannot diverge. */
+  content?: string
+  openapiVersion?: string
+  /** Document-level JSON Schema dialect used when generating array `contains` examples. */
+  jsonSchemaDialect?: string
+  generationError?: XmlDiagnostic
+  pending?: boolean
+  contentType?: string
+  /** Grammar selected while formatting the shared content. */
+  language?: ExampleLanguage
 }>()
+const { translate } = useLocalization()
+
+const resolvedExample = computed(() => getResolvedRef(example))
+
+/** Preformatted content is shared with the response card clipboard action. */
+const generatedExample = computed(() => {
+  let error = generationError
+  let language = getExampleLanguage(contentType)
+  const value =
+    pending || error
+      ? undefined
+      : (content ??
+        getExampleContent(response, example, {
+          contentType,
+          openapiVersion,
+          jsonSchemaDialect,
+          onLanguage: (formattedLanguage) => {
+            language = formattedLanguage
+          },
+          onDiagnostic: (diagnostic) => {
+            if (diagnostic.severity === 'error' && error === undefined) {
+              error = diagnostic
+            }
+          },
+        }))
+  return { value, error, language }
+})
+const prettyPrintedContent = computed(() => generatedExample.value.value)
+const language = computed<ExampleLanguage>(
+  () => contentLanguage ?? generatedExample.value.language,
+)
+const errorMessage = computed(() => {
+  const error = generatedExample.value.error
+  if (!error) {
+    return undefined
+  }
+  return error.code === 'limit-exceeded'
+    ? translate('response.xmlGenerationLimit')
+    : translate('response.xmlGenerationFailed', { message: error.message })
+})
+
+const VIRTUALIZATION_THRESHOLD = 20_000
+
+// Virtualize the code block if it's too large
+const shouldVirtualize = computed(() => {
+  if (prettyPrintedContent.value === undefined) {
+    return false
+  }
+  return prettyPrintedContent.value.length > VIRTUALIZATION_THRESHOLD
+})
 </script>
 <template>
-  <!-- Example -->
-  <ScalarCodeBlock
-    v-if="response?.example !== undefined"
-    class="bg-b-2 -outline-offset-2"
-    :content="response?.example"
-    lang="json" />
+  <!--
+    The card section is a grid, and a grid item will not shrink below its content by default. Let
+    this wrapper shrink so the code block scrolls itself, rather than stretching to the longest line
+    and making the card scroll, which carries the copy button out of view.
+  -->
+  <div class="flex min-h-0 min-w-0 flex-col">
+    <div
+      v-if="resolvedExample?.summary || resolvedExample?.description"
+      class="flex flex-col gap-2 px-3 py-3">
+      <div
+        v-if="resolvedExample.summary"
+        class="text-c-1 font-medium">
+        {{ resolvedExample.summary }}
+      </div>
+      <ScalarMarkdown
+        v-if="resolvedExample.description"
+        :value="resolvedExample.description" />
+    </div>
+    <!-- Example -->
+    <ScalarCodeBlock
+      v-if="prettyPrintedContent !== undefined && !shouldVirtualize"
+      class="bg-transparent"
+      :lang="language"
+      :prettyPrintedContent="prettyPrintedContent" />
 
-  <!-- Schema -->
-  <ScalarCodeBlock
-    v-else-if="response?.schema"
-    class="bg-b-2 -outline-offset-2"
-    :content="
-      getExampleFromSchema(response?.schema, {
-        emptyString: 'string',
-        mode: 'read',
-      })
-    "
-    lang="json" />
+    <ScalarVirtualCodeBlock
+      v-else-if="prettyPrintedContent !== undefined && shouldVirtualize"
+      class="bg-transparent"
+      :content="prettyPrintedContent"
+      :lang="language" />
 
-  <div
-    v-else
-    class="empty-state">
-    No Body
+    <div
+      v-else
+      class="empty-state">
+      {{ errorMessage ?? translate('response.noBody') }}
+    </div>
   </div>
 </template>
 

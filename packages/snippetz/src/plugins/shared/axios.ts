@@ -1,0 +1,159 @@
+import type { Plugin, TargetId } from '@scalar/types/snippetz'
+
+import { prepareBrowserCookies } from '@/libs/browser-request'
+import { mergeCookieHeaders } from '@/libs/cookies'
+import { buildFormData, formDataHeaders } from '@/libs/form-data'
+import { accumulateRepeatedValue, normalizeMethod, reduceQueryParams } from '@/libs/http'
+import { Raw, escapeJsString, formatSetup, objectToString } from '@/libs/javascript'
+
+type AxiosHeaders = Record<string, string | string[]>
+
+const addHeaderValue = (headers: AxiosHeaders, name: string, value: string): void => {
+  if (value === '') {
+    headers[name] = value
+    return
+  }
+
+  accumulateRepeatedValue(headers, name, value)
+}
+
+const buildHeaders = (
+  request: Parameters<Plugin['generate']>[0],
+): Record<string, string | string[] | Raw> | undefined => {
+  const headers: AxiosHeaders = {}
+  const rawHeaders: Record<string, Raw> = {}
+
+  formDataHeaders(request ?? {})?.forEach((header) => {
+    if (header.value instanceof Raw) {
+      rawHeaders[header.name] = header.value
+    } else {
+      addHeaderValue(headers, header.name, header.value)
+    }
+  })
+
+  return Object.keys(headers).length || Object.keys(rawHeaders).length ? { ...headers, ...rawHeaders } : undefined
+}
+
+const buildData = (
+  request: Parameters<Plugin['generate']>[0],
+  target: 'js' | 'node',
+): { setup: string[]; data?: Raw | string | Record<string, unknown> } => {
+  const setup: string[] = []
+  const postData = request?.postData
+
+  if (!postData) {
+    return { setup }
+  }
+
+  if (postData.mimeType === 'application/json') {
+    if (!postData.text) {
+      return { setup }
+    }
+
+    try {
+      return {
+        setup,
+        data: JSON.parse(postData.text) as Record<string, unknown>,
+      }
+    } catch {
+      return {
+        setup,
+        data: postData.text,
+      }
+    }
+  }
+
+  if (postData.mimeType === 'application/x-www-form-urlencoded' && postData.params?.length) {
+    setup.push('const encodedParams = new URLSearchParams()')
+    postData.params.forEach((param) => {
+      const encodedName = escapeJsString(param.name)
+      const encodedValue = escapeJsString(param.value ?? '')
+      setup.push(`encodedParams.append('${encodedName}', '${encodedValue}')`)
+    })
+
+    return {
+      setup,
+      data: new Raw('encodedParams'),
+    }
+  }
+
+  if (postData.mimeType === 'multipart/form-data' && postData.params?.length) {
+    setup.push(...buildFormData(postData.params, target))
+
+    return {
+      setup,
+      data: new Raw('formData'),
+    }
+  }
+
+  if (!postData.text) {
+    return { setup }
+  }
+
+  return {
+    setup,
+    data: postData.text,
+  }
+}
+
+export const createAxiosPlugin = <T extends Extract<TargetId, 'js' | 'node'>>(target: T): Plugin => ({
+  target,
+  client: 'axios',
+  title: 'Axios',
+  generate(request, configuration) {
+    const normalizedRequest = {
+      method: 'GET',
+      ...request,
+    }
+    normalizedRequest.method = normalizeMethod(normalizedRequest.method)
+
+    const options: Record<string, unknown> = {
+      method: normalizedRequest.method,
+      url: normalizedRequest.url ?? '',
+    }
+
+    const params = reduceQueryParams(normalizedRequest.queryString)
+    if (Object.keys(params).length) {
+      options.params = params
+    }
+
+    const browserCookies = target === 'js' ? prepareBrowserCookies(normalizedRequest) : undefined
+    const headers = buildHeaders({
+      ...normalizedRequest,
+      headers: browserCookies?.headers ?? mergeCookieHeaders(normalizedRequest),
+    })
+    if (headers) {
+      options.headers = headers
+    }
+
+    if (browserCookies?.withCredentials) {
+      options.withCredentials = true
+    }
+
+    if (configuration?.auth?.username && configuration?.auth?.password) {
+      options.auth = {
+        username: configuration.auth.username,
+        password: configuration.auth.password,
+      }
+    }
+
+    const { setup, data } = buildData(normalizedRequest, target)
+    if (data !== undefined) {
+      options.data = data
+    }
+
+    const allSetup = [...(browserCookies?.setup ?? []), ...setup]
+    const setupBlock = formatSetup(allSetup)
+
+    return `import axios from 'axios'
+
+${setupBlock}const options = ${objectToString(options)}
+
+try {
+  const { data } = await axios.request(options)
+  console.log(data)
+} catch (error) {
+  console.error(error)
+}`
+  },
+})

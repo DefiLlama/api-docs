@@ -1,6 +1,9 @@
-import { createSearchParams } from '@/utils/create-search-params'
-import { objectToString, Unquoted } from '@/utils/objectToString'
 import type { Plugin } from '@scalar/types/snippetz'
+
+import { prepareBrowserCookies } from '@/libs/browser-request'
+import { buildFormData, formDataHeaders, urlSearchParams } from '@/libs/form-data'
+import { joinUrlAndQuery, normalizeMethod } from '@/libs/http'
+import { Raw, escapeJsString, formatSetup, objectToString } from '@/libs/javascript'
 
 /**
  * js/fetch
@@ -19,7 +22,7 @@ export const jsFetch: Plugin = {
     let prefix = ''
 
     // Normalization
-    normalizedRequest.method = normalizedRequest.method.toUpperCase()
+    normalizedRequest.method = normalizeMethod(normalizedRequest.method)
 
     // Reset fetch defaults
     const options: Record<string, any> = {
@@ -27,26 +30,19 @@ export const jsFetch: Plugin = {
     }
 
     // Query
-    const searchParams = createSearchParams(normalizedRequest.queryString)
-    const queryString = searchParams.size ? `?${searchParams.toString()}` : ''
+    const url = joinUrlAndQuery(normalizedRequest.url ?? '', normalizedRequest.queryString)
 
-    // Headers
-    if (normalizedRequest.headers?.length) {
-      options.headers = {}
-
-      normalizedRequest.headers.forEach((header) => {
-        options.headers![header.name] = header.value
-      })
+    const { headers: cookieHeaders, setup, withCredentials } = prepareBrowserCookies(normalizedRequest)
+    if (withCredentials) {
+      options.credentials = 'include'
     }
 
-    // Cookies
-    if (normalizedRequest.cookies?.length) {
-      options.headers = options.headers || {}
-
-      normalizedRequest.cookies.forEach((cookie) => {
-        options.headers!['Set-Cookie'] = options.headers!['Set-Cookie']
-          ? `${options.headers!['Set-Cookie']}; ${cookie.name}=${cookie.value}`
-          : `${cookie.name}=${cookie.value}`
+    // Headers
+    const headers = formDataHeaders({ ...normalizedRequest, headers: cookieHeaders })
+    if (headers?.length) {
+      options.headers = {}
+      headers.forEach((header) => {
+        options.headers![header.name] = header.value
       })
     }
 
@@ -63,33 +59,26 @@ export const jsFetch: Plugin = {
 
       if (mimeType === 'application/json' && text) {
         try {
-          options.body = new Unquoted(`JSON.stringify(${objectToString(JSON.parse(text))})`)
-        } catch (e) {
+          options.body = new Raw(`JSON.stringify(${objectToString(JSON.parse(text))})`)
+        } catch {
           options.body = text
         }
       } else if (mimeType === 'multipart/form-data' && params) {
-        prefix = 'const formData = new FormData()\n'
-        params.forEach((param) => {
-          if (param.fileName !== undefined) {
-            prefix += `formData.append('${param.name}', new Blob([]), '${param.fileName}')\n`
-          } else if (param.value !== undefined) {
-            prefix += `formData.append('${param.name}', '${param.value}')\n`
-          }
-        })
-        prefix += '\n'
-        options.body = new Unquoted('formData')
+        prefix = `${buildFormData(params, 'js').join('\n')}\n\n`
+        options.body = new Raw('formData')
       } else if (mimeType === 'application/x-www-form-urlencoded' && params) {
-        const form = Object.fromEntries(params.map((p) => [p.name, p.value]))
-        options.body = new Unquoted(`new URLSearchParams(${objectToString(form)})`)
+        options.body = new Raw(urlSearchParams(params))
       } else {
         options.body = normalizedRequest.postData.text
       }
     }
 
+    prefix = `${formatSetup(setup)}${prefix}`
+
     // Transform to JSON
     const jsonOptions = Object.keys(options).length ? `, ${objectToString(options)}` : ''
 
     // Code Template
-    return `${prefix}fetch('${normalizedRequest.url}${queryString}'${jsonOptions})`
+    return `${prefix}fetch('${escapeJsString(url)}'${jsonOptions})`
   },
 }

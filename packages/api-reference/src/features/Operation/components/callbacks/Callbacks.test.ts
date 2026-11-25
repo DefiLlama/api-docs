@@ -1,0 +1,214 @@
+import { createSchemaExpansionStore } from '@scalar/blocks/schema/expansion'
+import type { OperationObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+
+import Callbacks from './Callbacks.vue'
+
+describe('Callbacks', () => {
+  it('renders additional callback operations with their nested breadcrumb', () => {
+    const wrapper = mount(Callbacks, {
+      props: {
+        path: '/subscribe',
+        breadcrumb: ['subscribe'],
+        callbacks: {
+          onData: {
+            '{$request.query.callbackUrl}': {
+              additionalOperations: { 'deliver~Event': { summary: 'Deliver event' } },
+            },
+          },
+        },
+        eventBus: null,
+        options: {
+          hideModels: false,
+          orderRequiredPropertiesFirst: false,
+          orderSchemaPropertiesBy: 'alpha',
+          expandAllParameters: false,
+          expandAllSchemaProperties: false,
+          maxVisibleRequestBodyProperties: 12,
+          schemaKeyboardNav: false,
+        },
+      },
+    })
+    const callback = wrapper.findComponent({ name: 'Callback' })
+    expect(callback.props('method')).toBe('deliver~Event')
+    expect(callback.props('breadcrumb')).toEqual([
+      'subscribe',
+      'callbacks',
+      'onData',
+      '{$request.query.callbackUrl}',
+      'additionalOperations',
+      'deliver~Event',
+    ])
+  })
+
+  it('flattens nested callback structure into individual callback items', () => {
+    const mockCallbacks = {
+      onData: {
+        '{$request.query.callbackUrl}/data': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      message: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'Callback successfully processed',
+              },
+            },
+          },
+        },
+      },
+      onError: {
+        '{$request.query.callbackUrl}/error': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'Error callback processed',
+              },
+            },
+          },
+          get: {
+            responses: {
+              '200': {
+                description: 'Get error status',
+              },
+            },
+          },
+        },
+      },
+    } satisfies NonNullable<OperationObject['callbacks']>
+
+    const wrapper = mount(Callbacks, {
+      props: {
+        path: '/subscribe',
+        callbacks: mockCallbacks,
+        eventBus: null,
+        options: {
+          expandAllParameters: true,
+          hideModels: false,
+          orderRequiredPropertiesFirst: false,
+          orderSchemaPropertiesBy: 'alpha',
+          expandAllSchemaProperties: false,
+          maxVisibleRequestBodyProperties: 12,
+          schemaKeyboardNav: false,
+        },
+      },
+    })
+
+    // Should render the callbacks title
+    expect(wrapper.text()).toContain('Callbacks')
+
+    // Should render 3 Callback components (onData POST, onError POST, onError GET)
+    const callbackComponents = wrapper.findAllComponents({ name: 'Callback' })
+    expect(callbackComponents).toHaveLength(3)
+
+    // Verify the first callback (onData POST)
+    expect(callbackComponents[0]?.props()).toMatchObject({
+      name: 'onData',
+      url: '{$request.query.callbackUrl}/data',
+      method: 'post',
+    })
+
+    // Verify the second callback (onError POST)
+    expect(callbackComponents[1]?.props()).toMatchObject({
+      name: 'onError',
+      url: '{$request.query.callbackUrl}/error',
+      method: 'post',
+    })
+
+    // Verify the third callback (onError GET)
+    expect(callbackComponents[2]?.props()).toMatchObject({
+      name: 'onError',
+      url: '{$request.query.callbackUrl}/error',
+      method: 'get',
+    })
+  })
+
+  describe('callback rows', () => {
+    /** One callback name over two urls, one of them with two methods. */
+    const oneNameManyRows = {
+      onData: {
+        '{$request.query.callbackUrl}/primary': {
+          post: { responses: { '200': { description: 'Primary' } } },
+          get: { responses: { '200': { description: 'Primary status' } } },
+        },
+        '{$request.query.callbackUrl}/backup': {
+          post: { responses: { '200': { description: 'Backup' } } },
+        },
+      },
+    } satisfies NonNullable<OperationObject['callbacks']>
+
+    const mountCallbacks = () =>
+      mount(Callbacks, {
+        props: {
+          path: '/subscribe',
+          breadcrumb: ['op'],
+          callbacks: oneNameManyRows,
+          expansion: createSchemaExpansionStore(),
+          eventBus: null,
+          options: {
+            expandAllParameters: true,
+            hideModels: false,
+            orderRequiredPropertiesFirst: false,
+            orderSchemaPropertiesBy: 'alpha' as const,
+            expandAllSchemaProperties: false,
+            maxVisibleRequestBodyProperties: 12,
+            schemaKeyboardNav: false,
+          },
+        },
+      })
+
+    it('renders each callback as a disclosure row', () => {
+      const wrapper = mountCallbacks()
+
+      expect(wrapper.findAll('.callback-item-trigger').length).toBe(3)
+    })
+
+    it('gives every callback of one name its own expansion state', async () => {
+      const wrapper = mountCallbacks()
+
+      const triggers = wrapper.findAll('.callback-item-trigger')
+      await triggers[0]!.trigger('click')
+
+      // A callback's identity is name AND url AND method: one name can carry
+      // several urls, and one url several methods. Drop either and opening one
+      // row opens its twin.
+      expect(triggers.map((trigger) => trigger.attributes('aria-expanded'))).toEqual(['true', 'false', 'false'])
+    })
+
+    it('opens the callback body without a rail', async () => {
+      const wrapper = mountCallbacks()
+
+      await wrapper.findAll('.callback-item-trigger')[0]!.trigger('click')
+
+      // What opens is the operation's own set of page-level sections, the same
+      // level the operation renders them at, and that level draws no rail. The
+      // schema rows inside still rail their own children.
+      const panel = wrapper.find('.callback-operation-panel')
+      expect(panel.exists()).toBe(true)
+      expect(panel.classes()).not.toContain('schema-rail-panel')
+      expect(panel.find('[data-rail-hit]').exists()).toBe(false)
+    })
+  })
+})

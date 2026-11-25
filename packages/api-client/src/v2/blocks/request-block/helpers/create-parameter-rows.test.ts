@@ -1,0 +1,849 @@
+import type { ExampleObject, ParameterObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { describe, expect, it } from 'vitest'
+
+import { createParameterRows } from './create-parameter-rows'
+
+describe('createParameterRows', () => {
+  it.each([true, false])('inherits a saved parent property override of %s', (disabled) => {
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: { type: 'object', properties: { user: { type: 'object', properties: { city: { type: 'string' } } } } },
+      examples: {
+        default: {
+          value: { user: { city: 'Paris' } },
+          'x-scalar-disabled-properties': { '[]': !disabled, '["user"]': disabled },
+        },
+      },
+    }
+    expect(
+      createParameterRows(parameter, 'default').map(({ isDisabled, isDisabledByDefault }) => ({
+        isDisabled,
+        isDisabledByDefault,
+      })),
+    ).toStrictEqual([{ isDisabled: disabled, isDisabledByDefault: false }])
+  })
+  it('applies property overrides independently and leaves untouched empty fields ready for typing', () => {
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: {
+          email: { type: 'string' },
+          user: { type: 'object', properties: { city: { type: 'string' }, country: { type: 'string' } } },
+        },
+      },
+      examples: {
+        default: {
+          value: { email: 'saved', user: { city: 'Paris' } },
+          'x-scalar-disabled-properties': { '[]': true, '["user","city"]': false, '["email"]': true },
+        },
+      },
+    }
+    expect(
+      createParameterRows(parameter, 'default').map(({ name, value, isDisabled, isDisabledByDefault }) => ({
+        name,
+        value,
+        isDisabled,
+        isDisabledByDefault,
+      })),
+    ).toStrictEqual([
+      { name: 'filters[email]', value: 'saved', isDisabled: true, isDisabledByDefault: false },
+      { name: 'filters[user][city]', value: 'Paris', isDisabled: false, isDisabledByDefault: false },
+      { name: 'filters[user][country]', value: '', isDisabled: true, isDisabledByDefault: true },
+    ])
+  })
+  it.each(['query', 'header', 'cookie'] as const)(
+    'displays optional %s enum suggestions without enabling them',
+    (location) => {
+      const parameter: ParameterObject = {
+        name: 'mediaType',
+        in: location,
+        schema: { type: 'string', enum: ['None', 'Image'] },
+      }
+      expect(
+        createParameterRows(parameter, 'default').map(({ value, isDisabled, isDisabledByDefault }) => ({
+          value,
+          isDisabled,
+          isDisabledByDefault,
+        })),
+      ).toStrictEqual([{ value: 'None', isDisabled: true, isDisabledByDefault: true }])
+    },
+  )
+
+  it('keeps nested object enum suggestions disabled', () => {
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: { media: { type: 'object', properties: { type: { type: 'string', enum: ['None', 'Image'] } } } },
+      },
+    }
+    expect(
+      createParameterRows(parameter, 'default').map(({ name, value, isDisabled }) => ({ name, value, isDisabled })),
+    ).toStrictEqual([{ name: 'filter[media][type]', value: 'None', isDisabled: true }])
+  })
+
+  it.each(['deepObject', 'form'] as const)('populates %s rows from property examples', (style) => {
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style,
+      explode: true,
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { active: { type: 'string', pattern: '^eq\\.(true|false)$', example: 'eq.true' } },
+      },
+    }
+    expect(
+      createParameterRows(parameter, 'default').map(({ name, value, isDisabled }) => ({ name, value, isDisabled })),
+    ).toStrictEqual([
+      { name: style === 'deepObject' ? 'filter[active]' : 'active', value: 'eq.true', isDisabled: false },
+    ])
+  })
+
+  it.each([
+    { example: { dataValue: 'hello' }, value: 'hello' },
+    { example: { dataValue: false }, value: 'false' },
+    { example: { dataValue: 0 }, value: '0' },
+    { example: { serializedValue: 'term=a%20b' }, value: 'term=a%20b' },
+  ])('displays and enables authored parameter examples: $value', ({ example, value }) => {
+    const rows = createParameterRows(
+      { name: 'term', in: 'query', schema: { type: 'string' }, examples: { default: example } },
+      'default',
+    )
+    expect(rows.map(({ value, isDisabled }) => ({ value, isDisabled }))).toStrictEqual([{ value, isDisabled: false }])
+  })
+
+  it('retains the whole-query value while disabled so it can be re-enabled', () => {
+    const parameter: ParameterObject = {
+      name: 'metadata',
+      in: 'querystring',
+      content: { 'application/x-www-form-urlencoded': {} },
+      examples: { default: { serializedValue: 'q=a+%2B+b', 'x-disabled': true } },
+    }
+    expect(
+      createParameterRows(parameter, 'default').map(({ value, isDisabled }) => ({ value, isDisabled })),
+    ).toStrictEqual([{ value: 'q=a+%2B+b', isDisabled: true }])
+  })
+
+  it('shows a content-based whole query as one editable serialized value', () => {
+    const parameter: ParameterObject = {
+      name: 'metadata',
+      in: 'querystring',
+      required: true,
+      content: { 'application/x-www-form-urlencoded': { example: { foo: 'a + b', bar: true } } },
+    }
+    const rows = createParameterRows(parameter, 'default')
+    expect(
+      rows.map(({ name, value, isDisabled, originalParameter }) => ({ name, value, isDisabled, originalParameter })),
+    ).toStrictEqual([
+      { name: 'metadata', value: 'foo=a+%2B+b&bar=true', isDisabled: false, originalParameter: parameter },
+    ])
+  })
+
+  it('does not offer decoded schema suggestions in the raw whole-query editor', () => {
+    const rows = createParameterRows(
+      {
+        name: 'search',
+        in: 'querystring',
+        required: true,
+        content: { 'application/json': { schema: { type: 'string', enum: ['cat', 'dog'], examples: ['dog'] } } },
+        examples: { default: { dataValue: 'cat' } },
+      },
+      'default',
+    )
+    expect(rows[0]?.value).toBe('%22cat%22')
+    expect(rows[0]?.schema).toBeUndefined()
+  })
+
+  it('expands default form query object parameters into property rows', () => {
+    const pageSchema = {
+      type: 'integer',
+      format: 'int32',
+      description: 'Page number',
+    } as const
+    const sizeSchema = {
+      type: 'integer',
+      format: 'int32',
+      description: 'Page size',
+    } as const
+    const sortSchema = {
+      type: 'array',
+      items: { type: 'string' },
+    } as const
+    const parameter: ParameterObject = {
+      name: 'pageable',
+      in: 'query',
+      required: false,
+      schema: {
+        type: 'object',
+        required: ['page'],
+        properties: {
+          page: pageSchema,
+          size: sizeSchema,
+          sort: sortSchema,
+        },
+      },
+      examples: {
+        default: {
+          value: {
+            page: 2,
+            sort: ['username,asc'],
+          },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    expect(createParameterRows(parameter, 'default')).toStrictEqual([
+      {
+        name: 'page',
+        value: '2',
+        description: 'Page number',
+        schema: pageSchema,
+        isRequired: true,
+        isDisabled: false,
+        originalParameter: parameter,
+        sourceParameterValuePath: ['page'],
+      },
+      {
+        name: 'size',
+        value: '',
+        description: 'Page size',
+        schema: sizeSchema,
+        isRequired: false,
+        isDisabled: false,
+        originalParameter: parameter,
+        sourceParameterValuePath: ['size'],
+      },
+      {
+        name: 'sort',
+        value: 'username,asc',
+        description: undefined,
+        schema: sortSchema,
+        isRequired: false,
+        isDisabled: false,
+        originalParameter: parameter,
+        sourceParameterValuePath: ['sort'],
+      },
+    ])
+  })
+
+  it('expands deepObject query parameters into bracket rows', () => {
+    const firstNameSchema = {
+      type: 'string',
+      description: 'First name',
+    } as const
+    const roleSchema = {
+      type: 'string',
+    } as const
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'object',
+            properties: {
+              first: firstNameSchema,
+            },
+          },
+          role: roleSchema,
+        },
+      },
+      examples: {
+        default: {
+          value: {
+            name: {
+              first: 'Alex',
+            },
+            role: 'admin',
+          },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    expect(createParameterRows(parameter, 'default')).toStrictEqual([
+      {
+        name: 'filter[name][first]',
+        value: 'Alex',
+        description: 'First name',
+        schema: firstNameSchema,
+        isRequired: false,
+        isDisabled: false,
+        originalParameter: parameter,
+        sourceParameterValuePath: ['name', 'first'],
+      },
+      {
+        name: 'filter[role]',
+        value: 'admin',
+        description: undefined,
+        schema: roleSchema,
+        isRequired: false,
+        isDisabled: false,
+        originalParameter: parameter,
+        sourceParameterValuePath: ['role'],
+      },
+    ])
+  })
+
+  it('names deepObject array leaves with the trailing bracket convention', () => {
+    // Regression test for https://github.com/scalar/scalar/issues/9492
+    const inSchema = {
+      type: 'array',
+      items: { type: 'integer' },
+    } as const
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: {
+          applicationInstanceId: {
+            type: 'object',
+            properties: {
+              in: inSchema,
+            },
+          },
+        },
+      },
+      examples: {
+        default: {
+          value: { applicationInstanceId: { in: [1, 2] } },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    expect(createParameterRows(parameter, 'default')).toStrictEqual([
+      {
+        name: 'filters[applicationInstanceId][in][]',
+        value: '1,2',
+        description: undefined,
+        schema: inSchema,
+        isRequired: false,
+        isDisabled: false,
+        originalParameter: parameter,
+        // The path stays bracket-free so edits reassemble the value object correctly.
+        sourceParameterValuePath: ['applicationInstanceId', 'in'],
+      },
+    ])
+  })
+
+  it('names an unmapped deepObject array leaf with the trailing bracket convention', () => {
+    // A value key the schema does not describe (e.g. after a rename) still serializes as an array,
+    // so the row must keep the `[]` marker even though it carries no schema.
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: {
+          known: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          value: { notIn: [1, 2] },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default')
+    const unmapped = rows.find((row) => row.sourceParameterValuePath?.[0] === 'notIn')
+
+    expect(unmapped).toMatchObject({
+      name: 'filters[notIn][]',
+      value: '1,2',
+      schema: undefined,
+      sourceParameterValuePath: ['notIn'],
+    })
+  })
+
+  it('round-trips edited expanded rows back through createParameterRows', () => {
+    const parameter: ParameterObject = {
+      name: 'pageable',
+      in: 'query',
+      required: false,
+      schema: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', format: 'int32' },
+          size: { type: 'integer', format: 'int32' },
+        },
+      },
+      examples: {
+        default: {
+          value: { page: 1 },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const initialRows = createParameterRows(parameter, 'default')
+    expect(initialRows[0]?.value).toBe('1')
+    expect(initialRows[1]?.value).toBe('')
+
+    // Simulate the write-back: the upsert handler would set the example value
+    // to the reassembled object (e.g. { page: '1', size: '20' }).
+    const example = (parameter.examples as Record<string, ExampleObject>)['default']!
+    example.value = { page: '1', size: '20' }
+
+    const updatedRows = createParameterRows(parameter, 'default')
+    expect(updatedRows[0]?.value).toBe('1')
+    expect(updatedRows[1]?.value).toBe('20')
+  })
+
+  it('surfaces a renamed form property as its own row', () => {
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          // The user renamed "status" to "state", so the value carries a key the schema does not describe.
+          value: { state: 'active' },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default')
+
+    expect(rows.map((row) => ({ name: row.name, value: row.value, path: row.sourceParameterValuePath }))).toStrictEqual(
+      [
+        { name: 'status', value: '', path: ['status'] },
+        { name: 'state', value: 'active', path: ['state'] },
+      ],
+    )
+  })
+
+  it('surfaces a renamed deepObject property with bracket notation', () => {
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: {
+          role: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          value: { user: { role: 'admin' } },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default')
+
+    expect(rows.map((row) => ({ name: row.name, value: row.value, path: row.sourceParameterValuePath }))).toStrictEqual(
+      [
+        { name: 'filter[role]', value: '', path: ['role'] },
+        { name: 'filter[user][role]', value: 'admin', path: ['user', 'role'] },
+      ],
+    )
+  })
+
+  it('keeps a renamed form property in its original slot via renamedValuePaths', () => {
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string' },
+          category: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          // "status" was renamed to "state", so the value carries the new key in the first slot.
+          value: { state: 'active', category: 'books' },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default', {
+      renamedValuePaths: [{ from: ['status'], to: ['state'] }],
+    })
+
+    // The renamed row stays where "status" was instead of being appended after "category".
+    expect(rows.map((row) => ({ name: row.name, value: row.value, path: row.sourceParameterValuePath }))).toStrictEqual(
+      [
+        { name: 'state', value: 'active', path: ['state'] },
+        { name: 'category', value: 'books', path: ['category'] },
+      ],
+    )
+  })
+
+  it('keeps a renamed deepObject property in its original slot via renamedValuePaths', () => {
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: {
+          role: { type: 'string' },
+          team: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          value: { user: { role: 'admin' }, team: 'core' },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default', {
+      renamedValuePaths: [{ from: ['role'], to: ['user', 'role'] }],
+    })
+
+    expect(rows.map((row) => ({ name: row.name, value: row.value, path: row.sourceParameterValuePath }))).toStrictEqual(
+      [
+        { name: 'filter[user][role]', value: 'admin', path: ['user', 'role'] },
+        { name: 'filter[team]', value: 'core', path: ['team'] },
+      ],
+    )
+  })
+
+  it('does not duplicate the old key while the debounced value move is pending', () => {
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string' },
+          category: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          // The rename is recorded immediately, but the value move is debounced, so the value still
+          // carries the old "status" key for a moment.
+          value: { status: 'active', category: 'books' },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default', {
+      renamedValuePaths: [{ from: ['status'], to: ['state'] }],
+    })
+
+    // Only one row for the renamed property, showing the value from the old path as a fallback.
+    expect(rows.map((row) => ({ name: row.name, value: row.value, path: row.sourceParameterValuePath }))).toStrictEqual(
+      [
+        { name: 'state', value: 'active', path: ['state'] },
+        { name: 'category', value: 'books', path: ['category'] },
+      ],
+    )
+  })
+
+  it('does not duplicate a row when a property is renamed onto another schema property', () => {
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string' },
+          category: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          // "status" was renamed to the existing "category" property.
+          value: { category: 'active' },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default', {
+      renamedValuePaths: [{ from: ['status'], to: ['category'] }],
+    })
+
+    // Only the renamed row remains in the "status" slot; the schema row for "category" is suppressed
+    // so the same value path is not rendered twice.
+    expect(rows.map((row) => ({ name: row.name, value: row.value, path: row.sourceParameterValuePath }))).toStrictEqual(
+      [{ name: 'category', value: 'active', path: ['category'] }],
+    )
+  })
+
+  it('does not duplicate a deepObject row when a property is renamed onto another schema property', () => {
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style: 'deepObject',
+      explode: true,
+      schema: {
+        type: 'object',
+        properties: {
+          role: { type: 'string' },
+          team: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          // "role" was renamed onto the existing "team" property.
+          value: { team: 'admin' },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default', {
+      renamedValuePaths: [{ from: ['role'], to: ['team'] }],
+    })
+
+    expect(rows.map((row) => ({ name: row.name, value: row.value, path: row.sourceParameterValuePath }))).toStrictEqual(
+      [{ name: 'filter[team]', value: 'admin', path: ['team'] }],
+    )
+  })
+
+  it('hides a renamed row once its new path is also deleted', () => {
+    const parameter: ParameterObject = {
+      name: 'filters',
+      in: 'query',
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string' },
+          category: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          // Deleting the renamed row removes its value, so only "category" remains.
+          value: { category: 'books' },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    const rows = createParameterRows(parameter, 'default', {
+      renamedValuePaths: [{ from: ['status'], to: ['state'] }],
+      hiddenValuePaths: [['state']],
+    })
+
+    expect(rows.map((row) => row.name)).toStrictEqual(['category'])
+  })
+
+  it('omits expanded rows hidden by path', () => {
+    const parameter: ParameterObject = {
+      name: 'pageable',
+      in: 'query',
+      schema: {
+        type: 'object',
+        required: ['page'],
+        properties: {
+          page: { type: 'integer', format: 'int32' },
+          size: { type: 'integer', format: 'int32' },
+        },
+      },
+      examples: {
+        default: {
+          value: {},
+          'x-disabled': false,
+        },
+      },
+    }
+
+    expect(
+      createParameterRows(parameter, 'default', {
+        hiddenValuePaths: [['page']],
+      }),
+    ).toStrictEqual([
+      {
+        name: 'size',
+        value: '',
+        description: undefined,
+        schema: { type: 'integer', format: 'int32' },
+        isRequired: false,
+        isDisabled: false,
+        originalParameter: parameter,
+        sourceParameterValuePath: ['size'],
+      },
+    ])
+  })
+
+  it('keeps unsupported object serialization as one row', () => {
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style: 'form',
+      explode: false,
+      schema: {
+        type: 'object',
+        properties: {
+          role: { type: 'string' },
+        },
+      },
+      examples: {
+        default: {
+          value: {
+            role: 'admin',
+          },
+          'x-disabled': false,
+        },
+      },
+    }
+
+    expect(createParameterRows(parameter, 'default')).toStrictEqual([
+      {
+        name: 'filter',
+        value: '{"role":"admin"}',
+        description: undefined,
+        schema: parameter.schema,
+        isRequired: undefined,
+        isDisabled: false,
+        originalParameter: parameter,
+        sourceParameterValuePath: undefined,
+      },
+    ])
+  })
+
+  it('marks optional query, header, and cookie parameters disabled by default', () => {
+    const parameters: ParameterObject[] = [
+      { name: 'query', in: 'query', schema: { type: 'string' } },
+      { name: 'header', in: 'header', schema: { type: 'string' } },
+      { name: 'cookie', in: 'cookie', schema: { type: 'string' } },
+    ]
+
+    expect(
+      parameters.map((parameter) => {
+        const [row] = createParameterRows(parameter, 'default')
+
+        return {
+          name: row?.name,
+          isDisabled: row?.isDisabled,
+          isDisabledByDefault: row?.isDisabledByDefault,
+        }
+      }),
+    ).toStrictEqual([
+      { name: 'query', isDisabled: true, isDisabledByDefault: true },
+      { name: 'header', isDisabled: true, isDisabledByDefault: true },
+      { name: 'cookie', isDisabled: true, isDisabledByDefault: true },
+    ])
+  })
+
+  it('auto-enables an optional header with a pre-populated value (x-scenario-id bug)', () => {
+    const parameter: ParameterObject = {
+      name: 'x-scenario-id',
+      in: 'header',
+      required: false,
+      schema: { type: 'string', enum: ['200_createEnrollment_success', '400_bad_request'] },
+      examples: {
+        default: {
+          value: '200_createEnrollment_success',
+          // no x-disabled set — would normally start unchecked
+        },
+      },
+    }
+
+    const [row] = createParameterRows(parameter, 'default')
+
+    expect({
+      isDisabled: row?.isDisabled,
+      isDisabledByDefault: row?.isDisabledByDefault,
+    }).toStrictEqual({ isDisabled: false, isDisabledByDefault: true })
+  })
+
+  it('does not mark an explicitly disabled parameter as disabled by default', () => {
+    const parameter: ParameterObject = {
+      name: 'header',
+      in: 'header',
+      schema: { type: 'string' },
+      examples: {
+        default: {
+          value: 'scenario_a',
+          'x-disabled': true,
+        },
+      },
+    }
+
+    const [row] = createParameterRows(parameter, 'default')
+
+    expect({
+      isDisabled: row?.isDisabled,
+      isDisabledByDefault: row?.isDisabledByDefault,
+    }).toStrictEqual({ isDisabled: true, isDisabledByDefault: undefined })
+  })
+  it.each(['query', 'header', 'cookie'] as const)(
+    'preserves empty and falsy values for optional %s rows',
+    (location) => {
+      for (const value of [undefined, null, '', 0, false]) {
+        const parameter: ParameterObject = {
+          name: 'value',
+          in: location,
+          schema: { type: 'string' },
+          examples: { default: { value } },
+        }
+        const [row] = createParameterRows(parameter, 'default')
+        expect({
+          value: row?.value,
+          isDisabled: row?.isDisabled,
+          isDisabledByDefault: row?.isDisabledByDefault,
+        }).toStrictEqual({
+          value: value === undefined || value === null ? '' : String(value),
+          isDisabled: value !== 0 && value !== false,
+          isDisabledByDefault: true,
+        })
+      }
+    },
+  )
+
+  it.each(['form', 'deepObject'] as const)('enables populated expanded %s query parameters', (style) => {
+    const parameter: ParameterObject = {
+      name: 'filter',
+      in: 'query',
+      style,
+      explode: true,
+      schema: { type: 'object', properties: { count: { type: 'integer' }, active: { type: 'boolean' } } },
+      examples: { default: { value: { count: 0, active: false } } },
+    }
+    expect(
+      createParameterRows(parameter, 'default').map((row) => ({
+        value: row.value,
+        isDisabled: row.isDisabled,
+        isDisabledByDefault: row.isDisabledByDefault,
+      })),
+    ).toStrictEqual([
+      { value: '0', isDisabled: false, isDisabledByDefault: true },
+      { value: 'false', isDisabled: false, isDisabledByDefault: true },
+    ])
+  })
+})

@@ -1,13 +1,16 @@
-import { WorkspaceDocumentSchema, WorkspaceMetaSchema } from '@/schemas/workspace'
-import { ConfigSchema } from '@/schemas/workspace-specification/config'
-import { Type, type Static } from '@sinclair/typebox'
+import type { DocumentAuth } from '@/entities/auth/schema'
+import type { DocumentHistory } from '@/entities/history/schema'
+import type { RequestBodyBaselines } from '@/helpers/snapshot-request-bodies'
+import type { WorkspaceDocument, WorkspaceExtensions, WorkspaceMeta } from '@/schemas/workspace'
 
-export const InMemoryWorkspaceSchema = Type.Object({
-  meta: WorkspaceMetaSchema,
-  documentConfigs: Type.Record(Type.String(), ConfigSchema),
-  documents: Type.Record(Type.String(), WorkspaceDocumentSchema),
-  originalDocuments: Type.Record(Type.String(), WorkspaceDocumentSchema),
-  intermediateDocuments: Type.Record(Type.String(), WorkspaceDocumentSchema),
-})
-
-export type InMemoryWorkspace = Static<typeof InMemoryWorkspaceSchema>
+export type InMemoryWorkspace = {
+  meta: WorkspaceMeta & WorkspaceExtensions
+  documents: Record<string, WorkspaceDocument>
+  originalDocuments: Record<string, Record<string, unknown>>
+  intermediateDocuments: Record<string, Record<string, unknown>>
+  overrides: Record<string, any>
+  /** Optional for compatibility with workspace exports created before body reset was available. */
+  requestBodyBaselines?: Record<string, RequestBodyBaselines>
+  history: DocumentHistory
+  auth: DocumentAuth
+}

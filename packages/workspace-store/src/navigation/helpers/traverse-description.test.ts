@@ -1,33 +1,116 @@
 import { describe, expect, it } from 'vitest'
+
 import { traverseDescription } from './traverse-description'
 
 describe('traverseDescription', () => {
   const getHeadingId = (heading: { value: string }) => `heading-${heading.value.toLowerCase().replace(/\s+/g, '-')}`
 
-  it('should return empty array for undefined description', () => {
-    const titlesMap = new Map<string, string>()
-    const result = traverseDescription(undefined, titlesMap, getHeadingId)
-    expect(result).toEqual([])
-    expect(titlesMap.size).toBe(0)
+  it('returns default introduction for undefined description', () => {
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description: undefined },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
+    expect(result).toEqual([{ id: 'heading-introduction', title: 'Introduction', type: 'text' }])
   })
 
-  it('should return empty array for empty description', () => {
-    const titlesMap = new Map<string, string>()
-    const result = traverseDescription('', titlesMap, getHeadingId)
-    expect(result).toEqual([])
-    expect(titlesMap.size).toBe(0)
+  it('returns default introduction for empty description', () => {
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description: '' },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
+    expect(result).toEqual([{ id: 'heading-introduction', title: 'Introduction', type: 'text' }])
   })
 
   it('should return an introduction entry for description with no headings', () => {
-    const titlesMap = new Map<string, string>()
     const description = 'This is a paragraph without any headings.'
-    const result = traverseDescription(description, titlesMap, getHeadingId)
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
     expect(result).toEqual([{ id: 'heading-introduction', title: 'Introduction', type: 'text' }])
-    expect(titlesMap.size).toBe(1)
+  })
+
+  it('should nest all headings under introduction when description starts with text', () => {
+    const description = `
+This is the introduction paragraph.
+
+# Main Section
+Some content
+## Subsection 1
+Details for subsection
+# Another Section
+More content
+## Another Subsection
+Final details
+    `
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual({
+      id: 'heading-introduction',
+      title: 'Introduction',
+      type: 'text',
+      children: [
+        {
+          id: 'heading-main-section',
+          title: 'Main Section',
+          type: 'text',
+          children: [
+            {
+              id: 'heading-subsection-1',
+              title: 'Subsection 1',
+              type: 'text',
+            },
+          ],
+        },
+        {
+          id: 'heading-another-section',
+          title: 'Another Section',
+          type: 'text',
+          children: [
+            {
+              id: 'heading-another-subsection',
+              title: 'Another Subsection',
+              type: 'text',
+            },
+          ],
+        },
+      ],
+    })
   })
 
   it('should create single level entries for h1 headings', () => {
-    const titlesMap = new Map<string, string>()
     const description = `
 # First Heading
 Some content here
@@ -36,7 +119,17 @@ More content
 # Third Heading
 Final content
     `
-    const result = traverseDescription(description, titlesMap, getHeadingId)
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
 
     expect(result).toHaveLength(3)
     expect(result[0]).toEqual({
@@ -57,12 +150,9 @@ Final content
       children: [],
       type: 'text',
     })
-    expect(titlesMap.size).toBe(3)
-    expect(titlesMap.get('heading-first-heading')).toBe('First Heading')
   })
 
   it('should create nested entries for h1 and h2 headings', () => {
-    const titlesMap = new Map<string, string>()
     const description = `
 # Main Section
 Some content
@@ -75,7 +165,17 @@ More content
 ## Another Subsection
 Final content
     `
-    const result = traverseDescription(description, titlesMap, getHeadingId)
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
 
     expect(result).toHaveLength(2)
     expect(result[0]).toEqual({
@@ -107,11 +207,9 @@ Final content
         },
       ],
     })
-    expect(titlesMap.size).toBe(5)
   })
 
   it('should handle h2 and h3 headings when they are the lowest levels', () => {
-    const titlesMap = new Map<string, string>()
     const description = `
 ## Section 1
 Content
@@ -124,7 +222,17 @@ Content
 ### Subsection 2.1
 Content
     `
-    const result = traverseDescription(description, titlesMap, getHeadingId)
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
 
     expect(result).toHaveLength(2)
     expect(result[0]).toEqual({
@@ -156,11 +264,9 @@ Content
         },
       ],
     })
-    expect(titlesMap.size).toBe(5)
   })
 
   it('should skip headings that are not at the lowest two levels', () => {
-    const titlesMap = new Map<string, string>()
     const description = `
 # Level 1
 ## Level 2
@@ -168,7 +274,17 @@ Content
 #### Level 4
 ##### Level 5
     `
-    const result = traverseDescription(description, titlesMap, getHeadingId)
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
 
     // Should only include Level 1 and Level 2
     expect(result).toHaveLength(1)
@@ -184,16 +300,24 @@ Content
         },
       ],
     })
-    expect(titlesMap.size).toBe(2)
   })
 
   it('should handle special characters in headings', () => {
-    const titlesMap = new Map<string, string>()
     const description = `
 # Section with @#$%^&*() chars
 ## Sub-section with !@#$%^&*() chars
     `
-    const result = traverseDescription(description, titlesMap, getHeadingId)
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
 
     expect(result).toHaveLength(1)
     expect(result[0]).toEqual({
@@ -208,6 +332,49 @@ Content
       ],
       type: 'text',
     })
-    expect(titlesMap.size).toBe(2)
+  })
+
+  it('should include setext headings in description navigation', () => {
+    const description = `
+Main Section
+============
+Content
+Subsection
+----------
+More content
+    `
+    const result = traverseDescription({
+      info: { title: 'Openapi Document', version: '1.0.0', description },
+      generateId: (props) => {
+        if (props.type === 'text') {
+          return getHeadingId({ value: props.value })
+        }
+
+        return 'unknown-id'
+      },
+      parentId: 'parent-1',
+    })
+
+    expect(result).toEqual([
+      {
+        id: 'heading-introduction',
+        title: 'Introduction',
+        type: 'text',
+        children: [
+          {
+            id: 'heading-main-section',
+            title: 'Main Section',
+            type: 'text',
+            children: [
+              {
+                id: 'heading-subsection',
+                title: 'Subsection',
+                type: 'text',
+              },
+            ],
+          },
+        ],
+      },
+    ])
   })
 })

@@ -1,5 +1,165 @@
 # @scalar/openapi-types
 
+## 0.9.10
+
+### Patch Changes
+
+- [#11004](https://github.com/scalar/scalar/pull/11004): Support TypeScript 6 builds and compiler API consumers while preserving runtime output and public handler types. Keep Nuxt build tooling on its supported TypeScript 5 compiler.
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+
+## 0.9.9
+
+### Patch Changes
+
+- [#10921](https://github.com/scalar/scalar/pull/10921): Isolate declaration compatibility tests from ambient workspace types.
+
+## 0.9.8
+
+### Patch Changes
+
+- [#10529](https://github.com/scalar/scalar/pull/10529): Align import and export ordering with the Biome checks.
+- [#10520](https://github.com/scalar/scalar/pull/10520): Sort imports and exports to satisfy the Biome checks.
+- [#10526](https://github.com/scalar/scalar/pull/10526): Align import and export ordering with the repository CI checks.
+
+## 0.9.7
+
+### Patch Changes
+
+- [#10273](https://github.com/scalar/scalar/pull/10273): Accept valid OpenAPI 3.1 and 3.2 schemas with JSON Schema core keywords, references with sibling keywords, custom formats, and keywords independent of the declared type.
+
+## 0.9.6
+
+### Patch Changes
+
+- [#9886](https://github.com/scalar/scalar/pull/9886): Fix empty `$dynamicRef` array items in the Models section. A model that binds a
+  generic template's item type through a `$ref` sibling `$defs` (a named
+  `Paginated<User>`) lost that binding while resolving the schema for display, so
+  the item rendered empty. The model now keeps the binding and shows the bound type.
+
+## 0.9.5
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.9.4
+
+### Patch Changes
+
+- [#9733](https://github.com/scalar/scalar/pull/9733): fix: add explicit `.js` file extensions to relative imports in the published `2.0`, `3.0`, `3.1` and `3.2` type declarations, so they resolve with `moduleResolution: nodenext` and `node16`
+
+## 0.9.3
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.9.2
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.9.1
+
+### Patch Changes
+
+- [#9378](https://github.com/scalar/scalar/pull/9378): fix: allow boolean schemas in OpenAPI 3.1 types
+
+  OpenAPI 3.1 schemas are JSON Schema, where `true` and `false` are valid schemas (`true` allows any instance, `false` allows none). The `SchemaObject` type now accepts booleans anywhere a schema is expected, matching the existing 3.2 behavior.
+
+## 0.9.0
+
+### Minor Changes
+
+- [#9261](https://github.com/scalar/scalar/pull/9261): Add schema discriminator helpers (`isObjectSchema`, `isArraySchema`, `isStringSchema`, `isNumberSchema`, `isIntegerSchema`, `isNumericSchema`, `isBooleanSchema`, `isNullSchema`, `isMultiTypeSchema`, `isUntypedSchema`, `isBooleanJsonSchema`) for narrowing `SchemaObject` unions across OpenAPI 2.0, 3.0, 3.1, and 3.2.
+
+  Also tightens `MultiTypeObject` in the strict 3.1 and 3.2 schema types so that `type` is a required `PrimitiveSchemaType[]` (the single-type case is already covered by the dedicated variants), and removes `MultiTypeObject` from the strict 3.0 schema since OpenAPI 3.0 does not support multi-type schemas.
+
+### Patch Changes
+
+- [#9244](https://github.com/scalar/scalar/pull/9244): Allow OpenAPI 3.2 boolean schemas and media type schema references.
+
+## 0.8.0
+
+### Minor Changes
+
+- [#8942](https://github.com/scalar/scalar/pull/8942): feat: export new stricter openapi types
+
+### Patch Changes
+
+- [#8949](https://github.com/scalar/scalar/pull/8949): fix 3.0 parameter object typing for `in` and `style` to use strict literal unions.
+
+## 0.7.0
+
+### Minor Changes
+
+- [#8641](https://github.com/scalar/scalar/pull/8641): remove experimental zod schema entrypoints from openapi-types
+
+### Patch Changes
+
+- [#8664](https://github.com/scalar/scalar/pull/8664): refactor: replace wildcard export barrels with explicit named re-exports
+
+## 0.6.1
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.6.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.5.4
+
+### Patch Changes
+
+- [#8275](https://github.com/scalar/scalar/pull/8275): fix(openapi-types): make the `$ref` property in the `ReferenceObject` type required
+
+## 0.5.3
+
+### Patch Changes
+
+- [#7506](https://github.com/scalar/scalar/pull/7506) [`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a) Thanks [@marcalexiei](https://github.com/marcalexiei)! - fix: use caret version for `zod`
+
+## 0.5.2
+
+### Patch Changes
+
+- [#7453](https://github.com/scalar/scalar/pull/7453) [`a164d76`](https://github.com/scalar/scalar/commit/a164d76f21437b3a35210d62a996b6c9d483e5a4) Thanks [@hanspagel](https://github.com/hanspagel)! - fix: exclusiveMinimum and exclusiveMaximum allow booleans
+
+## 0.5.1
+
+### Patch Changes
+
+- [#7116](https://github.com/scalar/scalar/pull/7116) [`2239843`](https://github.com/scalar/scalar/commit/2239843150ed16d1ca35b0b1f8e90cd3e35be7ce) Thanks [@baywet](https://github.com/baywet)! - docs adds a mention that OpenAPI 3.2.0 is now supported
+
+## 0.5.0
+
+### Minor Changes
+
+- f69e7cc: adds support for OpenAPI 3.2.0 definitions
+
+## 0.4.1
+
+### Patch Changes
+
+- 15c4240: feat: adds vesion 3.1.2 to the type definitions
+
+## 0.4.0
+
+### Minor Changes
+
+- 008a0f3: feat: migrate to Zod 4
+
+## 0.3.7
+
+### Patch Changes
+
+- ccf875a: feat: support x-scalar-credentials-location extension
+
 ## 0.3.6
 
 ### Patch Changes

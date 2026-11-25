@@ -1,0 +1,887 @@
+<script lang="ts">
+/**
+ * OperationBlock
+ *
+ * Orchestrates the operation view by wiring together the Header, OperationBlock,
+ * and ResponseBlock. Forwards user interactions to the workspace event bus and
+ * passes through configuration such as auth, servers, plugins, and environment.
+ * This component keeps the Operation page lean by centralizing event emission
+ * and prop wiring between the blocks.
+ *
+ * Notable behavior:
+ * - Uses operation['x-scalar-method'] and operation['x-scalar-path'] to provide
+ *   draft overrides for the UI when present.
+ */
+export default {
+  name: 'OperationBlock',
+}
+
+export type OperationBlockProps = {
+  /** Keep execution and editing unavailable until the selected payload is ready. */
+  externalExamplesPending?: boolean
+  externalExamplesFailed?: boolean
+  /** Event bus */
+  eventBus: WorkspaceEventBus
+  /** Application version */
+  appVersion: string
+  /** Openapi document */
+  document: OpenApiDocument
+  /** Openapi document slug */
+  documentSlug: string
+  /** Workspace cookies */
+  workspaceCookies: XScalarCookie[]
+  /** Document cookies */
+  documentCookies: XScalarCookie[]
+  /** Current request path */
+  path: string
+  /** Current request method */
+  method: string
+  /** Whether `path` identifies an OpenAPI webhook. */
+  isWebhook?: boolean
+  /** HTTP clients */
+  httpClients: AvailableClients
+  /** The history for the operation */
+  history?: HistoryEntry[]
+  /** Client layout */
+  layout: ClientLayout
+  /** Currently selected server */
+  server: ServerObject | null
+  /** Currently selected client */
+  selectedClient: WorkspaceStore['workspace']['x-scalar-default-client']
+  /** Server list available for operation/document */
+  servers: ServerObject[]
+  /** Meta information for the server */
+  serverMeta: ServerMeta
+  /** Hides the client button on the header */
+  hideClientButton?: boolean
+  /** Client integration  */
+  integration?: string | null
+  /** Openapi document url for `modal` mode to open the client app */
+  documentUrl?: string
+  /** Client source */
+  source?: 'gitbook' | 'api-reference'
+  /** Operation object */
+  operation: OperationObject
+  /** Operation before downloaded examples are overlaid, for parameter edit targets. */
+  sourceOperation?: OperationObject
+  /** Currently selected example key for the current operation */
+  exampleKey: string
+  /** Meta information for the auth update */
+  authMeta: AuthMeta
+  /** Document defined security schemes */
+  securitySchemes: MergedSecuritySchemes
+  /** Client plugins */
+  plugins: ClientPlugin[]
+  /** Environment list */
+  environments?: string[]
+  /** Currently selected environment */
+  activeEnvironment?: string
+  /** For environment variables in the inputs */
+  environment: XScalarEnvironment
+  /** The proxy URL for sending requests */
+  proxyUrl: string
+  /** Currently selected security */
+  selectedSecurity: SelectedSecurity
+  /** Currently selected security schemes */
+  selectedSecuritySchemes: SecuritySchemeObjectSecret[]
+  /** Security requirements */
+  securityRequirements: OpenApiDocument['security']
+  /** Default headers */
+  defaultHeaders: Record<string, string>
+  /** Selected anyOf/oneOf request-body variants keyed by schema path */
+  requestBodyCompositionSelection?: Record<string, number>
+  /** Subset of config options for the modal */
+  options?: ModalProps['options']
+}
+</script>
+<script setup lang="ts">
+import { generateClientOptions } from '@scalar/blocks/code-example'
+import { ScalarButton } from '@scalar/components/button'
+import { ERRORS } from '@scalar/helpers/errors/normalize-error'
+import { isElectron } from '@scalar/helpers/general/is-electron'
+import { isAllowedOAuthUrl } from '@scalar/helpers/url/is-allowed-oauth-url'
+import { buildSafeBodyRequest } from '@scalar/helpers/http/can-method-have-body'
+import { isForbiddenHttpMethod } from '@scalar/helpers/http/is-forbidden-http-method'
+import {
+  executeHook,
+  executeResponseHook,
+  type ClientPlugin,
+} from '@scalar/oas-utils/helpers'
+import {
+  AVAILABLE_CLIENTS,
+  type AvailableClients,
+} from '@scalar/types/snippetz'
+import { useClipboard } from '@scalar/use-hooks/useClipboard'
+import { useToasts } from '@scalar/use-toasts'
+import type { WorkspaceStore } from '@scalar/workspace-store/client'
+import type { SelectedSecurity } from '@scalar/workspace-store/entities/auth'
+import type { HistoryEntry } from '@scalar/workspace-store/entities/history/schema'
+import type {
+  AuthMeta,
+  ServerMeta,
+  WorkspaceEventBus,
+} from '@scalar/workspace-store/events'
+import {
+  buildRequest,
+  createVariablesStoreForRequest,
+  getEnvironmentVariables,
+  requestFactory,
+  resolveExecutableRequestUrl,
+  type MergedSecuritySchemes,
+  type RequestPayload,
+  type SecuritySchemeObjectSecret,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type { XScalarCookie } from '@scalar/workspace-store/schemas/extensions/general/x-scalar-cookies'
+import type {
+  OpenApiDocument,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import type { OperationObject } from '@scalar/workspace-store/schemas/v3.2/strict/operation'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  toValue,
+  watch,
+} from 'vue'
+
+import ViewLayout from '@/components/ViewLayout/ViewLayout.vue'
+import ViewLayoutContent from '@/components/ViewLayout/ViewLayoutContent.vue'
+import ViewLayoutSection from '@/components/ViewLayout/ViewLayoutSection.vue'
+import { harToFetchRequest } from '@/v2/blocks/operation-block/helpers/har-to-fetch-request'
+import { harToFetchResponse } from '@/v2/blocks/operation-block/helpers/har-to-fetch-response'
+import {
+  getCookieRequestUrl,
+  getResponseCookieActions,
+} from '@/v2/blocks/operation-block/helpers/persist-response-cookies'
+import { getEnvironmentPersistenceActions } from '@/v2/blocks/operation-block/helpers/persist-script-environment'
+import {
+  getOperationExampleKey,
+  isStreamingResponse,
+  responseCache,
+} from '@/v2/blocks/operation-block/helpers/response-cache'
+import {
+  sendRequest,
+  type ResponseInstance,
+} from '@/v2/blocks/operation-block/helpers/send-request'
+import { validatePathParameters } from '@/v2/blocks/operation-block/helpers/validate-path-parameters'
+import { RequestBlock } from '@/v2/blocks/request-block'
+import { ResponseBlock } from '@/v2/blocks/response-block'
+import { type History } from '@/v2/blocks/scalar-address-bar-block'
+import { useLocalization } from '@/v2/features/localization'
+import type { ModalProps } from '@/v2/features/modal/Modal.vue'
+import type { ClientLayout } from '@/v2/types/layout'
+
+import Header from './components/Header.vue'
+
+const {
+  externalExamplesPending = false,
+  externalExamplesFailed = false,
+  authMeta,
+  environment,
+  eventBus,
+  exampleKey,
+  document,
+  documentSlug,
+  workspaceCookies = [],
+  documentCookies = [],
+  hideClientButton,
+  httpClients = AVAILABLE_CLIENTS,
+  history = [],
+  layout,
+  method,
+  isWebhook = false,
+  operation,
+  sourceOperation,
+  path,
+  plugins = [],
+  proxyUrl,
+  requestBodyCompositionSelection,
+  securitySchemes,
+  selectedClient,
+  server,
+  servers,
+  environments,
+  options,
+  activeEnvironment,
+  serverMeta,
+  selectedSecurity,
+  selectedSecuritySchemes,
+  securityRequirements,
+  defaultHeaders,
+} = defineProps<OperationBlockProps>()
+
+defineEmits<{ (e: 'retry:externalExamples'): void }>()
+
+const { translate } = useLocalization()
+
+const openapiVersion = computed<string>(
+  () => document['x-original-oas-version'] || document.openapi,
+)
+
+/** Hoist up client generation so it doesn't get re-generated on every operation */
+const clientOptions = computed(() => generateClientOptions(httpClients))
+
+const { toast } = useToasts()
+const { copyToClipboard } = useClipboard()
+
+// Refs
+const abortController = ref<AbortController | null>(null)
+const response = ref<ResponseInstance | null>(null)
+const requestError = ref<Error | null>(null)
+const requestPayload = ref<RequestPayload | null>(null)
+
+/**
+ * A webhook has no OpenAPI server, so its destination is the full URL the user
+ * enters at runtime. The field holds that whole URL (not a server-relative path),
+ * and the request is sent to it directly with no separate server base.
+ */
+const webhookUrl = ref('')
+
+watch(
+  [() => path, () => method, () => isWebhook],
+  () => {
+    webhookUrl.value = ''
+  },
+  { immediate: true },
+)
+
+const requestPath = computed(() => (isWebhook ? webhookUrl.value : path))
+const requestServer = computed<ServerObject | null>(() =>
+  isWebhook ? null : server,
+)
+
+/** Cancel the request */
+const cancelRequest = () => abortController.value?.abort(ERRORS.REQUEST_ABORTED)
+
+/**
+ * Persist server-set cookies from a response into the document cookie jar.
+ *
+ * Scalar keeps its own cookie jar because browsers hide `Set-Cookie` from `fetch`.
+ * Mirroring browser behavior, cookies are stored scoped to the request host and
+ * path and removed when the server expires them, so a value like a Django CSRF
+ * token stays available for later PUT/PATCH requests after a page reload.
+ */
+const persistResponseCookies = (sendResult: {
+  response: ResponseInstance
+  requestPayload: RequestPayload
+}) => {
+  const actions = getResponseCookieActions({
+    cookieHeaderKeys: sendResult.response.cookieHeaderKeys ?? [],
+    documentCookies,
+    requestUrl: getCookieRequestUrl(String(sendResult.requestPayload[0])),
+  })
+
+  for (const action of actions) {
+    if (action.type === 'delete') {
+      eventBus.emit('cookie:delete:cookie', {
+        collectionType: 'document',
+        cookieName: action.cookieName,
+        index: action.index,
+      })
+      continue
+    }
+
+    eventBus.emit('cookie:upsert:cookie', {
+      collectionType: 'document',
+      payload: action.cookie,
+      ...(action.index === undefined ? {} : { index: action.index }),
+    })
+  }
+}
+
+/**
+ * Resolve the executable URL using the same pipeline as Send (`requestFactory` +
+ * `resolveExecutableRequestUrl`), including security query params.
+ */
+const getAddressBarUrl = (allowMissingRequestServerBase = true): string => {
+  const { request } = requestFactory({
+    defaultHeaders,
+    environment,
+    exampleName: exampleKey,
+    globalCookies: [...workspaceCookies, ...documentCookies],
+    method,
+    operation,
+    path: requestPath.value,
+    proxyUrl,
+    server: requestServer.value,
+    selectedSecuritySchemes,
+    isElectron: isElectron(),
+    openapiVersion: openapiVersion.value,
+    jsonSchemaDialect: document.jsonSchemaDialect,
+    multipartNaming: toValue(options)?.multipartNaming,
+    requestBodyCompositionSelection,
+  })
+
+  return resolveExecutableRequestUrl(
+    request,
+    getEnvironmentVariables(environment),
+    { allowMissingRequestServerBase },
+  )
+}
+
+/** Copy remains permissive so incomplete URLs can still be shared or edited. */
+const copyAddressBarUrl = async (): Promise<void> => {
+  await copyToClipboard(getAddressBarUrl())
+}
+
+/** Browser navigation uses the destination URL and the browser's own session. */
+const openInBrowser = async (): Promise<void> => {
+  if (method.toLowerCase() !== 'get' || externalExamplesPending) return
+
+  eventBus.flushDebouncedEmits?.()
+  // Apply pending parameter and address-bar edits before resolving the destination.
+  await nextTick()
+
+  if (!validatePathParameters(operation.parameters ?? [], exampleKey).ok) {
+    toast(translate('apiClient.operationBlock.pathParametersRequired'), 'error')
+    return
+  }
+
+  try {
+    const url = new URL(getAddressBarUrl(layout === 'modal' && !isWebhook))
+    // A request URL is untrusted input; navigation must never execute another scheme.
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      toast(translate('apiClient.addressBar.browserUrlRequired'), 'error')
+      return
+    }
+    // Match Electron's external-navigation policy instead of silently dropping the action.
+    if (isElectron() && !isAllowedOAuthUrl(url)) {
+      toast(
+        translate('apiClient.addressBar.desktopBrowserUrlRequired'),
+        'error',
+      )
+      return
+    }
+    window.open(url.href, '_blank', 'noopener,noreferrer')
+  } catch {
+    toast(translate('apiClient.addressBar.browserUrlRequired'), 'error')
+  }
+}
+
+/** Execute the current operation example */
+const handleExecute = async () => {
+  if (externalExamplesPending) return
+  requestError.value = null
+  eventBus.flushDebouncedEmits?.()
+  // Source edits must reach the overlaid operation prop before building the request.
+  await nextTick()
+
+  if (isWebhook && !requestPath.value.trim()) {
+    toast(translate('apiClient.operationBlock.webhookUrlRequired'), 'error')
+    return
+  }
+
+  const pathValidation = validatePathParameters(
+    operation.parameters ?? [],
+    exampleKey,
+  )
+  if (pathValidation.ok === false) {
+    toast(translate('apiClient.operationBlock.pathParametersRequired'), 'error')
+    return
+  }
+
+  const globalCookies = [...workspaceCookies, ...documentCookies]
+
+  const { request: requestBuilder } = requestFactory({
+    defaultHeaders,
+    environment,
+    exampleName: exampleKey,
+    globalCookies,
+    method,
+    operation,
+    path: requestPath.value,
+    proxyUrl,
+    server: requestServer.value,
+    selectedSecuritySchemes,
+    isElectron: isElectron(),
+    openapiVersion: openapiVersion.value,
+    jsonSchemaDialect: document.jsonSchemaDialect,
+    multipartNaming: toValue(options)?.multipartNaming,
+    requestBodyCompositionSelection,
+  })
+
+  // Stop any previous streaming response
+  if (response.value && 'reader' in response.value) {
+    response.value.reader.cancel()
+  }
+
+  const variablesStore = createVariablesStoreForRequest()
+
+  // Seed the script variable store with the active environment so pm.environment.get()
+  // and pm.variables.get() resolve to the same values as {{…}} placeholders. Without
+  // seeding, the store starts empty and every scripted read returns undefined.
+  const seededEnvironment = getEnvironmentVariables(environment)
+  variablesStore.setEnvironment?.(
+    Object.entries(seededEnvironment).map(([key, value]) => ({ key, value })),
+  )
+
+  // Snapshot the persistence target at request start, alongside the seed. Persistence runs after
+  // the request completes (awaits below), and the environment props are reactive — if the active
+  // environment is switched mid-flight, or a concurrent request splices these arrays, reading
+  // them at persist time would apply the script's writes to the wrong environment or resolve
+  // workspace/document indexes against a shifted list. Copy the arrays (not just the reference)
+  // so the seeded values and these targets stay fixed to the same point in time.
+  const persistenceTarget = activeEnvironment
+    ? {
+        environmentName: activeEnvironment,
+        mergedVariables: [...environment.variables],
+        documentVariables: [
+          ...(document['x-scalar-environments']?.[activeEnvironment]
+            ?.variables ?? []),
+        ],
+        environmentExistsOnDocument: Boolean(
+          document['x-scalar-environments']?.[activeEnvironment],
+        ),
+      }
+    : null
+
+  // Execute the beforeRequest hook (plugins receive RequestFactory, not fetch Request)
+  await executeHook(
+    {
+      requestBuilder,
+      document,
+      operation,
+      variablesStore,
+      server: requestServer.value,
+      customFetch: toValue(options)?.customFetch,
+    },
+    'beforeRequest',
+    plugins,
+  )
+
+  // Persist environment variables set by scripts (pm.environment.set / unset) back to the active
+  // environment so they survive to the next request, mirroring the Environment tab. Scope and
+  // index are resolved from the seed-time environment so updates mutate in place. Defined here so
+  // it can run on every exit path after the pre-request scripts — including a build failure or a
+  // failed send — so a pre-request set, like a token stored before a flaky call, is not lost.
+  const persistScriptEnvironment = () => {
+    if (!persistenceTarget) {
+      return
+    }
+
+    const environmentActions = getEnvironmentPersistenceActions({
+      ...persistenceTarget,
+      seededVariables: seededEnvironment,
+      scriptVariables: variablesStore.getEnvironment(),
+    })
+
+    for (const action of environmentActions) {
+      if (action.type === 'delete') {
+        eventBus.emit('environment:delete:environment-variable', {
+          environmentName: action.environmentName,
+          index: action.index,
+          collectionType: action.collectionType,
+        })
+      } else {
+        eventBus.emit('environment:upsert:environment-variable', {
+          environmentName: action.environmentName,
+          variable: action.variable,
+          index: action.index,
+          collectionType: action.collectionType,
+        })
+      }
+    }
+  }
+
+  // Resolve {{…}} placeholders from the script store so pre-request pm.environment.set() and
+  // unset() take effect on this request. The store was seeded from the active environment, so
+  // it already holds every value spreading seededEnvironment would add — minus the keys a script
+  // unset, which must stay dropped (an object spread cannot remove them again).
+  const envVariables = variablesStore.getVariables()
+
+  // Build the fetch Request after hooks may have mutated the factory
+  const built = buildRequest(requestBuilder, {
+    envVariables,
+    allowMissingRequestServerBase: layout === 'modal',
+  })
+  if (!built.ok) {
+    // Save any pre-request script writes before bailing out on a build failure.
+    persistScriptEnvironment()
+    toast(built.message ?? built.error, 'error')
+    return
+  }
+
+  // Check the final method because pre-request scripts can change it.
+  const requestMethod = built.data.requestPayload[1].method ?? 'GET'
+  if (isForbiddenHttpMethod(requestMethod)) {
+    persistScriptEnvironment()
+    toast(
+      translate('apiClient.operationBlock.forbiddenMethod', {
+        method: requestMethod.toUpperCase(),
+      }),
+      'error',
+    )
+    return
+  }
+
+  // Store the abort controller for cancellation
+  abortController.value = built.data.controller
+
+  // Build the fetch Request once so the requestBuilt hook observes the exact bytes that are
+  // sent. Rebuilding it later would generate a different multipart boundary, which breaks
+  // plugins that hash the body (for example, request signing).
+  const request = buildSafeBodyRequest(...built.data.requestPayload)
+
+  // Execute the requestBuilt hook (plugins receive the exact fetch Request that will be sent)
+  await executeHook(
+    {
+      request,
+      requestBuilder,
+      document,
+      operation,
+      variablesStore,
+    },
+    'requestBuilt',
+    plugins,
+  )
+
+  // Execute the hooks
+  eventBus.emit('hooks:on:request:sent', {
+    meta: {
+      method,
+      path,
+      exampleKey,
+    },
+  })
+
+  /** Execute the request */
+  const [sendError, sendResult] = await sendRequest({
+    isUsingProxy: built.data.isUsingProxy,
+    requestPayload: built.data.requestPayload,
+    request,
+    plugins,
+    customFetch: toValue(options)?.customFetch,
+    onResponseReceived: async (response, responseDuration) => {
+      const result = await executeResponseHook(
+        {
+          response,
+          responseDuration,
+          requestBuilder,
+          request: buildSafeBodyRequest(...built.data.requestPayload),
+          document,
+          operation,
+          variablesStore,
+        },
+        plugins,
+      )
+      return result.response
+    },
+  })
+
+  // Save script environment writes (pre-request and, on success, post-response) back to the
+  // active environment. Runs even when the send fails so a pre-request set is not lost.
+  persistScriptEnvironment()
+
+  // Execute the hooks
+  eventBus.emit('hooks:on:request:complete', {
+    payload: sendResult
+      ? {
+          response: sendResult.originalResponse.clone(),
+          requestPayload: sendResult.requestPayload,
+          duration: sendResult.response.duration,
+          timestamp: sendResult.timestamp,
+        }
+      : undefined,
+    meta: {
+      method,
+      path,
+      exampleKey,
+    },
+  })
+
+  if (sendError) {
+    // Cancellation also happens when navigating away; keep the new operation intact.
+    if (built.data.controller.signal.aborted) {
+      if (abortController.value === built.data.controller) {
+        abortController.value = null
+      }
+      return
+    }
+    requestError.value = sendError
+    // clean up the response and request
+    response.value = null
+    requestPayload.value = null
+    abortController.value = null
+
+    toast(sendError.message, 'error')
+    return
+  }
+
+  // Store the response
+  response.value = sendResult.response
+  requestPayload.value = sendResult.requestPayload
+
+  // Persist server-set cookies into the document jar so values like a CSRF token
+  // survive a page reload and get replayed on the next request, like a browser would.
+  persistResponseCookies(sendResult)
+
+  // Cache non-streaming responses so they can be restored when navigating back
+  if (!isStreamingResponse(sendResult.response)) {
+    responseCache.set(getOperationExampleKey(method, path, exampleKey), {
+      response: sendResult.response,
+      requestPayload: sendResult.requestPayload,
+    })
+  }
+}
+
+onMounted(() => {
+  eventBus.on('operation:send:request:hotkey', handleExecute)
+  eventBus.on('operation:cancel:request', cancelRequest)
+  eventBus.on('copy-url:address-bar', copyAddressBarUrl)
+
+  // Let plugins warm up per-operation resources (e.g. the scripts sandbox) so the first request
+  // does not pay their cold-start cost.
+  void executeHook({ document, operation }, 'onRequestMount', plugins)
+})
+onBeforeUnmount(() => {
+  eventBus.off('operation:send:request:hotkey', handleExecute)
+  eventBus.off('operation:cancel:request', cancelRequest)
+  eventBus.off('copy-url:address-bar', copyAddressBarUrl)
+})
+
+const operationHistory = computed<History[]>(() =>
+  history
+    .map((entry) => ({
+      method: entry.request.method as string,
+      path: entry.request.url,
+      duration: entry.time,
+      status: entry.response.status,
+    }))
+    .reverse(),
+)
+
+const handleSelectHistoryItem = ({ index }: { index: number }) => {
+  const transformedIndex = (history.length ?? 0) - index - 1
+  const historyItem = history[transformedIndex]
+  if (!historyItem) {
+    return
+  }
+
+  const navigate = () =>
+    eventBus.emit('ui:navigate', {
+      page: 'example',
+      method,
+      path,
+      exampleName: 'draft',
+      callback: (status) => {
+        // Do not replace the response if the navigation was not successful
+        if (status !== 'success') {
+          return
+        }
+        // Reconstruct the response
+        const fetchResponse = harToFetchResponse({
+          harResponse: historyItem.response,
+          url: historyItem.request.url,
+          method,
+          path,
+          duration: historyItem.time,
+        })
+
+        // Reconstruct the request
+        const fetchRequest = harToFetchRequest({
+          harRequest: historyItem.request,
+        })
+
+        // Update the response and request
+        requestError.value = null
+        response.value = fetchResponse
+        requestPayload.value = fetchRequest
+      },
+    })
+
+  eventBus.emit('operation:reload:history', {
+    meta: {
+      path,
+      method,
+    },
+    index: transformedIndex,
+    callback: navigate,
+  })
+}
+
+const handleNavigateSettings = () => {
+  eventBus.emit('ui:navigate', {
+    page: 'operation',
+    path: 'overview',
+    operationPath: path,
+    method,
+  })
+}
+
+/**
+ * When the path, method, or example key changes, restore the response panel
+ * for the new operation from the best available source:
+ *
+ *   1. `responseCache` — in-memory, populated on every successful send.
+ *      Has the live response object (including streams) so it wins.
+ *   2. `history` — persisted in the workspace store. Used as a fallback when
+ *      the in-memory cache is empty (page reload, fresh app session, etc.)
+ *      so navigating to an operation that has been called before shows the
+ *      last response instead of an empty panel.
+ *   3. Otherwise clear.
+ *
+ * Only the response is restored from history — the user's request inputs are
+ * left alone, so we never silently overwrite an in-progress draft.
+ */
+watch(
+  [() => path, () => method, () => exampleKey],
+  ([newPath, newMethod, newExampleKey]) => {
+    requestError.value = null
+    const cached = responseCache.get(
+      getOperationExampleKey(newMethod, newPath, newExampleKey),
+    )
+
+    if (cached) {
+      response.value = cached.response
+      requestPayload.value = cached.requestPayload
+    } else {
+      // History is keyed only by document/path/method but each entry carries
+      // the example it came from, so we walk from the end and pick the most
+      // recent entry that matches the active example. Otherwise a cache miss
+      // on example B would restore example A's response. Only runs on a
+      // cache miss — the common case (in-session navigation) skips it.
+      const latest = (() => {
+        for (let i = history.length - 1; i >= 0; i--) {
+          const entry = history[i]
+          if (entry?.meta.example === newExampleKey) {
+            return entry
+          }
+        }
+        return undefined
+      })()
+
+      if (latest) {
+        response.value = harToFetchResponse({
+          harResponse: latest.response,
+          url: latest.request.url,
+          method: newMethod,
+          path: newPath,
+          duration: latest.time,
+        })
+        requestPayload.value = null
+      } else {
+        response.value = null
+        requestPayload.value = null
+      }
+    }
+
+    // Cancel any in-flight request
+    cancelRequest()
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  // We cancel the request if the component is unmounted
+  cancelRequest()
+})
+</script>
+<template>
+  <div class="bg-b-1 flex h-full min-w-0 flex-col">
+    <div
+      class="lg:min-h-header flex w-full flex-wrap items-center justify-center p-2 lg:p-0">
+      <!-- Address Bar -->
+      <Header
+        :activeEnvironment
+        :documentSlug
+        :documentUrl
+        :environment
+        :environments
+        :eventBus
+        :exampleKey
+        :executionDisabled="externalExamplesPending"
+        :hideClientButton
+        :history="operationHistory"
+        :integration
+        :isWebhook
+        :layout
+        :method
+        :path="requestPath"
+        :server="requestServer"
+        :serverMeta
+        :servers
+        :source
+        @execute="handleExecute"
+        @navigate:settings="handleNavigateSettings"
+        @open:browser="openInBrowser"
+        @select:history:item="handleSelectHistoryItem"
+        @update:webhookUrl="(value: string) => (webhookUrl = value)" />
+    </div>
+
+    <ViewLayout class="border-t">
+      <ViewLayoutContent class="flex-1">
+        <!-- Request Section -->
+        <ViewLayoutSection
+          v-if="externalExamplesPending"
+          aria-label="Request">
+          <template #title>Request</template>
+          <div
+            class="text-c-2 p-4"
+            role="status">
+            <template v-if="externalExamplesFailed">
+              Could not load this example.
+              <ScalarButton
+                size="sm"
+                variant="ghost"
+                @click="$emit('retry:externalExamples')">
+                Retry
+              </ScalarButton>
+            </template>
+            <template v-else>Loading example…</template>
+          </div>
+        </ViewLayoutSection>
+        <RequestBlock
+          v-else
+          :allowedSecuritySchemes="
+            toValue(options)?.authentication?.allowedSecuritySchemes
+          "
+          :authMeta
+          :clientOptions
+          :defaultHeaders
+          :defaultRequestBodyView="
+            document['x-scalar-default-request-body-view']
+          "
+          :documentCookies
+          :documentSlug
+          :environment
+          :eventBus
+          :exampleKey
+          :jsonSchemaDialect="document.jsonSchemaDialect"
+          :layout
+          :method
+          :multipartNaming="toValue(options)?.multipartNaming"
+          :openapiVersion
+          :operation
+          :options="toValue(options)"
+          :path="requestPath"
+          :plugins
+          :proxyUrl
+          :requestBodyCompositionSelection
+          :securityRequirements
+          :securitySchemes
+          :selectedClient
+          :selectedSecurity
+          :selectedSecuritySchemes
+          :server="requestServer"
+          :sourceOperation
+          :workspaceCookies />
+
+        <!-- Response Section -->
+        <ResponseBlock
+          :appVersion
+          :eventBus
+          :executionDisabled="externalExamplesPending"
+          :layout
+          :plugins
+          :requestError
+          :requestPayload
+          :response
+          :totalPerformedRequests="operationHistory.length" />
+      </ViewLayoutContent>
+    </ViewLayout>
+  </div>
+</template>

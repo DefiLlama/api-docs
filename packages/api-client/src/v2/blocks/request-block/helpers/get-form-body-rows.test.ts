@@ -1,0 +1,957 @@
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import {
+  type ExampleObject,
+  type SchemaObject,
+  SchemaObjectSchema,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { assert, describe, expect, it } from 'vitest'
+
+import { getFormBodyRows, getFormBodyValue } from './get-form-body-rows'
+
+describe('getFormBodyRows', () => {
+  it('round trips indexed-dot URL-encoded rows with nested fields and repeated values', () => {
+    const schema = coerceValue(SchemaObjectSchema, {
+      type: 'object',
+      required: ['contacts', 'tags'],
+      properties: {
+        contacts: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } } } },
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+    })
+    const rows = getFormBodyRows(
+      { value: { contacts: [{ name: 'Ada' }], tags: ['one', 'two'] } },
+      'application/x-www-form-urlencoded',
+      schema,
+      undefined,
+      undefined,
+      true,
+    )
+    const savedRows = rows.map((row) => ({
+      name: row.name,
+      value: getFormBodyValue(row),
+      isDisabled: row.isDisabled,
+      ...(row.isArray ? { isArray: true } : {}),
+    }))
+    expect(savedRows).toStrictEqual([
+      { name: 'contacts[0].name', value: 'Ada', isDisabled: false },
+      { name: 'tags', value: ['one', 'two'], isDisabled: false, isArray: true },
+    ])
+    expect(
+      getFormBodyRows({ value: savedRows }, 'application/x-www-form-urlencoded', schema, undefined, undefined, true),
+    ).toStrictEqual(rows)
+  })
+
+  it.each(['multipart/form-data'])('renders structural allOf reference fields for %s', (contentType) => {
+    const schema = coerceValue(SchemaObjectSchema, {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: {
+          description: 'Combined payload',
+          allOf: [
+            {
+              $ref: '#/components/schemas/Name',
+              '$ref-value': { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+            },
+            {
+              type: 'object',
+              properties: { count: { type: 'integer', description: 'Count' }, active: { type: 'boolean' } },
+              required: ['count'],
+            },
+          ],
+        },
+      },
+    })
+    const rows = getFormBodyRows({ value: { file: { name: 'Alice', count: 42, active: false } } }, contentType, schema)
+    expect(rows).toStrictEqual([
+      {
+        name: 'file.name',
+        value: 'Alice',
+        isDisabled: false,
+        isRequired: true,
+        schema: { type: 'string' },
+        description: 'Combined payload',
+      },
+      {
+        name: 'file.count',
+        value: '42',
+        isDisabled: false,
+        isRequired: true,
+        schema: { type: 'integer', description: 'Count' },
+        description: 'Count',
+      },
+      {
+        name: 'file.active',
+        value: 'false',
+        isDisabled: false,
+        isRequired: false,
+        schema: { type: 'boolean' },
+        description: 'Combined payload',
+      },
+    ])
+  })
+
+  it.each([false, true])('renders annotated allOf object fields in either order (reversed: %s)', (reversed) => {
+    const reference = {
+      $ref: '#/components/schemas/MyData',
+      '$ref-value': {
+        type: 'object' as const,
+        properties: {
+          name: { type: 'string' as const },
+          value: { type: 'integer' as const, description: 'The numeric value.' },
+        },
+        required: ['name'],
+      },
+    }
+    const annotation = { description: 'JSON file containing the data.' }
+    const schema = coerceValue(SchemaObjectSchema, {
+      type: 'object',
+      properties: { file: { allOf: reversed ? [annotation, reference] : [reference, annotation] } },
+      required: ['file'],
+    })
+    expect(getFormBodyRows({ value: { file: { name: '', value: 1 } } }, 'multipart/form-data', schema)).toStrictEqual([
+      {
+        name: 'file.name',
+        value: '',
+        isDisabled: false,
+        isRequired: true,
+        schema: { type: 'string' },
+        description: annotation.description,
+      },
+      {
+        name: 'file.value',
+        value: '1',
+        isDisabled: false,
+        isRequired: false,
+        schema: { type: 'integer', description: 'The numeric value.' },
+        description: 'The numeric value.',
+      },
+    ])
+  })
+
+  it.each(['multipart/form-data', 'application/x-www-form-urlencoded'])(
+    'retains annotated primitive metadata for %s fields',
+    (contentType) => {
+      const schema = coerceValue(SchemaObjectSchema, {
+        type: 'object',
+        properties: {
+          mode: { allOf: [{ type: 'string', enum: ['fast', 'slow'] }, { description: 'Processing mode' }] },
+        },
+        required: ['mode'],
+      })
+      expect(getFormBodyRows({ value: { mode: 'fast' } }, contentType, schema)).toStrictEqual([
+        {
+          name: 'mode',
+          value: 'fast',
+          isDisabled: false,
+          isDisabledByDefault: false,
+          isRequired: true,
+          schema: { type: 'string', enum: ['fast', 'slow'], description: 'Processing mode' },
+          description: 'Processing mode',
+        },
+      ])
+    },
+  )
+
+  it.each(['multipart/form-data', 'application/x-www-form-urlencoded'])(
+    'uses structured data for %s rows when wire text exists',
+    (contentType) => {
+      expect(
+        getFormBodyRows(
+          { dataValue: { name: 'structured' }, serializedValue: 'name=wire', value: 'name=wire' },
+          contentType,
+        ),
+      ).toStrictEqual([{ name: 'name', value: 'structured', isDisabled: false }])
+    },
+  )
+
+  it.each(
+    (['allOf', 'oneOf', 'anyOf'] as const).flatMap((composition) =>
+      ['multipart/form-data', 'application/x-www-form-urlencoded'].map((contentType) => ({
+        composition,
+        contentType,
+      })),
+    ),
+  )('keeps $composition fields enabled for $contentType until explicitly disabled', ({ composition, contentType }) => {
+    const modeSchema: SchemaObject = { type: 'string', enum: ['none', 'fast'], description: 'Processing mode' }
+    const schema: SchemaObject = {
+      type: 'object',
+      properties: { mode: modeSchema },
+      // The builder preserves composed fields because a member can require them.
+      [composition]: [{ required: ['mode'] }],
+    }
+
+    expect(getFormBodyRows({ value: { mode: 'none' } }, contentType, schema)).toStrictEqual([
+      {
+        name: 'mode',
+        value: 'none',
+        isDisabled: false,
+        schema: modeSchema,
+        description: 'Processing mode',
+        isRequired: true,
+      },
+    ])
+    expect(
+      getFormBodyRows({ value: [{ name: 'mode', value: 'fast', isDisabled: true }] }, contentType, schema).map(
+        ({ name, value, isDisabled }) => ({ name, value, isDisabled }),
+      ),
+    ).toStrictEqual([{ name: 'mode', value: 'fast', isDisabled: true }])
+  })
+
+  it.each(['oneOf', 'anyOf'] as const)('renders the selected %s object branch as typed nested fields', (keyword) => {
+    const schema = coerceValue(SchemaObjectSchema, {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: {
+          [keyword]: [
+            { type: 'object', properties: { name: { type: 'string' } } },
+            {
+              type: 'object',
+              description: 'Count payload',
+              required: ['count'],
+              properties: { count: { type: 'integer' } },
+            },
+          ],
+        },
+      },
+    })
+    expect(
+      getFormBodyRows({ value: { file: { count: 42 } } }, 'multipart/form-data', schema, {
+        [`requestBody.file.${keyword}`]: 1,
+      }),
+    ).toStrictEqual([
+      {
+        name: 'file.count',
+        value: '42',
+        isDisabled: false,
+        isRequired: true,
+        schema: { type: 'integer' },
+        description: 'Count payload',
+      },
+    ])
+  })
+
+  it.each(['oneOf', 'anyOf'] as const)('exposes the selected %s primitive metadata in urlencoded forms', (keyword) => {
+    const schema = coerceValue(SchemaObjectSchema, {
+      type: 'object',
+      required: ['mode'],
+      properties: {
+        mode: {
+          [keyword]: [{ type: 'integer' }, { type: 'string', enum: ['fast', 'slow'], description: 'Processing mode' }],
+        },
+      },
+    })
+    const rows = getFormBodyRows({ value: { mode: 'fast' } }, 'application/x-www-form-urlencoded', schema, {
+      [`requestBody.mode.${keyword}`]: 1,
+    })
+    expect(
+      rows.map(({ name, schema, description }) => ({
+        name,
+        type: schema && 'type' in schema ? schema.type : undefined,
+        enum: schema?.enum,
+        description,
+      })),
+    ).toStrictEqual([{ name: 'mode', type: 'string', enum: ['fast', 'slow'], description: 'Processing mode' }])
+  })
+
+  it('returns empty array when example is null, undefined, or missing value', () => {
+    expect(getFormBodyRows(null, 'multipart/form-data')).toEqual([])
+    expect(getFormBodyRows(undefined, 'multipart/form-data')).toEqual([])
+
+    const exampleWithoutValue: ExampleObject = {}
+    const exampleWithNullValue: ExampleObject = { value: null }
+    const exampleWithUndefinedValue: ExampleObject = { value: undefined }
+    const exampleWithFalsyValue: ExampleObject = { value: false }
+
+    expect(getFormBodyRows(exampleWithoutValue, 'multipart/form-data')).toEqual([])
+    expect(getFormBodyRows(exampleWithNullValue, 'multipart/form-data')).toEqual([])
+    expect(getFormBodyRows(exampleWithUndefinedValue, 'multipart/form-data')).toEqual([])
+    expect(getFormBodyRows(exampleWithFalsyValue, 'multipart/form-data')).toEqual([])
+  })
+
+  it('returns empty array when contentType is not multipart/form-data or application/x-www-form-urlencoded', () => {
+    const example: ExampleObject = {
+      value: {
+        value: [{ name: 'test', value: 'data', isDisabled: false }],
+      },
+    }
+
+    expect(getFormBodyRows(example, 'application/json')).toEqual([])
+    expect(getFormBodyRows(example, 'application/xml')).toEqual([])
+    expect(getFormBodyRows(example, 'text/plain')).toEqual([])
+    expect(getFormBodyRows(example, 'application/octet-stream')).toEqual([])
+  })
+
+  it('returns array when example.value is already an array of form rows', () => {
+    const formRows = [
+      { name: 'username', value: 'john_doe', isDisabled: false },
+      { name: 'email', value: 'john@example.com', isDisabled: true },
+      { name: 'age', value: '30', isDisabled: false },
+    ]
+
+    const example: ExampleObject = {
+      value: formRows,
+    }
+
+    const result = getFormBodyRows(example, 'multipart/form-data')
+    expect(result).toHaveLength(3)
+    expect(result[0]).toEqual({ name: 'username', value: 'john_doe', isDisabled: false })
+    expect(result[1]).toEqual({ name: 'email', value: 'john@example.com', isDisabled: true })
+    expect(result[2]).toEqual({ name: 'age', value: '30', isDisabled: false })
+  })
+
+  it('converts object to array of rows when example.value.value is a plain object', () => {
+    const formDataObject = {
+      username: 'jane_doe',
+      email: 'jane@example.com',
+      age: '25',
+      isActive: 'true',
+    }
+
+    const example: ExampleObject = {
+      value: formDataObject,
+    }
+
+    const result = getFormBodyRows(example, 'application/x-www-form-urlencoded')
+    expect(result).toHaveLength(4)
+    expect(result).toEqual([
+      { name: 'username', value: 'jane_doe', isDisabled: false },
+      { name: 'email', value: 'jane@example.com', isDisabled: false },
+      { name: 'age', value: '25', isDisabled: false },
+      { name: 'isActive', value: 'true', isDisabled: false },
+    ])
+
+    // Verify it works with both form content types
+    const result2 = getFormBodyRows(example, 'multipart/form-data')
+    expect(result2).toHaveLength(4)
+  })
+
+  it('stringifies nested object and array property values when example.value is a plain object', () => {
+    const example: ExampleObject = {
+      value: {
+        metadata: { role: 'admin', id: 42 },
+        tags: ['a', 'b'],
+        plain: 'unchanged',
+      },
+    }
+
+    const result = getFormBodyRows(example, 'multipart/form-data')
+
+    expect(result).toHaveLength(3)
+
+    const metadata = result.find((row) => row.name === 'metadata')
+    const tags = result.find((row) => row.name === 'tags')
+    const plain = result.find((row) => row.name === 'plain')
+
+    assert(metadata)
+    assert(tags)
+    assert(plain)
+
+    expect(metadata.value).toBe(JSON.stringify({ role: 'admin', id: 42 }))
+    expect(typeof metadata.value).toBe('string')
+
+    expect(tags.value).toBe(JSON.stringify(['a', 'b']))
+    expect(typeof tags.value).toBe('string')
+
+    expect(plain.value).toBe('unchanged')
+  })
+
+  it('uses the file name as the string value when a plain-object field value is a File', () => {
+    const file = new File([''], 'upload.png', { type: 'image/png' })
+    const example: ExampleObject = {
+      value: {
+        avatar: file,
+      },
+    }
+
+    const result = getFormBodyRows(example, 'application/x-www-form-urlencoded')
+
+    expect(result).toHaveLength(1)
+    assert(result[0])
+    expect(result[0].name).toBe('avatar')
+    expect(result[0].value).toBe('upload.png')
+    expect(typeof result[0].value).toBe('string')
+  })
+
+  it('returns empty array for invalid data types: empty arrays, empty objects, primitives, and null', () => {
+    // Empty array
+    const exampleWithEmptyArray: ExampleObject = {
+      value: [],
+    }
+    expect(getFormBodyRows(exampleWithEmptyArray, 'multipart/form-data')).toEqual([])
+
+    // Empty object
+    const exampleWithEmptyObject: ExampleObject = {
+      value: {},
+    }
+    expect(getFormBodyRows(exampleWithEmptyObject, 'multipart/form-data')).toEqual([])
+
+    // Non-object, non-array value (string, number, null)
+    const exampleWithString: ExampleObject = {
+      value: 'not an object or array',
+    }
+    expect(getFormBodyRows(exampleWithString, 'multipart/form-data')).toEqual([])
+
+    const exampleWithNumber: ExampleObject = {
+      value: 123,
+    }
+    expect(getFormBodyRows(exampleWithNumber, 'multipart/form-data')).toEqual([])
+
+    const exampleWithNullInValue: ExampleObject = {
+      value: null,
+    }
+    expect(getFormBodyRows(exampleWithNullInValue, 'multipart/form-data')).toEqual([])
+  })
+
+  describe('formBodySchema enrichment', () => {
+    it('attaches schema, description, and isRequired when formBodySchema is an object schema with properties', () => {
+      const example: ExampleObject = {
+        value: [
+          { name: 'status', value: 'active', isDisabled: false },
+          { name: 'role', value: 'admin', isDisabled: false },
+        ],
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['active', 'inactive', 'pending'],
+            description: 'User account status',
+          },
+          role: {
+            type: 'string',
+            enum: ['admin', 'user', 'guest'],
+            description: 'User role',
+          },
+        },
+        required: ['status'],
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+
+      expect(result).toHaveLength(2)
+      assert(result[0])
+      assert(result[1])
+
+      expect(result[0].name).toBe('status')
+      expect(result[0].value).toBe('active')
+      expect(result[0].schema).toBeDefined()
+      expect(result[0].schema?.enum).toEqual(['active', 'inactive', 'pending'])
+      expect(result[0].description).toBe('User account status')
+      expect(result[0].isRequired).toBe(true)
+
+      expect(result[1].name).toBe('role')
+      expect(result[1].value).toBe('admin')
+      expect(result[1].schema).toBeDefined()
+      expect(result[1].schema?.enum).toEqual(['admin', 'user', 'guest'])
+      expect(result[1].description).toBe('User role')
+      expect(result[1].isRequired).toBe(false)
+    })
+
+    it('does not attach schema when formBodySchema is undefined', () => {
+      const example: ExampleObject = {
+        value: [{ name: 'status', value: 'active', isDisabled: false }],
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data')
+
+      expect(result).toHaveLength(1)
+      assert(result[0])
+      expect(result[0].name).toBe('status')
+      expect(result[0].value).toBe('active')
+      expect(result[0].schema).toBeUndefined()
+      expect(result[0].description).toBeUndefined()
+      expect(result[0].isRequired).toBeUndefined()
+    })
+
+    it('does not attach schema when formBodySchema is not an object schema', () => {
+      const example: ExampleObject = {
+        value: [{ name: 'status', value: 'active', isDisabled: false }],
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'string',
+        description: 'Not an object',
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+
+      expect(result).toHaveLength(1)
+      assert(result[0])
+      expect(result[0].schema).toBeUndefined()
+      expect(result[0].description).toBeUndefined()
+      expect(result[0].isRequired).toBeUndefined()
+    })
+
+    it('uses an unconstrained schema for allowed additional multipart fields', () => {
+      const example: ExampleObject = {
+        value: [
+          { name: 'status', value: 'active', isDisabled: false },
+          { name: 'extraField', value: 'foo', isDisabled: false },
+        ],
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['active', 'inactive'] },
+        },
+        required: ['status'],
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+
+      assert(result[0])
+      assert(result[1])
+
+      expect(result[0].schema).toBeDefined()
+      expect(result[0].schema?.enum).toEqual(['active', 'inactive'])
+      expect(result[0].isRequired).toBe(true)
+
+      expect(result[1].schema).toStrictEqual({ __scalar_: '' })
+      expect(result[1].description).toBeUndefined()
+      expect(result[1].isRequired).toBe(false)
+    })
+
+    it('enriches rows from object value when formBodySchema is provided', () => {
+      const example: ExampleObject = {
+        value: {
+          status: 'pending',
+          role: 'user',
+        },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['active', 'inactive', 'pending'],
+            description: 'Current status',
+          },
+          role: {
+            type: 'string',
+            description: 'User role',
+          },
+        },
+        required: ['status', 'role'],
+      }
+
+      const result = getFormBodyRows(example, 'application/x-www-form-urlencoded', formBodySchema)
+
+      expect(result).toHaveLength(2)
+      assert(result[0])
+      assert(result[1])
+
+      expect(result[0].name).toBe('status')
+      expect(result[0].schema?.enum).toEqual(['active', 'inactive', 'pending'])
+      expect(result[0].description).toBe('Current status')
+      expect(result[0].isRequired).toBe(true)
+
+      expect(result[1].name).toBe('role')
+      expect(result[1].schema).toBeDefined()
+      expect(result[1].description).toBe('User role')
+      expect(result[1].isRequired).toBe(true)
+    })
+
+    it('disables optional properties by default and keeps required ones enabled (issue #10045)', () => {
+      const example: ExampleObject = { value: { name: '', note: '', mode: 'none' } }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          note: { type: 'string' },
+          mode: { type: 'string', enum: ['none', 'fast', 'slow'] },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'application/x-www-form-urlencoded', formBodySchema)
+      const byName = Object.fromEntries(result.map((row) => [row.name, row]))
+
+      // Required property stays enabled; optional properties default to disabled (unchecked).
+      expect(byName['name']?.isDisabled).toBe(false)
+      expect(byName['note']?.isDisabled).toBe(true)
+      expect(byName['mode']?.isDisabled).toBe(true)
+    })
+
+    it('marks auto-disabled optional properties as disabled by default so typing enables them (issue #10145)', () => {
+      // isDisabledByDefault lets RequestTableRow auto-enable a row when the user types a value,
+      // mirroring how optional parameters behave. Required rows are enabled, so it stays unset.
+      const example: ExampleObject = { value: { name: '', note: '' } }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          note: { type: 'string' },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'application/x-www-form-urlencoded', formBodySchema)
+      const byName = Object.fromEntries(result.map((row) => [row.name, row]))
+
+      expect(byName['note']?.isDisabledByDefault).toBe(true)
+      expect(byName['name']?.isDisabledByDefault).toBe(false)
+    })
+
+    it('does not mark a row from a stored form-row array as disabled by default (issue #10145)', () => {
+      // An explicit isDisabled means the user already decided, so the row is not disabled by
+      // default and must not auto-enable on typing.
+      const example: ExampleObject = {
+        value: [{ name: 'note', value: '', isDisabled: true }],
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          note: { type: 'string' },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'application/x-www-form-urlencoded', formBodySchema)
+      expect(result[0]?.isDisabled).toBe(true)
+      expect(result[0]?.isDisabledByDefault).toBeUndefined()
+    })
+
+    it('keeps an explicit isDisabled from a stored form-row array (issue #10045)', () => {
+      // Once the user checks an optional box the value is stored as a row array with an
+      // explicit isDisabled, which must win over the schema-derived default.
+      const example: ExampleObject = {
+        value: [{ name: 'note', value: 'hi', isDisabled: false }],
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          note: { type: 'string' },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'application/x-www-form-urlencoded', formBodySchema)
+      expect(result[0]?.name).toBe('note')
+      expect(result[0]?.isDisabled).toBe(false)
+    })
+
+    it('does not disable nested optional leaves, so the panel matches the send (issue #10045)', () => {
+      // The send side only drops top-level optional properties, so a nested optional leaf must
+      // stay enabled — otherwise the panel would show it unchecked while it is still transmitted.
+      const example: ExampleObject = {
+        value: { props: { name: '', note: '' } },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['props'],
+        properties: {
+          props: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              name: { type: 'string' },
+              note: { type: 'string' },
+            },
+          },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+      const note = result.find((row) => row.name === 'props.note')
+      expect(note?.isRequired).toBe(false)
+      // Optional but nested → left enabled to stay consistent with the request.
+      expect(note?.isDisabled).toBe(false)
+    })
+
+    it('keeps an example-only key named like an Object.prototype member enabled (issue #10045)', () => {
+      const example: ExampleObject = {
+        value: { name: 'a', toString: 'b' },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['name'],
+        properties: { name: { type: 'string' } },
+      }
+
+      const result = getFormBodyRows(example, 'application/x-www-form-urlencoded', formBodySchema)
+      const extra = result.find((row) => row.name === 'toString')
+      // Undeclared, so it is not auto-disabled by the schema default.
+      expect(extra?.isDisabled).toBe(false)
+    })
+
+    it('expands nested object properties into dotted rows (widget #4834 example)', () => {
+      const example: ExampleObject = {
+        value: {
+          file: '',
+          props: { name: '', description: '', created_at: null },
+        },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['file', 'props'],
+        properties: {
+          file: {
+            description: 'File to upload',
+            type: 'string',
+            format: 'binary',
+          },
+          props: {
+            type: 'object',
+            required: ['name', 'description'],
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              created_at: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+
+      expect(result.map((row) => row.name)).toEqual(['file', 'props.name', 'props.description', 'props.created_at'])
+      expect(result[0]?.description).toBe('File to upload')
+      expect(result[0]?.isRequired).toBe(true)
+      expect(result[1]?.isRequired).toBe(true)
+      expect(result[2]?.isRequired).toBe(true)
+      expect(result[3]?.isRequired).toBe(false)
+      expect(result[1]?.value).toBe('')
+      // `created_at` is null in the example (its schema allows `null`); the row should
+      // render as an empty input rather than the literal string "null".
+      expect(result[3]?.value).toBe('')
+      expect(result[3]?.schema).toBeDefined()
+    })
+
+    it('walks deeper than one level of nesting', () => {
+      const example: ExampleObject = {
+        value: { a: { b: { c: 'leaf' } } },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          a: {
+            type: 'object',
+            properties: {
+              b: {
+                type: 'object',
+                properties: {
+                  c: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+      expect(result).toHaveLength(1)
+      expect(result[0]?.name).toBe('a.b.c')
+      expect(result[0]?.value).toBe('leaf')
+    })
+
+    it('cascades required: a leaf is required only when every ancestor is required', () => {
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: [],
+        properties: {
+          props: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              name: { type: 'string' },
+            },
+          },
+        },
+      }
+      const example: ExampleObject = { value: { props: { name: '' } } }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+      expect(result).toHaveLength(1)
+      // `props` is not required, so `props.name` cannot be required either
+      expect(result[0]?.isRequired).toBe(false)
+    })
+
+    it('keeps the leaf schema + required flag on dotted-name array rows (after edits)', () => {
+      // Once the user edits any row, `example.value` is stored as a flat row array. The
+      // dotted name still needs to resolve to its nested leaf in the schema so the
+      // `Required` badge and per-field schema metadata survive across re-renders.
+      const example: ExampleObject = {
+        value: [
+          { name: 'file', value: '@filename', isDisabled: false },
+          { name: 'props.name', value: 'edited', isDisabled: false },
+          { name: 'props.description', value: '', isDisabled: false },
+          { name: 'props.created_at', value: '', isDisabled: false },
+        ],
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        required: ['file', 'props'],
+        properties: {
+          file: { type: 'string', format: 'binary' },
+          props: {
+            type: 'object',
+            required: ['name', 'description'],
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              created_at: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+
+      expect(result.map((row) => [row.name, row.isRequired])).toEqual([
+        ['file', true],
+        ['props.name', true],
+        ['props.description', true],
+        ['props.created_at', false],
+      ])
+      expect(result[1]?.schema).toBeDefined()
+      expect(result[2]?.schema).toBeDefined()
+    })
+
+    it('emits example properties that are not declared in the schema', () => {
+      // A schema-derived example can carry keys the schema does not declare — either at
+      // the top level or inside a nested object. Those rows still need to be visible and
+      // editable; otherwise the user has no way to inspect or change them from the UI.
+      const example: ExampleObject = {
+        value: {
+          file: '',
+          props: { name: 'Widget', extra: 'undeclared-inner' },
+          top_extra: 'undeclared-top',
+        },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          file: { type: 'string', format: 'binary' },
+          props: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+            },
+          },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+
+      expect(result.map((row) => row.name)).toEqual(['file', 'props.name', 'props.extra', 'top_extra'])
+      expect(result.find((row) => row.name === 'props.extra')?.value).toBe('undeclared-inner')
+      expect(result.find((row) => row.name === 'top_extra')?.value).toBe('undeclared-top')
+    })
+
+    it('does not expand nested object properties into dotted rows for urlencoded bodies', () => {
+      // Urlencoded has no spec-defined way to serialize one nested object across multiple
+      // dotted-name keys (and `buildRequestBody` only regroups dotted rows for multipart),
+      // so emitting `props.name`-style leaves here would round-trip into flat fields on send.
+      // Stay on a single top-level row per property; the inner object is JSON-stringified
+      // by the array branch when the example is saved back as a row array.
+      const example: ExampleObject = {
+        value: {
+          token: 'abc',
+          props: { name: 'Widget', description: 'A useful widget' },
+        },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          token: { type: 'string' },
+          props: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+            },
+          },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'application/x-www-form-urlencoded', formBodySchema)
+
+      expect(result.map((row) => row.name)).toEqual(['token', 'props'])
+      expect(result[1]?.value).toBe(JSON.stringify({ name: 'Widget', description: 'A useful widget' }))
+    })
+
+    it('preserves File values when walking nested schema', () => {
+      const file = new File([''], 'avatar.png', { type: 'image/png' })
+      const example: ExampleObject = {
+        value: { upload: { file } },
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          upload: {
+            type: 'object',
+            properties: {
+              file: { type: 'string', format: 'binary' },
+            },
+          },
+        },
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+      expect(result).toHaveLength(1)
+      expect(result[0]?.name).toBe('upload.file')
+      expect(result[0]?.value).toBe(file)
+    })
+
+    it('handles empty required array', () => {
+      const example: ExampleObject = {
+        value: [{ name: 'optionalField', value: 'x', isDisabled: false }],
+      }
+      const formBodySchema: SchemaObject = {
+        type: 'object',
+        properties: {
+          optionalField: { type: 'string' },
+        },
+        required: [],
+      }
+
+      const result = getFormBodyRows(example, 'multipart/form-data', formBodySchema)
+
+      assert(result[0])
+      expect(result[0].isRequired).toBe(false)
+    })
+  })
+  it('retains example-only arrays through repeated form-table round trips', () => {
+    const original = { value: { tags: ['a', 'b'], items: [{ id: 1 }, { id: 2 }], empty: [] } }
+    const first = getFormBodyRows(original, 'multipart/form-data')
+    const stored = first.map((row) => ({ name: row.name, value: getFormBodyValue(row), isDisabled: false }))
+    expect(stored).toEqual([
+      { name: 'tags', value: ['a', 'b'], isDisabled: false },
+      { name: 'items', value: [{ id: 1 }, { id: 2 }], isDisabled: false },
+      { name: 'empty', value: [], isDisabled: false },
+    ])
+    expect(getFormBodyRows({ value: stored }, 'multipart/form-data')).toEqual(first)
+  })
+
+  it('preserves invalid array text and literal JSON string fields', () => {
+    expect(getFormBodyValue({ name: 'items', value: '[invalid', schema: { type: 'array' } })).toBe('[invalid')
+    expect(getFormBodyValue({ name: 'literal', value: '["a"]', schema: { type: 'string' } })).toBe('["a"]')
+    expect(getFormBodyValue({ name: 'literal', value: '["a"]' })).toBe('["a"]')
+  })
+
+  it('renders an array of files as repeated rows retaining the actual files', () => {
+    const first = new File(['one'], 'one.txt')
+    const second = new File(['two'], 'two.txt')
+    const rows = getFormBodyRows({ value: { files: [first, second] } }, 'multipart/form-data')
+    expect(rows).toEqual([
+      { name: 'files', value: first, isDisabled: false },
+      { name: 'files', value: second, isDisabled: false },
+    ])
+    expect(rows.map(getFormBodyValue)).toEqual([first, second])
+  })
+  it.each([{}, { oneOf: [{ type: 'array' }, { type: 'string' }] }, { type: ['array', 'string'] }])(
+    'retains actual arrays with an unconstrained or union schema %j',
+    (schema) => {
+      const rows = getFormBodyRows({ value: { tags: ['a', 'b'] } }, 'multipart/form-data', {
+        type: 'object',
+        // OpenAPI permits schemas without a type, unlike the normalized internal type.
+        properties: { tags: schema as SchemaObject },
+      })
+      expect(rows.map(getFormBodyValue)).toEqual([['a', 'b']])
+    },
+  )
+})

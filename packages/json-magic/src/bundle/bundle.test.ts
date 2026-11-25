@@ -1,0 +1,3518 @@
+import { randomUUID } from 'node:crypto'
+import fs from 'node:fs/promises'
+import type { AddressInfo } from 'node:net'
+import { cwd } from 'node:process'
+
+import { path } from '@scalar/helpers/node/path'
+import { consoleWarnSpy, resetConsoleSpies } from '@scalar/helpers/testing/console-spies'
+import fastify, { type FastifyInstance } from 'fastify'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import YAML from 'yaml'
+
+import { parseJson } from '@/bundle/plugins/parse-json'
+import { parseYaml } from '@/bundle/plugins/parse-yaml'
+import { getHash } from '@/bundle/value-generator'
+import { getSegmentsFromPath } from '@/helpers/get-segments-from-path'
+import { getValueByPath } from '@/helpers/get-value-by-path'
+
+import {
+  type LoaderPlugin,
+  bundle,
+  extensions,
+  isLocalRef,
+  prefixInternalRef,
+  prefixInternalRefRecursive,
+  resolveAndCopyReferences,
+} from './bundle'
+import { bundleWithDiagnostics } from './bundle-with-diagnostics'
+import { documentReferences } from './document-references'
+import { fetchUrls } from './plugins/fetch-urls'
+import { readFiles } from './plugins/read-files'
+
+describe('bundle', () => {
+  it.each([
+    [undefined, false],
+    ['nested/Pet.yaml', false],
+    [undefined, true],
+    ['nested/Pet.yaml', true],
+  ] as const)(
+    'loads stored document relatives from their retrieval base with id %s (strict: %s)',
+    async ($id, strict) => {
+      const reads: string[] = []
+      const run = strict ? bundleWithDiagnostics : bundle
+      const result = await run(
+        {
+          entry: { $ref: '#/x-ext/a' },
+          'x-ext': { a: { ...($id ? { $id } : {}), value: { $ref: './common.yaml#/Value' } } },
+        },
+        {
+          origin: 'https://example.com/api/root.json',
+          treeShake: false,
+          plugins: [
+            {
+              type: 'loader',
+              validate: () => true,
+              exec: (uri) => {
+                reads.push(uri)
+                return Promise.resolve({ ok: true, data: { Value: { type: 'string' } }, raw: '' })
+              },
+            },
+          ],
+        },
+      )
+      expect(reads).toStrictEqual([
+        $id ? 'https://example.com/api/nested/common.yaml' : 'https://example.com/api/common.yaml',
+      ])
+      if (strict) expect(result['complete']).toBe(true)
+      const reference = (strict ? result['document'] : result)['x-ext'].a.value.$ref
+      expect(reference.startsWith('#/x-ext/')).toBe(true)
+      expect(reference.endsWith('/Value')).toBe(true)
+    },
+  )
+
+  it.each([true, false])(
+    'preserves authored URL edges while loading remote relatives (treeShake: %s)',
+    async (treeShake) => {
+      const rootUrl = 'https://example.test/api/root.json'
+      const childUrl = 'https://example.test/api/child.json'
+      const nestedUrl = 'https://example.test/api/schemas/nested.json'
+      const documents = {
+        [rootUrl]: {
+          $id: rootUrl,
+          child: { $ref: './child.json' },
+          loaded: { $ref: `${childUrl}#/$defs/value` },
+          http: { $ref: 'http://never.test/schema#value', sibling: { $ref: './local.json' } },
+          https: { $ref: 'https://never.test/schema#/value' },
+          internal: { $ref: '#/child' },
+        },
+        [childUrl]: {
+          $id: './schemas/child.json',
+          $anchor: 'child',
+          $defs: {
+            value: { type: 'string' },
+            nested: { $id: './nested-resource.json', $anchor: 'nested', self: { $ref: '#nested' } },
+          },
+          value: { $ref: '#/$defs/value' },
+          self: { $ref: '#child' },
+          next: { $ref: './nested.json' },
+          preserved: { $ref: 'https://never.test/child#anchor' },
+        },
+        [nestedUrl]: { type: 'number' },
+        'https://example.test/api/local.json': { type: 'boolean' },
+      }
+      const calls: string[] = []
+      const decisions: [string, string][] = []
+      const cache = new Map<string, Promise<import('./bundle').ResolveResult>>()
+      const result = await bundle(rootUrl, {
+        treeShake,
+        urlMap: true,
+        cache,
+        compress: (value) => encodeURIComponent(value),
+        plugins: [
+          fetchUrls({
+            fetch: (url): Promise<Response> => {
+              calls.push(String(url))
+              return Promise.resolve(
+                new Response(JSON.stringify(documents[String(url)]), {
+                  status: documents[String(url)] ? 200 : 404,
+                }),
+              )
+            },
+          }),
+        ],
+        preserveReference: (ref, { origin }) => {
+          decisions.push([ref, origin])
+          return /^https?:\/\//i.test(ref)
+        },
+      })
+      const root = result as (typeof documents)[typeof rootUrl]
+      expect(calls).toStrictEqual([rootUrl, childUrl, nestedUrl, 'https://example.test/api/local.json'])
+      expect(root.loaded.$ref).toBe(`${childUrl}#/$defs/value`)
+      expect(root.http.$ref).toBe('http://never.test/schema#value')
+      expect(root.https.$ref).toBe('https://never.test/schema#/value')
+      expect(root.internal.$ref).toBe('#/child')
+      expect(decisions.find(([ref]) => ref === './nested.json')).toStrictEqual([
+        './nested.json',
+        'https://example.test/api/schemas/child.json',
+      ])
+      expect([...cache.keys()]).toStrictEqual(['child.json', 'schemas/nested.json', 'local.json'])
+      expect(result['x-ext-urls']).toStrictEqual({
+        'child.json': 'child.json',
+        'schemas%2Fnested.json': 'schemas/nested.json',
+        'local.json': 'local.json',
+      })
+
+      // Re-index serialized output at a different URI: IDs and anchor scope must survive.
+      const exported = JSON.parse(JSON.stringify(result))
+      const index = documentReferences('x-ext')
+      index.register(exported, 'https://download.test/elsewhere/output.json')
+      for (const [key, document] of Object.entries(exported['x-ext'])) {
+        index.register(document, `https://download.test/elsewhere/${key}`, ['x-ext', key])
+      }
+      const child = exported['x-ext']['child.json']
+      expect(child.$id).toBe('https://example.test/api/schemas/child.json')
+      expect(index.resolve(child.self.$ref, child.$id)?.value).toBe(child)
+      expect(index.resolve(child.value.$ref, child.$id)?.value).toBe(child.$defs.value)
+      const next = getValueByPath(child, getSegmentsFromPath(new URL(child.next.$ref, child.$id).hash)).value
+      expect(index.resolve(child.next.$ref, child.$id)?.value).toBe(next)
+      expect(next).toEqual(exported['x-ext']['schemas%2Fnested.json'])
+      const nested = child.$defs.nested
+      expect(index.resolve(nested.self.$ref, nested.$id)?.value).toBe(nested)
+      expect(nested.$id).toBe('https://example.test/api/schemas/nested-resource.json')
+    },
+  )
+
+  it('preserves cached and indexed targets without resolution hooks or cache insertion', async () => {
+    const cached = { type: 'string' }
+    const cache = new Map([
+      ['https://example.test/cached', Promise.resolve({ ok: true as const, data: cached, raw: '' })],
+    ])
+    const input = {
+      $id: 'https://example.test/root',
+      local: { $id: 'https://example.test/indexed', type: 'number' },
+      first: { $ref: 'https://example.test/cached' },
+      second: { $ref: 'https://example.test/indexed' },
+      third: { $ref: 'http://example.test/missing#anchor' },
+    }
+    const before = structuredClone(input)
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    const onResolveStart = vi.fn()
+    const onResolveSuccess = vi.fn()
+    const onResolveError = vi.fn()
+    const result = await bundle(input, {
+      treeShake: true,
+      urlMap: true,
+      cache,
+      plugins: [fetchUrls({ fetch })],
+      preserveReference: (ref) => /^https?:\/\//.test(ref),
+      hooks: { onResolveStart, onResolveSuccess, onResolveError },
+    })
+    expect(result).toStrictEqual({ ...before, 'x-ext-urls': {} })
+    expect(fetch).toHaveBeenCalledTimes(0)
+    expect(onResolveStart).toHaveBeenCalledTimes(0)
+    expect(onResolveSuccess).toHaveBeenCalledTimes(0)
+    expect(onResolveError).toHaveBeenCalledTimes(0)
+    expect([...cache.keys()]).toStrictEqual(['https://example.test/cached'])
+  })
+
+  it.each([true, false])(
+    'bundles local files and reports real failures with preservation (treeShake: %s)',
+    async (treeShake) => {
+      const reads: string[] = []
+      const errors: string[] = []
+      const loader: LoaderPlugin = {
+        type: 'loader',
+        validate: () => true,
+        exec: (uri): Promise<import('./bundle').ResolveResult> => {
+          reads.push(uri)
+          return Promise.resolve(
+            uri === '/local.json' ? { ok: true, data: { value: { type: 'string' } }, raw: '' } : { ok: false },
+          )
+        },
+      }
+      const input = {
+        local: { $ref: './local.json#/value' },
+        missing: { $ref: './missing.json' },
+        remote: { $ref: 'https://broken.test/schema' },
+        keep: { $ref: 'https://keep.test/schema' },
+      }
+      await bundle(input, {
+        origin: '/root.json',
+        treeShake,
+        plugins: [loader],
+        preserveReference: (ref) => ref.startsWith('https://keep.test/'),
+        hooks: {
+          onResolveError: (node) => {
+            errors.push(String(node.$ref))
+          },
+        },
+      })
+      expect(reads).toStrictEqual(['/local.json', '/missing.json', 'https://broken.test/schema'])
+      expect(errors).toStrictEqual(['./missing.json', 'https://broken.test/schema'])
+      expect(input.keep.$ref).toBe('https://keep.test/schema')
+    },
+  )
+
+  it.each([undefined, () => false])(
+    'retains normal HTTP resolution when preservation is absent or declines',
+    async (preserveReference) => {
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('{"type":"string"}'))
+      const input = { value: { $ref: 'https://example.test/schema' }, again: { $ref: 'https://example.test/schema' } }
+      await bundle(input, { treeShake: false, plugins: [fetchUrls({ fetch })], preserveReference })
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(input.value.$ref).toBe(input.again.$ref)
+      expect(input.value.$ref.startsWith('#/x-ext/')).toBe(true)
+    },
+  )
+
+  it('retains enclosing IDs and scoped anchors when copying only a referenced subtree', async () => {
+    const input = { value: { $ref: './child.json#/$defs/nested' } }
+    const child = {
+      $id: './schemas/child.json',
+      $defs: {
+        nested: {
+          $id: './nested.json',
+          $anchor: 'value',
+          self: { $ref: '#value' },
+          external: { $ref: 'https://keep.test/schema#value' },
+        },
+        unused: { type: 'string' },
+      },
+    }
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify(child)))
+    const result = await bundle(input, {
+      origin: 'https://example.test/api/root.json',
+      treeShake: true,
+      plugins: [fetchUrls({ fetch })],
+      compress: () => 'child',
+      preserveReference: (ref) => /^https?:\/\//.test(ref),
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const exported = JSON.parse(JSON.stringify(result))
+    const copied = exported['x-ext'].child
+    expect(copied.$id).toBe('https://example.test/api/schemas/child.json')
+    expect(Object.keys(copied.$defs)).toStrictEqual(['nested'])
+    const index = documentReferences('x-ext')
+    index.register(copied, 'https://download.test/bundle.json')
+    const nested = copied.$defs.nested
+    expect(index.resolve(nested.self.$ref, nested.$id)?.value).toBe(nested)
+    expect(nested.$id).toBe('https://example.test/api/schemas/nested.json')
+    expect(nested.external.$ref).toBe('https://keep.test/schema#value')
+  })
+
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'rejects dangerous extension keys before reserving cache entries: %s',
+    async (key) => {
+      const uri = 'https://example.test/alert293.json'
+      const hash = getHash(uri)
+      for (const option of ['externalDocumentsMappingsKey', 'externalDocumentsKey']) {
+        for (const urlMap of [true, false]) {
+          const input = { remote: { $ref: uri } }
+          try {
+            await expect(
+              bundle(input, {
+                plugins: [],
+                treeShake: true,
+                cache: new Map([[uri, Promise.resolve({ ok: true, data: { type: 'string' }, raw: '' })]]),
+                [option]: key,
+                urlMap,
+              }),
+            ).rejects.toThrow(`Prototype pollution key detected: "${key}"`)
+            expect(Object.getOwnPropertyDescriptor(Object.prototype, hash)).toBeUndefined()
+            expect(Object.getOwnPropertyDescriptor(Object, hash)).toBeUndefined()
+            expect(input).toStrictEqual({ remote: { $ref: uri } })
+          } finally {
+            Reflect.deleteProperty(Object.prototype, hash)
+            Reflect.deleteProperty(Object, hash)
+          }
+        }
+      }
+    },
+  )
+
+  it.each([true, false])('does not mutate borrowed URL mappings (inherited: %s)', async (inherited) => {
+    const uri = 'https://example.test/alert293.json'
+    const mappings = { stale: 'https://example.test/unused.json' }
+    const input = inherited ? Object.create({ 'x-ext-urls': mappings }) : { 'x-ext-urls': mappings }
+
+    await bundle(input, {
+      plugins: [],
+      treeShake: true,
+      cache: new Map([[uri, Promise.resolve({ ok: true, data: { type: 'string' }, raw: '' })]]),
+      urlMap: true,
+    })
+
+    expect(mappings).toStrictEqual({ stale: 'https://example.test/unused.json' })
+    expect(Object.getOwnPropertyDescriptor(input, 'x-ext-urls')?.value).toStrictEqual({
+      ...(inherited ? {} : mappings),
+      [getHash(uri)]: uri,
+    })
+  })
+
+  it('does not mutate inherited URL mappings when preserving references', async () => {
+    const mappings = { stale: 'https://example.test/unused.json' }
+    const input = Object.assign(Object.create({ mappings }), {
+      remote: { $ref: 'https://example.test/preserved.json' },
+    })
+
+    await bundle(input, {
+      plugins: [],
+      treeShake: true,
+      urlMap: true,
+      externalDocumentsMappingsKey: 'mappings',
+      preserveReference: (): boolean => true,
+    })
+
+    expect(mappings).toStrictEqual({ stale: 'https://example.test/unused.json' })
+    expect(Object.getOwnPropertyDescriptor(input, 'mappings')?.value).toStrictEqual({})
+    expect(input.remote.$ref).toBe('https://example.test/preserved.json')
+  })
+
+  it.each([undefined, 'https://example.com/api.json'])(
+    'preserves references across embedded schema scopes without root identity (origin: %s)',
+    async (origin) => {
+      const input = {
+        components: {
+          schemas: {
+            Pet: { $id: '/schemas/pet', properties: { category: { $ref: '/schemas/category' } } },
+            Category: { $id: '/schemas/category', type: 'string' },
+          },
+        },
+      }
+      await bundle(input, { origin, treeShake: false, plugins: [] })
+      expect(input.components.schemas.Pet.properties.category.$ref).toBe('/schemas/category')
+
+      // Serialization and relocation must retain the target, not the retrieval host.
+      const exported = JSON.parse(JSON.stringify(input))
+      const relocatedOrigin = 'https://download.example.org/export.json'
+      const references = documentReferences('x-ext')
+      references.register(exported, relocatedOrigin)
+      const pet = exported.components.schemas.Pet
+      const sourceOrigin = new URL(pet.$id, relocatedOrigin).href
+      const resolved = references.resolve(pet.properties.category.$ref, sourceOrigin)
+      expect(resolved?.value).toBe(exported.components.schemas.Category)
+      expect(new URL(pet.properties.category.$ref, sourceOrigin).href).toBe(
+        'https://download.example.org/schemas/category',
+      )
+    },
+  )
+
+  it('qualifies embedded schema references using a declared root identity', async () => {
+    const input = {
+      $id: 'https://example.com/api.json',
+      schemas: {
+        Pet: { $id: '/schemas/pet', category: { $ref: 'https://example.com/schemas/category' } },
+        Category: { $id: '/schemas/category', type: 'string' },
+      },
+    }
+    await bundle(input, { treeShake: false, plugins: [] })
+    const references = documentReferences('x-ext')
+    references.register(input, 'https://download.example.org/export.json')
+    expect(input.schemas.Pet.category.$ref).toBe('https://example.com/api.json#/schemas/Category')
+    expect(references.resolve(input.schemas.Pet.category.$ref, 'https://example.com/schemas/pet')?.value).toBe(
+      input.schemas.Category,
+    )
+  })
+
+  it('uses the retrieval URI without interpreting format-specific identity fields', async () => {
+    const input = { openapi: '3.2.1', $self: 'https://other.example.com/api.json', item: { $ref: 'value.json' } }
+    const requested: string[] = []
+    await bundle(input, {
+      origin: 'https://example.com/root.json',
+      treeShake: false,
+      plugins: [
+        {
+          type: 'loader',
+          validate: () => true,
+          exec: (uri) => {
+            requested.push(uri)
+            return Promise.resolve({ ok: true, data: { type: 'string' }, raw: '{}' })
+          },
+        },
+      ],
+    })
+    expect(requested).toStrictEqual(['https://example.com/value.json'])
+    expect(input.$self).toBe('https://other.example.com/api.json')
+  })
+
+  it('uses caller-defined document identity and retains metadata when tree shaking', async () => {
+    const external = { identity: 'https://example.com/value.json', format: { version: 1 }, value: { type: 'string' } }
+    const input = { item: { $ref: 'https://example.com/value.json#/value' } }
+    await bundle(input, {
+      treeShake: true,
+      compress: () => 'value',
+      cache: new Map([
+        ['https://mirror.example.com/value.json', Promise.resolve({ ok: true, data: external, raw: '{}' })],
+      ]),
+      plugins: [],
+      hooks: {
+        resolveDocument: (document) =>
+          document === external
+            ? { baseUri: external.identity, metadata: { identity: external.identity, format: external.format } }
+            : undefined,
+      },
+    })
+    expect(input).toStrictEqual({
+      item: { $ref: '#/x-ext/value/value' },
+      'x-ext': { value: external },
+    })
+  })
+
+  describe('external urls', () => {
+    let server: FastifyInstance
+    let url: string
+
+    beforeEach(() => {
+      server = fastify({ logger: false })
+
+      return async () => {
+        await server.close()
+      }
+    })
+
+    it.each([extensions.externalDocuments, 'x-fake'])(
+      'bundles external urls with key %s',
+      async (externalDocumentsKey: string) => {
+        const external = {
+          prop: 'I am external json prop',
+        }
+        server.get('/', (_, reply) => {
+          reply.send(external)
+        })
+
+        await server.listen({ port: 0 })
+        url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+        const input = {
+          a: {
+            b: {
+              c: 'hello',
+            },
+          },
+          d: {
+            '$ref': `${url}#/prop`,
+          },
+        }
+
+        await bundle(input, {
+          plugins: [fetchUrls(), readFiles()],
+          treeShake: false,
+          externalDocumentsKey,
+        })
+
+        expect(input).toEqual({
+          [externalDocumentsKey]: {
+            [getHash(url)]: {
+              ...external,
+            },
+          },
+          a: {
+            b: {
+              c: 'hello',
+            },
+          },
+          d: {
+            $ref: `#/${externalDocumentsKey}/${getHash(url)}/prop`,
+          },
+        })
+      },
+    )
+
+    it('bundles external references when the remote JSON is prefixed with a UTF-8 BOM', async () => {
+      const external = {
+        prop: 'from bom payload',
+      }
+      server.get('/', (_, reply) => {
+        reply.header('Content-Type', 'application/json').send(`\uFEFF${JSON.stringify(external)}`)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        d: {
+          '$ref': `${url}#/prop`,
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(url)]: {
+            ...external,
+          },
+        },
+        d: {
+          $ref: `#/x-ext/${getHash(url)}/prop`,
+        },
+      })
+    })
+
+    it('bundles external urls from resolved external piece', async () => {
+      const chunk2 = {
+        hey: 'hey',
+        nested: {
+          key: 'value',
+        },
+        internal: '#/nested/key',
+      }
+
+      let chunk1: object
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+      server.get('/chunk2', (_, reply) => {
+        reply.send(chunk2)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      chunk1 = {
+        a: {
+          hello: 'hello',
+        },
+        b: {
+          '$ref': `${url}/chunk2#`,
+        },
+      }
+
+      const input = {
+        a: {
+          b: {
+            c: {
+              '$ref': `${url}/chunk1#`,
+            },
+          },
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            ...chunk1,
+            b: {
+              $ref: `#/x-ext/${getHash(`${url}/chunk2`)}`,
+            },
+          },
+          [getHash(`${url}/chunk2`)]: {
+            ...chunk2,
+            internal: '#/nested/key',
+          },
+        },
+        a: {
+          b: {
+            c: {
+              $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+            },
+          },
+        },
+      })
+    })
+
+    it('should correctly handle only urls without a pointer', async () => {
+      server.get('/', (_, reply) => {
+        reply.send({
+          a: 'a',
+        })
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          b: {
+            '$ref': `${url}`,
+          },
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(url)]: {
+            a: 'a',
+          },
+        },
+        a: {
+          b: {
+            $ref: `#/x-ext/${getHash(url)}`,
+          },
+        },
+      })
+    })
+
+    it('caches results for same resource', async () => {
+      const fn = vi.fn()
+
+      server.get('/', (_, reply) => {
+        fn()
+        reply.send({
+          a: 'a',
+          b: 'b',
+        })
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          '$ref': `${url}#/a`,
+        },
+        b: {
+          '$ref': `${url}#/b`,
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(url)]: {
+            a: 'a',
+            b: 'b',
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(url)}/a`,
+        },
+        b: {
+          $ref: `#/x-ext/${getHash(url)}/b`,
+        },
+      })
+
+      // We expect the bundler to cache the result for the same url
+      expect(fn).toHaveBeenCalledOnce()
+    })
+
+    it('handles correctly external nested refs', async () => {
+      server.get('/nested/another-file.json', (_, reply) => {
+        reply.send({
+          c: 'c',
+        })
+      })
+
+      server.get('/nested/chunk1.json', (_, reply) => {
+        reply.send({
+          b: {
+            '$ref': './another-file.json#',
+          },
+        })
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          '$ref': `${url}/nested/chunk1.json#`,
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(`${url}/nested/another-file.json`)]: {
+            c: 'c',
+          },
+          [getHash(`${url}/nested/chunk1.json`)]: {
+            b: {
+              $ref: `#/x-ext/${getHash(`${url}/nested/another-file.json`)}`,
+            },
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(`${url}/nested/chunk1.json`)}`,
+        },
+      })
+    })
+
+    it('does not merge paths when we use absolute urls', async () => {
+      server.get('/top-level', (_, reply) => {
+        reply.send({
+          c: 'c',
+        })
+      })
+
+      server.get('/nested/chunk1.json', (_, reply) => {
+        reply.send({
+          b: {
+            '$ref': `${url}/top-level#`,
+          },
+        })
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          '$ref': `${url}/nested/chunk1.json`,
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(`${url}/top-level`)]: {
+            c: 'c',
+          },
+          [getHash(`${url}/nested/chunk1.json`)]: {
+            b: {
+              $ref: `#/x-ext/${getHash(`${url}/top-level`)}`,
+            },
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(`${url}/nested/chunk1.json`)}`,
+        },
+      })
+    })
+
+    it('bundles from a url input', async () => {
+      server.get('/top-level', (_, reply) => {
+        reply.send({
+          c: 'c',
+        })
+      })
+
+      server.get('/nested/chunk1.json', (_, reply) => {
+        reply.send({
+          b: {
+            '$ref': `${url}/top-level#`,
+          },
+        })
+      })
+
+      server.get('/base/openapi.json', (_, reply) => {
+        reply.send({
+          a: {
+            $ref: '../nested/chunk1.json',
+          },
+        })
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const output = await bundle(`${url}/base/openapi.json`, { plugins: [fetchUrls()], treeShake: false })
+
+      expect(output).toEqual({
+        'x-ext': {
+          [getHash('../top-level')]: {
+            c: 'c',
+          },
+          [getHash('../nested/chunk1.json')]: {
+            b: {
+              $ref: `#/x-ext/${getHash('../top-level')}`,
+            },
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash('../nested/chunk1.json')}`,
+        },
+      })
+    })
+
+    it.each([extensions.externalDocumentsMappings, 'x-fake-urls'])(
+      'generated a map when we turn the urlMap on with key %s',
+      async (externalDocumentsMappingsKey: string) => {
+        server.get('/top-level', (_, reply) => {
+          reply.send({
+            c: 'c',
+          })
+        })
+
+        server.get('/nested/chunk1.json', (_, reply) => {
+          reply.send({
+            b: {
+              '$ref': `${url}/top-level#`,
+            },
+          })
+        })
+
+        server.get('/base/openapi.json', (_, reply) => {
+          reply.send({
+            a: {
+              $ref: '../nested/chunk1.json',
+            },
+          })
+        })
+
+        await server.listen({ port: 0 })
+        url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+        const output = await bundle(`${url}/base/openapi.json`, {
+          plugins: [fetchUrls()],
+          treeShake: false,
+          urlMap: true,
+          externalDocumentsMappingsKey,
+        })
+
+        expect(output).toEqual({
+          'x-ext': {
+            [getHash('../top-level')]: {
+              c: 'c',
+            },
+            [getHash('../nested/chunk1.json')]: {
+              b: {
+                $ref: `#/x-ext/${getHash('../top-level')}`,
+              },
+            },
+          },
+          [externalDocumentsMappingsKey]: {
+            [getHash('../top-level')]: '../top-level',
+            [getHash('../nested/chunk1.json')]: '../nested/chunk1.json',
+          },
+          a: {
+            $ref: `#/x-ext/${getHash('../nested/chunk1.json')}`,
+          },
+        })
+      },
+    )
+
+    it('prefixes the refs only once', async () => {
+      let chunk1: object
+      let chunk2: object
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+      server.get('/chunk2', (_, reply) => {
+        reply.send(chunk2)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      chunk2 = {
+        a: 'a',
+        b: {
+          '$ref': `${url}/chunk1#`,
+        },
+      }
+      chunk1 = {
+        a: {
+          hello: 'hello',
+        },
+        b: {
+          '$ref': `${url}/chunk2#`,
+        },
+      }
+
+      const input = {
+        a: {
+          b: {
+            c: {
+              '$ref': `${url}/chunk1#`,
+            },
+            d: {
+              e: {
+                f: {
+                  g: {
+                    '$ref': `${url}/chunk1#`,
+                  },
+                },
+              },
+            },
+          },
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls()], treeShake: false })
+
+      expect(input).toEqual({
+        a: {
+          b: {
+            c: {
+              $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+            },
+            d: {
+              e: {
+                f: {
+                  g: {
+                    $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+                  },
+                },
+              },
+            },
+          },
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              hello: 'hello',
+            },
+            b: {
+              $ref: `#/x-ext/${getHash(`${url}/chunk2`)}`,
+            },
+          },
+          [getHash(`${url}/chunk2`)]: {
+            a: 'a',
+            b: {
+              $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+            },
+          },
+        },
+      })
+    })
+
+    it('bundles array references', async () => {
+      const chunk1 = {
+        a: {
+          hello: 'hello',
+        },
+      }
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: [
+          {
+            $ref: `${url}/chunk1#`,
+          },
+        ],
+      }
+      await bundle(input, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+      })
+
+      expect(input).toEqual({
+        a: [
+          {
+            $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+          },
+        ],
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              hello: 'hello',
+            },
+          },
+        },
+      })
+    })
+
+    it('bundles subpart of the document', async () => {
+      const chunk1 = {
+        a: {
+          hello: 'hello',
+        },
+      }
+
+      const fn = vi.fn()
+
+      server.get('/chunk1', (_, reply) => {
+        fn()
+        reply.send(chunk1)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+        b: {
+          $ref: `${url}/chunk1#`,
+        },
+        c: {
+          $ref: `${url}/chunk1#`,
+        },
+      }
+
+      const cache = new Map()
+
+      // Bundle only partial
+      await bundle(input.b, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        root: input,
+        cache,
+      })
+
+      expect(input).toEqual({
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+        b: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+        },
+        c: {
+          $ref: `${url}/chunk1#`,
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              hello: 'hello',
+            },
+          },
+        },
+        'x-ext-urls': {
+          [getHash(`${url}/chunk1`)]: `${url}/chunk1`,
+        },
+      })
+
+      // Bundle only partial
+      await bundle(input.c, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        root: input,
+        cache,
+      })
+
+      expect(input).toEqual({
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+        b: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+        },
+        c: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              hello: 'hello',
+            },
+          },
+        },
+        'x-ext-urls': {
+          [getHash(`${url}/chunk1`)]: `${url}/chunk1`,
+        },
+      })
+
+      expect(fn).toHaveBeenCalledTimes(1)
+    })
+
+    it('always emits the url mappings when doing partial bundle', async () => {
+      const chunk1 = {
+        a: {
+          hello: 'hello',
+        },
+      }
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+        b: {
+          $ref: `${url}/chunk1#`,
+        },
+        c: {
+          $ref: `${url}/chunk1#`,
+        },
+      }
+
+      const cache = new Map()
+
+      // Bundle only partial
+      await bundle(input.b, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        root: input,
+        cache,
+        urlMap: false, // Set the urlMapping to false
+      })
+
+      expect(input).toEqual({
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+        b: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+        },
+        c: {
+          $ref: `${url}/chunk1#`,
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              hello: 'hello',
+            },
+          },
+        },
+        // It should still inject the mappings on the output document
+        'x-ext-urls': {
+          [getHash(`${url}/chunk1`)]: `${url}/chunk1`,
+        },
+      })
+    })
+
+    it('tree shakes the external documents correctly', async () => {
+      const chunk1 = {
+        a: {
+          b: {
+            hello: 'hello',
+            g: {
+              $ref: '#/d/e',
+            },
+          },
+          c: 'c',
+        },
+        d: {
+          e: { message: 'I should be included' },
+          f: { message: 'I should be excluded on the final bundle' },
+        },
+      }
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#/a/b`,
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls()], treeShake: true })
+
+      expect(input).toEqual({
+        a: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}/a/b`,
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              b: {
+                g: {
+                  $ref: `#/x-ext/${getHash(`${url}/chunk1`)}/d/e`,
+                },
+                hello: 'hello',
+              },
+            },
+            d: {
+              e: { message: 'I should be included' },
+            },
+          },
+        },
+      })
+    })
+
+    it('tree shakes correctly when working with nested external refs', async () => {
+      const chunk2 = {
+        a: {
+          b: {
+            hello: 'hello',
+          },
+          hi: 'hi',
+        },
+      }
+
+      const chunk1 = {
+        a: {
+          b: {
+            hello: 'hello',
+            g: {
+              $ref: '#/d/e',
+            },
+          },
+          c: 'c',
+          external: {
+            $ref: '/chunk2#/a/b',
+          },
+        },
+        d: {
+          e: { message: 'I should be included' },
+          f: { message: 'I should be excluded on the final bundle' },
+        },
+      }
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+
+      server.get('/chunk2', (_, reply) => {
+        reply.send(chunk2)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#/a`,
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls()], treeShake: true })
+
+      expect(input).toEqual({
+        a: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}/a`,
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              b: {
+                g: {
+                  $ref: `#/x-ext/${getHash(`${url}/chunk1`)}/d/e`,
+                },
+                hello: 'hello',
+              },
+              c: 'c',
+              'external': {
+                $ref: `#/x-ext/${getHash(`${url}/chunk2`)}/a/b`,
+              },
+            },
+            d: {
+              e: {
+                'message': 'I should be included',
+              },
+            },
+          },
+          [getHash(`${url}/chunk2`)]: {
+            a: {
+              b: {
+                hello: 'hello',
+              },
+            },
+          },
+        },
+      })
+    })
+
+    it('handles circular references when we treeshake', async () => {
+      const chunk1 = {
+        a: {
+          b: {
+            hello: 'hello',
+            g: {
+              $ref: '#/a/external',
+            },
+          },
+          c: 'c',
+          external: {
+            $ref: '#/a/b',
+          },
+        },
+      }
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#/a`,
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls()], treeShake: true })
+
+      expect(input).toEqual({
+        a: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}/a`,
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              b: {
+                g: {
+                  $ref: `#/x-ext/${getHash(`${url}/chunk1`)}/a/external`,
+                },
+                hello: 'hello',
+              },
+              c: 'c',
+              external: {
+                $ref: `#/x-ext/${getHash(`${url}/chunk1`)}/a/b`,
+              },
+            },
+          },
+        },
+      })
+    })
+
+    it('handles chunks', async () => {
+      const chunk1 = {
+        description: 'Chunk 1',
+        someRef: {
+          $ref: '#/components/User',
+        },
+      }
+
+      const chunk2 = {
+        description: 'Chunk 2',
+      }
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+      server.get('/chunk2', (_, reply) => {
+        reply.send(chunk2)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#`,
+          $global: true,
+        },
+        b: {
+          $ref: `${url}/chunk2#`,
+          $global: true,
+        },
+        c: {
+          $ref: `${url}/chunk1#`,
+          $global: true,
+        },
+        components: {
+          User: {
+            id: 'number',
+            name: {
+              $ref: '#/a',
+            },
+            another: {
+              $ref: '#/b',
+            },
+          },
+        },
+      }
+
+      // Bundle only partial
+      await bundle(input.a, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        root: input,
+      })
+
+      expect(input).toEqual({
+        a: {
+          $global: true,
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+        },
+        b: {
+          $global: true,
+          $ref: `#/x-ext/${getHash(`${url}/chunk2`)}`,
+        },
+        c: {
+          $global: true,
+          $ref: `${url}/chunk1#`,
+        },
+        components: {
+          User: {
+            another: {
+              $ref: '#/b',
+            },
+            id: 'number',
+            name: {
+              $ref: '#/a',
+            },
+          },
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            description: 'Chunk 1',
+            someRef: {
+              $ref: '#/components/User',
+            },
+          },
+          [getHash(`${url}/chunk2`)]: {
+            description: 'Chunk 2',
+          },
+        },
+        'x-ext-urls': {
+          [getHash(`${url}/chunk2`)]: `${url}/chunk2`,
+          [getHash(`${url}/chunk1`)]: `${url}/chunk1`,
+        },
+      })
+    })
+
+    it('resolves a relative chunk reference reached through a local pointer against the document origin', async () => {
+      const operation = { summary: 'List users', items: { $ref: '#/components/schemas/User' } }
+      const user = { type: 'object' }
+
+      server.get('/chunks/operation', (_, reply) => {
+        reply.send(operation)
+      })
+      server.get('/chunks/User', (_, reply) => {
+        reply.send(user)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      // Chunk references written relative to the document, the way a static workspace writes them
+      const input = {
+        paths: { '/users': { get: { $ref: './chunks/operation#', $global: true } } },
+        components: { schemas: { User: { $ref: './chunks/User#', $global: true } } },
+      }
+
+      // Only the operation is asked for. Its chunk points back at the schema through a local
+      // pointer, and that schema is itself a relative chunk reference.
+      await bundle(input.paths['/users'].get, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        root: input,
+        origin: `${url}/openapi.json`,
+      })
+
+      const bundled = input as typeof input & { 'x-ext': Record<string, unknown> }
+
+      expect(bundled.paths['/users'].get).toEqual({ $global: true, $ref: expect.stringMatching(/^#\/x-ext\//) })
+      expect(bundled.components.schemas.User).toEqual({ $global: true, $ref: expect.stringMatching(/^#\/x-ext\//) })
+      expect(Object.values(bundled['x-ext'])).toEqual(expect.arrayContaining([operation, user]))
+    })
+
+    it('when bundle partial document we ensure all the dependencies references are resolved', async () => {
+      const chunk1 = {
+        a: {
+          hello: 'hello',
+        },
+      }
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+        b: {
+          a: 'a',
+          someReference: {
+            $ref: '#/a',
+          },
+        },
+        c: {
+          $ref: `${url}/chunk2#`,
+        },
+      }
+
+      const cache = new Map()
+
+      // Bundle only partial
+      await bundle(input.b, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        root: input,
+        cache,
+      })
+
+      expect(input).toEqual({
+        a: {
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+        },
+        b: {
+          a: 'a',
+          someReference: {
+            $ref: '#/a',
+          },
+        },
+        c: {
+          $ref: `${url}/chunk2#`,
+        },
+        'x-ext': {
+          [getHash(`${url}/chunk1`)]: {
+            a: {
+              hello: 'hello',
+            },
+          },
+        },
+        'x-ext-urls': {
+          [getHash(`${url}/chunk1`)]: `${url}/chunk1`,
+        },
+      })
+    })
+
+    it('should correctly handle nested chunk urls', async () => {
+      const chunk1 = {
+        chunk1: 'chunk1',
+        someRef: {
+          $ref: '#/b',
+        },
+      }
+
+      const chunk2 = {
+        chunk2: 'chunk2',
+        someRef: {
+          $ref: '#/c',
+        },
+      }
+
+      const chunk3 = {
+        chunk3: 'chunk3',
+      }
+      const external = {
+        external: 'external',
+        someChunk: {
+          $ref: '/chunk3',
+          $global: true,
+        },
+      }
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+      server.get('/chunk2', (_, reply) => {
+        reply.send(chunk2)
+      })
+      server.get('/external/chunk3', (_, reply) => {
+        reply.send(chunk3)
+      })
+      server.get('/chunk3', (_, reply) => {
+        reply.send(chunk3)
+      })
+      server.get('/external/document.json', (_, reply) => {
+        reply.send(external)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        c: {
+          $ref: `${url}/external/document.json`,
+        },
+        b: {
+          $ref: `${url}/chunk2`,
+          $global: true,
+        },
+        a: {
+          $ref: `${url}/chunk1`,
+          $global: true,
+        },
+        entry: {
+          $ref: '#/a',
+        },
+        nonBundle: {
+          $ref: `${url}/chunk1`,
+        },
+      }
+
+      const cache = new Map()
+
+      // Bundle only partial
+      await bundle(input.entry, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        root: input,
+        cache,
+        urlMap: true,
+      })
+
+      expect(input).toEqual({
+        a: {
+          $global: true,
+          $ref: `#/x-ext/${getHash(`${url}/chunk1`)}`,
+        },
+        b: {
+          $global: true,
+          $ref: `#/x-ext/${getHash(`${url}/chunk2`)}`,
+        },
+        c: {
+          $ref: `#/x-ext/${getHash(`${url}/external/document.json`)}`,
+        },
+
+        entry: {
+          $ref: '#/a',
+        },
+        nonBundle: {
+          $ref: `${url}/chunk1`,
+        },
+        'x-ext': {
+          [getHash(`${url}/external/document.json`)]: {
+            external: 'external',
+            someChunk: {
+              $ref: `#/x-ext/${getHash(`${url}/chunk3`)}`,
+              $global: true,
+            },
+          },
+          [getHash(`${url}/chunk1`)]: {
+            chunk1: 'chunk1',
+            someRef: {
+              $ref: '#/b',
+            },
+          },
+          [getHash(`${url}/chunk2`)]: {
+            chunk2: 'chunk2',
+            someRef: {
+              $ref: '#/c',
+            },
+          },
+          [getHash(`${url}/chunk3`)]: {
+            chunk3: 'chunk3',
+          },
+        },
+        'x-ext-urls': {
+          [getHash(`${url}/chunk1`)]: `${url}/chunk1`,
+          [getHash(`${url}/chunk2`)]: `${url}/chunk2`,
+          [getHash(`${url}/chunk3`)]: `${url}/chunk3`,
+          [getHash(`${url}/external/document.json`)]: `${url}/external/document.json`,
+        },
+      })
+    })
+
+    it('run success hook', async () => {
+      const chunk1 = {
+        description: 'Chunk 1',
+      }
+
+      server.get('/chunk1', (_, reply) => {
+        reply.send(chunk1)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+      }
+
+      const resolveStart = vi.fn()
+      const resolveError = vi.fn()
+      const resolveSuccess = vi.fn()
+
+      const refA = input.a
+
+      await bundle(input, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        hooks: {
+          onResolveStart(value) {
+            resolveStart(value)
+          },
+          onResolveError(value) {
+            resolveError(value)
+          },
+          onResolveSuccess(value) {
+            resolveSuccess(value)
+          },
+        },
+      })
+
+      expect(resolveStart).toHaveBeenCalledOnce()
+      expect(resolveStart).toHaveBeenCalledWith(refA)
+      expect(resolveSuccess).toHaveBeenCalledOnce()
+      expect(resolveSuccess).toHaveBeenCalledWith(refA)
+      expect(resolveError).not.toHaveBeenCalledOnce()
+    })
+
+    it('run error hook', async () => {
+      server.get('/chunk1', (_, reply) => {
+        reply.code(404).send()
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          $ref: `${url}/chunk1#`,
+        },
+      }
+
+      const resolveStart = vi.fn()
+      const resolveError = vi.fn()
+      const resolveSuccess = vi.fn()
+
+      const refA = input.a
+
+      await bundle(input, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        hooks: {
+          onResolveStart(value) {
+            resolveStart(value)
+          },
+          onResolveError(value) {
+            resolveError(value)
+          },
+          onResolveSuccess(value) {
+            resolveSuccess(value)
+          },
+        },
+      })
+
+      expect(resolveStart).toHaveBeenCalledOnce()
+      expect(resolveStart).toHaveBeenCalledWith(refA)
+      expect(resolveSuccess).not.toHaveBeenCalledOnce()
+      expect(resolveError).toHaveBeenCalledOnce()
+      expect(resolveError).toHaveBeenCalledWith(refA)
+    })
+
+    it('uses the provided origin for object inputs', async () => {
+      server.get('/', () => ({
+        message: 'some resolved external reference',
+      }))
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const result = await bundle(
+        {
+          a: {
+            $ref: '/#',
+          },
+        },
+        {
+          treeShake: false,
+          plugins: [fetchUrls()],
+          origin: url,
+        },
+      )
+
+      expect(result).toEqual({
+        'a': {
+          '$ref': `#/x-ext/${getHash('')}`,
+        },
+        'x-ext': {
+          [getHash('')]: {
+            'message': 'some resolved external reference',
+          },
+        },
+      })
+    })
+
+    it('prioritizes configuration origin rather than document input url', async () => {
+      server.get('/', () => ({
+        a: {
+          $ref: '/d#',
+        },
+      }))
+      server.get('/d', () => ({
+        message: 'some resolved external reference',
+      }))
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const result = await bundle(url, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        origin: `${url}/a/b/c`,
+      })
+
+      expect(result).toEqual({
+        a: { '$ref': `#/x-ext/${getHash('../../d')}` },
+        'x-ext': { [getHash('../../d')]: { message: 'some resolved external reference' } },
+      })
+    })
+
+    it('does not modify external URLs when already defined by $id property', async () => {
+      const input = {
+        $id: 'https://example.com/root',
+        components: {
+          schemas: {
+            User: {
+              $id: `${url}/schema`,
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+              },
+            },
+          },
+        },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'Success',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        $ref: `${url}/schema`,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }
+
+      await bundle(input, {
+        plugins: [fetchUrls(), readFiles()],
+        treeShake: false,
+      })
+
+      // The $ref should remain unchanged because the schema is already defined locally with $id
+      expect(input.paths['/users'].get.responses['200'].content['application/json'].schema.$ref).toBe(`${url}/schema`)
+
+      // The external schema should not be bundled into x-ext
+      expect(input['x-ext']).toBeUndefined()
+
+      // The local schema with $id should remain unchanged
+      expect(input.components.schemas.User).toEqual({
+        $id: `${url}/schema`,
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+        },
+      })
+    })
+
+    it('does not modify external URLs when already defined by $anchor property', async () => {
+      const input = {
+        $id: 'https://example.com/root',
+        components: {
+          schemas: {
+            User: {
+              $anchor: 'user-schema',
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+              },
+            },
+          },
+        },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'Success',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        $ref: 'https://example.com/root#user-schema',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }
+
+      await bundle(input, {
+        plugins: [
+          fetchUrls({
+            fetch: () => Promise.resolve(Response.json({ message: 'should not be called' })),
+          }),
+          readFiles(),
+        ],
+        treeShake: false,
+      })
+
+      // The $ref should remain unchanged because the schema is already defined locally with $anchor
+      expect(input.paths['/users'].get.responses['200'].content['application/json'].schema.$ref).toBe(
+        'https://example.com/root#user-schema',
+      )
+
+      // The external schema should not be bundled into x-ext
+      expect(input['x-ext']).toBeUndefined()
+
+      // The local schema with $anchor should remain unchanged
+      expect(input.components.schemas.User).toEqual({
+        $anchor: 'user-schema',
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+        },
+      })
+    })
+
+    it('does not modify external URLs when prefix is already defined by $id', async () => {
+      const input = {
+        $id: `${url}/schema`,
+        components: {
+          schemas: {
+            User: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+              },
+            },
+          },
+        },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'Success',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        $ref: `${url}/schema#/components/schemas/User`,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }
+
+      await bundle(input, {
+        plugins: [fetchUrls(), readFiles()],
+        treeShake: false,
+      })
+
+      // The $ref should remain unchanged because the prefix is already defined locally with $id
+      expect(input.paths['/users'].get.responses['200'].content['application/json'].schema.$ref).toBe(
+        `${url}/schema#/components/schemas/User`,
+      )
+
+      // The external schema should not be bundled into x-ext
+      expect(input['x-ext']).toBeUndefined()
+
+      // The local schema should remain unchanged
+      expect(input.components.schemas.User).toEqual({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+        },
+      })
+    })
+
+    it('prioritizes $id when resolving refs', async () => {
+      const input = {
+        $id: 'https://example.com/root',
+        a: {
+          b: {
+            c: {
+              $ref: '/b',
+            },
+          },
+        },
+      }
+
+      const exec = vi.fn<LoaderPlugin['exec']>().mockResolvedValue({
+        ok: true,
+        data: {
+          message: 'resolved value',
+        },
+        raw: JSON.stringify({
+          message: 'resolved value',
+        }),
+      })
+
+      await bundle(input, {
+        treeShake: false,
+        plugins: [
+          {
+            type: 'loader',
+            validate: () => true,
+            exec,
+          },
+        ],
+      })
+
+      expect(input).toEqual({
+        '$id': 'https://example.com/root',
+        'a': {
+          'b': {
+            'c': {
+              '$ref': `#/x-ext/${getHash('b')}`,
+            },
+          },
+        },
+        'x-ext': {
+          [getHash('b')]: {
+            'message': 'resolved value',
+          },
+        },
+      })
+
+      expect(exec).toHaveBeenCalled()
+      expect(exec).toHaveBeenCalledWith('https://example.com/b')
+    })
+
+    it('prioritizes $id when resolving refs with origin #1', async () => {
+      const input = {
+        $id: '/root',
+        a: {
+          b: {
+            c: {
+              $ref: '/b',
+            },
+          },
+        },
+      }
+
+      const exec = vi.fn<LoaderPlugin['exec']>().mockResolvedValue({
+        ok: true,
+        data: {
+          message: 'resolved value',
+        },
+        raw: JSON.stringify({
+          message: 'resolved value',
+        }),
+      })
+
+      await bundle(input, {
+        treeShake: false,
+        origin: url,
+        plugins: [
+          {
+            type: 'loader',
+            validate: () => true,
+            exec,
+          },
+        ],
+      })
+
+      expect(input).toEqual({
+        '$id': '/root',
+        'a': {
+          'b': {
+            'c': {
+              '$ref': `#/x-ext/${getHash('b')}`,
+            },
+          },
+        },
+        'x-ext': {
+          [getHash('b')]: {
+            'message': 'resolved value',
+          },
+        },
+      })
+
+      expect(exec).toHaveBeenCalledOnce()
+      expect(exec).toHaveBeenCalledWith(`${url}/b`)
+    })
+
+    it('prioritizes $id when resolving refs with origin #2', async () => {
+      const input = {
+        $id: 'http://example.com/root',
+        a: {
+          b: {
+            c: {
+              $ref: '/b',
+            },
+          },
+        },
+      }
+
+      const exec = vi.fn<LoaderPlugin['exec']>((value) => {
+        if (value === url) {
+          return Promise.resolve({
+            ok: true,
+            data: input,
+            raw: JSON.stringify(input),
+          })
+        }
+
+        return Promise.resolve({
+          ok: true,
+          data: {
+            message: 'resolved value',
+          },
+          raw: JSON.stringify({
+            message: 'resolved value',
+          }),
+        })
+      })
+
+      await bundle(url, {
+        treeShake: false,
+        origin: url,
+        plugins: [
+          {
+            type: 'loader',
+            validate: () => true,
+            exec,
+          },
+        ],
+      })
+
+      expect(input).toEqual({
+        '$id': 'http://example.com/root',
+        'a': {
+          'b': {
+            'c': {
+              '$ref': `#/x-ext/${getHash('b')}`,
+            },
+          },
+        },
+        'x-ext': {
+          [getHash('b')]: {
+            'message': 'resolved value',
+          },
+        },
+      })
+
+      expect(exec).toHaveBeenCalledTimes(2)
+      expect(exec).toHaveBeenNthCalledWith(1, url)
+      expect(exec).toHaveBeenNthCalledWith(2, 'http://example.com/b')
+    })
+
+    it('correctly bundles when doing a partial bundle with $anchor on a different context', async () => {
+      const input = {
+        a: {
+          b: {
+            c: {
+              $ref: '#/e/f',
+            },
+          },
+        },
+        e: {
+          $id: 'https://example.com/e',
+          $anchor: 'my-anchor',
+          f: {
+            $ref: '#my-anchor',
+          },
+          g: {
+            $ref: 'http://example.com',
+          },
+        },
+      }
+
+      await bundle(input.a, {
+        treeShake: false,
+        plugins: [
+          {
+            type: 'loader',
+            validate: () => true,
+            exec: (value) => {
+              if (value === 'http://example.com') {
+                return Promise.resolve({
+                  ok: true,
+                  data: {
+                    message: 'resolved value',
+                  },
+                  raw: JSON.stringify({
+                    message: 'resolved value',
+                  }),
+                })
+              }
+              return Promise.resolve({ ok: false })
+            },
+          },
+        ],
+        root: input,
+        urlMap: true,
+        cache: new Map(),
+      })
+
+      expect(input).toEqual({
+        'a': {
+          'b': {
+            'c': {
+              '$ref': '#/e/f',
+            },
+          },
+        },
+        'e': {
+          '$anchor': 'my-anchor',
+          '$id': 'https://example.com/e',
+          'f': {
+            '$ref': '#my-anchor',
+          },
+          'g': {
+            '$ref': '#/x-ext/e71bf65',
+          },
+        },
+        'x-ext': {
+          'e71bf65': {
+            'message': 'resolved value',
+          },
+        },
+        'x-ext-urls': {
+          'e71bf65': 'http://example.com',
+        },
+      })
+    })
+
+    it('treats internal root pointers as internal references', async () => {
+      resetConsoleSpies()
+
+      const input = {
+        a: {
+          $ref: '#/',
+        },
+      }
+
+      await bundle(input, { plugins: [fetchUrls()], treeShake: false })
+
+      expect(input).toEqual({
+        a: {
+          $ref: '#/',
+        },
+      })
+
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(0)
+    })
+  })
+
+  describe('local files', () => {
+    it('resolves from local files', async () => {
+      const chunk1 = { a: 'a', b: 'b' }
+      const chunk1Path = randomUUID()
+
+      await fs.writeFile(path.join(import.meta.dirname, chunk1Path), JSON.stringify(chunk1))
+
+      const input = {
+        a: {
+          '$ref': `./${chunk1Path}#/a`,
+        },
+      }
+
+      await bundle(input, { origin: import.meta.filename, plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      await fs.rm(path.join(import.meta.dirname, chunk1Path))
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(chunk1Path)]: {
+            ...chunk1,
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(chunk1Path)}/a`,
+        },
+      })
+    })
+
+    it('resolves external refs from resolved files', async () => {
+      const chunk1 = { a: 'a', b: 'b' }
+      const chunk1Path = randomUUID()
+
+      const chunk2 = { a: { '$ref': `./${chunk1Path}#` } }
+      const chunk2Path = randomUUID()
+
+      await fs.writeFile(path.join(import.meta.dirname, chunk1Path), JSON.stringify(chunk1))
+      await fs.writeFile(path.join(import.meta.dirname, chunk2Path), JSON.stringify(chunk2))
+
+      const input = {
+        a: {
+          '$ref': `./${chunk2Path}#`,
+        },
+      }
+
+      await bundle(input, { origin: import.meta.filename, plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      await fs.rm(path.join(import.meta.dirname, chunk1Path))
+      await fs.rm(path.join(import.meta.dirname, chunk2Path))
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(chunk1Path)]: {
+            ...chunk1,
+          },
+          [getHash(chunk2Path)]: {
+            a: { $ref: `#/x-ext/${getHash(chunk1Path)}` },
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(chunk2Path)}`,
+        },
+      })
+    })
+
+    it('resolves nested refs correctly', async () => {
+      const c = {
+        c: 'c',
+      }
+      const cName = randomUUID()
+
+      const b = {
+        b: {
+          '$ref': `./${cName}`,
+        },
+      }
+      const bName = randomUUID()
+
+      await fs.mkdir(path.join(import.meta.dirname, 'nested')).catch(() => {
+        return
+      })
+      await fs.writeFile(path.join(import.meta.dirname, `nested/${bName}`), JSON.stringify(b))
+      await fs.writeFile(path.join(import.meta.dirname, `nested/${cName}`), JSON.stringify(c))
+
+      const input = {
+        a: {
+          '$ref': `./nested/${bName}`,
+        },
+      }
+
+      await bundle(input, { origin: import.meta.filename, plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      await fs.rm(path.join(import.meta.dirname, `./nested/${bName}`))
+      await fs.rm(path.join(import.meta.dirname, `./nested/${cName}`))
+      await fs.rmdir(path.join(import.meta.dirname, 'nested'))
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(`nested/${cName}`)]: {
+            c: 'c',
+          },
+          [getHash(`nested/${bName}`)]: {
+            b: { $ref: `#/x-ext/${getHash(`nested/${cName}`)}` },
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(`nested/${bName}`)}`,
+        },
+      })
+    })
+
+    it('bundles from a file input', async () => {
+      const c = {
+        c: 'c',
+      }
+      const cName = `${randomUUID()}.json`
+
+      const b = {
+        b: {
+          '$ref': `./${cName}`,
+        },
+      }
+      const bName = `${randomUUID()}.json`
+
+      await fs.mkdir('./nested').catch(() => {
+        return
+      })
+      await fs.writeFile(`./nested/${bName}`, JSON.stringify(b))
+      await fs.writeFile(`./nested/${cName}`, JSON.stringify(c))
+
+      const input = {
+        a: {
+          '$ref': `./${bName}`,
+        },
+      }
+      const inputName = `${randomUUID()}.json`
+      await fs.writeFile(`./nested/${inputName}`, JSON.stringify(input))
+
+      const result = await bundle(`${cwd()}/nested/${bName}`, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      await fs.rm(`./nested/${bName}`)
+      await fs.rm(`./nested/${cName}`)
+      await fs.rm(`./nested/${inputName}`)
+      await fs.rmdir('nested')
+
+      expect(result).toEqual({
+        'b': {
+          '$ref': `#/x-ext/${getHash(cName)}`,
+        },
+        'x-ext': {
+          [getHash(cName)]: {
+            'c': 'c',
+          },
+        },
+      })
+    })
+
+    it('stores relative paths in the x-ext-urls map', async () => {
+      const chunk1 = { a: 'a', b: 'b' }
+      const chunk1Path = randomUUID()
+
+      await fs.writeFile(path.join(import.meta.dirname, chunk1Path), JSON.stringify(chunk1))
+
+      const input = {
+        a: {
+          '$ref': `./${chunk1Path}#/a`,
+        },
+      }
+
+      await bundle(input, {
+        origin: import.meta.filename,
+        plugins: [fetchUrls(), readFiles()],
+        treeShake: false,
+        urlMap: true,
+      })
+
+      await fs.rm(path.join(import.meta.dirname, chunk1Path))
+
+      expect(input).toEqual({
+        'a': {
+          '$ref': `#/x-ext/${getHash(chunk1Path)}/a`,
+        },
+        'x-ext': {
+          [getHash(chunk1Path)]: {
+            'a': 'a',
+            'b': 'b',
+          },
+        },
+        'x-ext-urls': {
+          [getHash(chunk1Path)]: chunk1Path,
+        },
+      })
+    })
+
+    it('parses file path input when the file is JSON prefixed with a UTF-8 BOM', async () => {
+      const spec = {
+        openapi: '3.1.0',
+        info: { title: 'BOM entry', version: '1' },
+        paths: {},
+      }
+      const name = `${randomUUID()}.json`
+      const fullPath = path.join(import.meta.dirname, name)
+      await fs.writeFile(fullPath, `\uFEFF${JSON.stringify(spec)}`, 'utf8')
+
+      const result = await bundle(fullPath, { plugins: [fetchUrls(), readFiles()], treeShake: false })
+
+      await fs.rm(fullPath)
+
+      expect(result).toEqual(spec)
+    })
+  })
+
+  describe('json inputs', () => {
+    it('should process json inputs', async () => {
+      const result = await bundle('{ "openapi": "3.1", "info": { "title": "Simple API", "version": "1.0" } }', {
+        treeShake: false,
+        plugins: [parseJson()],
+      })
+
+      expect(result).toEqual({
+        openapi: '3.1',
+        info: {
+          title: 'Simple API',
+          version: '1.0',
+        },
+      })
+    })
+
+    it('should correctly resolve refs for json inputs', async () => {
+      const chunk1 = { a: 'a', b: 'b' }
+      const chunk1Path = randomUUID()
+
+      await fs.writeFile(path.join(import.meta.dirname, chunk1Path), JSON.stringify(chunk1))
+
+      const input = JSON.stringify({
+        a: {
+          '$ref': `./${chunk1Path}#/a`,
+        },
+      })
+
+      const result = await bundle(input, {
+        origin: import.meta.filename,
+        plugins: [readFiles(), parseJson()],
+        treeShake: false,
+      })
+
+      await fs.rm(path.join(import.meta.dirname, chunk1Path))
+
+      expect(result).toEqual({
+        'x-ext': {
+          [getHash(chunk1Path)]: {
+            ...chunk1,
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(chunk1Path)}/a`,
+        },
+      })
+    })
+  })
+
+  describe('yaml inputs', () => {
+    let server: FastifyInstance
+    let url: string
+
+    beforeEach(() => {
+      server = fastify({ logger: false })
+
+      return async () => {
+        await server.close()
+      }
+    })
+
+    it('should process yaml inputs', async () => {
+      const result = await bundle('openapi: "3.1"\ninfo:\n  title: Simple API\n  version: "1.0"\n', {
+        treeShake: false,
+        plugins: [parseYaml()],
+      })
+
+      expect(result).toEqual({
+        openapi: '3.1',
+        info: {
+          title: 'Simple API',
+          version: '1.0',
+        },
+      })
+    })
+
+    it('should correctly resolve refs for yaml inputs', async () => {
+      const chunk1 = { a: 'a', b: 'b' }
+      const chunk1Path = randomUUID()
+
+      await fs.writeFile(path.join(import.meta.dirname, chunk1Path), YAML.stringify(chunk1))
+
+      const input = YAML.stringify({
+        a: {
+          '$ref': `./${chunk1Path}#/a`,
+        },
+      })
+
+      const result = await bundle(input, {
+        origin: import.meta.filename,
+        plugins: [parseYaml(), readFiles()],
+        treeShake: false,
+      })
+
+      await fs.rm(path.join(import.meta.dirname, chunk1Path))
+
+      expect(result).toEqual({
+        'x-ext': {
+          [getHash(chunk1Path)]: {
+            ...chunk1,
+          },
+        },
+        a: {
+          $ref: `#/x-ext/${getHash(chunk1Path)}/a`,
+        },
+      })
+    })
+
+    it('should correctly load the document from an url even when yaml plugin is provided and it has high priority on the list', async () => {
+      server.get('/', () => ({
+        openapi: '3.1.1',
+        info: {
+          title: 'My API',
+        },
+      }))
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+      const result = await bundle(url, {
+        treeShake: false,
+        plugins: [parseYaml(), fetchUrls()],
+      })
+
+      expect(result).toEqual({
+        'info': {
+          'title': 'My API',
+        },
+        'openapi': '3.1.1',
+      })
+    })
+  })
+
+  describe('bundle with a certain depth', () => {
+    let server: FastifyInstance
+    let url: string
+
+    beforeEach(() => {
+      server = fastify({ logger: false })
+
+      return async () => {
+        await server.close()
+      }
+    })
+
+    it('bundles external urls', async () => {
+      const external = {
+        prop: 'I am external json prop',
+      }
+      server.get('/', (_, reply) => {
+        reply.send(external)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          b: {
+            c: {
+              d: {
+                e: {
+                  // Deep ref
+                  '$ref': `${url}#/prop`,
+                },
+              },
+            },
+          },
+        },
+        d: {
+          e: {
+            '$ref': `${url}#/prop`,
+          },
+        },
+      }
+
+      await bundle(input, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        depth: 2,
+      })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(url)]: {
+            ...external,
+          },
+        },
+        'x-ext-urls': {
+          [getHash(url)]: url,
+        },
+        a: {
+          b: {
+            c: {
+              d: {
+                e: {
+                  $ref: `${url}#/prop`,
+                },
+              },
+            },
+          },
+        },
+        d: {
+          e: {
+            $ref: `#/x-ext/${getHash(url)}/prop`,
+          },
+        },
+      })
+    })
+
+    it('will not do full bundle if we do specify a depth and reuse the same hash set', async () => {
+      const external = {
+        prop: 'I am external json prop',
+      }
+      server.get('/', (_, reply) => {
+        reply.send(external)
+      })
+
+      await server.listen({ port: 0 })
+      url = `http://localhost:${(server.server.address() as AddressInfo).port}`
+
+      const input = {
+        a: {
+          b: {
+            c: {
+              d: {
+                e: {
+                  // Deep ref
+                  '$ref': `${url}#/prop`,
+                },
+              },
+            },
+          },
+        },
+        d: {
+          e: {
+            '$ref': `${url}#/prop`,
+          },
+        },
+      }
+
+      const visitedNodes = new Set()
+
+      await bundle(input, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        depth: 2,
+        visitedNodes: visitedNodes,
+      })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(url)]: {
+            ...external,
+          },
+        },
+        'x-ext-urls': {
+          [getHash(url)]: url,
+        },
+        a: {
+          b: {
+            c: {
+              d: {
+                e: {
+                  $ref: `${url}#/prop`,
+                },
+              },
+            },
+          },
+        },
+        d: {
+          e: {
+            $ref: `#/x-ext/${getHash(url)}/prop`,
+          },
+        },
+      })
+
+      // We run a full bundle on the root of the document without a depth
+      await bundle(input, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        visitedNodes: visitedNodes,
+        urlMap: true,
+      })
+
+      // Expect the input to be the same as before
+      // because we are reusing the same hash set
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(url)]: {
+            ...external,
+          },
+        },
+        'x-ext-urls': {
+          [getHash(url)]: url,
+        },
+        a: {
+          b: {
+            c: {
+              d: {
+                e: {
+                  $ref: `${url}#/prop`,
+                },
+              },
+            },
+          },
+        },
+        d: {
+          e: {
+            $ref: `#/x-ext/${getHash(url)}/prop`,
+          },
+        },
+      })
+
+      // When we run a full bundle again without the same hash set we expect a full bundle
+      await bundle(input, {
+        plugins: [fetchUrls()],
+        treeShake: false,
+        urlMap: true,
+      })
+
+      expect(input).toEqual({
+        'x-ext': {
+          [getHash(url)]: {
+            ...external,
+          },
+        },
+        'x-ext-urls': {
+          [getHash(url)]: url,
+        },
+        a: {
+          b: {
+            c: {
+              d: {
+                e: {
+                  $ref: `#/x-ext/${getHash(url)}/prop`,
+                },
+              },
+            },
+          },
+        },
+        d: {
+          e: {
+            $ref: `#/x-ext/${getHash(url)}/prop`,
+          },
+        },
+      })
+    })
+  })
+
+  describe('hooks', () => {
+    describe('onBeforeNodeProcess', () => {
+      it('should correctly call the `onBeforeNodeProcess` correctly on all the nodes', async () => {
+        const onBeforeNodeProcess = vi.fn()
+
+        const input = {
+          someKey: 'someValue',
+          anotherKey: {
+            innerKey: 'nestedValue',
+          },
+        }
+
+        await bundle(input, {
+          plugins: [],
+          treeShake: false,
+          hooks: {
+            onBeforeNodeProcess,
+          },
+        })
+
+        expect(onBeforeNodeProcess).toBeCalledTimes(2)
+        expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(1, input, expect.any(Object))
+        expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(2, input.anotherKey, expect.any(Object))
+      })
+
+      it('should run bundle on the mutated object properties', async () => {
+        const onBeforeNodeProcessSpy = vi.fn()
+
+        const input = {
+          a: {
+            b: {
+              c: 'c',
+              d: 'd',
+            },
+            e: 'e',
+          },
+        }
+
+        await bundle(input, {
+          plugins: [],
+          treeShake: false,
+          hooks: {
+            onBeforeNodeProcess(node) {
+              if ('e' in node) {
+                node['processedKey'] = { 'message': 'Processed node' }
+              }
+              onBeforeNodeProcessSpy(node)
+            },
+          },
+        })
+
+        expect(onBeforeNodeProcessSpy).toBeCalledTimes(4)
+        expect(onBeforeNodeProcessSpy).toHaveBeenNthCalledWith(4, { 'message': 'Processed node' })
+      })
+    })
+
+    describe('onAfterNodeProcess', () => {
+      it('should call `onAfterNodeProcess` hook on the nodes', async () => {
+        const onAfterNodeProcessSpy = vi.fn()
+
+        const input = {
+          a: {
+            b: {
+              c: 'c',
+              d: 'd',
+            },
+            e: 'e',
+          },
+        }
+
+        await bundle(input, {
+          plugins: [],
+          treeShake: false,
+          hooks: {
+            onAfterNodeProcess(node) {
+              if ('e' in node) {
+                node['processedKey'] = { 'message': 'Processed node' }
+              }
+              onAfterNodeProcessSpy(node)
+            },
+          },
+        })
+
+        expect(onAfterNodeProcessSpy).toHaveBeenCalledTimes(3)
+      })
+
+      it('should call `onAfterNodeProcess` even on the $ref nodes after they have been processed', async () => {
+        const onAfterNodeProcessSpy = vi.fn()
+
+        const input = { a: { $ref: 'fake-ref' } }
+
+        await bundle(input, {
+          plugins: [],
+          treeShake: false,
+          hooks: {
+            onAfterNodeProcess: onAfterNodeProcessSpy,
+          },
+        })
+
+        expect(onAfterNodeProcessSpy).toHaveBeenCalledTimes(2)
+      })
+    })
+  })
+
+  describe('plugins', () => {
+    it('use load plugins to load the documents', async () => {
+      const validate = vi.fn<LoaderPlugin['validate']>().mockReturnValue(true)
+      const exec = vi.fn<LoaderPlugin['exec']>().mockResolvedValue({
+        ok: true,
+        data: { message: 'Resolved document' },
+        raw: JSON.stringify({ message: 'Resolved document' }),
+      })
+
+      const resolver = (): LoaderPlugin => {
+        return {
+          type: 'loader',
+          validate,
+          exec,
+        }
+      }
+
+      const result = await bundle('hello', { treeShake: false, plugins: [resolver()] })
+
+      expect(validate).toHaveBeenCalledOnce()
+      expect(validate).toHaveBeenLastCalledWith('hello')
+
+      expect(exec).toHaveBeenCalledOnce()
+      expect(exec).toHaveBeenLastCalledWith('hello')
+
+      expect(result).toEqual({ message: 'Resolved document' })
+    })
+
+    it('throws if we can not process the input with any of the provided loaders', async () => {
+      const validate = vi.fn<LoaderPlugin['validate']>().mockReturnValue(false)
+      const exec = vi.fn<LoaderPlugin['exec']>()
+
+      const resolver = (): LoaderPlugin => {
+        return {
+          type: 'loader',
+          validate,
+          exec,
+        }
+      }
+
+      await expect(bundle('hello', { treeShake: false, plugins: [resolver()] })).rejects.toThrow()
+
+      expect(validate).toHaveBeenCalledOnce()
+      expect(validate).toHaveBeenLastCalledWith('hello')
+
+      expect(exec).not.toHaveBeenCalled()
+    })
+
+    it('use load plugin to resolve external refs', async () => {
+      const validate = vi.fn<LoaderPlugin['validate']>().mockReturnValue(true)
+      const exec = vi.fn<LoaderPlugin['exec']>().mockResolvedValue({
+        ok: true,
+        data: { message: 'Resolved document' },
+        raw: JSON.stringify({ message: 'Resolved document' }),
+      })
+
+      const resolver = (): LoaderPlugin => {
+        return {
+          type: 'loader',
+          validate,
+          exec,
+        }
+      }
+
+      const result = await bundle({ $ref: 'hello' }, { treeShake: false, plugins: [resolver()] })
+
+      expect(validate).toHaveBeenCalledOnce()
+      expect(validate).toHaveBeenLastCalledWith('/hello')
+
+      expect(exec).toHaveBeenCalledOnce()
+      expect(exec).toHaveBeenLastCalledWith('/hello')
+
+      expect(result).toEqual({
+        $ref: '#/x-ext/f265832',
+        'x-ext': {
+          'f265832': {
+            message: 'Resolved document',
+          },
+        },
+      })
+    })
+
+    it('emits warning when there is no loader to resolve the external ref', async () => {
+      resetConsoleSpies()
+      const validate = vi.fn<LoaderPlugin['validate']>().mockReturnValue(false)
+      const exec = vi.fn<LoaderPlugin['exec']>()
+
+      const resolver = (): LoaderPlugin => {
+        return {
+          type: 'loader',
+          validate,
+          exec,
+        }
+      }
+
+      const result = await bundle({ $ref: 'hello' }, { treeShake: false, plugins: [resolver()] })
+
+      expect(validate).toHaveBeenCalledOnce()
+      expect(validate).toHaveBeenLastCalledWith('/hello')
+
+      expect(exec).not.toHaveBeenCalled()
+
+      expect(result).toEqual({ $ref: 'hello' })
+
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(1)
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'Failed to resolve external reference "/hello". The reference may be invalid, inaccessible, or missing a loader for this type of reference.',
+      )
+    })
+
+    it('lets plugins hook into nodes lifecycle #1', async () => {
+      const onBeforeNodeProcess = vi.fn()
+      const onAfterNodeProcess = vi.fn()
+
+      await bundle(
+        {
+          prop: {
+            innerProp: 'string',
+          },
+        },
+        {
+          treeShake: false,
+          plugins: [
+            {
+              type: 'lifecycle',
+              onBeforeNodeProcess,
+              onAfterNodeProcess,
+            },
+          ],
+        },
+      )
+
+      expect(onBeforeNodeProcess).toHaveBeenCalledTimes(2)
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        1,
+        {
+          prop: {
+            innerProp: 'string',
+          },
+        },
+        {
+          path: [],
+          resolutionCache: new Map(),
+          parentNode: null,
+          rootNode: {
+            prop: {
+              innerProp: 'string',
+            },
+          },
+          loaders: [],
+          origin: '/',
+          resolveReference: expect.any(Function),
+        },
+      )
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        2,
+        {
+          innerProp: 'string',
+        },
+        {
+          path: ['prop'],
+          resolutionCache: new Map(),
+          parentNode: {
+            prop: {
+              innerProp: 'string',
+            },
+          },
+          rootNode: {
+            prop: {
+              innerProp: 'string',
+            },
+          },
+          loaders: [],
+          origin: '/',
+          resolveReference: expect.any(Function),
+        },
+      )
+
+      expect(onAfterNodeProcess).toHaveBeenCalledTimes(2)
+      expect(onAfterNodeProcess).toHaveBeenNthCalledWith(
+        1,
+        {
+          innerProp: 'string',
+        },
+        {
+          path: ['prop'],
+          resolutionCache: new Map(),
+          parentNode: {
+            prop: {
+              innerProp: 'string',
+            },
+          },
+          rootNode: {
+            prop: {
+              innerProp: 'string',
+            },
+          },
+          loaders: [],
+          origin: '/',
+          resolveReference: expect.any(Function),
+        },
+      )
+      expect(onAfterNodeProcess).toHaveBeenNthCalledWith(
+        2,
+        {
+          prop: {
+            innerProp: 'string',
+          },
+        },
+        {
+          path: [],
+          resolutionCache: new Map(),
+          parentNode: null,
+          rootNode: {
+            prop: {
+              innerProp: 'string',
+            },
+          },
+          loaders: [],
+          origin: '/',
+          resolveReference: expect.any(Function),
+        },
+      )
+    })
+
+    it('lets plugins hook into nodes lifecycle #2', async () => {
+      const validate = vi.fn<LoaderPlugin['validate']>((value) => {
+        if (value === '/resolve') {
+          return true
+        }
+        return false
+      })
+      const exec = vi.fn<LoaderPlugin['exec']>((value) =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            message: 'Resolved value',
+            'x-original-value': value,
+          },
+          raw: JSON.stringify({
+            message: 'Resolved value',
+            'x-original-value': value,
+          }),
+        }),
+      )
+      const onResolveStart = vi.fn()
+      const onResolveError = vi.fn()
+      const onResolveSuccess = vi.fn()
+      await bundle(
+        {
+          hello: {
+            $ref: 'some-value',
+          },
+          hi: {
+            $ref: 'resolve',
+          },
+        },
+        {
+          treeShake: false,
+          plugins: [
+            {
+              type: 'loader',
+              validate,
+              exec,
+            },
+            {
+              type: 'lifecycle',
+              onResolveStart,
+              onResolveError,
+              onResolveSuccess,
+            },
+          ],
+        },
+      )
+
+      expect(validate).toHaveBeenCalledTimes(2)
+      expect(exec).toHaveBeenCalledOnce()
+
+      expect(onResolveStart).toHaveBeenCalledTimes(2)
+      expect(onResolveStart).nthCalledWith(1, { $ref: 'some-value' })
+      expect(onResolveStart).nthCalledWith(2, { $ref: '#/x-ext/908a515' })
+
+      expect(onResolveError).toHaveBeenCalledTimes(1)
+      expect(onResolveError).lastCalledWith({ $ref: 'some-value' })
+
+      expect(onResolveSuccess).toHaveBeenCalledTimes(1)
+      expect(onResolveSuccess).lastCalledWith({ $ref: '#/x-ext/908a515' })
+    })
+
+    it('correctly provides the parent node in different levels', async () => {
+      const onBeforeNodeProcess = vi.fn()
+      const input = {
+        a: {
+          b: {
+            c: {
+              someNode: 'hello world',
+            },
+          },
+        },
+        d: {
+          $ref: '#/a',
+        },
+        e: {
+          f: {
+            $ref: '#/a/b/c',
+          },
+        },
+      }
+
+      await bundle(input, {
+        plugins: [
+          {
+            type: 'lifecycle',
+            onBeforeNodeProcess,
+          },
+        ],
+        treeShake: false,
+      })
+
+      expect(onBeforeNodeProcess).toHaveBeenCalledTimes(7)
+
+      // First call should be the root with a null parent
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        1,
+        input,
+        expect.objectContaining({
+          parentNode: null,
+        }),
+      )
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        2,
+        input.a,
+        expect.objectContaining({
+          parentNode: input,
+        }),
+      )
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        3,
+        input.a.b,
+        expect.objectContaining({
+          parentNode: input.a,
+        }),
+      )
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        4,
+        input.a.b.c,
+        expect.objectContaining({
+          parentNode: input.a.b,
+        }),
+      )
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(5, input.d, expect.objectContaining({ parentNode: input }))
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(6, input.e, expect.objectContaining({ parentNode: input }))
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        7,
+        input.e.f,
+        expect.objectContaining({ parentNode: input.e }),
+      )
+    })
+
+    it('correctly provides the parent node on partial bundle for referenced nodes', async () => {
+      const onBeforeNodeProcess = vi.fn()
+
+      const input = {
+        a: {
+          b: 'some-prop',
+        },
+        b: {
+          c: {
+            $ref: '#/a',
+          },
+        },
+      }
+
+      await bundle(input.b, {
+        treeShake: false,
+        root: input,
+        plugins: [
+          {
+            type: 'lifecycle',
+            onBeforeNodeProcess,
+          },
+        ],
+      })
+
+      expect(onBeforeNodeProcess).toHaveBeenCalledTimes(3)
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        1,
+        input.b,
+        expect.objectContaining({
+          parentNode: null,
+        }),
+      )
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        2,
+        input.b.c,
+        expect.objectContaining({
+          parentNode: input.b,
+        }),
+      )
+
+      expect(onBeforeNodeProcess).toHaveBeenNthCalledWith(
+        3,
+        input.a,
+        expect.objectContaining({
+          parentNode: input,
+        }),
+      )
+    })
+  })
+})
+
+describe('isLocalRef', () => {
+  it.each([
+    ['#/components/schemas/User', true],
+    ['https://example.com/schema.json', false],
+    ['./local-schema.json', false],
+  ])('detects local refs', (a, b) => {
+    expect(isLocalRef(a)).toBe(b)
+  })
+})
+
+describe('prefixInternalRef', () => {
+  it.each([
+    ['#/hello', ['prefix'], '#/prefix/hello'],
+    ['#/a/b/c', ['prefixA', 'prefixB'], '#/prefixA/prefixB/a/b/c'],
+  ])('correctly prefix the internal refs', (a, b, c) => {
+    expect(prefixInternalRef(a, b)).toEqual(c)
+  })
+
+  it('throws when the ref is not internal', () => {
+    expect(() => prefixInternalRef('http://example.com#/prefix', ['a', 'b'])).toThrowError()
+  })
+})
+
+describe('prefixInternalRefRecursive', () => {
+  it.each([
+    [
+      { a: { $ref: '#/a/b' }, b: { $ref: '#' } },
+      ['d', 'e', 'f'],
+      { a: { $ref: '#/d/e/f/a/b' }, b: { $ref: '#/d/e/f' } },
+    ],
+    [
+      { a: { $ref: '#/a/b' }, b: { $ref: 'http://example.com#/external' } },
+      ['d', 'e', 'f'],
+      { a: { $ref: '#/d/e/f/a/b' }, b: { $ref: 'http://example.com#/external' } },
+    ],
+    [
+      { oneOf: [{ $ref: '#/a/b' }, { $ref: '#/c/d' }] },
+      ['prefix'],
+      { oneOf: [{ $ref: '#/prefix/a/b' }, { $ref: '#/prefix/c/d' }] },
+    ],
+    [
+      { allOf: [{ $ref: '#/x' }, { nested: { $ref: '#/y' } }] },
+      ['p', 'q'],
+      { allOf: [{ $ref: '#/p/q/x' }, { nested: { $ref: '#/p/q/y' } }] },
+    ],
+  ])('recursively prefixes any internal ref with the correct values', (a, b, c) => {
+    prefixInternalRefRecursive(a, b)
+    expect(a).toEqual(c)
+  })
+})
+
+describe('resolveAndCopyReferences', () => {
+  const source = {
+    openapi: '3.1.1',
+    info: {
+      title: 'Example API',
+      version: '1.0.0',
+    },
+    paths: {
+      '/': {
+        get: {
+          responses: {
+            '200': {
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/User',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    components: {
+      schemas: {
+        User: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+          },
+        },
+        Person: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', default: 'John Doe' },
+          },
+        },
+      },
+    },
+  }
+
+  it('correctly resolves and copies local references, and leaves out the rest', () => {
+    const target = {}
+
+    resolveAndCopyReferences(target, source, '/paths/~1', '', '', true)
+
+    expect(target).toEqual({
+      paths: {
+        '/': {
+          get: {
+            responses: {
+              '200': {
+                content: {
+                  'application/json': { schema: { '$ref': '#/components/schemas/User' } },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          User: { type: 'object', properties: { name: { type: 'string' } } },
+        },
+      },
+    })
+  })
+
+  it('keeps maps as objects when every copied key looks like a number', () => {
+    const target: { components?: { schemas?: unknown } } = {}
+
+    resolveAndCopyReferences(
+      target,
+      {
+        paths: {
+          '/themes/{slug}': {
+            get: {
+              responses: {
+                '400': { content: { 'application/json': { schema: { $ref: '#/components/schemas/400' } } } },
+                '404': { content: { 'application/json': { schema: { $ref: '#/components/schemas/404' } } } },
+              },
+            },
+          },
+        },
+        components: {
+          schemas: {
+            '400': { type: 'object', properties: { message: { type: 'string' } } },
+            '404': { type: 'object', properties: { message: { type: 'string' } } },
+          },
+        },
+      },
+      '/paths/~1themes~1{slug}',
+      '',
+      '',
+      true,
+    )
+
+    expect(Array.isArray(target.components?.schemas)).toBe(false)
+    expect(target.components?.schemas).toEqual({
+      '400': { type: 'object', properties: { message: { type: 'string' } } },
+      '404': { type: 'object', properties: { message: { type: 'string' } } },
+    })
+  })
+
+  it('keeps arrays as arrays when copying an item by index', () => {
+    const target: Record<string, unknown> = {}
+
+    resolveAndCopyReferences(
+      target,
+      {
+        paths: {
+          '/': {
+            get: {
+              parameters: [{ $ref: '#/components/parameters/Limit' }],
+            },
+          },
+        },
+        components: {
+          parameters: {
+            Limit: { name: 'limit', in: 'query' },
+          },
+        },
+      },
+      '/paths/~1/get/parameters/0',
+      '',
+      '',
+      true,
+    )
+
+    expect(target).toEqual({
+      paths: { '/': { get: { parameters: [{ $ref: '#/components/parameters/Limit' }] } } },
+      components: { parameters: { Limit: { name: 'limit', in: 'query' } } },
+    })
+  })
+})

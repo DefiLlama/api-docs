@@ -1,89 +1,230 @@
 <script setup lang="ts">
-import { ScalarMarkdown } from '@scalar/components'
-import type { OpenAPIV3_1 } from '@scalar/openapi-types'
-import type { ContentType, RequestBody } from '@scalar/types/legacy'
-import { computed, ref } from 'vue'
+import {
+  LinkButton,
+  Schema,
+  type SchemaRenderingProps,
+} from '@scalar/blocks/schema'
+import {
+  getModelNameFromSchema,
+  getTypeSignatureTokens,
+  inferDiscriminatorMappingComposition,
+  isModelLinkable,
+  isTypeObject,
+  reduceNamesToObject,
+  sortPropertyNames,
+} from '@scalar/blocks/schema/helpers'
+import { ScalarMarkdown } from '@scalar/components/markdown'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import type {
+  OpenApiDocument,
+  RequestBodyObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed } from 'vue'
 
-import { Schema } from '@/components/Content/Schema'
+import { SectionHeaderTag } from '@/components/Section'
+import { useDocumentOutline } from '@/features/document-outline'
+import { useLocalization } from '@/features/localization'
 
 import ContentTypeSelect from './ContentTypeSelect.vue'
 
-const { requestBody, schemas } = defineProps<{
-  requestBody?: RequestBody
-  schemas?: Record<string, OpenAPIV3_1.SchemaObject> | unknown
-}>()
+const { requestBody, options, document } = defineProps<
+  {
+    breadcrumb?: string[]
+    requestBody?: RequestBodyObject
+    eventBus: WorkspaceEventBus | null
+    /** The document the request body belongs to, used to resolve schema references for display */
+    document?: OpenApiDocument
+    options: {
+      orderRequiredPropertiesFirst: boolean | undefined
+      orderSchemaPropertiesBy: 'alpha' | 'preserve' | undefined
+      hideModelNames?: boolean
+      showExtensions?: string[]
+      hideModels: boolean | undefined
+      expandAllSchemaProperties: boolean | undefined
+      schemaKeyboardNav: boolean | undefined
+      /** Maximum visible top-level properties; zero displays all properties. */
+      maxVisibleRequestBodyProperties?: number
+    }
+  } & SchemaRenderingProps
+>()
+const { translate } = useLocalization()
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
-}>()
+const { level: headingLevel } = useDocumentOutline('operationSection')
+
+const maxVisibleProperties = computed(
+  (): number => options.maxVisibleRequestBodyProperties ?? 12,
+)
 
 const availableContentTypes = computed(() =>
   Object.keys(requestBody?.content ?? {}),
 )
 
-const selectedContentType = ref<ContentType>('application/json')
+const selectedContentType = defineModel<string>('selectedContentType', {
+  default: 'application/json',
+})
 
 if (requestBody?.content) {
-  if (availableContentTypes.value.length > 0) {
-    selectedContentType.value = availableContentTypes.value[0] as ContentType
+  if (availableContentTypes.value[0]) {
+    selectedContentType.value = availableContentTypes.value[0]
   }
 }
 
+/** Raw schema (possibly with $ref) for the selected content type */
+const rawSchema = computed(
+  () =>
+    requestBody?.content?.[selectedContentType.value]?.schema ??
+    requestBody?.content?.[selectedContentType.value]?.itemSchema,
+)
+
+const schema = computed(() => getResolvedRef(rawSchema.value))
+
+/** When the schema is a $ref, preserve its name so the UI can show the ref name instead of just the type. */
+const modelLink = computed(
+  () =>
+    (!options.hideModelNames &&
+      rawSchema.value &&
+      getModelNameFromSchema(rawSchema.value)) ||
+    null,
+)
+
+const schemaLabel = computed((): string | undefined =>
+  options.hideModelNames && rawSchema.value
+    ? getTypeSignatureTokens(rawSchema.value, { hideModelNames: true })
+        .map((token) => token.text)
+        .join(' ')
+    : modelLink.value?.label,
+)
+
+/** Whether the model name links to the models section, or renders as plain text. */
+const modelLinkable = computed(() =>
+  isModelLinkable(modelLink.value?.schemaKey, {
+    hideModels: options.hideModels,
+    document,
+  }),
+)
+
 /**
- * Splits schema properties into visible and collapsed sections when there are more than 12 properties.
+ * Splits wide request bodies without opening nested properties.
  * Returns null for schemas with fewer properties or non-object schemas.
  */
 const partitionedSchema = computed(() => {
-  const schema = requestBody?.content?.[selectedContentType.value]?.schema
-
   // Early return if not an object schema
-  if (schema?.type !== 'object' || !schema.properties) {
+  if (
+    maxVisibleProperties.value === 0 ||
+    !schema.value ||
+    !isTypeObject(schema.value)
+  ) {
     return null
   }
 
-  const propertyEntries = Object.entries(schema.properties)
-  if (propertyEntries.length < 13) {
+  // A schema whose variants are inferred from a `discriminator.mapping` renders
+  // as a single variant selector, not a flat property list. Splitting it would
+  // duplicate that selector across the visible and collapsed blocks, so we keep
+  // it whole. See https://github.com/scalar/scalar/issues/7472
+  if (inferDiscriminatorMappingComposition(schema.value, document)) {
+    return null
+  }
+
+  // Lets sort the names first
+  const sortedNames = sortPropertyNames(
+    schema.value,
+    schema.value.discriminator,
+    {
+      hideReadOnly: true,
+      orderSchemaPropertiesBy: options.orderSchemaPropertiesBy,
+      orderRequiredPropertiesFirst: options.orderRequiredPropertiesFirst,
+    },
+  )
+
+  if (sortedNames.length <= maxVisibleProperties.value) {
     return null
   }
 
   // Destructure everything except properties
-  const { properties, ...schemaMetadata } = schema
+  const { properties, ...schemaMetadata } = schema.value
+  if (!properties) {
+    return null
+  }
 
   return {
+    collapsedPropertyCount: sortedNames.length - maxVisibleProperties.value,
     visibleProperties: {
       ...schemaMetadata,
-      properties: Object.fromEntries(propertyEntries.slice(0, 12)),
+      properties: reduceNamesToObject(
+        sortedNames.slice(0, maxVisibleProperties.value),
+        properties,
+      ),
     },
     collapsedProperties: {
       ...schemaMetadata,
-      properties: Object.fromEntries(propertyEntries.slice(12)),
+      properties: reduceNamesToObject(
+        sortedNames.slice(maxVisibleProperties.value),
+        properties,
+      ),
     },
   }
 })
 
-const handleDiscriminatorChange = (type: string) => {
-  emit('update:modelValue', type)
-}
+/**
+ * We don't want to render the request body if its completely empty
+ * @example
+ * {
+ *   "content": {},
+ * }
+ */
+const shouldRenderRequestBody = computed(
+  () =>
+    Object.keys(requestBody?.content ?? {}).length > 0 ||
+    requestBody?.description ||
+    requestBody?.required,
+)
 </script>
 <template>
   <div
-    v-if="requestBody"
-    class="request-body">
+    v-if="requestBody && shouldRenderRequestBody"
+    :aria-label="translate('operation.requestBody')"
+    class="request-body"
+    role="group">
     <div class="request-body-header">
-      <span class="request-body-title">
+      <!--
+        `flex!` restates the display this title has always had. The heading tag
+        brings `.section-header-label` (`display: inline`, for the titles that
+        sit inside an Anchor); the `!important` on `flex!` wins over it outright,
+        so the flex row holds regardless of source order or specificity. The
+        other group titles pin `block!` for the same reason.
+      -->
+      <SectionHeaderTag
+        class="request-body-title flex!"
+        :level="headingLevel">
         <slot name="title" />
+        <span
+          v-if="schemaLabel"
+          class="text-c-2 text-xs leading-none font-normal"
+          data-testid="request-body-schema-name">
+          <span class="text-c-3 mx-1.5">·</span>
+          <LinkButton
+            v-if="eventBus && modelLink?.schemaKey && modelLinkable"
+            @click="
+              eventBus.emit('scroll-to:model-by-name', {
+                name: modelLink.schemaKey,
+              })
+            ">
+            {{ schemaLabel }}
+          </LinkButton>
+          <template v-else>{{ schemaLabel }}</template>
+        </span>
+      </SectionHeaderTag>
+      <div class="flex items-center gap-2">
         <div
           v-if="requestBody.required"
           class="request-body-required">
-          required
+          {{ translate('schema.required') }}
         </div>
-      </span>
-      <ContentTypeSelect
-        :defaultValue="selectedContentType"
-        :requestBody="requestBody"
-        @selectContentType="
-          ({ contentType }) => (selectedContentType = contentType)
-        " />
+        <ContentTypeSelect
+          v-model="selectedContentType"
+          :content="requestBody.content" />
+      </div>
       <div
         v-if="requestBody.description"
         class="request-body-description">
@@ -91,37 +232,116 @@ const handleDiscriminatorChange = (type: string) => {
       </div>
     </div>
 
-    <!-- For over 10 properties we want to show 10 and collapse the rest -->
+    <p
+      v-if="
+        requestBody.content?.[selectedContentType]?.itemSchema &&
+        !requestBody.content?.[selectedContentType]?.schema
+      "
+      class="text-c-2 pt-2 text-sm">
+      {{ translate('common.streamItem') }}
+    </p>
+
+    <Schema
+      v-if="
+        requestBody.content?.[selectedContentType]?.schema &&
+        requestBody.content?.[selectedContentType]?.itemSchema
+      "
+      compact
+      :eventBus="eventBus"
+      :expansion="expansion"
+      :name="translate('common.streamItem')"
+      noncollapsible
+      :options="{ ...options, hideReadOnly: true, document }"
+      :schema="
+        getResolvedRef(requestBody.content[selectedContentType]?.itemSchema)
+      "
+      schemaContext="requestBody"
+      :scrollTargetId="scrollTargetId"
+      :specificationExtension="specificationExtension" />
+
+    <!-- Keep the remaining properties behind a single reveal control. -->
     <div
       v-if="partitionedSchema"
       class="request-body-schema">
       <Schema
+        :breadcrumb
         compact
-        name="Request Body"
+        :compositionPath="['requestBody']"
+        :eventBus="eventBus"
+        :expansion="expansion"
+        :name="translate('operation.requestBody')"
         noncollapsible
-        :schemas="schemas"
-        :value="partitionedSchema.visibleProperties"
-        @update:modelValue="handleDiscriminatorChange" />
+        :options="{
+          hideReadOnly: true,
+          orderRequiredPropertiesFirst: options.orderRequiredPropertiesFirst,
+          orderSchemaPropertiesBy: options.orderSchemaPropertiesBy,
+          expandAllSchemaProperties: options.expandAllSchemaProperties,
+          schemaKeyboardNav: options.schemaKeyboardNav,
+          showExtensions: options.showExtensions,
+          hideModels: options.hideModels,
+          hideModelNames: options.hideModelNames,
+          document,
+        }"
+        :schema="partitionedSchema.visibleProperties"
+        schemaContext="requestBody"
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
 
       <Schema
+        :additionalPropertyCount="partitionedSchema.collapsedPropertyCount"
         additionalProperties
+        :breadcrumb
         compact
-        name="Request Body"
-        :schemas="schemas"
-        :value="partitionedSchema.collapsedProperties" />
+        :compositionPath="['requestBody']"
+        :eventBus="eventBus"
+        :expansion="expansion"
+        hideDescription
+        :name="translate('operation.requestBody')"
+        :options="{
+          hideReadOnly: true,
+          orderRequiredPropertiesFirst: options.orderRequiredPropertiesFirst,
+          orderSchemaPropertiesBy: options.orderSchemaPropertiesBy,
+          expandAllSchemaProperties: options.expandAllSchemaProperties,
+          schemaKeyboardNav: options.schemaKeyboardNav,
+          showExtensions: options.showExtensions,
+          hideModels: options.hideModels,
+          hideModelNames: options.hideModelNames,
+          document,
+        }"
+        :schema="partitionedSchema.collapsedProperties"
+        schemaContext="requestBody"
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
     </div>
 
-    <!-- Show em all 12 and under -->
+    <!-- Bodies within the limit, or with no limit, render as one schema. -->
     <div
-      v-else-if="requestBody.content?.[selectedContentType]"
+      v-else-if="schema"
       class="request-body-schema">
       <Schema
+        :breadcrumb
         compact
-        name="Request Body"
+        :compositionPath="['requestBody']"
+        :eventBus="eventBus"
+        :expansion="expansion"
+        :hideReadOnly="true"
+        :name="translate('operation.requestBody')"
         noncollapsible
-        :schemas="schemas"
-        :value="requestBody.content?.[selectedContentType]?.schema"
-        @update:modelValue="handleDiscriminatorChange" />
+        :options="{
+          hideReadOnly: true,
+          orderRequiredPropertiesFirst: options.orderRequiredPropertiesFirst,
+          orderSchemaPropertiesBy: options.orderSchemaPropertiesBy,
+          expandAllSchemaProperties: options.expandAllSchemaProperties,
+          schemaKeyboardNav: options.schemaKeyboardNav,
+          showExtensions: options.showExtensions,
+          hideModels: options.hideModels,
+          hideModelNames: options.hideModelNames,
+          document,
+        }"
+        :schema="schema"
+        schemaContext="requestBody"
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
     </div>
   </div>
 </template>
@@ -150,13 +370,40 @@ const handleDiscriminatorChange = (type: string) => {
   font-size: var(--scalar-micro);
   color: var(--scalar-color-orange);
   font-weight: normal;
+  border-radius: 16px;
+  border: var(--scalar-border-width) solid var(--scalar-border-color);
+  padding: 2px 8px;
+  height: 20px;
+}
+/*
+ * Same blend as the schema row's required label: the light-mode orange is
+ * 3.16:1 on the page, so pull it toward the text colour for the 12px pill to
+ * meet WCAG 1.4.3 (4.5:1). Dark mode already passes and keeps the plain token.
+ */
+.light-mode .request-body-required {
+  color: color-mix(
+    in srgb,
+    var(--scalar-color-orange),
+    var(--scalar-color-1) 32%
+  );
 }
 .request-body-description {
   margin-top: 6px;
   font-size: var(--scalar-small);
   width: 100%;
 }
-.request-body-description :deep(.markdown) * {
+
+.request-body-header
+  + .request-body-schema:has(> .schema-card > .schema-card-description),
+.request-body-header
+  + .request-body-schema:has(
+    > .schema-card > .schema-properties > * > .property--level-0
+  ) {
+  /** Add a bit of space between the heading border and the schema description or properties */
+  padding-top: 8px;
+}
+/* Keep fenced code highlighted and preserve specificity for custom description styles. */
+.request-body-description :deep(.markdown) :not(:where(pre, pre *)) {
   color: var(--scalar-color-2) !important;
 }
 </style>

@@ -1,145 +1,310 @@
 <script lang="ts" setup>
+import { ExamplePicker } from '@scalar/blocks/code-example'
+import { ScreenReader } from '@scalar/blocks/shared'
+import { ScalarButton } from '@scalar/components/button'
 import {
   ScalarCard,
   ScalarCardFooter,
   ScalarCardSection,
-  ScalarCodeBlock,
-  ScalarIcon,
-  ScalarMarkdown,
-} from '@scalar/components'
-import type { Operation } from '@scalar/oas-utils/entities/spec'
+} from '@scalar/components/card'
+import { ScalarMarkdown } from '@scalar/components/markdown'
+import { objectKeys } from '@scalar/helpers/object/object-keys'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
 import {
-  getObjectKeys,
-  normalizeMimeTypeObject,
-} from '@scalar/oas-utils/helpers'
-import { useClipboard } from '@scalar/use-hooks/useClipboard'
-import { computed, ref, useId } from 'vue'
+  useExampleVisibility,
+  useExternalExamples,
+} from '@scalar/workspace-store/helpers/use-external-examples'
+import {
+  getExample,
+  type XmlDiagnostic,
+} from '@scalar/workspace-store/request-example'
+import type {
+  MediaTypeObject,
+  ResponsesObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import {
+  computed,
+  ref,
+  toValue,
+  useId,
+  watch,
+  type ComponentPublicInstance,
+} from 'vue'
 
-import ScreenReader from '@/components/ScreenReader.vue'
-import { ExamplePicker } from '@/v2/blocks/scalar-request-example-block'
+import ExampleSchema from '@/features/example-responses/ExampleSchema.vue'
+import { useLocalization } from '@/features/localization'
 
 import ExampleResponse from './ExampleResponse.vue'
 import ExampleResponseTab from './ExampleResponseTab.vue'
 import ExampleResponseTabList from './ExampleResponseTabList.vue'
+import { getExampleContent } from './helpers/get-example-content'
+import { getExampleLanguage } from './helpers/get-example-language'
+import { getResponseVariants } from './helpers/get-response-variants'
+import { hasResponseContent } from './helpers/has-response-content'
 
-/**
- * TODO: copyToClipboard isn't using the right content if there are multiple examples
- */
-
-const { responses } = defineProps<{ responses: Operation['responses'] }>()
+const {
+  responses,
+  selectedExample,
+  eventBus,
+  selectedContentTypes,
+  openapiVersion,
+  jsonSchemaDialect,
+} = defineProps<{
+  openapiVersion?: string
+  /** Document-level JSON Schema dialect used when generating array `contains` examples. */
+  jsonSchemaDialect?: string
+  responses: ResponsesObject
+  /**
+   * The document-wide selected example key. Honored only when the current response defines an
+   * example with the same key, so response example pickers stay in sync between operations without
+   * blanking out responses that do not share that key.
+   */
+  selectedExample?: string
+  /** Event bus, used to broadcast the selected example so other operations can follow */
+  eventBus?: WorkspaceEventBus
+  /**
+   * Selected response content type per status code, mirrored from the response list on the left
+   * so the displayed example matches the chosen content type. Keyed by status code (e.g. "200").
+   */
+  selectedContentTypes?: Record<string, string>
+}>()
+const { translate } = useLocalization()
 
 const id = useId()
 
-const { copyToClipboard } = useClipboard()
-
 // Bring the status codes in the right order.
-const orderedStatusCodes = computed(() => Object.keys(responses ?? {}).sort())
+const orderedStatusCodes = computed<string[]>(() =>
+  Object.keys(responses ?? {}).sort(),
+)
 
-const hasMultipleExamples = computed<boolean>(
-  () => !!currentJsonResponse.value.examples,
+// Filter to only valid response keys that should render in the example responses panel
+const statusCodesWithContent = computed<string[]>(() =>
+  orderedStatusCodes.value.filter((statusCode) =>
+    hasResponseContent(getResolvedRef(responses?.[statusCode]), statusCode),
+  ),
 )
 
 // Keep track of the current selected tab
 const selectedResponseIndex = ref<number>(0)
 
+/**
+ * Clamp the selected index when the filtered list shrinks.
+ * Without this, the index can become out of bounds and cause a mismatch
+ * between the visible tabs and the displayed content.
+ *
+ * We re-resolve `selectedExampleKey` the same way `changeTab` does, so the picker keeps the
+ * document-wide selection when the newly active response defines it instead of being blanked out.
+ */
+watch(statusCodesWithContent, (codes) => {
+  if (codes.length === 0) {
+    selectedResponseIndex.value = 0
+  } else if (selectedResponseIndex.value >= codes.length) {
+    selectedResponseIndex.value = codes.length - 1
+  } else {
+    return
+  }
+  selectedExampleKey.value = resolveExampleKey(selectedExample)
+})
+
 // Return the whole response object
 const currentResponse = computed(() => {
   const currentStatusCode =
-    orderedStatusCodes.value[selectedResponseIndex.value]
+    toValue(statusCodesWithContent)[toValue(selectedResponseIndex)] ?? ''
 
-  return responses?.[currentStatusCode]
+  return getResolvedRef(responses?.[currentStatusCode])
 })
-
-const currentJsonResponse = computed(() => {
-  const normalizedContent = normalizeMimeTypeObject(
-    currentResponse.value?.content,
-  )
-
-  /** All the keys of the normalized content */
-  const keys = getObjectKeys(normalizedContent ?? {})
-
-  return (
-    // OpenAPI 3.x
-    normalizedContent?.['application/json'] ??
-    normalizedContent?.['application/xml'] ??
-    normalizedContent?.['text/plain'] ??
-    normalizedContent?.['text/html'] ??
-    normalizedContent?.['*/*'] ??
-    // Take the first key - in the future we may want to use the selected content type
-    normalizedContent?.[keys[0]] ??
-    // Swagger 2.0
-    currentResponse.value
-  )
-})
-
-const selectedExampleKey = ref<string>(
-  Object.keys(currentJsonResponse.value.examples ?? {})[0] ?? '',
-)
 
 /**
- * Gets the first example response if there are multiple example responses
- * or the only example if there is only one example response.
+ * What a status code means, for screen reader users.
+ *
+ * The tabs show bare numbers, so their meaning is only available to someone
+ * who already knows the code. The 3.2 `summary` is preferred because it is
+ * meant to be short; `description` is the fallback older documents carry.
  */
-const getFirstExampleResponse = () => {
-  if (!hasMultipleExamples.value) {
-    return currentJsonResponse.value.example
-  }
-  if (Array.isArray(currentJsonResponse.value.examples)) {
-    return currentJsonResponse.value.examples[0]
-  }
+const getResponseMeaning = (statusCode: string): string | undefined => {
+  const response = getResolvedRef(responses?.[statusCode])
 
-  const firstProperty = Object.keys(currentJsonResponse.value.examples)[0]
-  const firstExample = currentJsonResponse.value.examples[firstProperty]
-
-  // Handle the case where the example already has a 'value' property
-  return firstExample?.value ?? firstExample
+  return response?.summary || response?.description || undefined
 }
 
-const currentResponseWithExample = computed(() => ({
-  ...currentJsonResponse.value,
-  example:
-    hasMultipleExamples.value && selectedExampleKey.value
-      ? (currentJsonResponse.value.examples[selectedExampleKey.value].value ??
-        currentJsonResponse.value.examples[selectedExampleKey.value])
-      : getFirstExampleResponse(),
-}))
+const currentContentType = computed(() => {
+  // Keep the original keys so distinct media types retain their own examples.
+  const content = currentResponse.value?.content
+  const statusCode =
+    toValue(statusCodesWithContent)[toValue(selectedResponseIndex)] ?? ''
+  const selected = selectedContentTypes?.[statusCode]
+  const keys = objectKeys(content ?? {})
+  return selected && keys.includes(selected) ? selected : (keys[0] ?? '')
+})
+
+const currentResponseContent = computed<MediaTypeObject | undefined>(
+  () => currentResponse.value?.content?.[currentContentType.value],
+)
+
+const hasMultipleExamples = computed<boolean>(
+  () =>
+    !!currentResponseContent.value?.examples &&
+    Object.keys(currentResponseContent.value?.examples ?? {}).length > 1,
+)
+
+const selectedExampleKey = ref<string>('')
+
+/** Resolve the example key to show, preferring the document-wide selection when this response has it */
+const resolveExampleKey = (preferred: string | undefined): string => {
+  const keys = Object.keys(currentResponseContent.value?.examples ?? {})
+  if (preferred && keys.includes(preferred)) {
+    return preferred
+  }
+  // Keep the current example when it is still valid, otherwise fall back to the first one
+  if (selectedExampleKey.value && keys.includes(selectedExampleKey.value)) {
+    return selectedExampleKey.value
+  }
+  return keys[0] ?? ''
+}
+
+// Initialize from the document-wide selection, falling back to the first example
+selectedExampleKey.value = resolveExampleKey(selectedExample)
+
+// Content-type changes can replace the available example keys.
+watch(currentResponseContent, () => {
+  selectedExampleKey.value = resolveExampleKey(selectedExample)
+})
+
+// Follow the document-wide selection when it changes and this response has that example
+watch(
+  () => selectedExample,
+  (preferred) => {
+    selectedExampleKey.value = resolveExampleKey(preferred)
+  },
+)
+
+/** Select an example and sync the choice across the document so other operations follow */
+const selectExample = (key: string) => {
+  selectedExampleKey.value = key
+  eventBus?.emit('workspace:update:selected-example', key)
+}
+
+/** Get the current example to display */
+const selectedExampleObject = computed(() => {
+  if (!currentResponseContent.value) {
+    return undefined
+  }
+
+  // When multiple examples exist and one is selected, we access it directly
+  if (hasMultipleExamples.value && selectedExampleKey.value) {
+    return getResolvedRef(
+      currentResponseContent.value.examples?.[selectedExampleKey.value],
+    )
+  }
+
+  // Otherwise, we use getExample with an undefined exampleKey to handle fallbacks
+  return getExample(
+    { content: { response: currentResponseContent.value } },
+    undefined,
+    'response',
+  )
+})
 
 const changeTab = (index: number) => {
   selectedResponseIndex.value = index
-  selectedExampleKey.value = ''
+  // Re-apply the document-wide selection for the newly selected response, falling back to its first example
+  selectedExampleKey.value = resolveExampleKey(selectedExample)
 }
 
+const card = ref<ComponentPublicInstance | null>(null)
+const visible = useExampleVisibility(card)
 const showSchema = ref(false)
+const externalExamples = useExternalExamples(
+  () => [selectedExampleObject.value],
+  () => visible.value && !showSchema.value,
+)
+const currentExample = computed(() =>
+  externalExamples.resolve(selectedExampleObject.value),
+)
+/** Explicit examples take precedence over generated schema variants. */
+const responseVariants = computed(() =>
+  currentExample.value === undefined
+    ? getResponseVariants(currentResponseContent.value)
+    : undefined,
+)
+const selectedVariantKey = ref('')
+const currentVariantKey = computed(() => {
+  const variants = responseVariants.value
+  return variants && Object.hasOwn(variants.examples, selectedVariantKey.value)
+    ? selectedVariantKey.value
+    : (variants?.defaultKey ?? '')
+})
+
+// A selection belongs to this response and content type, not the next tab.
+watch(
+  [
+    selectedResponseIndex,
+    currentResponse,
+    currentContentType,
+    currentResponseContent,
+  ],
+  () => {
+    selectedVariantKey.value = ''
+  },
+  { flush: 'sync' },
+)
+
+const exampleResult = computed(() => {
+  let error: XmlDiagnostic | undefined
+  let language = getExampleLanguage(currentContentType.value)
+  const content = externalExamples.pending.value
+    ? undefined
+    : getExampleContent(currentResponseContent.value, currentExample.value, {
+        contentType: currentContentType.value,
+        compositionSelection: responseVariants.value
+          ? {
+              [responseVariants.value.composition]: Number(
+                currentVariantKey.value,
+              ),
+            }
+          : undefined,
+        openapiVersion,
+        jsonSchemaDialect,
+        onLanguage: (value) => {
+          language = value
+        },
+        onDiagnostic: (diagnostic) => {
+          if (diagnostic.severity === 'error' && !error) {
+            error = diagnostic
+          }
+        },
+      })
+  return { content, error, language }
+})
+const exampleContent = computed(() => exampleResult.value.content)
 </script>
 <template>
   <ScalarCard
-    v-if="orderedStatusCodes.length"
-    aria-label="Example Responses"
-    role="region"
-    class="response-card">
+    v-if="statusCodesWithContent.length"
+    ref="card"
+    :aria-label="translate('response.exampleResponses')"
+    class="response-card"
+    role="region">
     <ExampleResponseTabList @change="changeTab">
       <ExampleResponseTab
-        v-for="statusCode in orderedStatusCodes"
+        v-for="statusCode in statusCodesWithContent"
         :key="statusCode"
         :aria-controls="id">
-        <ScreenReader>Status:</ScreenReader>
+        <ScreenReader>{{ translate('response.status') }}:</ScreenReader>
         {{ statusCode }}
+        <ScreenReader v-if="getResponseMeaning(statusCode)">
+          {{ getResponseMeaning(statusCode) }}
+        </ScreenReader>
       </ExampleResponseTab>
 
       <template #actions>
-        <button
-          v-if="currentJsonResponse?.example"
-          class="code-copy"
-          type="button"
-          @click="() => copyToClipboard(currentJsonResponse?.example)">
-          <ScalarIcon
-            icon="Clipboard"
-            width="12px" />
-        </button>
         <label
-          v-if="currentJsonResponse?.schema"
+          v-if="
+            currentResponseContent?.schema ?? currentResponseContent?.itemSchema
+          "
           class="scalar-card-checkbox">
-          Show Schema
+          {{ translate('response.showSchema') }}
           <input
             v-model="showSchema"
             :aria-controls="id"
@@ -150,37 +315,87 @@ const showSchema = ref(false)
       </template>
     </ExampleResponseTabList>
     <ScalarCardSection class="grid flex-1">
-      <template v-if="currentJsonResponse?.schema">
-        <ScalarCodeBlock
-          v-if="showSchema && currentResponseWithExample"
+      <!-- Schema -->
+      <template
+        v-if="
+          showSchema &&
+          (currentResponseContent?.schema ?? currentResponseContent?.itemSchema)
+        ">
+        <ExampleSchema
+          v-if="currentResponseContent?.schema"
           :id="id"
-          class="-outline-offset-2"
-          :content="currentResponseWithExample"
-          lang="json" />
-        <ExampleResponse
-          v-else
-          :id="id"
-          :response="currentResponseWithExample" />
+          :schema="currentResponseContent.schema" />
+        <template v-if="currentResponseContent?.itemSchema">
+          <p class="text-c-2 px-3 pt-2 text-sm">
+            {{ translate('common.streamItem') }}
+          </p>
+          <ExampleSchema
+            :id="`${id}-item`"
+            :schema="currentResponseContent.itemSchema" />
+        </template>
       </template>
-      <!-- Without Schema: Don't show tabs -->
+
+      <div
+        v-else-if="externalExamples.pending.value"
+        class="text-c-2 p-4"
+        role="status">
+        <template v-if="externalExamples.failed.value">
+          Could not load this example.
+          <ScalarButton
+            size="sm"
+            variant="ghost"
+            @click="externalExamples.retry">
+            Retry
+          </ScalarButton>
+        </template>
+        <template v-else>Loading example…</template>
+      </div>
+      <!-- Example -->
       <ExampleResponse
         v-else
         :id="id"
-        :response="currentResponseWithExample" />
+        :content="exampleContent"
+        :contentType="currentContentType"
+        :example="currentExample"
+        :generationError="exampleResult.error"
+        :jsonSchemaDialect
+        :language="exampleResult.language"
+        :openapiVersion
+        :pending="externalExamples.pending.value"
+        :response="currentResponseContent" />
     </ScalarCardSection>
     <ScalarCardFooter
-      v-if="currentResponse?.description || hasMultipleExamples"
+      v-if="
+        currentResponse?.summary ||
+        currentResponse?.description ||
+        hasMultipleExamples ||
+        responseVariants
+      "
       class="response-card-footer">
       <ExamplePicker
         v-if="hasMultipleExamples"
-        class="response-example-selector"
-        :examples="currentJsonResponse?.examples"
-        v-model="selectedExampleKey" />
-      <div
-        v-else-if="currentResponse?.description"
-        class="response-description">
+        class="response-example-selector px-0"
+        :examples="currentResponseContent?.examples"
+        :modelValue="selectedExampleKey"
+        @update:modelValue="selectExample" />
+      <ExamplePicker
+        v-if="responseVariants && !showSchema"
+        :aria-label="translate('schema.schema')"
+        class="response-example-selector px-0"
+        data-testid="response-variant-picker"
+        :examples="responseVariants.examples"
+        :modelValue="currentVariantKey"
+        @update:modelValue="selectedVariantKey = $event" />
+      <div class="response-description">
+        <!-- Short summary of the response (OpenAPI 3.2) -->
+        <div
+          v-if="currentResponse?.summary"
+          class="response-description-summary text-c-1">
+          {{ currentResponse.summary }}
+        </div>
         <ScalarMarkdown
-          class="markdown"
+          v-if="currentResponse?.description"
+          class="response-description-markdown"
           :value="currentResponse.description" />
       </div>
     </ScalarCardFooter>
@@ -192,49 +407,34 @@ const showSchema = ref(false)
   font-size: var(--scalar-font-size-3);
 }
 
-.markdown :deep(*) {
-  margin: 0;
-}
-.code-copy {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  appearance: none;
-  -webkit-appearance: none;
-  outline: none;
-  background: transparent;
-  cursor: pointer;
-  color: var(--scalar-color-3);
-  border: none;
-  padding: 0;
-  margin-right: 12px;
-}
-.code-copy:hover {
-  color: var(--scalar-color-1);
-}
-.code-copy svg {
-  width: 13px;
-  height: 13px;
-}
 .response-card-footer {
   display: flex;
-  flex-direction: column;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: start;
   flex-shrink: 0;
-  padding: 10px 12px;
-  gap: 8px;
+  padding: 7px 12px;
+  column-gap: 8px;
 }
 .response-example-selector {
-  align-self: flex-start;
+  flex-shrink: 0;
   margin: -4px;
 }
 .response-description {
   font-weight: var(--scalar-semibold);
-  font-size: var(--scalar-mini);
+  font-size: var(--scalar-small);
   color: var(--scalar-color--1);
 
-  display: flex;
-  align-items: center;
   box-sizing: border-box;
+
+  flex-grow: 1;
+}
+.response-description-markdown {
+  max-height: 3lh;
+}
+
+.response-description-markdown :deep(*) {
+  margin: 0;
 }
 .schema-type {
   font-size: var(--scalar-micro);
@@ -269,12 +469,12 @@ const showSchema = ref(false)
   color: var(--scalar-color-2);
   width: fit-content;
   white-space: nowrap;
-  margin-right: 9px;
   gap: 6px;
+  padding: 7px 6px;
 }
 .scalar-card-checkbox:has(.scalar-card-checkbox-input:focus-visible)
   .scalar-card-checkbox-checkmark {
-  outline: 1px solid var(--scalar-color-accent);
+  outline: 1px solid var(--scalar-focus-color);
 }
 .scalar-card-checkbox:hover {
   color: var(--scalar-color--1);
@@ -288,8 +488,8 @@ const showSchema = ref(false)
 }
 
 .scalar-card-checkbox-checkmark {
-  height: 17px;
-  width: 17px;
+  height: 16px;
+  width: 16px;
   border-radius: var(--scalar-radius);
   background-color: transparent;
   background-color: var(--scalar-background-3);
@@ -320,8 +520,8 @@ const showSchema = ref(false)
 }
 
 .scalar-card-checkbox .scalar-card-checkbox-checkmark:after {
-  right: 6px;
-  top: 36.5%;
+  right: 11.5px;
+  top: 12.5px;
   width: 5px;
   height: 9px;
   border: solid 1px var(--scalar-button-1-color);

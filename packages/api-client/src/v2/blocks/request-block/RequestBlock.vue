@@ -1,0 +1,898 @@
+<script setup lang="ts">
+import type { MultipartNaming } from '@scalar/types/api-reference'
+import type { ClientOptionGroup } from '@scalar/blocks/code-example'
+import { ScalarErrorBoundary } from '@scalar/components/error-boundary'
+import { canMethodHaveBody } from '@scalar/helpers/http/can-method-have-body'
+import { REGEX } from '@scalar/helpers/regex/regex-helpers'
+import { replaceEnvVariables } from '@scalar/helpers/regex/replace-variables'
+import type { ClientPlugin } from '@scalar/oas-utils/helpers'
+import type { WorkspaceStore } from '@scalar/workspace-store/client'
+import type { SelectedSecurity } from '@scalar/workspace-store/entities/auth'
+import type {
+  ApiReferenceEvents,
+  AuthMeta,
+  WorkspaceEventBus,
+} from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import { unpackProxyObject } from '@scalar/workspace-store/helpers/unpack-proxy'
+import { getUniqueExampleName } from '@scalar/workspace-store/navigation'
+import {
+  filterGlobalCookie,
+  getEnvironmentVariables,
+  getResolvedUrl,
+  getSchemaExampleFromBody,
+  type MergedSecuritySchemes,
+  type SecuritySchemeObjectSecret,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type { XScalarCookie } from '@scalar/workspace-store/schemas/extensions/general/x-scalar-cookies'
+import type {
+  OpenApiDocument,
+  OperationObject,
+  ServerObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { computed, provide, ref, useId, watch } from 'vue'
+
+import SectionFilter from '@/components/SectionFilter.vue'
+import ViewLayoutSection from '@/components/ViewLayout/ViewLayoutSection.vue'
+import RequestBody from '@/v2/blocks/request-block/components/RequestBody.vue'
+import RequestCodeSnippet from '@/v2/blocks/request-block/components/RequestCodeSnippet.vue'
+import RequestParams from '@/v2/blocks/request-block/components/RequestParams.vue'
+import type { TableRow } from '@/v2/blocks/request-block/components/RequestTableRow.vue'
+import { createParameterHandlers } from '@/v2/blocks/request-block/helpers/create-parameter-handlers'
+import { createParameterRows } from '@/v2/blocks/request-block/helpers/create-parameter-rows'
+import { groupBy } from '@/v2/blocks/request-block/helpers/group-by'
+import { groupGlobalCookies } from '@/v2/blocks/request-block/helpers/group-global-cookies'
+import { getStructuredBodyCodec } from '@/v2/blocks/request-block/helpers/structured-body-codec'
+import { AuthSelector } from '@/v2/blocks/scalar-auth-selector-block'
+import type { OAuth2Options } from '@/v2/blocks/scalar-auth-selector-block/components/OAuth2.vue'
+import {
+  COLLAPSIBLE_SECTION_HEADING_LEVEL,
+  type CollapsibleSectionHeadingLevel,
+} from '@/v2/components/layout'
+import { useLocalization } from '@/v2/features/localization'
+import type { ClientLayout } from '@/v2/types/layout'
+
+type Filter =
+  'All' | 'Auth' | 'Variables' | 'Cookies' | 'Headers' | 'Query' | 'Body'
+
+export type RequestBlockProps = {
+  /** Security scheme names visible in the authentication UI. */
+  allowedSecuritySchemes?: string[]
+  authMeta: AuthMeta
+  clientOptions: ClientOptionGroup[]
+  environment: XScalarEnvironment
+  eventBus: WorkspaceEventBus
+  exampleKey: string
+  workspaceCookies: XScalarCookie[]
+  documentCookies: XScalarCookie[]
+  /** Slug of the document the operation belongs to */
+  documentSlug: string
+  layout: ClientLayout
+  method: string
+  operation: OperationObject
+  /** Operation before downloaded examples are overlaid, for parameter edit targets. */
+  sourceOperation?: OperationObject
+  path: string
+  plugins: ClientPlugin[]
+  proxyUrl: string
+  securityRequirements: OpenApiDocument['security']
+  securitySchemes: MergedSecuritySchemes
+  /** Originating OpenAPI version, used for XML mapping rules. */
+  openapiVersion?: string
+  /** Document-level JSON Schema dialect used when generating array `contains` examples. */
+  jsonSchemaDialect?: string
+  multipartNaming?: MultipartNaming
+  requestBodyCompositionSelection?: Record<string, number>
+  selectedClient: WorkspaceStore['workspace']['x-scalar-default-client']
+  selectedSecurity: SelectedSecurity
+  selectedSecuritySchemes: SecuritySchemeObjectSecret[]
+  server: ServerObject | null
+  defaultHeaders: Record<string, string>
+  /** Initial view for structured request bodies, from the `x-scalar-default-request-body-view` document extension */
+  defaultRequestBodyView?: 'form' | 'raw'
+  /**  Any config options required for the OAuth2 flow */
+  options?: OAuth2Options
+}
+
+const {
+  allowedSecuritySchemes,
+  authMeta = { type: 'document' },
+  clientOptions,
+  environment,
+  eventBus,
+  exampleKey,
+  workspaceCookies,
+  documentCookies,
+  documentSlug,
+  layout,
+  method,
+  operation,
+  sourceOperation,
+  path,
+  plugins,
+  proxyUrl,
+  multipartNaming,
+  requestBodyCompositionSelection,
+  openapiVersion,
+  jsonSchemaDialect,
+  securityRequirements,
+  securitySchemes,
+  selectedClient,
+  selectedSecurity,
+  selectedSecuritySchemes,
+  server,
+  defaultHeaders: autoGeneratedHeaders,
+  defaultRequestBodyView = 'raw',
+} = defineProps<RequestBlockProps>()
+
+const { translate } = useLocalization()
+
+/** Base name for examples created by the "generate example from schema" button */
+const GENERATED_EXAMPLE_NAME = 'Generated from schema'
+
+/** Operation metadata used across event emissions */
+const meta = computed(() => ({
+  method,
+  path,
+  exampleKey,
+}))
+
+const deletedExpandedParameterPaths = ref<Record<string, string[][]>>({})
+
+/** Renamed expanded rows, tracked as old-schema-path -> typed-value-path per parameter. */
+const renamedExpandedParameterPaths = ref<
+  Record<string, { from: string[]; to: string[] }[]>
+>({})
+
+const getExpandedParameterKey = (parameter: {
+  in: string
+  name: string
+}): string => `${parameter.in}:${parameter.name}`
+
+const getHiddenValuePaths = (parameter: {
+  in: string
+  name: string
+}): string[][] =>
+  deletedExpandedParameterPaths.value[getExpandedParameterKey(parameter)] ?? []
+
+/** Multi-field objects remain available in the picker; single-field objects retain ordinary deletion. */
+const hideExpandedRowPath = (row: TableRow): void => {
+  if (!row.originalParameter || !row.sourceParameterValuePath) {
+    return
+  }
+  const siblings =
+    sections.value.query?.filter(
+      (entry) => entry.originalParameter === row.originalParameter,
+    ) ?? []
+  if (siblings.length > 1) {
+    return
+  }
+  const key = getExpandedParameterKey(row.originalParameter)
+  deletedExpandedParameterPaths.value = {
+    ...deletedExpandedParameterPaths.value,
+    [key]: [
+      ...(deletedExpandedParameterPaths.value[key] ?? []),
+      row.sourceParameterValuePath,
+    ],
+  }
+}
+
+const getRenamedValuePaths = (parameter: {
+  in: string
+  name: string
+}): { from: string[]; to: string[] }[] =>
+  renamedExpandedParameterPaths.value[getExpandedParameterKey(parameter)] ?? []
+
+const pathsEqual = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((segment, index) => segment === b[index])
+
+/**
+ * Records that an expanded row was renamed from its current value path to the typed one, so the
+ * read side can render the renamed key in the original property's slot instead of appending it to
+ * the end of the table. Repeated renames of the same row stay anchored to the original schema path.
+ */
+const recordExpandedRowRename = (
+  row: TableRow,
+  newValuePath: string[],
+): void => {
+  if (!row.originalParameter || !row.sourceParameterValuePath) {
+    return
+  }
+
+  const from = row.sourceParameterValuePath
+  const key = getExpandedParameterKey(row.originalParameter)
+  const existing = renamedExpandedParameterPaths.value[key] ?? []
+
+  // If this row was already renamed, the row's current path is the previous target. Re-anchor that
+  // entry to the new target so a second rename does not create an orphaned mapping.
+  const chained = existing.find((entry) => pathsEqual(entry.to, from))
+  const next = chained
+    ? existing.map((entry) =>
+        entry === chained ? { from: entry.from, to: newValuePath } : entry,
+      )
+    : [...existing, { from, to: newValuePath }]
+
+  renamedExpandedParameterPaths.value = {
+    ...renamedExpandedParameterPaths.value,
+    [key]: next,
+  }
+}
+
+/** Whole-query parameters share the Query section but retain their original identity. */
+const hasQuerystringParameter = computed(
+  () =>
+    operation.parameters?.some(
+      (parameter) => getResolvedRef(parameter)?.in === 'querystring',
+    ) ?? false,
+)
+
+/** Parameters grouped by type (path, query, header, cookie) */
+const sections = computed(() =>
+  groupBy(
+    operation.parameters?.flatMap((reference, index) => {
+      const param = getResolvedRef(reference)
+      if (!param) {
+        return []
+      }
+      return createParameterRows(param, exampleKey, {
+        openapiVersion,
+        jsonSchemaDialect,
+        hiddenValuePaths:
+          param.in === 'query' ? getHiddenValuePaths(param) : [],
+        renamedValuePaths:
+          param.in === 'query' ? getRenamedValuePaths(param) : [],
+      }).map((row) => ({
+        ...row,
+        // Overlays retain parameter order, but their downloaded values are read-only.
+        originalParameter:
+          getResolvedRef(sourceOperation?.parameters?.[index]) ?? param,
+        in: param.in === 'querystring' ? 'query' : param.in,
+      }))
+    }) ?? [],
+    'in',
+    ({ in: _in, ...row }) => {
+      return row
+    },
+  ),
+)
+
+// Generate a reverse map for fast lookup of headers by the name
+const headersMap = computed(() =>
+  groupBy(
+    sections.value.header?.map((it) => ({
+      ...it,
+      name: it.name.toLowerCase(),
+    })) ?? [],
+    'name',
+  ),
+)
+
+const defaultHeaders = computed(() => {
+  const disableParameters =
+    operation['x-scalar-disable-parameters']?.['default-headers']?.[
+      exampleKey
+    ] ?? {}
+
+  const isOverridden = (name: string) => {
+    const header = headersMap.value[name.toLowerCase()]?.[0]
+
+    if (!header) {
+      return false
+    }
+
+    return !header.isDisabled
+  }
+
+  return Object.entries(autoGeneratedHeaders).map(([name, value]) => {
+    return {
+      name,
+      value,
+      schema: undefined,
+      isOverridden: isOverridden(name),
+      isReadonly: true,
+      isDisabled: disableParameters[name.toLowerCase()] ?? false,
+    } satisfies TableRow
+  })
+})
+
+const headers = computed(() => [
+  ...defaultHeaders.value,
+  ...(sections.value.header ?? []),
+])
+
+/** Resolved request URL, used to filter global cookies by their domain and path. */
+const requestCookieUrl = computed(() => {
+  const environmentVariables = getEnvironmentVariables(environment)
+  const resolvedUrl = getResolvedUrl({ server, path })
+  return replaceEnvVariables(resolvedUrl, environmentVariables)
+})
+
+/**
+ * Global cookies grouped by name. Same-named cookies collapse into a single logical cookie so
+ * duplicate names no longer share one disabled state (which made toggling one toggle them all).
+ * A name with multiple values becomes a preset the user can switch between.
+ */
+const globalCookieGroups = computed(() =>
+  groupGlobalCookies({
+    sources: [
+      { location: 'workspace', cookies: workspaceCookies },
+      { location: 'document', cookies: documentCookies },
+    ],
+    // Keep domain/path filtering but ignore the disabled flag, so a disabled preset value stays
+    // selectable in the switcher (it is only hidden from the request, not from the dropdown).
+    shouldInclude: (cookie) =>
+      filterGlobalCookie({
+        cookie: { ...cookie, isDisabled: false },
+        url: requestCookieUrl.value,
+        disabledGlobalCookies: {},
+      }),
+  }),
+)
+
+const defaultCookies = computed<TableRow[]>(() => {
+  const disabledGlobalCookies =
+    operation['x-scalar-disable-parameters']?.['global-cookies']?.[
+      exampleKey
+    ] ?? {}
+
+  return globalCookieGroups.value.map((group) => ({
+    name: group.name,
+    value: group.selectedValue,
+    globalRoute: { page: group.location, path: 'cookies' } as const,
+    isReadonly: true,
+    isDisabled: disabledGlobalCookies[group.name.toLowerCase()] ?? false,
+    presetOptions: group.isPreset ? group.options : undefined,
+  }))
+})
+
+/**
+ * Switch a grouped global cookie preset to the chosen value by enabling the matching sibling and
+ * disabling the rest. Selection is written back to the source `x-scalar-cookies` list so it
+ * persists, and the send path drops disabled cookies, so only the selected value is sent.
+ */
+const handleSelectCookiePreset = (index: number, value: string): void => {
+  const group = globalCookieGroups.value[index]
+  if (!group) {
+    return
+  }
+
+  for (const sibling of group.siblings) {
+    eventBus.emit('cookie:upsert:cookie', {
+      collectionType: sibling.location,
+      index: sibling.index,
+      payload: { isDisabled: sibling.value !== value },
+    })
+  }
+}
+
+const cookies = computed(() => [
+  ...(defaultCookies.value ?? []),
+  ...(sections.value.cookie ?? []),
+])
+
+/** Currently selected filter for the request sections */
+const selectedFilter = ref<Filter>('All')
+
+/** Available operation sections */
+const OPERATION_SECTIONS: readonly Filter[] = [
+  'Auth',
+  'Variables',
+  'Cookies',
+  'Headers',
+  'Query',
+  'Body',
+] as const
+
+/**
+ * Pre-generated stable IDs for all possible filter sections.
+ * These are created once at setup time to avoid regenerating IDs on re-render.
+ */
+const sectionIds: Record<Filter, string> = {
+  All: useId(),
+  Auth: useId(),
+  Variables: useId(),
+  Cookies: useId(),
+  Headers: useId(),
+  Query: useId(),
+  Body: useId(),
+}
+
+/** Filters available based on operation state */
+const filters = computed<Filter[]>(() => {
+  const availableFilters = new Set<Filter>(['All', ...OPERATION_SECTIONS])
+
+  if (!sections.value.path?.length) {
+    availableFilters.delete('Variables')
+  }
+  if (!canMethodHaveBody(method)) {
+    availableFilters.delete('Body')
+  }
+  if (isAuthHidden.value) {
+    availableFilters.delete('Auth')
+  }
+
+  return [...availableFilters]
+})
+
+/**
+ * Map available filters to their pre-generated stable IDs.
+ * Only includes IDs for filters that are currently available.
+ */
+const filterIds = computed(() =>
+  filters.value.reduce<Partial<Record<Filter, string>>>((ids, section) => {
+    ids[section] = sectionIds[section]
+    return ids
+  }, {}),
+)
+
+/**
+ * Hide auth selector in readonly mode when no security schemes are defined.
+ * This keeps the UI clean when there are no authentication options available.
+ */
+const isAuthHidden = computed(
+  () => layout === 'modal' && !Object.keys(securitySchemes ?? {}).length,
+)
+
+/**
+ * Keep auth available for unauthenticated operations, but collapse it by default
+ * in readonly modal layouts unless a requirement or manual selection exists.
+ */
+const isAuthDefaultOpen = computed(
+  () =>
+    layout !== 'modal' ||
+    Boolean(
+      securityRequirements?.length || selectedSecurity.selectedSchemes.length,
+    ),
+)
+
+/** Get a sensible placeholder for the request name input */
+const requestNamePlaceholder = computed(() => {
+  if (operation.summary) {
+    return operation.summary
+  }
+  const cleanPath = path.replace(REGEX.PROTOCOL, '')
+  return cleanPath || translate('apiClient.requestBlock.requestName')
+})
+
+/** Check if the section should be shown based on the selected filter */
+const isSectionVisible = (section: Filter): boolean => {
+  return selectedFilter.value === 'All' || selectedFilter.value === section
+}
+
+/**
+ * Reset filter to 'All' if Body filter is selected but method changes to one that cannot have a body.
+ * This prevents showing an empty Body section when switching methods.
+ */
+watch(
+  () => method,
+  (newMethod) => {
+    if (selectedFilter.value === 'Body' && !canMethodHaveBody(newMethod)) {
+      selectedFilter.value = 'All'
+    }
+  },
+)
+
+// Expanded-row bookkeeping is keyed by `in:name`, which is not unique across operations or
+// examples. Reset both maps when the operation or example changes so stale delete/rename mappings
+// do not leak onto another request that happens to share a query parameter name.
+watch(
+  () => [method, path, exampleKey],
+  () => {
+    deletedExpandedParameterPaths.value = {}
+    renamedExpandedParameterPaths.value = {}
+  },
+)
+
+/** Handle operation summary updates */
+const handleSummaryUpdate = (event: Event): void => {
+  if (!(event.target instanceof HTMLInputElement)) {
+    return
+  }
+  const summary = event.target.value
+  eventBus.emit('operation:update:meta', {
+    meta: meta.value,
+    payload: { summary: summary.trim() },
+  })
+}
+
+/** Parameter handlers */
+const parameterHandlers = computed(() => ({
+  path: createParameterHandlers('path', eventBus, meta.value, {
+    context: sections.value.path ?? [],
+  }),
+  cookie: {
+    ...createParameterHandlers('cookie', eventBus, meta.value, {
+      context: cookies.value ?? [],
+      globalParameters: defaultCookies.value.length,
+    }),
+    selectPreset: handleSelectCookiePreset,
+  },
+  header: createParameterHandlers('header', eventBus, meta.value, {
+    context: headers.value,
+    defaultParameters: defaultHeaders.value.length,
+  }),
+  query: createParameterHandlers('query', eventBus, meta.value, {
+    context: sections.value.query ?? [],
+    onDeleteExpandedRow: hideExpandedRowPath,
+    onRenameExpandedRow: recordExpandedRowRename,
+  }),
+}))
+
+/** Apply pending typing before the reset event so a delayed edit cannot undo the reset. */
+const handleResetBody = ({ contentType }: { contentType: string }): void => {
+  eventBus.flushDebouncedEmits?.()
+  eventBus.emit('operation:reset:requestBody', {
+    documentName: documentSlug,
+    meta: meta.value,
+    contentType,
+    requestBodyCompositionSelection,
+    openapiVersion,
+  })
+}
+
+/** Handle request body content type update */
+const handleUpdateContentType = (payload: { value: string }): void =>
+  eventBus.emit('operation:update:requestBody:contentType', {
+    payload: { contentType: payload.value },
+    meta: meta.value,
+  })
+
+/** Handle request body value update */
+const handleUpdateBodyValue = ({
+  payload,
+  contentType,
+}: Pick<
+  ApiReferenceEvents['operation:update:requestBody:value'],
+  'payload' | 'contentType'
+>): void => {
+  const debounceKey =
+    typeof payload === 'string'
+      ? `update:requestBody:value-${contentType}`
+      : undefined
+
+  eventBus.emit(
+    'operation:update:requestBody:value',
+    {
+      payload,
+      contentType,
+      meta: meta.value,
+    },
+    {
+      debounceKey,
+    },
+  )
+}
+
+/** Handle request body value update */
+const handleUpdateBodyFormValue = ({
+  payload,
+  contentType,
+}: Pick<
+  ApiReferenceEvents['operation:update:requestBody:formValue'],
+  'payload' | 'contentType'
+>): void => {
+  const debounceKey = `update:requestBody:${contentType}-form-value`
+
+  eventBus.emit(
+    'operation:update:requestBody:formValue',
+    {
+      payload: payload.map((row) => unpackProxyObject(row, { depth: 1 })),
+      contentType,
+      meta: meta.value,
+    },
+    {
+      debounceKey,
+    },
+  )
+}
+
+/**
+ * Create a new example seeded with values generated from the request body schema.
+ *
+ * Custom examples in the document otherwise hide the auto-generated fields entirely. Rather than
+ * only rendering the generated body, we write it into a fresh example so the user can edit it and
+ * so it survives an export of the document.
+ */
+const handleGenerateExample = ({
+  contentType,
+}: {
+  contentType: string
+}): void => {
+  const requestBody = getResolvedRef(operation.requestBody)
+  const codec = getStructuredBodyCodec(contentType)
+  if (!requestBody || !codec) {
+    return
+  }
+
+  const value = getSchemaExampleFromBody(
+    requestBody,
+    contentType,
+    requestBodyCompositionSelection,
+    openapiVersion,
+    jsonSchemaDialect,
+  )
+
+  // A schema that generates nothing writable would leave the user on an empty new example.
+  if (value === undefined || value === null) {
+    return
+  }
+
+  const exampleName = getUniqueExampleName(operation, GENERATED_EXAMPLE_NAME)
+  const exampleMeta = { path, method, exampleKey: exampleName }
+
+  eventBus.emit('operation:create:draft-example', {
+    documentName: documentSlug,
+    meta: { path, method },
+    exampleName,
+  })
+
+  // Carry over the content type the user was looking at, otherwise the new example opens on
+  // whichever content type happens to come first on the request body.
+  eventBus.emit('operation:update:requestBody:contentType', {
+    payload: { contentType },
+    meta: exampleMeta,
+  })
+
+  eventBus.emit('operation:update:requestBody:value', {
+    payload: codec.stringify(value),
+    contentType,
+    meta: exampleMeta,
+  })
+
+  // The modal selects the example after its creation hook rebuilds the sidebar.
+  if (layout === 'modal') {
+    return
+  }
+
+  eventBus.emit('ui:navigate', {
+    page: 'example',
+    documentSlug,
+    path,
+    method,
+    exampleName,
+  })
+}
+
+const labelRequestNameId = useId()
+
+/**
+ * Where the collapsible sections below sit in the heading outline.
+ *
+ * The modal renders the operation summary as a heading above them, so they are
+ * its subsections. Every other layout shows the summary as an editable input
+ * rather than a heading, which leaves the sections at the top level.
+ */
+provide(
+  COLLAPSIBLE_SECTION_HEADING_LEVEL,
+  computed<CollapsibleSectionHeadingLevel>(() =>
+    layout === 'modal' && operation.summary ? 3 : 2,
+  ),
+)
+
+const globalCookies = computed(() => [...workspaceCookies, ...documentCookies])
+
+/** Allow updating the operation extensions for the plugins */
+const updateOperationExtension = (
+  payload: ApiReferenceEvents['operation:update:extension']['payload'],
+): void =>
+  eventBus.emit('operation:update:extension', { payload, meta: meta.value })
+
+const filterLabels = computed(() => ({
+  All: translate('apiClient.sectionFilter.all'),
+  Auth: translate('apiClient.sectionFilter.auth'),
+  Variables: translate('apiClient.sectionFilter.variables'),
+  Cookies: translate('apiClient.sectionFilter.cookies'),
+  Headers: translate('apiClient.sectionFilter.headers'),
+  Query: translate('apiClient.sectionFilter.query'),
+  Body: translate('apiClient.sectionFilter.body'),
+}))
+</script>
+<template>
+  <ViewLayoutSection
+    :aria-label="
+      translate('apiClient.requestBlock.label', {
+        name: operation.summary ?? '',
+      })
+    ">
+    <template #title>
+      <div
+        class="group pointer-events-none flex flex-1 items-center gap-1 lg:pe-24">
+        <label
+          v-if="layout !== 'modal'"
+          class="pointer-events-auto absolute top-0 left-0 h-full w-full cursor-text opacity-0"
+          :for="labelRequestNameId" />
+        <input
+          v-if="layout !== 'modal'"
+          :id="labelRequestNameId"
+          class="text-c-1 group-hover-input pointer-events-auto relative z-10 -ml-0.5 h-8 w-full rounded pl-1.25 has-[:focus-visible]:outline md:-ml-1.25"
+          :placeholder="requestNamePlaceholder"
+          :value="operation.summary"
+          @blur="handleSummaryUpdate" />
+        <!-- In the modal the summary is the title of everything below it, so
+             it carries the heading role that lets screen reader users jump to
+             it. An operation without a summary renders nothing, because an
+             empty heading is worse than none. -->
+        <h2
+          v-else-if="operation.summary"
+          class="text-c-1 flex h-8 items-center">
+          {{ operation.summary }}
+        </h2>
+        <span
+          v-else
+          class="text-c-1 flex h-8 items-center" />
+      </div>
+      <SectionFilter
+        v-model="selectedFilter"
+        :filters="filters"
+        :labels="filterLabels" />
+    </template>
+
+    <div
+      :id="filterIds.All"
+      class="request-section-content custom-scroll relative flex flex-1 flex-col"
+      :role="selectedFilter === 'All' ? 'tabpanel' : 'none'">
+      <!-- Auth Selector -->
+      <AuthSelector
+        v-show="isSectionVisible('Auth') && !isAuthHidden"
+        :id="filterIds.Auth"
+        :allowedSecuritySchemes
+        :createAnySecurityScheme="layout !== 'modal'"
+        :defaultOpen="isAuthDefaultOpen"
+        :environment
+        :eventBus
+        :meta="authMeta"
+        :options
+        :proxyUrl
+        :securityRequirements
+        :securitySchemes
+        :selectedSecurity
+        :selectedSecuritySchemes
+        :server
+        :title="translate('apiClient.requestBlock.authentication')" />
+
+      <!-- Variables (Path Parameters) -->
+      <RequestParams
+        v-show="isSectionVisible('Variables') && sections.path?.length"
+        :id="filterIds.Variables"
+        :environment
+        :eventBus
+        :exampleKey
+        :rows="sections.path ?? []"
+        :showAddRowPlaceholder="false"
+        :title="translate('apiClient.requestBlock.variables')"
+        v-on="parameterHandlers.path" />
+
+      <!-- Cookies -->
+      <RequestParams
+        v-show="isSectionVisible('Cookies')"
+        :id="filterIds.Cookies"
+        :environment
+        :eventBus
+        :exampleKey
+        :rows="cookies ?? []"
+        :showAddRowPlaceholder="true"
+        :title="translate('apiClient.requestBlock.cookies')"
+        v-on="parameterHandlers.cookie" />
+
+      <!-- Headers -->
+      <RequestParams
+        v-show="isSectionVisible('Headers')"
+        :id="filterIds.Headers"
+        :environment
+        :eventBus
+        :exampleKey
+        :rows="headers ?? []"
+        :title="translate('apiClient.requestBlock.headers')"
+        v-on="parameterHandlers.header" />
+
+      <!-- Query Parameters -->
+      <RequestParams
+        v-show="isSectionVisible('Query')"
+        :id="filterIds.Query"
+        :key="JSON.stringify([documentSlug, method, path, exampleKey])"
+        :description="
+          hasQuerystringParameter
+            ? translate('apiClient.requestBlock.queryStringDescription')
+            : undefined
+        "
+        :environment
+        :eventBus
+        :exampleKey
+        :rows="sections.query ?? []"
+        selectExpandedParameters
+        :showAddRowPlaceholder="!hasQuerystringParameter"
+        :title="
+          hasQuerystringParameter
+            ? translate('apiClient.requestBlock.queryString')
+            : translate('apiClient.requestBlock.queryParameters')
+        "
+        v-on="parameterHandlers.query" />
+
+      <!-- Request Body -->
+      <RequestBody
+        v-show="isSectionVisible('Body') && canMethodHaveBody(method)"
+        :id="filterIds.Body"
+        :defaultView="defaultRequestBodyView"
+        :environment
+        :exampleKey
+        :jsonSchemaDialect
+        :multipartNaming
+        :openapiVersion
+        :requestBody="getResolvedRef(operation.requestBody)"
+        :requestBodyCompositionSelection
+        :title="translate('apiClient.requestBlock.requestBody')"
+        @generate:example="handleGenerateExample"
+        @reset="handleResetBody"
+        @update:contentType="handleUpdateContentType"
+        @update:formValue="handleUpdateBodyFormValue"
+        @update:value="handleUpdateBodyValue" />
+
+      <!-- Inject request section plugin components -->
+      <ScalarErrorBoundary
+        v-for="(plugin, index) in plugins"
+        :key="index">
+        <component
+          :is="plugin.components.request.component"
+          v-if="plugin?.components?.request"
+          v-show="selectedFilter === 'All'"
+          :operation
+          v-bind="plugin.components.request.additionalProps"
+          @operation:update:extension="updateOperationExtension" />
+      </ScalarErrorBoundary>
+
+      <!-- Spacer -->
+      <div class="flex grow" />
+      <!-- Code Snippet -->
+      <RequestCodeSnippet
+        v-show="selectedFilter === 'All'"
+        :clientOptions
+        :eventBus
+        :globalCookies
+        integration="client"
+        :jsonSchemaDialect
+        :method
+        :multipartNaming
+        :openapiVersion
+        :operation
+        :path
+        :requestBodyCompositionSelection
+        :securitySchemes="selectedSecuritySchemes"
+        :selectedClient
+        :selectedContentType="
+          getResolvedRef(operation.requestBody)?.[
+            'x-scalar-selected-content-type'
+          ]?.[exampleKey]
+        "
+        :selectedExample="exampleKey"
+        :selectedServer="server ?? undefined" />
+    </div>
+  </ViewLayoutSection>
+</template>
+<style scoped>
+.request-section-content {
+  --scalar-border-width: 0.5px;
+}
+.request-section-content-filter {
+  box-shadow: 0 -10px 0 10px var(--scalar-background-1);
+}
+.request-item:focus-within .request-meta-buttons {
+  opacity: 1;
+}
+.group-hover-input {
+  border-width: var(--scalar-border-width);
+  border-color: transparent;
+}
+.group:hover .group-hover-input {
+  background: color-mix(
+    in srgb,
+    var(--scalar-background-1),
+    var(--scalar-background-2)
+  );
+  border-color: var(--scalar-border-color);
+}
+.group-hover-input:focus {
+  background: transparent !important;
+  border-color: var(--scalar-border-color) !important;
+}
+</style>

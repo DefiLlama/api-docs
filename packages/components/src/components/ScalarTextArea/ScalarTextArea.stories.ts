@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/vue3'
+import type { Meta, StoryObj } from '@storybook/vue3-vite'
 import { ref } from 'vue'
 
 import ScalarTextArea from './ScalarTextArea.vue'
@@ -9,6 +9,9 @@ const meta: Meta = {
   argTypes: {
     class: { control: 'text' },
     placeholder: { control: 'text' },
+  },
+  args: {
+    placeholder: 'Enter your text here...',
   },
   render: (args) => ({
     components: { ScalarTextArea },
@@ -27,6 +30,7 @@ export const Base: Story = {}
 
 export const WithMaxHeight: Story = {
   args: {
-    class: 'max-h-20',
+    class: 'max-h-24',
+    placeholder: 'Text you enter here will scroll if it exceeds the max height...',
   },
 }

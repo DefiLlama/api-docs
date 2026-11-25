@@ -16,31 +16,24 @@
     "vue",
     "vue3"
   ],
-  "version": "0.12.20",
+  "version": "0.14.20",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "dev": "vite .",
-    "lint:check": "scalar-lint-check",
-    "lint:fix": "scalar-lint-fix",
-    "test": "vitest",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check-vue"
+    "test": "vitest --run",
+    "types:check": "vue-tsc --noEmit"
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./hooks": {
-      "import": "./dist/hooks/index.js",
-      "types": "./dist/hooks/index.d.ts",
-      "default": "./dist/hooks/index.js"
     },
     "./themes": {
       "import": "./dist/themes/index.js",
@@ -50,34 +43,31 @@
   },
   "files": [
     "dist",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "THIRD_PARTY_NOTICES"
   ],
-  "module": "dist/index.js",
   "dependencies": {
-    "@codemirror/autocomplete": "^6.18.3",
-    "@codemirror/commands": "^6.7.1",
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-css": "^6.3.1",
-    "@codemirror/lang-html": "^6.4.8",
-    "@codemirror/lang-json": "^6.0.0",
-    "@codemirror/lang-xml": "^6.0.0",
-    "@codemirror/lang-yaml": "^6.1.2",
-    "@codemirror/language": "^6.10.7",
-    "@codemirror/lint": "^6.8.4",
-    "@codemirror/state": "^6.5.0",
-    "@codemirror/view": "^6.35.3",
-    "@lezer/common": "^1.2.3",
-    "@lezer/highlight": "^1.2.1",
-    "@replit/codemirror-css-color-picker": "^6.3.0",
-    "@scalar/components": "workspace:*",
-    "codemirror": "^6.0.0",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lang-yaml": "^6.1.3",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/lint": "^6.9.8",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/common": "^1.5.6",
+    "@lezer/highlight": "^1.2.5",
     "vue": "catalog:*"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
     "@scalar/themes": "workspace:*",
     "@vitejs/plugin-vue": "catalog:*",
     "vite": "catalog:*",
     "vitest": "catalog:*",
-    "vue": "catalog:*"
+    "vue": "catalog:*",
+    "vue-tsc": "catalog:*"
   }
 }

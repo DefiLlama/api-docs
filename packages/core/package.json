@@ -11,26 +11,17 @@
     "directory": "packages/core"
   },
   "keywords": [],
-  "version": "0.3.9",
+  "version": "0.5.55",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-rollup",
-    "lint:check": "scalar-lint-check",
-    "lint:fix": "scalar-lint-fix",
-    "test": "vitest",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
-  "main": "dist/index.js",
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
     "./libs/html-rendering": {
       "import": "./dist/libs/html-rendering/index.js",
       "types": "./dist/libs/html-rendering/index.d.ts",
@@ -41,12 +32,13 @@
     "dist",
     "CHANGELOG.md"
   ],
-  "module": "dist/index.js",
   "dependencies": {
-    "@scalar/types": "workspace:*"
+    "@scalar/client-side-rendering": "workspace:*",
+    "@scalar/schemas": "workspace:*",
+    "@scalar/types": "workspace:*",
+    "@scalar/validation": "workspace:*"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
     "vite": "catalog:*"
   }
 }

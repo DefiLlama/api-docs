@@ -1,0 +1,377 @@
+import { writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import type { Target } from '@scalar/snippetz'
+import { clients } from '@scalar/snippetz/clients'
+
+/**
+ * Generator script to create C# enums from TypeScript clients configuration.
+ * This script directly imports the clients array from @scalar/snippetz,
+ * ensuring the C# enums stays in perfect sync with the TypeScript source of truth.
+ */
+
+/**
+ * Configuration for .NET packages
+ */
+interface DotNetPackageConfig {
+  name: string
+  enumsDir: string
+  mapperDir: string
+}
+
+/**
+ * Custom PascalCase mappings for better C# naming conventions.
+ * Only add entries here when the default conversion doesn't produce professional C# names.
+ */
+const CUSTOM_PASCAL_CASE_MAPPINGS: Record<string, string> = {
+  // Clients - Better naming for professional C# code
+  'httpclient': 'HttpClient',
+  'restsharp': 'RestSharp',
+  'clj_http': 'CljHttp',
+  'asynchttp': 'AsyncHttp',
+  'nethttp': 'NetHttp',
+  'okhttp': 'OkHttp',
+  'ofetch': 'OFetch',
+  'jquery': 'JQuery',
+  'nsurlsession': 'NSUrlSession',
+  'cohttp': 'CoHttp',
+  'webrequest': 'WebRequest',
+  'restmethod': 'RestMethod',
+  'aiohttp': 'AioHttp',
+  'httpx_sync': 'HttpxSync',
+  'httpx_async': 'HttpxAsync',
+
+  // Targets - Professional naming for languages/platforms
+  'js': 'JavaScript',
+  'csharp': 'CSharp',
+  'objc': 'ObjC',
+  'ocaml': 'OCaml',
+  'powershell': 'PowerShell',
+
+  // Special cases - Non-standard naming requirements
+  'http1.1': 'Http11',
+}
+
+/**
+ * Obsolete client entries for backward compatibility.
+ * Add entries here when client names change to maintain backward compatibility.
+ */
+const OBSOLETE_CLIENT_ENTRIES = [
+  {
+    name: 'Nsurlsession',
+    description: 'nsurlsession',
+    reason: 'Use NSUrlSession instead.',
+  },
+  {
+    name: 'Http1',
+    description: 'http1',
+    reason: 'This client is no longer supported.',
+  },
+  {
+    name: 'Http2',
+    description: 'http2',
+    reason: 'This client is no longer supported.',
+  },
+  {
+    name: 'Httr',
+    description: 'httr',
+    reason: 'Use Httr2 instead.',
+  },
+]
+
+/**
+ * Conditional namespace declaration shared by every generated file.
+ *
+ * The shared sources are compiled into each .NET integration package, so the namespace is selected
+ * by the compilation symbol that package defines. Keep this in sync with the hand-written files in
+ * Scalar.Shared - adding a new integration means adding a branch here as well.
+ */
+const NAMESPACE_DECLARATION = `#if SCALAR_ASPIRE
+namespace Scalar.Aspire;
+#elif SCALAR_AZURE_FUNCTIONS
+namespace Scalar.Azure.Functions;
+#elif SCALAR_AWS_LAMBDA
+namespace Scalar.Aws.Lambda;
+#else
+namespace Scalar.AspNetCore;
+#endif`
+
+/**
+ * Package configurations
+ */
+const PACKAGE_CONFIGS: DotNetPackageConfig[] = [
+  {
+    name: 'shared',
+    enumsDir: '../../../integrations/dotnet/shared/src/Scalar.Shared/Enums',
+    mapperDir: '../../../integrations/dotnet/shared/src/Scalar.Shared/Mapper',
+  },
+]
+
+/**
+ * Helper function to convert a string to PascalCase for C# enum values.
+ * Uses the custom mappings defined at the top of the file for better naming conventions.
+ */
+function toPascalCase(str: string): string {
+  // Check for custom mapping first
+  if (CUSTOM_PASCAL_CASE_MAPPINGS[str]) {
+    return CUSTOM_PASCAL_CASE_MAPPINGS[str]
+  }
+
+  // Default PascalCase conversion for other cases
+  return str
+    .split(/[_.-]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join('')
+}
+
+/**
+ * Converts the imported clients array to the expected format for enum generation.
+ */
+function parseClientsFromImport(): {
+  targets: Target[]
+  allClients: Array<{ target: string; client: string; title: string }>
+} {
+  const targets: Target[] = []
+  const allClientsMap = new Map<string, { target: string; client: string; title: string }>()
+
+  for (const target of clients) {
+    const targetClients: Array<{ target: string; client: string; title: string }> = []
+
+    // Sort clients within each target for consistent order
+    const sortedClients = [...target.clients].sort((a, b) => a.client.localeCompare(b.client))
+
+    for (const client of sortedClients) {
+      const clientInfo = {
+        target: target.key,
+        client: client.client,
+        title: client.title,
+      }
+      targetClients.push(clientInfo)
+      // Use only client name as key to avoid duplicates across targets
+      allClientsMap.set(client.client, clientInfo)
+    }
+
+    // Create a new target object with sorted clients
+    const sortedTarget = {
+      ...target,
+      clients: sortedClients,
+    }
+    targets.push(sortedTarget)
+  }
+
+  const allClients = Array.from(allClientsMap.values()).sort((a, b) => a.client.localeCompare(b.client))
+
+  // Sort targets by key for consistent enum order
+  targets.sort((a, b) => a.key.localeCompare(b.key))
+
+  return { targets, allClients }
+}
+
+/**
+ * Generates the ScalarTarget enum content.
+ */
+function generateScalarTargetEnum(targets: Target[]): string {
+  const enumValues = targets.map(createTargetEnumValue).join('\n\n')
+  const header = createAutoGeneratedHeader()
+
+  return `${header}
+
+using System.ComponentModel;
+using System.Text.Json.Serialization;
+using NetEscapades.EnumGenerators;
+
+${NAMESPACE_DECLARATION}
+
+/// <summary>
+/// Represents the different targets available in Scalar.
+/// </summary>
+[EnumExtensions]
+[JsonConverter(typeof(ScalarTargetJsonConverter))]
+public enum ScalarTarget
+{
+${enumValues}
+}`
+}
+
+function createTargetEnumValue(target: Target): string {
+  const pascalCaseKey = toPascalCase(target.key)
+  const description = `${target.title}.`
+
+  return `    /// <summary>
+    /// ${description}
+    /// </summary>
+    [Description("${target.key}")]
+    ${pascalCaseKey},`
+}
+
+/**
+ * Generates the ScalarClient enum content.
+ */
+function generateScalarClientEnum(clients: Array<{ target: string; client: string; title: string }>): string {
+  const enumValues = clients.map(createClientEnumValue).join('\n\n')
+  const obsoleteEntries = createObsoleteClientEntries()
+  const header = createAutoGeneratedHeader()
+
+  return `${header}
+
+using System.ComponentModel;
+using System.Text.Json.Serialization;
+using NetEscapades.EnumGenerators;
+
+${NAMESPACE_DECLARATION}
+
+/// <summary>
+/// Represents the different clients available in Scalar.
+/// </summary>
+[EnumExtensions]
+[JsonConverter(typeof(ScalarClientJsonConverter))]
+public enum ScalarClient
+{
+${enumValues}${obsoleteEntries ? '\n\n' + obsoleteEntries : ''}
+}`
+}
+
+function createClientEnumValue(client: { target: string; client: string; title: string }): string {
+  const pascalCaseKey = toPascalCase(client.client)
+  const description = `${client.title} client.`
+
+  return `    /// <summary>
+    /// ${description}
+    /// </summary>
+    [Description("${client.client}")]
+    ${pascalCaseKey},`
+}
+
+/**
+ * Generates the ClientOptions dictionary mapping.
+ */
+function generateClientOptionsMapping(targets: Target[]): string {
+  const mappingEntries = targets.map(createMappingEntry).join('\n')
+  const header = createAutoGeneratedHeader()
+
+  return `${header}
+
+#pragma warning disable CS0618 // Type or member is obsolete
+${NAMESPACE_DECLARATION}
+
+/// <summary>
+/// Auto-generated mapping between targets and their available clients.
+/// This partial class extends ScalarOptionsMapper with the generated mapping.
+/// </summary>
+internal static partial class ScalarOptionsMapper
+{
+    private static readonly Dictionary<ScalarTarget, ScalarClient[]> _targetToClientsMap = new()
+    {
+${mappingEntries}
+    };
+
+    internal static partial Dictionary<ScalarTarget, ScalarClient[]> AvailableClientsByTarget => _targetToClientsMap;
+}`
+}
+
+function createMappingEntry(target: Target): string {
+  const targetEnum = `ScalarTarget.${toPascalCase(target.key)}`
+  const clientEnums = target.clients.map((client) => `ScalarClient.${toPascalCase(client.client)}`)
+
+  // Add obsolete entries for backward compatibility
+  const obsoleteClientEnums = OBSOLETE_CLIENT_ENTRIES.filter((obsolete) => {
+    // Special case for Nsurlsession - add it to targets that have NSUrlSession
+    if (obsolete.name === 'Nsurlsession') {
+      return target.clients.some((client) => client.client === 'nsurlsession')
+    }
+
+    // For other obsolete clients, check if the target has the original client
+    return target.clients.some((client) => client.client === obsolete.description)
+  }).map((obsolete) => `ScalarClient.${obsolete.name}`)
+
+  const allClientEnums = [...clientEnums, ...obsoleteClientEnums].join(', ')
+
+  return `        { ${targetEnum}, [${allClientEnums}] },`
+}
+
+function createAutoGeneratedHeader(): string {
+  return `//------------------------------------------------------------------------------
+// <auto-generated>
+//     This code was generated by the Scalar .NET enum generator.
+//     Source: /packages/snippetz/src/clients.ts
+//     Command: pnpm generate:dotnet-enums
+//
+//     Changes to this file may cause incorrect behavior and will be lost if
+//     the code is regenerated.
+// </auto-generated>
+//------------------------------------------------------------------------------`
+}
+
+/**
+ * Creates obsolete client enum entries for backward compatibility.
+ */
+function createObsoleteClientEntries(): string {
+  if (OBSOLETE_CLIENT_ENTRIES.length === 0) {
+    return ''
+  }
+
+  return OBSOLETE_CLIENT_ENTRIES.map(
+    (entry) => `    /// <summary>
+    /// ${entry.reason}
+    /// </summary>
+    [Obsolete("${entry.reason}")]
+    [Description("${entry.description}")]
+    ${entry.name},`,
+  ).join('\n\n')
+}
+
+/**
+ * Generates enums for a specific .NET package
+ */
+function generateForPackage(
+  config: DotNetPackageConfig,
+  targets: Target[],
+  allClients: Array<{ target: string; client: string; title: string }>,
+): void {
+  // Generate enums
+  const scalarTargetEnum = generateScalarTargetEnum(targets)
+  const scalarClientEnum = generateScalarClientEnum(allClients)
+  const clientOptionsMapping = generateClientOptionsMapping(targets)
+
+  // Write files
+  const enumsDir = resolve(import.meta.dirname, config.enumsDir)
+  const mapperDir = resolve(import.meta.dirname, config.mapperDir)
+
+  writeFileSync(resolve(enumsDir, 'ScalarTarget.Generated.cs'), scalarTargetEnum)
+  writeFileSync(resolve(enumsDir, 'ScalarClient.Generated.cs'), scalarClientEnum)
+  writeFileSync(resolve(mapperDir, 'ScalarOptionsMapper.Generated.cs'), clientOptionsMapping)
+
+  console.log(`Successfully generated for ${config.name}`)
+}
+
+/**
+ * Main function to generate all the C# files for all packages.
+ */
+function main(): void {
+  // Skip generation in CI environments
+  if (process.env.CI) {
+    console.log('Skipping enum generation in CI environment')
+    return
+  }
+
+  try {
+    // Parse all client information from the imported clients array
+    const { targets, allClients } = parseClientsFromImport()
+
+    // Generate for each package
+    for (const config of PACKAGE_CONFIGS) {
+      generateForPackage(config, targets, allClients)
+    }
+
+    // Summary of what was found
+    console.log('\nSummary:')
+    targets.forEach((target) => {
+      console.log(`  ${target.title} (${target.key}): ${target.clients.length} clients`)
+    })
+  } catch (error) {
+    console.error('Error generating C# enums:', error)
+    process.exit(1)
+  }
+}
+
+main()

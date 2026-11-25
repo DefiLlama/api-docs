@@ -1,10 +1,25 @@
-import { setTimeout } from 'node:timers/promises'
-import { createWorkspaceStore } from '@/client'
-import { defaultReferenceConfig } from '@/schemas/reference-config'
-import { createServerWorkspaceStore } from '@/server'
-import { consoleErrorSpy, resetConsoleSpies } from '@scalar/helpers/testing/console-spies'
+import { randomUUID } from 'node:crypto'
+import fs from 'node:fs/promises'
+import { cwd } from 'node:process'
+
+import { getValueAtPath } from '@scalar/helpers/object/get-value-at-path'
+import { isObject } from '@scalar/helpers/object/is-object'
+import { consoleErrorSpy, consoleWarnSpy, resetConsoleSpies } from '@scalar/helpers/testing/console-spies'
+import { getRaw } from '@scalar/json-magic/magic-proxy'
+import { getActiveOpenApiDocument, getOpenApiDocument } from '@test/helpers'
+import { literalReferencesDocument } from '@test/literal-references'
 import fastify, { type FastifyInstance } from 'fastify'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { assert, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed } from 'vue'
+import YAML from 'yaml'
+
+import { type WorkspaceDocumentInput, createWorkspaceStore } from '@/client'
+import { getPathItemOperation } from '@/helpers/for-each-path-item-operation'
+import { getResolvedRef } from '@/helpers/get-resolved-ref'
+import { isAsyncApiDocument, isOpenApiDocument, isPluginDocument } from '@/schemas'
+import type { DocumentTypeDefinition } from '@/schemas/plugin-document'
+import type { OpenApiDocument } from '@/schemas/v3.2/strict/openapi-document'
+import { createServerWorkspaceStore } from '@/server'
 
 // Test document
 const getDocument = (version?: string) => ({
@@ -56,118 +71,735 @@ const getDocument = (version?: string) => ({
   },
 })
 
+/**
+ * Creates a workspace store wired to a plugin that records every
+ * `documents` change event and attempts to structured-clone its value -
+ * mirroring how the persistence plugin writes events into IndexedDB.
+ * Lets a test assert that no proxy ever leaks into the persisted payload.
+ */
+const createPersistedStoreSpy = () => {
+  const cloneErrors: unknown[] = []
+  const persistedDocumentEvents: Array<Record<string, unknown>> = []
+
+  const store = createWorkspaceStore({
+    plugins: [
+      {
+        hooks: {
+          onWorkspaceStateChanges: (event) => {
+            if (event.type !== 'documents') {
+              return
+            }
+            persistedDocumentEvents.push(event.value as Record<string, unknown>)
+            try {
+              structuredClone(event.value)
+            } catch (error) {
+              cloneErrors.push(error)
+            }
+          },
+        },
+      },
+    ],
+  })
+
+  return { store, cloneErrors, persistedDocumentEvents }
+}
+
+const REGISTRY_META = {
+  namespace: 'team',
+  slug: 'api',
+  version: '1.0.0',
+  commitHash: 'abc123',
+} as const
+
 describe('create-workspace-store', () => {
+  it.each([true, false])('uses missing-document resolvers for inherited names with reactive=%s', async (reactive) => {
+    const store = createWorkspaceStore({ reactive })
+    const schemas = store.asyncApiSchemaResources('missing')
+    const examples = store.externalExamples('missing')
+
+    for (const name of ['__proto__', 'constructor', 'prototype', 'toString']) {
+      expect(store.asyncApiSchemaResources(name)).toBe(schemas)
+      expect(store.externalExamples(name)).toBe(examples)
+    }
+
+    await store.addDocument({ name: 'toString', document: getDocument() })
+    expect(store.asyncApiSchemaResources('toString')).not.toBe(schemas)
+    expect(store.externalExamples('toString')).not.toBe(examples)
+  })
+
+  it('publishes document fallbacks after deleting an own inherited name', async () => {
+    const values: unknown[] = []
+    const store = createWorkspaceStore({
+      plugins: [
+        {
+          hooks: {
+            onWorkspaceStateChanges: (event) => {
+              if (
+                event.type === 'documents' ||
+                event.type === 'originalDocuments' ||
+                event.type === 'intermediateDocuments' ||
+                event.type === 'overrides'
+              ) {
+                values.push(event.value)
+              }
+            },
+          },
+        },
+      ],
+    })
+    await store.addDocument({ name: 'toString', document: getDocument() })
+    values.length = 0
+
+    store.deleteDocument('toString')
+
+    expect(values).toStrictEqual([
+      { openapi: '3.1.0', info: { title: '', version: '' }, 'x-scalar-original-document-hash': '' },
+      {},
+      {},
+      {},
+    ])
+    expect(store.workspace.activeDocument).toBeUndefined()
+  })
+
+  it.each([true, false])('ignores inherited document names with reactive=%s', async (reactive) => {
+    const store = createWorkspaceStore({ reactive })
+    const key = 'x-scalar-selected-server'
+    const targets = [Object.prototype, Object, Object.prototype.toString, Object.prototype.valueOf]
+    const descriptors = targets.map((target) => Object.getOwnPropertyDescriptor(target, key))
+
+    try {
+      for (const name of ['__proto__', 'constructor', 'prototype', 'toString', 'valueOf', 'missing']) {
+        expect(store.updateDocument(name, key, 'dummy-server')).toBe(false)
+        store.update('x-scalar-active-document', name)
+        expect(store.workspace.activeDocument).toBeUndefined()
+        expect(store.updateDocument('active', key, 'dummy-server')).toBe(false)
+        expect(store.getOriginalDocument(name)).toBe(null)
+        expect(store.getIntermediateDocument(name)).toBe(null)
+        expect(store.promoteIntermediateToOriginal(name)).toBe(false)
+        expect(store.exportDocument(name, 'json')).toBeUndefined()
+        await expect(store.revertDocumentChanges(name)).resolves.toBeUndefined()
+        await expect(store.replaceDocument(name, {})).resolves.toBeUndefined()
+        await expect(store.rebaseDocument({ name, document: {} })).resolves.toStrictEqual({
+          ok: false,
+          type: 'CORRUPTED_STATE',
+          message: `Cannot rebase document '${name}': missing original or active document state`,
+        })
+        store.deleteDocument(name)
+      }
+      expect(Object.keys(store.workspace.documents)).toStrictEqual([])
+      targets.forEach((target, index) => {
+        expect(Object.getOwnPropertyDescriptor(target, key)).toStrictEqual(descriptors[index])
+      })
+    } finally {
+      targets.forEach((target, index) => {
+        const descriptor = descriptors[index]
+        if (descriptor) {
+          Object.defineProperty(target, key, descriptor)
+        } else {
+          Reflect.deleteProperty(target, key)
+        }
+      })
+    }
+  })
+
+  it('returns false before loading a document with a reserved name', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    const store = createWorkspaceStore({ fetch })
+
+    await expect(store.addDocument({ name: '__proto__', url: 'https://example.com/openapi.json' })).resolves.toBe(false)
+    expect(fetch).not.toHaveBeenCalled()
+    expect(store.exportWorkspace().documents).toStrictEqual({})
+    expect(store.exportWorkspace().originalDocuments).toStrictEqual({})
+    expect(store.exportWorkspace().intermediateDocuments).toStrictEqual({})
+  })
+
+  it.each([true, false])('skips reserved snapshot keys with reactive=%s', async (reactive) => {
+    const source = createWorkspaceStore({ reactive })
+    await source.addDocument({ name: 'api', document: getDocument() })
+    source.update('x-scalar-active-document', 'api')
+    const snapshot = source.exportWorkspace()
+
+    for (const field of [
+      'documents',
+      'originalDocuments',
+      'intermediateDocuments',
+      'overrides',
+      'requestBodyBaselines',
+      'history',
+      'auth',
+      'meta',
+    ] as const) {
+      const store = createWorkspaceStore({ reactive })
+      const input = { ...snapshot, [field]: { ...snapshot[field], ['__proto__']: false } }
+      consoleWarnSpy.mockClear()
+
+      store.loadWorkspace(input)
+
+      expect(consoleWarnSpy).toHaveBeenCalledExactlyOnceWith('Ignoring reserved workspace key "__proto__".')
+      expect(store.workspace.activeDocument?.info.title).toBe('My API')
+      expect(Object.keys(store.exportWorkspace()[field] ?? {})).toStrictEqual(Object.keys(snapshot[field] ?? {}))
+      expect(Object.hasOwn(input[field] ?? {}, '__proto__')).toBe(true)
+    }
+  })
+
+  it.each([true, false])(
+    'rejects reserved import names before applying metadata with reactive=%s',
+    async (reactive) => {
+      const document = { openapi: '3.1.2', info: { title: 'Imported', version: '1.0.0' }, paths: {} }
+      const url = `data:application/json,${encodeURIComponent(JSON.stringify(document))}`
+
+      for (const field of ['documents', 'overrides'] as const) {
+        const store = createWorkspaceStore({ reactive })
+        const before = store.exportWorkspace()
+        const input = {
+          workspace: 'draft' as const,
+          info: { title: 'Imported' },
+          'x-scalar-active-document': '__proto__',
+          documents: { api: { $ref: url } },
+          overrides: {},
+        }
+        Object.defineProperty(input[field], '__proto__', {
+          value: field === 'documents' ? { $ref: url } : {},
+          enumerable: true,
+        })
+
+        await expect(store.importWorkspaceFromSpecification(input)).rejects.toThrow(
+          'Prototype pollution key detected: "__proto__" in workspace document name',
+        )
+        expect(store.exportWorkspace()).toStrictEqual(before)
+      }
+    },
+  )
+
+  it.each(['api', 'constructor'])(
+    'updates reactive active document reads when %s is added or deleted',
+    async (name) => {
+      const store = createWorkspaceStore({ meta: { 'x-scalar-active-document': name } })
+      const activeTitle = computed(() => store.workspace.activeDocument?.info.title)
+
+      expect(activeTitle.value).toBeUndefined()
+      await expect(store.addDocument({ name, document: getDocument() })).resolves.toBe(true)
+      expect(activeTitle.value).toBe('My API')
+      store.deleteDocument(name)
+      expect(activeTitle.value).toBeUndefined()
+    },
+  )
+
+  it('imports supported workspace metadata while skipping reserved keys', async () => {
+    const store = createWorkspaceStore()
+    const specification = {
+      workspace: 'draft' as const,
+      info: { title: 'Imported' },
+      'x-scalar-active-document': 'api',
+      ['__proto__']: false,
+    }
+    consoleWarnSpy.mockClear()
+
+    await expect(store.importWorkspaceFromSpecification(specification)).resolves.toStrictEqual([])
+
+    expect(consoleWarnSpy).toHaveBeenCalledExactlyOnceWith('Ignoring reserved workspace key "__proto__".')
+    expect(store.workspace['x-scalar-active-document']).toBe('api')
+  })
+
+  it('stores and clears auth state for a document named toString', () => {
+    const store = createWorkspaceStore()
+    const name = 'toString'
+    const auth = {
+      type: 'http',
+      'x-scalar-secret-token': 'token',
+      'x-scalar-secret-username': '',
+      'x-scalar-secret-password': '',
+    } as const
+    const selection = { selectedIndex: 0, selectedSchemes: ['bearer'] }
+    const scope = { type: 'operation', documentName: name, path: '/users', method: 'get' } as const
+
+    store.auth.setAuthSecrets(name, 'bearer', auth)
+    store.auth.setAuthSelectedSchemas(scope, selection)
+
+    expect(store.auth.getAuthSecrets(name, 'bearer')).toStrictEqual(auth)
+    expect(store.auth.getAuthSelectedSchemas(scope)).toStrictEqual(selection)
+    expect(Object.keys(store.auth.export())).toStrictEqual([name])
+
+    store.auth.clearDocumentAuth(name)
+    expect(store.auth.getAuthSecrets(name, 'bearer')).toBeUndefined()
+    expect(store.auth.getAuthSelectedSchemas(scope)).toBeUndefined()
+    expect(Object.keys(store.auth.export())).toStrictEqual([])
+  })
+
+  it.each([true, false])(
+    'imports an own inherited name from a workspace description with reactive=%s',
+    async (reactive) => {
+      const store = createWorkspaceStore({ reactive })
+      const document = { openapi: '3.1.2', info: { title: 'Imported', version: '1.0.0' }, paths: {} }
+      const url = `data:application/json,${encodeURIComponent(JSON.stringify(document))}`
+
+      await expect(
+        store.importWorkspaceFromSpecification({
+          workspace: 'draft',
+          info: { title: 'Imported' },
+          'x-scalar-active-document': 'toString',
+          documents: { toString: { $ref: url } },
+          overrides: {},
+        }),
+      ).resolves.toStrictEqual([true])
+      expect(store.workspace.activeDocument?.info.title).toBe('Imported')
+      expect(store.updateDocument('active', 'x-scalar-selected-server', 'dummy-server')).toBe(true)
+      expect(store.workspace.activeDocument?.['x-scalar-selected-server']).toBe('dummy-server')
+    },
+  )
+
+  it.each([true, false])('preserves own document names and their snapshots with reactive=%s', async (reactive) => {
+    for (const name of ['api', 'constructor', 'prototype', 'toString']) {
+      const store = createWorkspaceStore({ reactive })
+      const document = { openapi: '3.1.2', info: { title: 'Original', version: '1.0.0' }, paths: {} }
+      await store.addDocument({ name, document })
+      expect(store.getOriginalDocument(name)).toStrictEqual(document)
+      expect(store.getIntermediateDocument(name)).toStrictEqual(document)
+      expect(store.promoteIntermediateToOriginal(name)).toBe(true)
+      expect(store.updateDocument(name, 'x-scalar-selected-server', 'dummy-server')).toBe(true)
+      store.update('x-scalar-active-document', name)
+      expect(store.updateDocument('active', 'x-scalar-selected-server', 'active-server')).toBe(true)
+
+      const hydrated = createWorkspaceStore({ reactive })
+      hydrated.loadWorkspace(store.exportWorkspace())
+      expect(hydrated.workspace.activeDocument?.info.title).toBe('Original')
+      expect(hydrated.workspace.activeDocument?.['x-scalar-selected-server']).toBe('active-server')
+      await hydrated.replaceDocument(name, { ...document, info: { ...document.info, title: 'Replaced' } })
+      expect(hydrated.workspace.activeDocument?.info.title).toBe('Replaced')
+      await hydrated.revertDocumentChanges(name)
+      expect(hydrated.workspace.activeDocument?.info.title).toBe('Original')
+      const upstream = { ...document, info: { ...document.info, title: 'Upstream' } }
+      const result = await hydrated.rebaseDocument({ name, document: upstream })
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        await result.applyChanges({ resolvedDocument: upstream })
+      }
+      expect(hydrated.workspace.activeDocument?.info.title).toBe('Upstream')
+      expect(await hydrated.saveDocument(name)).toBe(true)
+    }
+  })
+
+  it.each(['3.1.0', '3.2.0'])('preserves literal references when importing OpenAPI %s', async (openapi) => {
+    const fetchDocument = vi.fn(() => Promise.resolve(new Response('{"type":"object"}')))
+    const store = createWorkspaceStore({ fetch: fetchDocument })
+    const document = { ...structuredClone(literalReferencesDocument), openapi }
+    await store.addDocument({ name: 'literal', document, documentSource: 'https://example.test/openapi.json' })
+    const raw = getRaw(store.workspace.documents.literal)
+
+    const literalPaths = [
+      ['info', 'x-data'],
+      ['paths', '/x', 'post', 'x-ms-examples'],
+      ['paths', '/x', 'post', 'requestBody', 'content', 'application/json', 'examples'],
+      ['paths', '/x', 'post', 'responses', '200', 'links'],
+      ['components', 'parameters', 'query', 'example'],
+      ...['default', 'enum', 'const', 'examples'].map((key) => ['components', 'schemas', 'Pet', key]),
+    ]
+    for (const path of literalPaths) {
+      expect(getValueAtPath(raw, path), path.join('/')).toStrictEqual(getValueAtPath(document, path))
+    }
+    expect(fetchDocument).toHaveBeenCalledTimes(0)
+  })
+
+  it.each([false, true])('preserves literal references during lazy resolution (chunked: %s)', async (chunked) => {
+    const server = await createServerWorkspaceStore({
+      mode: 'ssr',
+      baseUrl: 'https://example.test',
+      documents: [{ name: 'literal', document: structuredClone(literalReferencesDocument) }],
+    })
+    const fetched: string[] = []
+    const store = createWorkspaceStore({
+      fetch: (input) => {
+        fetched.push(String(input))
+        return Promise.resolve(new Response(JSON.stringify(server.get(String(input)) ?? {})))
+      },
+    })
+    const document = chunked ? server.getWorkspace().documents.literal : server.getResolvedDocument('literal')
+    assert(document)
+    await store.addDocument({ name: 'literal', document: getRaw(document) })
+    expect(fetched).toStrictEqual([])
+
+    await store.resolve(['paths', '/x', 'post'])
+    const pathItem = getResolvedRef(getOpenApiDocument(store, 'literal')?.paths?.['/x'])
+    const operation = getRaw(getResolvedRef(pathItem?.post))
+    const expected = literalReferencesDocument.paths['/x'].post
+    expect(operation?.requestBody).toStrictEqual(expected.requestBody)
+    expect(operation?.responses).toStrictEqual(expected.responses)
+    expect(getValueAtPath(operation, ['x-ms-examples'])).toStrictEqual(expected['x-ms-examples'])
+    expect(fetched).toStrictEqual(chunked ? ['https://example.test/literal/operations/~1x/post'] : [])
+  })
+
+  it('loads real references while preserving literal values in referenced examples', async () => {
+    const resources: Record<string, unknown> = {
+      'https://example.test/info.json': { title: 'Referenced info', version: '1' },
+      'https://example.test/schema.json': { type: 'object' },
+      'https://example.test/example.json': { value: { $ref: './literal.json', id: 7 } },
+    }
+    const fetched: string[] = []
+    const store = createWorkspaceStore({
+      fetch: (input) => {
+        fetched.push(String(input))
+        return Promise.resolve(new Response(JSON.stringify(resources[String(input)] ?? {})))
+      },
+    })
+    await store.addDocument({
+      name: 'references',
+      document: {
+        openapi: '3.1.0',
+        info: { $ref: 'https://example.test/info.json' },
+        paths: {},
+        components: {
+          schemas: { Pet: { $ref: 'https://example.test/schema.json', description: 'Schema sibling' } },
+          examples: { sample: { $ref: 'https://example.test/example.json' } },
+        },
+      },
+    })
+    const document = getOpenApiDocument(store, 'references')
+    expect(getRaw(document?.info)).toStrictEqual(resources['https://example.test/info.json'])
+    expect(document?.components?.schemas?.Pet?.description).toBe('Schema sibling')
+    expect(getRaw(getResolvedRef(document?.components?.examples?.sample))).toStrictEqual(
+      resources['https://example.test/example.json'],
+    )
+    expect(fetched).toStrictEqual(Object.keys(resources))
+  })
+
+  it.each(['3.0.4', '3.1.2', '3.2.1'])('preserves arbitrary Paths extensions when importing %s', async (openapi) => {
+    const store = createWorkspaceStore()
+    const extensions = {
+      'x-owner': 'Pet platform team',
+      'x-enabled': false,
+      'x-count': 0,
+      'x-empty': null,
+      'x-meta': { post: { requestBody: { description: 'm' } } },
+      'x-template-{id}': { get: { parameters: [{ name: 'keep', in: 'path' }] } },
+      'x-origins': ['https://example.com'],
+      'x-methods': { get: { tags: ['metadata'], security: [{ token: [] }] } },
+    }
+    await store.addDocument({
+      name: 'extensions',
+      document: {
+        openapi,
+        info: { title: 'Pets', version: '1' },
+        paths: {
+          ...extensions,
+          '/pet': { 'x-owner': 'Path owner', get: { responses: { '200': { description: 'OK' } } } },
+        },
+      },
+    })
+    const document = getOpenApiDocument(store, 'extensions')
+    for (const [key, value] of Object.entries(extensions)) {
+      expect(document?.paths?.[key]).toStrictEqual(value)
+    }
+    expect(
+      Object.entries(getResolvedRef(document?.paths?.['/pet']) ?? {}).find(([key]) => key === 'x-owner'),
+    ).toStrictEqual(['x-owner', 'Path owner'])
+    expect(
+      getResolvedRef(getResolvedRef(getResolvedRef(document?.paths?.['/pet'])?.get)?.responses?.['200'])?.description,
+    ).toBe('OK')
+  })
+
+  it('preserves and resolves streaming item schemas when importing OpenAPI 3.2', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'stream',
+      document: {
+        openapi: '3.2.1',
+        info: { title: 'Stream', version: '1' },
+        components: { schemas: { Event: { type: 'object', properties: { id: { type: 'integer' } } } } },
+        paths: {
+          '/events': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'Events',
+                  content: {
+                    'application/jsonl': { itemSchema: { $ref: '#/components/schemas/Event' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const pathItem = getResolvedRef(getOpenApiDocument(store, 'stream')?.paths?.['/events'])
+    const operation = getResolvedRef(pathItem?.get)
+    const response = getResolvedRef(operation?.responses?.['200'])
+    expect(getResolvedRef(response?.content?.['application/jsonl']?.itemSchema)).toStrictEqual({
+      type: 'object',
+      properties: { id: { type: 'integer' } },
+    })
+  })
+
+  it('loads unnamed inline XML bodies without upgrading the document to 3.2', async () => {
+    const schema = { type: 'object', properties: { id: { type: 'string', xml: { attribute: true } } } }
+    const requestBody = { content: { 'application/xml': { schema } } }
+    const input = {
+      openapi: '3.1.0',
+      info: { title: 'XML compatibility', version: '1.0.0' },
+      paths: { '/pets': { post: { requestBody, responses: { '200': { description: 'OK' } } } } },
+    }
+    const original = structuredClone(input)
+    const store = createWorkspaceStore()
+    await store.addDocument({ name: 'xml', document: input })
+    const document = getOpenApiDocument(store, 'xml')
+    const operation = getResolvedRef(getPathItemOperation(document?.paths?.['/pets'], 'post'))
+
+    expect(document?.openapi).toBe('3.1.0')
+    expect(getResolvedRef(operation?.requestBody)).toStrictEqual(requestBody)
+    expect(input).toStrictEqual(original)
+  })
+
   let server: FastifyInstance
   const port = 9988
+  const url = `http://localhost:${port}`
 
   beforeEach(() => {
     server = fastify({ logger: false })
+
+    return async () => {
+      await server.close()
+    }
   })
 
-  afterEach(async () => {
-    await server.close()
-    await setTimeout(100)
+  it('loads QUERY operations from OpenAPI 3.2 documents', async () => {
+    const store = createWorkspaceStore()
+    const operation = {
+      summary: 'Search planets',
+      requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+      responses: { '200': { description: 'Search results' } },
+    }
+    await store.addDocument({
+      name: 'query-api',
+      document: {
+        openapi: '3.2.1',
+        info: { title: 'Search API', version: '1.0.0' },
+        paths: { '/planets': { query: operation } },
+      },
+    })
+    const document = getOpenApiDocument(store, 'query-api')
+    assert(document)
+    expect(getRaw(getPathItemOperation(document.paths?.['/planets'], 'query'))).toStrictEqual(operation)
   })
 
-  it('correctly update workspace metadata', async () => {
-    const store = await createWorkspaceStore({
+  it('correctly update workspace metadata', () => {
+    const store = createWorkspaceStore({
       meta: {
         'x-scalar-theme': 'default',
-        'x-scalar-dark-mode': false,
+        'x-scalar-color-mode': 'light',
       },
     })
 
-    store.update('x-scalar-dark-mode', true)
+    store.update('x-scalar-color-mode', 'dark')
     store.update('x-scalar-theme', 'saturn')
 
-    expect(store.workspace['x-scalar-dark-mode']).toBe(true)
+    expect(store.workspace['x-scalar-color-mode']).toBe('dark')
     expect(store.workspace['x-scalar-theme']).toBe('saturn')
   })
 
+  it('does not log measurements by default', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.0.0',
+        info: { title: 'My API' },
+      },
+    })
+
+    expect(infoSpy).not.toHaveBeenCalled()
+    infoSpy.mockRestore()
+  })
+
+  it('logs measurements when enabled in createWorkspaceStore props', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const store = createWorkspaceStore({ verbose: true })
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.0.0',
+        info: { title: 'My API' },
+      },
+    })
+
+    expect(infoSpy).toHaveBeenCalled()
+    infoSpy.mockRestore()
+  })
+
   it('correctly update document metadata', async () => {
-    const store = await createWorkspaceStore({
-      documents: [
-        {
-          name: 'default',
-          document: {
-            openapi: '3.0.0',
-            info: { title: 'My API' },
-          },
-          meta: {
-            'x-scalar-active-auth': 'Bearer',
-            'x-scalar-active-server': 'server-1',
-          },
-        },
-      ],
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.0.0',
+        info: { title: 'My API' },
+      },
+      meta: {
+        'x-scalar-selected-server': 'server-1',
+      },
     })
 
     // Should update the active document
-    store.updateDocument('active', 'x-scalar-active-server', 'server-2')
-    store.updateDocument('active', 'x-scalar-active-auth', undefined)
-    expect(store.workspace.documents['default']['x-scalar-active-auth']).toBe(undefined)
-    expect(store.workspace.documents['default']['x-scalar-active-server']).toBe('server-2')
+    store.updateDocument('active', 'x-scalar-selected-server', 'server-2')
+    expect(getOpenApiDocument(store, 'default')?.['x-scalar-selected-server']).toBe('server-2')
 
     // Should update a specific document
-    store.updateDocument('default', 'x-scalar-active-server', 'server-3')
-    store.updateDocument('default', 'x-scalar-active-auth', 'Bearer')
-    expect(store.workspace.documents['default']['x-scalar-active-auth']).toBe('Bearer')
-    expect(store.workspace.documents['default']['x-scalar-active-server']).toBe('server-3')
+    store.updateDocument('default', 'x-scalar-selected-server', 'server-3')
+    expect(getOpenApiDocument(store, 'default')?.['x-scalar-selected-server']).toBe('server-3')
+  })
+
+  it('preserves nullable array schemas with items when adding a document', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument(
+      {
+        name: 'test',
+        document: {
+          components: {
+            schemas: {
+              ArtifactListResponse: {
+                type: 'object',
+                properties: {
+                  items: {
+                    type: ['array', 'null'],
+                    items: {
+                      $ref: '#/components/schemas/ArtifactResponse',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      { modelsSectionLabel: 'Models' },
+    )
+
+    const document = getRaw(getOpenApiDocument(store, 'test'))
+
+    expect(document?.components?.schemas?.ArtifactListResponse).toEqual({
+      type: 'object',
+      properties: {
+        items: {
+          type: ['array', 'null'],
+          items: {
+            $ref: '#/components/schemas/ArtifactResponse',
+          },
+        },
+      },
+    })
+  })
+
+  it('does not throw when updating non-existent document', () => {
+    const store = createWorkspaceStore()
+
+    // Should not throw when updating a document that does not exist
+    expect(() => {
+      store.updateDocument('non-existent', 'x-scalar-selected-server', 'server-1')
+    }).not.toThrow()
+
+    // Should return false when document is not found
+    const result = store.updateDocument('non-existent', 'x-scalar-selected-server', 'server-1')
+    expect(result).toBe(false)
+  })
+
+  it('updates document meta field correctly', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'test-doc',
+      document: {
+        openapi: '3.0.0',
+        info: { title: 'Test API' },
+      },
+      meta: {
+        'x-scalar-selected-server': 'initial-server',
+      },
+    })
+
+    // Update the meta field
+    const result = store.updateDocument('test-doc', 'x-scalar-selected-server', 'updated-server')
+
+    // Should return true when successful
+    expect(result).toBe(true)
+
+    // Should update the meta field
+    expect(getOpenApiDocument(store, 'test-doc')?.['x-scalar-selected-server']).toBe('updated-server')
+
+    // Should preserve other document fields (note: openapi version gets upgraded to 3.1.1)
+    const document = getOpenApiDocument(store, 'test-doc')
+    expect(document?.info.title).toBe('Test API')
+    expect(document?.openapi).toBeDefined()
   })
 
   it('correctly get the correct document', async () => {
-    const store = await createWorkspaceStore({
-      documents: [
-        {
-          name: 'default',
-          document: {
-            openapi: '3.0.0',
-            info: { title: 'My API' },
-          },
-          meta: {
-            'x-scalar-active-auth': 'Bearer',
-            'x-scalar-active-server': 'server-1',
-          },
-        },
-        {
-          name: 'document2',
-          document: {
-            openapi: '3.0.0',
-            info: { title: 'Second API' },
-          },
-          meta: {
-            'x-scalar-active-auth': 'Bearer',
-            'x-scalar-active-server': 'server-1',
-          },
-        },
-      ],
+    const store = createWorkspaceStore({
       meta: {
         'x-scalar-active-document': 'default',
       },
     })
 
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.0.0',
+        info: { title: 'My API' },
+      },
+      meta: {
+        'x-scalar-selected-server': 'server-1',
+      },
+    })
+
+    await store.addDocument({
+      name: 'document2',
+      document: {
+        openapi: '3.0.0',
+        info: { title: 'Second API' },
+      },
+      meta: {
+        'x-scalar-selected-server': 'server-1',
+      },
+    })
+
     // Correctly gets the active document
-    expect(store.workspace.activeDocument?.info?.title).toBe('My API')
+    expect(getActiveOpenApiDocument(store)?.info?.title).toBe('My API')
 
     store.update('x-scalar-active-document', 'document2')
-    expect(store.workspace.activeDocument?.info?.title).toBe('Second API')
+    expect(getActiveOpenApiDocument(store)?.info?.title).toBe('Second API')
 
     // Correctly get a specific document
-    expect(store.workspace.documents['default']).toEqual({
+    expect(getOpenApiDocument(store, 'default')).toEqual({
       info: {
         title: 'My API',
         version: '',
       },
       openapi: '3.1.1',
-      'x-scalar-active-auth': 'Bearer',
-      'x-scalar-active-server': 'server-1',
-      'x-scalar-navigation': [],
+      'x-scalar-selected-server': 'server-1',
+      'x-scalar-order': ['default/description/introduction'],
+      'x-scalar-navigation': {
+        'children': [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+        ],
+        'id': 'default',
+        'name': 'default',
+        'title': 'My API',
+        'type': 'document',
+      },
+      'x-original-oas-version': '3.0.0',
+      'x-ext-urls': {},
+      'x-scalar-original-document-hash': 'b942dbe81fab6d01',
     })
   })
 
   it('correctly add new documents', async () => {
-    const store = await createWorkspaceStore({
-      documents: [],
-    })
+    const store = createWorkspaceStore()
 
     await store.addDocument({
       document: {
@@ -184,55 +816,69 @@ describe('create-workspace-store', () => {
         version: '',
       },
       openapi: '3.1.1',
-      'x-scalar-navigation': [],
+      'x-scalar-order': ['default/description/introduction'],
+      'x-scalar-navigation': {
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'My API',
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+        ],
+      },
+      'x-original-oas-version': '3.0.0',
+      'x-ext-urls': {},
+      'x-scalar-original-document-hash': 'b942dbe81fab6d01',
     })
   })
 
   it('correctly resolve refs on the fly', async () => {
-    const store = await createWorkspaceStore({
-      documents: [
-        {
-          name: 'default',
-          document: {
-            openapi: '3.0.0',
-            info: { title: 'My API' },
-            components: {
-              schemas: {
-                User: {
-                  type: 'object',
-                  properties: {
-                    id: {
-                      type: 'string',
-                      description: 'The user ID',
-                    },
-                    name: {
-                      type: 'string',
-                      description: 'The user name',
-                    },
-                    email: {
-                      type: 'string',
-                      format: 'email',
-                      description: 'The user email',
-                    },
-                  },
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.0.0',
+        info: { title: 'My API' },
+        components: {
+          schemas: {
+            User: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'string',
+                  description: 'The user ID',
+                },
+                name: {
+                  type: 'string',
+                  description: 'The user name',
+                },
+                email: {
+                  type: 'string',
+                  format: 'email',
+                  description: 'The user email',
                 },
               },
             },
-            paths: {
-              '/users': {
-                get: {
-                  summary: 'Get all users',
-                  responses: {
-                    '200': {
-                      description: 'Successful response',
-                      content: {
-                        'application/json': {
-                          schema: {
-                            type: 'array',
-                            items: {
-                              $ref: '#/components/schemas/User',
-                            },
-                          },
+          },
+        },
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get all users',
+              responses: {
+                '200': {
+                  description: 'Successful response',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        type: 'array',
+                        items: {
+                          $ref: '#/components/schemas/User',
                         },
                       },
                     },
@@ -242,15 +888,65 @@ describe('create-workspace-store', () => {
             },
           },
         },
-      ],
+      },
     })
 
     expect(
-      (store.workspace.activeDocument?.paths?.['/users'].get as any)?.responses?.[200].content['application/json']
-        .schema.items.properties.name,
+      (getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'get') as any)?.responses?.[200]
+        ?.content['application/json'].schema.items['$ref-value'].properties.name,
     ).toEqual({
       type: 'string',
       description: 'The user name',
+    })
+  })
+
+  it('resolves operations when a path item is a $ref to components.pathItems', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.1',
+        info: { title: 'My API' },
+        components: {
+          pathItems: {
+            UsersPath: {
+              get: {
+                summary: 'Get all users',
+                responses: {
+                  '200': {
+                    description: 'Successful response',
+                  },
+                },
+              },
+            },
+          },
+        },
+        paths: {
+          '/users': {
+            $ref: '#/components/pathItems/UsersPath',
+          },
+        },
+      },
+    })
+
+    const document = getActiveOpenApiDocument(store)
+    const pathItem = document?.paths?.['/users']
+
+    // typebox coerces the bare $ref into a wrapper that keeps the resolved value alongside the $ref
+    expect(pathItem).toHaveProperty('$ref', '#/components/pathItems/UsersPath')
+
+    // The referenced operation resolves through the path-item $ref
+    expect(getPathItemOperation(pathItem, 'get')?.summary).toBe('Get all users')
+
+    // And it surfaces in the generated navigation
+    const operationEntry = document?.['x-scalar-navigation']?.children?.find(
+      (child) => 'path' in child && child.path === '/users',
+    )
+    expect(operationEntry).toMatchObject({
+      type: 'operation',
+      method: 'get',
+      path: '/users',
     })
   })
 
@@ -266,7 +962,7 @@ describe('create-workspace-store', () => {
 
     const serverStore = await createServerWorkspaceStore({
       mode: 'ssr',
-      baseUrl: `http://localhost:${port}`,
+      baseUrl: url,
       documents: [
         {
           name: 'default',
@@ -275,18 +971,15 @@ describe('create-workspace-store', () => {
       ],
     })
 
-    const store = createWorkspaceStore({
-      documents: [
-        {
-          name: 'default',
-          document: serverStore.getWorkspace().documents['default'],
-        },
-      ],
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'default',
+      document: serverStore.getWorkspace().documents['default'] ?? {},
     })
 
     // The operation should not be resolved on the fly
-    expect(store.workspace.activeDocument?.paths?.['/users']?.get).toEqual({
-      '$ref': 'http://localhost:9988/default/operations/~1users/get#',
+    expect(getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'get')).toEqual({
+      '$ref': `${url}/default/operations/~1users/get#`,
       $global: true,
     })
 
@@ -294,22 +987,100 @@ describe('create-workspace-store', () => {
     await store.resolve(['paths', '/users', 'get'])
 
     // We expect the ref to have been resolved with the correct contents
-    expect(store.workspace.activeDocument?.paths?.['/users'].get?.summary).toEqual(
-      getDocument().paths['/users'].get.summary,
-    )
+    expect(
+      (getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'get') as any)?.['$ref-value'].summary,
+    ).toEqual(getDocument().paths['/users'].get.summary)
 
     expect(
-      (store.workspace.activeDocument?.paths?.['/users'].get as any).responses[200].content['application/json'].schema
-        .items,
+      (getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'get') as any)?.['$ref-value']
+        ?.responses?.[200]?.content['application/json']?.schema?.items['$ref-value']['$ref-value'],
     ).toEqual({
       ...getDocument().components.schemas.User,
-      'x-original-ref': '#/components/schemas/User',
     })
   })
 
-  it('load files form the remote url', async () => {
-    const url = `http://localhost:${port}`
+  it('resolves static chunks relative to the url the document was loaded from', async () => {
+    const dir = randomUUID()
+    const basePath = `${cwd()}/${dir}`
 
+    // Two operations sharing one schema, so the second resolve can show the schema is not fetched twice
+    const document = {
+      ...getDocument(),
+      paths: {
+        '/users': {
+          get: getDocument().paths['/users'].get,
+          post: {
+            summary: 'Create a user',
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } },
+            },
+            responses: { '201': { description: 'Created' } },
+          },
+        },
+      },
+    }
+
+    const serverStore = await createServerWorkspaceStore({
+      mode: 'static',
+      directory: dir,
+      documents: [{ name: 'default', document }],
+    })
+    await serverStore.generateWorkspaceChunks()
+
+    // The sparse document is published beside its chunks and loaded by url, which is what gives the
+    // client an origin to resolve the relative `./chunks/` references against
+    await fs.writeFile(`${basePath}/default.json`, JSON.stringify(serverStore.getWorkspace().documents['default']))
+
+    const requests: string[] = []
+    server.get('/*', async (req, res) => {
+      requests.push(req.url)
+      res.send(await fs.readFile(`${basePath}${decodeURIComponent(req.url)}`, 'utf-8'))
+    })
+    await server.listen({ port })
+
+    try {
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: 'default', url: `${url}/default.json` })
+
+      // Nothing beyond the document itself is loaded up front
+      expect(getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'get')).toEqual({
+        '$ref': './chunks/default/operations/~1users/get.json#',
+        $global: true,
+      })
+      expect(requests).toEqual(['/default.json'])
+
+      await store.resolve(['paths', '/users', 'get'])
+
+      const get = getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'get') as any
+      expect(get['$ref-value'].summary).toBe('Get all users')
+      // The shared schema lands in the document's components, once
+      expect((getActiveOpenApiDocument(store)?.components?.schemas?.['User'] as any)?.['$ref-value'].type).toBe(
+        'object',
+      )
+      expect(requests.slice(1).sort()).toEqual([
+        '/chunks/default/components/schemas/User.json',
+        '/chunks/default/operations/~1users/get.json',
+      ])
+
+      // A property referencing a shared component reaches the schema, although the component is itself a
+      // stub: `#/components/schemas/User` resolves to the stub, and the stub to the chunk's contents
+      const items = get['$ref-value'].responses[200].content['application/json'].schema.items
+      expect(items.$ref).toBe('#/components/schemas/User')
+      expect(getResolvedRef(items)).toMatchObject({ type: 'object' })
+      expect(getResolvedRef(items).properties.id.description).toBe('The user ID')
+
+      // A second operation using the same schema costs one request, its own chunk
+      await store.resolve(['paths', '/users', 'post'])
+
+      const post = getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'post') as any
+      expect(post['$ref-value'].summary).toBe('Create a user')
+      expect(requests.slice(3)).toEqual(['/chunks/default/operations/~1users/post.json'])
+    } finally {
+      await fs.rm(basePath, { recursive: true, force: true })
+    }
+  })
+
+  it('load files form the remote url', async () => {
     // Send the default document
     server.get('/', (_, reply) => {
       reply.send(getDocument())
@@ -325,16 +1096,16 @@ describe('create-workspace-store', () => {
     })
 
     expect(Object.keys(store.workspace.documents)).toEqual(['default'])
-    expect(store.workspace.documents['default'].info?.title).toEqual(getDocument().info.title)
+    expect(getOpenApiDocument(store, 'default')?.info?.title).toEqual(getDocument().info.title)
 
     // Add a new remote file
     await store.addDocument({ name: 'new', url: url })
 
     expect(Object.keys(store.workspace.documents)).toEqual(['default', 'new'])
-    expect(store.workspace.documents['new'].info?.title).toEqual(getDocument().info.title)
+    expect(getOpenApiDocument(store, 'new')?.info?.title).toEqual(getDocument().info.title)
   })
 
-  it('handle circular references when we try to resolve all remote chunks recursively', async () => {
+  it('resolves circular references across remote chunks without fetching them again', async () => {
     const getDocument = () => ({
       openapi: '3.0.0',
       info: { title: 'My API', version: '1.0.0' },
@@ -386,7 +1157,9 @@ describe('create-workspace-store', () => {
       },
     })
 
+    const requests: string[] = []
     server.get('/*', (req, res) => {
+      requests.push(req.url)
       const path = req.url
       const contents = serverStore.get(path)
 
@@ -397,7 +1170,7 @@ describe('create-workspace-store', () => {
 
     const serverStore = await createServerWorkspaceStore({
       mode: 'ssr',
-      baseUrl: `http://localhost:${port}`,
+      baseUrl: url,
       documents: [
         {
           name: 'default',
@@ -406,31 +1179,48 @@ describe('create-workspace-store', () => {
       ],
     })
 
-    const store = createWorkspaceStore({
-      documents: [
-        {
-          name: 'default',
-          document: serverStore.getWorkspace().documents['default'],
-        },
-      ],
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'default',
+      document: serverStore.getWorkspace().documents['default'] ?? {},
     })
 
     // The operation should not be resolved on the fly
-    expect(store.workspace.activeDocument?.paths?.['/users']?.get).toEqual({
-      '$ref': `http://localhost:${port}/default/operations/~1users/get#`,
+    expect(getPathItemOperation(getActiveOpenApiDocument(store)?.paths?.['/users'], 'get')).toEqual({
+      '$ref': `${url}/default/operations/~1users/get#`,
       $global: true,
     })
 
     // We resolve the ref
     await store.resolve(['paths', '/users', 'get'])
 
-    expect((store.workspace.activeDocument?.components?.schemas?.['User'] as any)?.type).toBe('object')
+    const user = getResolvedRef<unknown>(getActiveOpenApiDocument(store)?.components?.schemas?.['User'])
+    assert(isObject(user) && isObject(user.properties))
+    expect(user.type).toBe('object')
+
+    const rec = getResolvedRef<unknown>(user.properties.name)
+    assert(isObject(rec) && isObject(rec.properties))
+    expect(rec.type).toBe('object')
+
+    // Follow the return edge too: loading User alone does not prove the cycle resolves.
+    const backToUser = getResolvedRef<unknown>(rec.properties.id)
+    assert(isObject(backToUser) && isObject(backToUser.properties))
+    expect(backToUser.type).toBe('object')
+    const id = getResolvedRef<unknown>(backToUser.properties.id)
+    assert(isObject(id))
+    expect(id.description).toBe('The user ID')
+    expect(requests).toStrictEqual([
+      '/default/operations/~1users/get',
+      '/default/components/schemas/User',
+      '/default/components/schemas/Rec',
+    ])
+
+    await store.resolve(['paths', '/users', 'get'])
+    expect(requests.length).toBe(3)
   })
 
   it('build the sidebar client side', async () => {
-    const store = await createWorkspaceStore({
-      documents: [],
-    })
+    const store = createWorkspaceStore()
 
     await store.addDocument({
       document: {
@@ -511,19 +1301,21 @@ describe('create-workspace-store', () => {
                   'application/json': {
                     'schema': {
                       'items': {
-                        'x-original-ref': '#/components/schemas/Todo',
-                        'properties': {
-                          'completed': {
-                            'type': 'boolean',
+                        '$ref': '#/components/schemas/Todo',
+                        '$ref-value': {
+                          'properties': {
+                            'completed': {
+                              'type': 'boolean',
+                            },
+                            'id': {
+                              'type': 'string',
+                            },
+                            'title': {
+                              'type': 'string',
+                            },
                           },
-                          'id': {
-                            'type': 'string',
-                          },
-                          'title': {
-                            'type': 'string',
-                          },
+                          'type': 'object',
                         },
-                        'type': 'object',
                       },
                       'type': 'array',
                     },
@@ -536,163 +1328,1515 @@ describe('create-workspace-store', () => {
           },
         },
       },
-      'x-scalar-navigation': [
-        {
-          'id': 'List all todos',
-          'method': 'get',
-          'path': '/todos',
-          'title': 'List all todos',
-          ref: '#/paths/~1todos/get',
-          type: 'operation',
+      'x-scalar-order': ['default/description/introduction', 'default/GET/todos', 'default/models'],
+      'x-scalar-navigation': {
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'Todo API',
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            'id': 'default/GET/todos',
+            'method': 'get',
+            'path': '/todos',
+            'isDeprecated': false,
+            'title': 'List all todos',
+            ref: '#/paths/~1todos/get',
+            type: 'operation',
+          },
+          {
+            'children': [
+              {
+                'id': 'default/models/Todo',
+                'name': 'Todo',
+                'title': 'Todo',
+                ref: '#/components/schemas/Todo',
+                type: 'model',
+              },
+            ],
+            'id': 'default/models',
+            'title': 'Models',
+            'type': 'models',
+            'name': 'Models',
+          },
+        ],
+      },
+      'x-original-oas-version': '3.0.3',
+      'x-ext-urls': {},
+      'x-scalar-original-document-hash': 'd92c86617e7b9ccb',
+    })
+  })
+
+  it('buildSidebar returns false when document does not exist', () => {
+    const store = createWorkspaceStore()
+    const result = store.buildSidebar('non-existent-document')
+    expect(result).toBe(false)
+    expect(consoleErrorSpy).toHaveBeenCalledWith("Document 'non-existent-document' does not exist in the workspace.")
+  })
+
+  it('buildSidebar handles documents with x-scalar-order without proxy issues', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      document: {
+        openapi: '3.0.3',
+        info: {
+          title: 'Test API',
+          version: '1.0.0',
         },
-        {
-          'children': [
-            {
-              'id': 'Todo',
-              'name': 'Todo',
-              'title': 'Todo',
-              ref: '#/content/components/schemas/Todo',
-              type: 'model',
+        tags: [
+          {
+            name: 'Users',
+            'x-scalar-order': ['user-1', 'user-2'],
+          },
+        ],
+        paths: {
+          '/users': {
+            get: {
+              tags: ['Users'],
+              summary: 'Get users',
+              responses: {
+                200: {
+                  description: 'Success',
+                },
+              },
             },
-          ],
-          'id': '',
-          'title': 'Models',
-          type: 'text',
+          },
         },
-      ],
+      },
+      name: 'test-doc',
+    })
+
+    const result = store.buildSidebar('test-doc')
+    expect(result).toBe(true)
+    expect(getOpenApiDocument(store, 'test-doc')?.['x-scalar-navigation']).toBeDefined()
+  })
+
+  it('bundles the document if the document is not preprocessed by the server-side-store', async () => {
+    server.get('/', () => {
+      return {
+        get: {
+          summary: 'Ping the remote server',
+          responses: {
+            '200': {
+              description: 'Successful response',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'string',
+                  },
+                },
+              },
+            },
+          },
+        },
+      }
+    })
+    await server.listen({ port })
+
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'default',
+      document: {
+        paths: {
+          '/ping': {
+            $ref: url,
+          },
+        },
+      },
+    })
+
+    expect(getOpenApiDocument(store, 'default')).toEqual({
+      info: {
+        title: '',
+        version: '',
+      },
+      openapi: '',
+      paths: {
+        '/ping': {
+          '$ref-value': {
+            get: {
+              responses: {
+                200: {
+                  content: {
+                    'application/json': {
+                      schema: {
+                        type: 'string',
+                      },
+                    },
+                  },
+                  description: 'Successful response',
+                },
+              },
+              summary: 'Ping the remote server',
+            },
+          },
+          '$ref': '#/x-ext/c9f3677',
+        },
+      },
+      'x-ext': {
+        'c9f3677': {
+          get: {
+            responses: {
+              200: {
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'string',
+                    },
+                  },
+                },
+                description: 'Successful response',
+              },
+            },
+            summary: 'Ping the remote server',
+          },
+        },
+      },
+      'x-ext-urls': {
+        'c9f3677': 'http://localhost:9988',
+      },
+      'x-original-oas-version': undefined,
+      'x-scalar-order': ['default/description/introduction', 'default/GET/ping'],
+      'x-scalar-navigation': {
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'Untitled Document',
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            id: 'default/GET/ping',
+            isDeprecated: false,
+            method: 'get',
+            path: '/ping',
+            ref: '#/paths/~1ping/get',
+            title: 'Ping the remote server',
+            type: 'operation',
+          },
+        ],
+      },
+      'x-scalar-original-source-url': undefined,
+      'x-scalar-original-document-hash': '82e17fb7dc666aa4',
     })
   })
 
-  it('correctly get the config #1', () => {
-    const store = createWorkspaceStore({
-      config: {
-        'x-scalar-reference-config': {
-          features: {
-            showDownload: false,
-          },
-          appearance: {
-            css: 'body { background: #f0f0f0; }',
+  it('preserves external examples without fetching their payloads', async () => {
+    server.get('/', () => ({ someKey: 'someValue' }))
+    await server.listen({ port })
+
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        ...getDocument(),
+        paths: {
+          '/users': {
+            get: {
+              summary: 'Get all users',
+              responses: {
+                '200': {
+                  description: 'Successful response',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        type: 'array',
+                        items: {
+                          $ref: '#/components/schemas/User',
+                        },
+                      },
+                      examples: {
+                        someExample: {
+                          externalValue: `http://localhost:${port}`,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
     })
 
-    expect(store.config['x-scalar-reference-config']).toEqual({
-      ...defaultReferenceConfig,
-      features: {
-        ...defaultReferenceConfig.features,
-        showDownload: false,
+    expect(getOpenApiDocument(store, 'default')).toEqual({
+      components: {
+        schemas: {
+          User: {
+            properties: {
+              email: {
+                description: 'The user email',
+                'format': 'email',
+                'type': 'string',
+              },
+              id: {
+                description: 'The user ID',
+                type: 'string',
+              },
+              name: {
+                description: 'The user name',
+                type: 'string',
+              },
+            },
+            type: 'object',
+          },
+        },
       },
-      appearance: {
-        ...defaultReferenceConfig.appearance,
-        css: 'body { background: #f0f0f0; }',
+      info: {
+        title: 'My API',
+        version: '1.0.0',
+      },
+      openapi: '3.1.1',
+      paths: {
+        '/users': {
+          get: {
+            responses: {
+              200: {
+                content: {
+                  'application/json': {
+                    examples: {
+                      someExample: {
+                        externalValue: url,
+                      },
+                    },
+                    schema: {
+                      items: {
+                        $ref: '#/components/schemas/User',
+                        '$ref-value': {
+                          properties: {
+                            email: {
+                              description: 'The user email',
+                              format: 'email',
+                              type: 'string',
+                            },
+                            id: {
+                              description: 'The user ID',
+                              type: 'string',
+                            },
+                            name: {
+                              description: 'The user name',
+                              type: 'string',
+                            },
+                          },
+                          type: 'object',
+                        },
+                      },
+                      type: 'array',
+                    },
+                  },
+                },
+                description: 'Successful response',
+              },
+            },
+            summary: 'Get all users',
+          },
+        },
+      },
+      'x-scalar-order': ['default/description/introduction', 'default/GET/users', 'default/models'],
+      'x-scalar-navigation': {
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'My API',
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            'id': 'default/GET/users',
+            method: 'get',
+            path: '/users',
+            isDeprecated: false,
+            ref: '#/paths/~1users/get',
+            title: 'Get all users',
+            type: 'operation',
+          },
+          {
+            children: [
+              {
+                'id': 'default/models/User',
+                name: 'User',
+                ref: '#/components/schemas/User',
+                title: 'User',
+                type: 'model',
+              },
+            ],
+            'id': 'default/models',
+            title: 'Models',
+            name: 'Models',
+            type: 'models',
+          },
+        ],
+      },
+      'x-original-oas-version': '3.0.0',
+      'x-ext-urls': {},
+      'x-scalar-original-document-hash': 'ac8722d41b947b0e',
+    })
+  })
+
+  it('coerces internal references and validates the input', async () => {
+    const client = createWorkspaceStore()
+
+    await client.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.1',
+        paths: {
+          '/users': {
+            get: {
+              requestBody: {
+                $ref: '#/$defs/usersRequestBody',
+              },
+            },
+          },
+        },
+        $defs: {
+          usersRequestBody: {
+            description: 'Some description',
+          },
+        },
+      },
+    })
+
+    expect(JSON.stringify(client.exportWorkspace())).toBe(
+      '{"documents":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/$defs/usersRequestBody"}}}},"$defs":{"usersRequestBody":{"description":"Some description","content":{}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"08b36258a7f622e0","x-ext-urls":{},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/users"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/$defs/usersRequestBody"}}}},"$defs":{"usersRequestBody":{"description":"Some description"}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/$defs/usersRequestBody"}}}},"$defs":{"usersRequestBody":{"description":"Some description"}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+    )
+  })
+
+  it('coerces external values after it bundles them', async () => {
+    server.get('/', () => ({ description: 'Some description' }))
+    await server.listen({ port })
+
+    const client = createWorkspaceStore()
+
+    await client.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.1',
+        paths: {
+          '/users': {
+            get: {
+              requestBody: {
+                $ref: url,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(JSON.stringify(client.exportWorkspace())).toBe(
+      '{"documents":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/x-ext/c9f3677"}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"aa51e3fd179dee6e","x-ext-urls":{"c9f3677":"http://localhost:9988"},"x-ext":{"c9f3677":{"description":"Some description","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/users"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+    )
+  })
+
+  it('coerces internal references and validates the input', async () => {
+    const client = createWorkspaceStore()
+
+    await client.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.1',
+        paths: {
+          '/users': {
+            get: {
+              requestBody: {
+                $ref: '#/$defs/usersRequestBody',
+              },
+            },
+          },
+        },
+        $defs: {
+          usersRequestBody: {
+            description: 'Some description',
+          },
+        },
+      },
+    })
+
+    expect(JSON.stringify(client.exportWorkspace())).toBe(
+      '{"documents":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/$defs/usersRequestBody"}}}},"$defs":{"usersRequestBody":{"description":"Some description","content":{}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"08b36258a7f622e0","x-ext-urls":{},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/users"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/$defs/usersRequestBody"}}}},"$defs":{"usersRequestBody":{"description":"Some description"}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/$defs/usersRequestBody"}}}},"$defs":{"usersRequestBody":{"description":"Some description"}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+    )
+  })
+
+  it('coerces external values after it bundles them', async () => {
+    server.get('/', () => ({ description: 'Some description' }))
+    await server.listen({ port })
+
+    const client = createWorkspaceStore()
+
+    await client.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.1',
+        paths: {
+          '/users': {
+            get: {
+              requestBody: {
+                $ref: url,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(JSON.stringify(client.exportWorkspace())).toBe(
+      '{"documents":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/x-ext/c9f3677"}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"aa51e3fd179dee6e","x-ext-urls":{"c9f3677":"http://localhost:9988"},"x-ext":{"c9f3677":{"description":"Some description","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/users"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+    )
+  })
+
+  it('ingress documents with circular references', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.0.1',
+        info: {
+          title: 'API with Circular Dependencies',
+          version: '1.0.0',
+        },
+        components: {
+          schemas: {
+            Base: {
+              required: ['Type'],
+              type: 'object',
+              anyOf: [{ $ref: '#/components/schemas/Derived1' }, { $ref: '#/components/schemas/Derived2' }],
+              discriminator: {
+                propertyName: 'Type',
+                mapping: {
+                  Value1: '#/components/schemas/Derived1',
+                  Value2: '#/components/schemas/Derived2',
+                },
+              },
+            },
+            Derived1: {
+              properties: {
+                Type: {
+                  enum: ['Value1'],
+                  type: 'string',
+                },
+              },
+            },
+            Derived2: {
+              required: ['Ref'],
+              properties: {
+                Type: {
+                  enum: ['Value2'],
+                  type: 'string',
+                },
+                Ref: {
+                  $ref: '#/components/schemas/Base',
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(JSON.stringify(getRaw(store.workspace.activeDocument))).toBe(
+      '{"openapi":"3.1.1","info":{"title":"API with Circular Dependencies","version":"1.0.0"},"components":{"schemas":{"Base":{"required":["Type"],"type":"object","anyOf":[{"$ref":"#/components/schemas/Derived1"},{"$ref":"#/components/schemas/Derived2"}],"discriminator":{"propertyName":"Type","mapping":{"Value1":"#/components/schemas/Derived1","Value2":"#/components/schemas/Derived2"}}},"Derived1":{"properties":{"Type":{"enum":["Value1"],"type":"string"}},"type":"object"},"Derived2":{"required":["Ref"],"properties":{"Type":{"enum":["Value2"],"type":"string"},"Ref":{"$ref":"#/components/schemas/Base"}},"type":"object"}}},"x-original-oas-version":"3.0.1","x-scalar-original-document-hash":"610992c88d31ff46","x-ext-urls":{},"x-scalar-order":["default/description/introduction","default/models"],"x-scalar-navigation":{"id":"default","type":"document","title":"API with Circular Dependencies","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"type":"models","id":"default/models","title":"Models","name":"Models","children":[{"id":"default/models/Base","title":"Base","name":"Base","ref":"#/components/schemas/Base","type":"model"},{"id":"default/models/Derived1","title":"Derived1","name":"Derived1","ref":"#/components/schemas/Derived1","type":"model"},{"id":"default/models/Derived2","title":"Derived2","name":"Derived2","ref":"#/components/schemas/Derived2","type":"model"}]}]}}',
+    )
+  })
+
+  it('another circular reference', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.0',
+        info: {
+          title: 'Hello World',
+          version: '1.0.0',
+        },
+        components: {
+          schemas: {
+            JsonObject: {
+              additionalProperties: {
+                $ref: '#/components/schemas/JsonValue',
+              },
+              type: 'object',
+            },
+            JsonValue: {
+              anyOf: [
+                {
+                  type: 'string',
+                },
+                {
+                  type: 'number',
+                  format: 'double',
+                },
+                {
+                  type: 'boolean',
+                },
+                {
+                  $ref: '#/components/schemas/JsonObject',
+                },
+              ],
+            },
+          },
+        },
+        paths: {
+          '/get': {
+            get: {
+              responses: {
+                '200': {
+                  content: {
+                    'application/json': {
+                      schema: {
+                        $ref: '#/components/schemas/JsonObject',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(JSON.stringify(getRaw(store.workspace.activeDocument))).toBe(
+      '{"openapi":"3.1.0","info":{"title":"Hello World","version":"1.0.0"},"components":{"schemas":{"JsonObject":{"additionalProperties":{"$ref":"#/components/schemas/JsonValue"},"type":"object"},"JsonValue":{"anyOf":[{"type":"string"},{"type":"number","format":"double"},{"type":"boolean"},{"$ref":"#/components/schemas/JsonObject"}],"__scalar_":""}}},"paths":{"/get":{"get":{"responses":{"200":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/JsonObject"}}}}}}}},"x-original-oas-version":"3.1.0","x-scalar-original-document-hash":"c5b2baf356d07163","x-ext-urls":{},"x-scalar-order":["default/description/introduction","default/GET/get","default/models"],"x-scalar-navigation":{"id":"default","type":"document","title":"Hello World","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/get","title":"/get","path":"/get","method":"get","ref":"#/paths/~1get/get","type":"operation","isDeprecated":false},{"type":"models","id":"default/models","title":"Models","name":"Models","children":[{"id":"default/models/JsonObject","title":"JsonObject","name":"JsonObject","ref":"#/components/schemas/JsonObject","type":"model"},{"id":"default/models/JsonValue","title":"JsonValue","name":"JsonValue","ref":"#/components/schemas/JsonValue","type":"model"}]}]}}',
+    )
+  })
+
+  it('loads a document whose references point at each other or at themselves', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.0',
+        info: { title: 'Loop', version: '1.0.0' },
+        paths: {},
+        components: {
+          schemas: {
+            A: { $ref: '#/components/schemas/B' },
+            B: { $ref: '#/components/schemas/A' },
+            Self: { $ref: '#/components/schemas/Self' },
+            User: { type: 'object', properties: { friend: { $ref: '#/components/schemas/A' } } },
+          },
+        },
+      },
+    })
+
+    expect(getRaw(store.workspace.documents.default!)).toMatchObject({
+      components: {
+        schemas: {
+          A: { $ref: '#/components/schemas/B' },
+          B: { $ref: '#/components/schemas/A' },
+          Self: { $ref: '#/components/schemas/Self' },
+          User: { type: 'object', properties: { friend: { $ref: '#/components/schemas/A' } } },
+        },
       },
     })
   })
 
-  it('correctly get the config #2', () => {
-    const store = createWorkspaceStore({
-      config: {
-        'x-scalar-reference-config': {
-          appearance: {
-            css: 'body { background: #f0f0f0; }',
+  it('a third circular reference', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.0',
+        paths: {
+          '/test': {
+            post: {
+              operationId: 'post',
+              parameters: [
+                {
+                  name: 'filter',
+                  required: true,
+                  in: 'query',
+                  schema: {
+                    $ref: '#/components/schemas/FilterSet',
+                  },
+                },
+              ],
+              responses: null,
+            },
+          },
+        },
+        info: {
+          title: 'API Reference',
+          description: 'API Reference',
+          version: '1.0.0',
+          contact: {},
+        },
+        tags: [],
+        servers: [],
+        components: {
+          schemas: {
+            FilterSet: {
+              $schema: 'https://json-schema.org/draft/2020-12/schema',
+              id: 'FilterSet',
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  const: 'nested',
+                },
+                conjunction: {
+                  type: 'string',
+                  enum: ['and', 'or'],
+                },
+                conditions: {
+                  type: 'array',
+                  items: {
+                    anyOf: [
+                      {
+                        anyOf: [
+                          {
+                            type: 'object',
+                            properties: {
+                              type: {
+                                type: 'string',
+                                const: 'single',
+                              },
+                              field: {
+                                type: 'string',
+                              },
+                              operator: {
+                                type: 'string',
+                                enum: ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like', 'nlike'],
+                              },
+                              value: {
+                                type: 'string',
+                              },
+                            },
+                          },
+                        ],
+                      },
+                      {
+                        $ref: '#/components/schemas/FilterSet',
+                      },
+                    ],
+                  },
+                },
+              },
+            },
           },
         },
       },
     })
 
-    store.addDocumentSync({
+    expect(JSON.stringify(getRaw(store.workspace.activeDocument))).toBe(
+      '{"openapi":"3.1.0","paths":{"/test":{"post":{"operationId":"post","parameters":[{"name":"filter","required":true,"in":"query","schema":{"$ref":"#/components/schemas/FilterSet"}}],"responses":{}}}},"info":{"title":"API Reference","description":"API Reference","version":"1.0.0","contact":{}},"tags":[],"servers":[],"components":{"schemas":{"FilterSet":{"$schema":"https://json-schema.org/draft/2020-12/schema","id":"FilterSet","type":"object","properties":{"type":{"type":"string","const":"nested"},"conjunction":{"type":"string","enum":["and","or"]},"conditions":{"type":"array","items":{"anyOf":[{"anyOf":[{"type":"object","properties":{"type":{"type":"string","const":"single"},"field":{"type":"string"},"operator":{"type":"string","enum":["eq","ne","gt","lt","gte","lte","like","nlike"]},"value":{"type":"string"}}}],"__scalar_":""},{"$ref":"#/components/schemas/FilterSet"}],"__scalar_":""}}}}}},"x-original-oas-version":"3.1.0","x-scalar-original-document-hash":"da2698cc38ffc271","x-ext-urls":{},"x-scalar-order":["default/description/introduction","default/POST/test","default/models"],"x-scalar-navigation":{"id":"default","type":"document","title":"API Reference","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/POST/test","title":"/test","path":"/test","method":"post","ref":"#/paths/~1test/post","type":"operation","isDeprecated":false},{"type":"models","id":"default/models","title":"Models","name":"Models","children":[{"id":"default/models/FilterSet","title":"FilterSet","name":"FilterSet","ref":"#/components/schemas/FilterSet","type":"model"}]}]}}',
+    )
+  })
+
+  it('clean up the document to support non-compliant documents', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        openapi: '3.1.1',
+        info: {
+          title: 'Missing Object Type Example',
+          version: '1.0.0',
+        },
+        paths: {
+          '/user': {
+            get: {
+              summary: 'Get user info',
+              responses: {
+                200: {
+                  description: 'User object without explicit type: object',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        items: {
+                          properties: {
+                            id: { type: 'string' },
+                            name: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(JSON.stringify(getRaw(store.workspace.activeDocument))).toEqual(
+      '{"openapi":"3.1.1","info":{"title":"Missing Object Type Example","version":"1.0.0"},"paths":{"/user":{"get":{"summary":"Get user info","responses":{"200":{"description":"User object without explicit type: object","content":{"application/json":{"schema":{"items":{"properties":{"id":{"type":"string"},"name":{"type":"string"}},"type":"object"},"type":"array"}}}}}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"0311c6350d2492f6","x-ext-urls":{},"x-scalar-order":["default/description/introduction","default/GET/user"],"x-scalar-navigation":{"id":"default","type":"document","title":"Missing Object Type Example","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/user","title":"Get user info","path":"/user","method":"get","ref":"#/paths/~1user/get","type":"operation","isDeprecated":false}]}}',
+    )
+  })
+
+  it('preserves a relative $self and resolves schema references after exporting and loading a workspace', async () => {
+    server.get('/input.yaml', () => ({
+      openapi: '3.2.1',
+      $self: './api/openapi.yaml',
+      info: { title: 'Relative identity', version: '1' },
+      components: {
+        schemas: {
+          Value: { type: 'string' },
+          Model: {
+            $id: 'models/model.json',
+            type: 'object',
+            properties: { value: { $ref: '../openapi.yaml#/components/schemas/Value' } },
+          },
+        },
+      },
+    }))
+    await server.listen({ port })
+    const store = createWorkspaceStore()
+    await store.addDocument({ name: 'default', url: `${url}/input.yaml` })
+    const document = getOpenApiDocument(store, 'default')
+    const model = getResolvedRef(document?.components?.schemas?.Model)
+    assert(model && 'properties' in model)
+    expect(getResolvedRef(model.properties?.value)).toStrictEqual({ type: 'string' })
+    const editable = await store.getEditableDocument('default')
+    assert(editable && isOpenApiDocument(editable))
+    expect(editable.$self).toBe('./api/openapi.yaml')
+    expect(editable?.components?.schemas?.Model).toStrictEqual({
+      $id: 'models/model.json',
+      type: 'object',
+      properties: { value: { $ref: '../openapi.yaml#/components/schemas/Value' } },
+    })
+    expect(editable).not.toHaveProperty('x-scalar-original-refs')
+    const exported = store.exportWorkspace()
+    assert(exported.documents.default && isOpenApiDocument(exported.documents.default))
+    expect(exported.documents.default.$self).toBe('./api/openapi.yaml')
+
+    const restored = createWorkspaceStore()
+    restored.loadWorkspace(exported)
+    const restoredDocument = getOpenApiDocument(restored, 'default')
+    const restoredModel = getResolvedRef(restoredDocument?.components?.schemas?.Model)
+    assert(restoredModel && 'properties' in restoredModel)
+    expect(getResolvedRef(restoredModel.properties?.value)).toStrictEqual({ type: 'string' })
+    expect(restoredDocument?.$self).toBe('./api/openapi.yaml')
+  })
+
+  it('should resolve relative references on the document correctly', async () => {
+    server.get('/', () => ({
+      openapi: '3.1.1',
+      paths: {
+        '/users': {
+          get: {
+            requestBody: {
+              $ref: `${url}/a`,
+            },
+          },
+        },
+      },
+    }))
+
+    server.get('/a', () => ({
+      description: 'Some description',
+      content: {},
+    }))
+    await server.listen({ port })
+
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      url,
+    })
+
+    expect(JSON.stringify(store.exportWorkspace())).toEqual(
+      '{"documents":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/x-ext/26e1ce1"}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"22a67d89a1832713","x-scalar-original-source-url":"http://localhost:9988","x-ext-urls":{"26e1ce1":"a"},"x-ext":{"26e1ce1":{"description":"Some description","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/users"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988/a"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988/a"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+    )
+
+    await store.revertDocumentChanges('default')
+
+    expect(JSON.stringify(store.exportWorkspace())).toEqual(
+      '{"documents":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/x-ext/26e1ce1"}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"22a67d89a1832713","x-scalar-original-source-url":"http://localhost:9988","x-ext-urls":{"26e1ce1":"a"},"x-ext":{"26e1ce1":{"description":"Some description","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/users"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988/a"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988/a"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+    )
+
+    await store.replaceDocument('default', getRaw(getOpenApiDocument(store, 'default') ?? {}))
+
+    expect(JSON.stringify(store.exportWorkspace())).toEqual(
+      '{"documents":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"#/x-ext/26e1ce1"}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"22a67d89a1832713","x-scalar-original-source-url":"http://localhost:9988","x-ext-urls":{"26e1ce1":"a"},"x-ext":{"26e1ce1":{"description":"Some description","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/users"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]},"x-scalar-is-dirty":true}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988/a"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/users":{"get":{"requestBody":{"$ref":"http://localhost:9988/a"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+    )
+  })
+
+  it('uses the fetcher to resolve external refs', async () => {
+    server.get('/', () => {
+      return {
+        paths: {
+          '/users': {
+            get: {
+              $ref: '/path',
+            },
+          },
+        },
+      }
+    })
+
+    server.get('/path', () => {
+      return {
+        summary: 'User path',
+      }
+    })
+
+    await server.listen({ port })
+
+    const customFetch = vi.fn<NonNullable<WorkspaceDocumentInput['fetch']>>(fetch)
+
+    const client = createWorkspaceStore()
+
+    await client.addDocument({
+      name: 'default',
+      url: url,
+      fetch: customFetch,
+    })
+
+    expect(client.workspace.documents['default']).toEqual({
+      'info': {
+        'title': '',
+        'version': '',
+      },
+      'openapi': '',
+      'paths': {
+        '/users': {
+          'get': {
+            '$ref': '#/x-ext/a5826a3',
+            '$ref-value': {
+              'summary': 'User path',
+            },
+          },
+        },
+      },
+      'x-ext': {
+        'a5826a3': {
+          'summary': 'User path',
+        },
+      },
+      'x-ext-urls': {
+        'a5826a3': 'path',
+      },
+      'x-original-oas-version': undefined,
+      'x-scalar-order': ['default/description/introduction', 'default/GET/users'],
+      'x-scalar-navigation': {
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'Untitled Document',
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            'id': 'default/GET/users',
+            'method': 'get',
+            'path': '/users',
+            'isDeprecated': false,
+            'ref': '#/paths/~1users/get',
+            'title': 'User path',
+            'type': 'operation',
+          },
+        ],
+      },
+      'x-scalar-original-document-hash': '2d0074ff9645b4b9',
+      'x-scalar-original-source-url': 'http://localhost:9988',
+    })
+
+    expect(customFetch).toBeCalledTimes(2)
+    expect(customFetch).toHaveBeenNthCalledWith(1, url, { headers: undefined })
+    expect(customFetch).toHaveBeenNthCalledWith(2, `${url}/path`, { headers: undefined })
+  })
+
+  it('uses workspace fetcher to resolve documents if not specified per document', async () => {
+    server.get('/', () => {
+      return {
+        paths: {
+          '/users': {
+            get: {
+              $ref: '/path',
+            },
+          },
+        },
+      }
+    })
+
+    server.get('/path', () => {
+      return {
+        summary: 'User path',
+      }
+    })
+
+    await server.listen({ port })
+
+    const customFetch = vi.fn<NonNullable<WorkspaceDocumentInput['fetch']>>(fetch)
+
+    const client = createWorkspaceStore({
+      fetch: customFetch,
+    })
+
+    await client.addDocument({
+      name: 'default',
+      url: url,
+    })
+
+    expect(client.workspace.documents['default']).toEqual({
+      'info': {
+        'title': '',
+        'version': '',
+      },
+      'openapi': '',
+      'paths': {
+        '/users': {
+          'get': {
+            '$ref': '#/x-ext/a5826a3',
+            '$ref-value': {
+              'summary': 'User path',
+            },
+          },
+        },
+      },
+      'x-ext': {
+        'a5826a3': {
+          'summary': 'User path',
+        },
+      },
+      'x-original-oas-version': undefined,
+      'x-ext-urls': {
+        'a5826a3': 'path',
+      },
+      'x-scalar-order': ['default/description/introduction', 'default/GET/users'],
+      'x-scalar-navigation': {
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'Untitled Document',
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            'id': 'default/GET/users',
+            'method': 'get',
+            'isDeprecated': false,
+            'path': '/users',
+            'ref': '#/paths/~1users/get',
+            'title': 'User path',
+            'type': 'operation',
+          },
+        ],
+      },
+      'x-scalar-original-document-hash': '2d0074ff9645b4b9',
+      'x-scalar-original-source-url': 'http://localhost:9988',
+    })
+
+    expect(customFetch).toBeCalledTimes(2)
+    expect(customFetch).toHaveBeenNthCalledWith(1, url, { headers: undefined })
+    expect(customFetch).toHaveBeenNthCalledWith(2, `${url}/path`, { headers: undefined })
+  })
+
+  it('add the original oas version on the consuming document #1', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        'swagger': '2.0',
+        'info': {
+          'version': '1.0.0',
+          'title': 'Minimal API',
+        },
+        'host': 'api.example.com',
+        'basePath': '/v1',
+        'schemes': ['https'],
+        'paths': {
+          '/ping': {
+            'get': {
+              'summary': 'Ping',
+              'description': 'Health check endpoint',
+              'produces': ['application/json'],
+              'responses': {
+                '200': {
+                  'description': 'Pong response',
+                  'schema': {
+                    'type': 'object',
+                    'properties': {
+                      'message': { 'type': 'string', 'example': 'pong' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(getActiveOpenApiDocument(store)?.['x-original-oas-version']).toBe('2.0')
+    expect(getActiveOpenApiDocument(store)?.['x-scalar-order']).toEqual([
+      'default/description/introduction',
+      'default/GET/ping',
+    ])
+  })
+
+  it('add the original oas version on the consuming document #2', async () => {
+    const store = createWorkspaceStore()
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        'openapi': '3.0.0',
+        'info': {
+          'version': '1.0.0',
+          'title': 'Minimal API',
+        },
+        'servers': [{ 'url': 'https://api.example.com/v1' }],
+        'paths': {
+          '/ping': {
+            'get': {
+              'summary': 'Ping',
+              'description': 'Health check endpoint',
+              'responses': {
+                '200': {
+                  'description': 'Pong response',
+                  'content': {
+                    'application/json': {
+                      'schema': {
+                        'type': 'object',
+                        'properties': {
+                          'message': { 'type': 'string', 'example': 'pong' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(getActiveOpenApiDocument(store)?.['x-original-oas-version']).toBe('3.0.0')
+    expect(getActiveOpenApiDocument(store)?.['x-scalar-order']).toEqual([
+      'default/description/introduction',
+      'default/GET/ping',
+    ])
+  })
+
+  it('does mark the document as dirty when we do a change and clear the dirty flag when we save', async () => {
+    const store = createWorkspaceStore()
+    await store.addDocument({
       name: 'default',
       document: {
         openapi: '3.0.0',
-        info: { title: 'My API', version: '1.0.0' },
-        paths: {},
       },
-      config: {
-        'x-scalar-reference-config': {
-          features: {
-            showDownload: false,
-          },
-          appearance: {
-            css: 'body { background: #f0f0f0; }\n.scalar-reference { color: red; }',
+    })
+
+    expect(getActiveOpenApiDocument(store)?.['x-scalar-is-dirty']).toBeUndefined()
+
+    assert(store.workspace.activeDocument)
+    store.workspace.activeDocument.info.title = 'My API'
+
+    expect(getActiveOpenApiDocument(store)?.['x-scalar-is-dirty']).toBe(true)
+
+    await store.saveDocument('default')
+
+    expect(getActiveOpenApiDocument(store)?.['x-scalar-is-dirty']).toBe(false)
+  })
+
+  it('does uses the file loader plugin to resolve local file references', async () => {
+    const fn = vi.fn()
+    const store = createWorkspaceStore({
+      fileLoader: {
+        type: 'loader',
+        validate: () => true,
+        exec: (path) => {
+          fn(path)
+          return Promise.resolve({
+            ok: true,
+            data: {
+              content: 'This is a local file',
+            },
+            raw: 'This is a local file',
+          })
+        },
+      },
+    })
+
+    await store.addDocument({
+      name: 'default',
+      document: {
+        info: {
+          title: 'My API',
+          version: '1.0.0',
+        },
+        openapi: '3.1.1',
+        paths: {
+          '/users': {
+            get: {
+              $ref: './local-file.yaml',
+            },
           },
         },
       },
     })
 
-    expect(store.config['x-scalar-reference-config']).toEqual({
-      ...defaultReferenceConfig,
-      features: {
-        ...defaultReferenceConfig.features,
-        showDownload: false,
-      },
-      appearance: {
-        ...defaultReferenceConfig.appearance,
-        css: 'body { background: #f0f0f0; }\n.scalar-reference { color: red; }',
-      },
+    expect(fn).toHaveBeenCalledWith('/local-file.yaml')
+  })
+
+  describe('live OpenAPI version metadata', () => {
+    it.each([
+      ['3.1.2', '3.2.0'],
+      ['3.2.0', '3.1.2'],
+      ['3.1.2', '3.1.2'],
+      ['2.0', '3.2.0'],
+      ['3.2.0', '2.0'],
+    ])('updates the badge from %s to %s without changing the saved baseline', async (initialVersion, nextVersion) => {
+      const document = (version: string, title: string): Record<string, unknown> => ({
+        ...(version === '2.0' ? { swagger: version } : { openapi: version }),
+        info: { title, version: '1.0.0' },
+        paths: {},
+      })
+      const original = document(initialVersion, 'Hello World')
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: 'default', document: original })
+
+      await store.replaceDocument('default', document(nextVersion, 'ABC World'))
+
+      expect(getActiveOpenApiDocument(store)?.info.title).toBe('ABC World')
+      expect(getActiveOpenApiDocument(store)?.['x-original-oas-version']).toBe(nextVersion)
+      expect(store.exportWorkspace().originalDocuments.default).toEqual(original)
+      expect(store.exportWorkspace().intermediateDocuments.default).toEqual(original)
+    })
+  })
+
+  describe('loading documents from filesystem', () => {
+    it('loads a document from a file path using fileLoader', async () => {
+      const mockDocument = {
+        openapi: '3.0.0',
+        info: { title: 'File System API', version: '2.0.0' },
+        paths: {
+          '/posts': {
+            get: {
+              summary: 'Get all posts',
+              responses: {
+                '200': {
+                  description: 'Success',
+                },
+              },
+            },
+          },
+        },
+      }
+
+      const fileLoaderExec = vi.fn()
+      const store = createWorkspaceStore({
+        fileLoader: {
+          type: 'loader',
+          validate: () => true,
+          exec: (path) => {
+            fileLoaderExec(path)
+            return Promise.resolve({
+              ok: true,
+              data: mockDocument,
+              raw: JSON.stringify(mockDocument),
+            })
+          },
+        },
+      })
+
+      const result = await store.addDocument({
+        name: 'fs-document',
+        path: '/path/to/openapi.yaml',
+      })
+
+      expect(result).toBe(true)
+      expect(fileLoaderExec).toHaveBeenCalledWith('/path/to/openapi.yaml')
+      expect(getOpenApiDocument(store, 'fs-document')).toBeDefined()
+      expect(getOpenApiDocument(store, 'fs-document')?.info.title).toBe('File System API')
+    })
+
+    it('sets the correct document source when loading from file path', async () => {
+      const mockDocument = {
+        openapi: '3.1.0',
+        info: { title: 'Local File API', version: '1.0.0' },
+      }
+
+      const store = createWorkspaceStore({
+        fileLoader: {
+          type: 'loader',
+          validate: () => true,
+          exec: () =>
+            Promise.resolve({
+              ok: true,
+              data: mockDocument,
+              raw: JSON.stringify(mockDocument),
+            }),
+        },
+      })
+
+      await store.addDocument({
+        name: 'local-doc',
+        path: '/Users/projects/specs/api.yaml',
+      })
+
+      const document = getOpenApiDocument(store, 'local-doc')
+      expect(document?.['x-scalar-original-source-url']).toBe('/Users/projects/specs/api.yaml')
+    })
+
+    it('handles error when no fileLoader is provided for file path', async () => {
+      resetConsoleSpies()
+      const store = createWorkspaceStore()
+
+      const result = await store.addDocument({
+        name: 'missing-loader',
+        path: '/path/to/file.yaml',
+      })
+
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalledWith('No loader provided for loading files')
+      expect(getOpenApiDocument(store, 'missing-loader')).toBeDefined()
+      expect(getOpenApiDocument(store, 'missing-loader')?.info.title).toContain('could not be loaded')
+    })
+
+    it('preserves document metadata when loading from file', async () => {
+      const mockDocument = {
+        openapi: '3.0.0',
+        info: { title: 'Test API', version: '1.0.0' },
+      }
+
+      const store = createWorkspaceStore({
+        fileLoader: {
+          type: 'loader',
+          validate: () => true,
+          exec: () =>
+            Promise.resolve({
+              ok: true,
+              data: mockDocument,
+              raw: JSON.stringify(mockDocument),
+            }),
+        },
+      })
+
+      await store.addDocument({
+        name: 'test-doc',
+        path: './specs/test.yaml',
+        meta: {
+          'x-scalar-selected-server': 'staging',
+        },
+      })
+
+      const document = getOpenApiDocument(store, 'test-doc')
+      expect(document?.['x-scalar-selected-server']).toBe('staging')
+    })
+
+    it('resolves external references in file-loaded documents', async () => {
+      const mockDocument = {
+        openapi: '3.1.0',
+        info: { title: 'API with refs', version: '1.0.0' },
+        paths: {
+          '/items': {
+            get: {
+              $ref: './operations/get-items.yaml',
+            },
+          },
+        },
+      }
+
+      const mockOperation = {
+        summary: 'Get all items',
+        responses: {
+          '200': {
+            description: 'Success',
+          },
+        },
+      }
+
+      const fileLoaderExec = vi.fn()
+      const store = createWorkspaceStore({
+        fileLoader: {
+          type: 'loader',
+          validate: () => true,
+          exec: (path) => {
+            fileLoaderExec(path)
+            if (path === './main-spec.yaml') {
+              return Promise.resolve({
+                ok: true,
+                data: mockDocument,
+                raw: JSON.stringify(mockDocument),
+              })
+            }
+            if (path === `${cwd()}/operations/get-items.yaml`) {
+              return Promise.resolve({
+                ok: true,
+                data: mockOperation,
+                raw: JSON.stringify(mockOperation),
+              })
+            }
+            return Promise.resolve({ ok: false })
+          },
+        },
+      })
+
+      await store.addDocument({
+        name: 'ref-doc',
+        path: './main-spec.yaml',
+      })
+
+      expect(fileLoaderExec).toHaveBeenCalledWith('./main-spec.yaml')
+      expect(fileLoaderExec).toHaveBeenCalledWith(`${cwd()}/operations/get-items.yaml`)
+      expect(getOpenApiDocument(store, 'ref-doc')).toBeDefined()
+    })
+
+    it('stores the original document hash when loading from file', async () => {
+      const mockDocument = {
+        openapi: '3.1.0',
+        info: { title: 'Hash Test API', version: '1.0.0' },
+      }
+
+      const store = createWorkspaceStore({
+        fileLoader: {
+          type: 'loader',
+          validate: () => true,
+          exec: () =>
+            Promise.resolve({
+              ok: true,
+              data: mockDocument,
+              raw: JSON.stringify(mockDocument),
+            }),
+        },
+      })
+
+      await store.addDocument({
+        name: 'hash-doc',
+        path: '/specs/test.yaml',
+      })
+
+      const document = getOpenApiDocument(store, 'hash-doc')
+      expect(document?.['x-scalar-original-document-hash']).toBeDefined()
+      expect(typeof document?.['x-scalar-original-document-hash']).toBe('string')
+    })
+
+    it('loads multiple documents from different file paths', async () => {
+      const mockDoc1 = {
+        openapi: '3.0.0',
+        info: { title: 'API 1', version: '1.0.0' },
+      }
+
+      const mockDoc2 = {
+        openapi: '3.0.0',
+        info: { title: 'API 2', version: '2.0.0' },
+      }
+
+      const store = createWorkspaceStore({
+        fileLoader: {
+          type: 'loader',
+          validate: () => true,
+          exec: (path) => {
+            if (path === '/specs/api1.yaml') {
+              return Promise.resolve({
+                ok: true,
+                data: mockDoc1,
+                raw: JSON.stringify(mockDoc1),
+              })
+            }
+            if (path === '/specs/api2.yaml') {
+              return Promise.resolve({
+                ok: true,
+                data: mockDoc2,
+                raw: JSON.stringify(mockDoc2),
+              })
+            }
+            return Promise.resolve({ ok: false })
+          },
+        },
+      })
+
+      const result1 = await store.addDocument({
+        name: 'doc1',
+        path: '/specs/api1.yaml',
+      })
+
+      const result2 = await store.addDocument({
+        name: 'doc2',
+        path: '/specs/api2.yaml',
+      })
+
+      expect(result1).toBe(true)
+      expect(result2).toBe(true)
+      expect(getOpenApiDocument(store, 'doc1')?.info.title).toBe('API 1')
+      expect(getOpenApiDocument(store, 'doc2')?.info.title).toBe('API 2')
     })
   })
 
   describe('download original document', () => {
     it('gets the original document from the store json', async () => {
-      const store = createWorkspaceStore({
-        documents: [
-          {
-            name: 'api-1',
-            document: {
-              info: { title: 'My API', version: '1.0.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-2',
-            document: {
-              info: { title: 'My API 2', version: '1.2.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-3',
-            document: getDocument(),
-          },
-        ],
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'api-1',
+        document: {
+          info: { title: 'My API', version: '1.0.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-2',
+        document: {
+          info: { title: 'My API 2', version: '1.2.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-3',
+        document: getDocument(),
       })
 
-      expect(store.exportDocument('api-1', 'json')).toBe(
+      expect(store.exportDocument('api-1', 'json', true)).toBe(
         '{"info":{"title":"My API","version":"1.0.0"},"openapi":"3.1.1"}',
       )
 
-      expect(store.exportDocument('api-2', 'json')).toBe(
+      expect(store.exportDocument('api-2', 'json', true)).toBe(
         '{"info":{"title":"My API 2","version":"1.2.0"},"openapi":"3.1.1"}',
       )
 
-      expect(store.exportDocument('api-3', 'json')).toBe(
-        '{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}}}',
+      expect(store.exportDocument('api-3', 'json', true)).toBe(
+        '{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}}}',
       )
     })
 
     it('gets the original document from the store yaml', async () => {
-      const store = createWorkspaceStore({
-        documents: [
-          {
-            name: 'api-1',
-            document: {
-              info: { title: 'My API', version: '1.0.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-2',
-            document: {
-              info: { title: 'My API 2', version: '1.2.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-3',
-            document: getDocument(),
-          },
-        ],
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'api-1',
+        document: {
+          info: { title: 'My API', version: '1.0.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-2',
+        document: {
+          info: { title: 'My API 2', version: '1.2.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-3',
+        document: getDocument(),
       })
 
       expect(store.exportDocument('api-1', 'yaml')).toBe('info:\n  title: My API\n  version: 1.0.0\nopenapi: 3.1.1\n')
@@ -700,55 +2844,53 @@ describe('create-workspace-store', () => {
       expect(store.exportDocument('api-2', 'yaml')).toBe('info:\n  title: My API 2\n  version: 1.2.0\nopenapi: 3.1.1\n')
 
       expect(store.exportDocument('api-3', 'yaml')).toBe(
-        `openapi: 3.1.1\ninfo:\n  title: My API\n  version: 1.0.0\ncomponents:\n  schemas:\n    User:\n      type: object\n      properties:\n        id:\n          type: string\n          description: The user ID\n        name:\n          type: string\n          description: The user name\n        email:\n          type: string\n          format: email\n          description: The user email\npaths:\n  /users:\n    get:\n      summary: Get all users\n      responses:\n        "200":\n          description: Successful response\n          content:\n            application/json:\n              schema:\n                type: array\n                items:\n                  $ref: "#/components/schemas/User"\n`,
+        `openapi: 3.0.0\ninfo:\n  title: My API\n  version: 1.0.0\ncomponents:\n  schemas:\n    User:\n      type: object\n      properties:\n        id:\n          type: string\n          description: The user ID\n        name:\n          type: string\n          description: The user name\n        email:\n          type: string\n          format: email\n          description: The user email\npaths:\n  /users:\n    get:\n      summary: Get all users\n      responses:\n        "200":\n          description: Successful response\n          content:\n            application/json:\n              schema:\n                type: array\n                items:\n                  $ref: "#/components/schemas/User"\n`,
       )
     })
   })
 
   describe('save document', () => {
     it('writes back to the original document', async () => {
-      const store = createWorkspaceStore({
-        documents: [
-          {
-            name: 'api-1',
-            document: {
-              info: { title: 'My API', version: '1.0.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-2',
-            document: {
-              info: { title: 'My API 2', version: '1.2.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-3',
-            document: getDocument(),
-          },
-        ],
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'api-1',
+        document: {
+          info: { title: 'My API', version: '1.0.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-2',
+        document: {
+          info: { title: 'My API 2', version: '1.2.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-3',
+        document: getDocument(),
       })
 
-      if (store.workspace.documents['api-3']?.info?.title) {
-        store.workspace.documents['api-3'].info.title = 'Updated API'
+      const apiThreeDoc = getOpenApiDocument(store, 'api-3')
+      if (apiThreeDoc?.info?.title) {
+        apiThreeDoc.info.title = 'Updated API'
       }
 
       // Write the changes back to the original document
-      store.saveDocument('api-3')
+      await store.saveDocument('api-3')
 
       // Should return the original document without any modifications
-      expect(store.exportDocument('api-1', 'json')).toBe(
+      expect(store.exportDocument('api-1', 'json', true)).toBe(
         '{"info":{"title":"My API","version":"1.0.0"},"openapi":"3.1.1"}',
       )
 
-      expect(store.exportDocument('api-2', 'json')).toBe(
+      expect(store.exportDocument('api-2', 'json', true)).toBe(
         '{"info":{"title":"My API 2","version":"1.2.0"},"openapi":"3.1.1"}',
       )
 
       // Should return the updated document without any extensions
-      expect(store.exportDocument('api-3', 'json')).toEqual(
-        '{"openapi":"3.1.1","info":{"title":"Updated API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}}}',
+      expect(store.exportDocument('api-3', 'json', true)).toEqual(
+        '{"openapi":"3.1.1","info":{"title":"Updated API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}},"x-scalar-order":["api-3/description/introduction","api-3/GET/users","api-3/models"]}',
       )
     })
 
@@ -761,127 +2903,335 @@ describe('create-workspace-store', () => {
 
       await server.listen({ port })
 
-      const store = createWorkspaceStore({
-        documents: [
-          {
-            name: 'default',
-            document: {
-              ...document,
-              paths: {
-                ...document.paths,
-                '/external': {
-                  get: {
-                    $ref: `http://localhost:${port}`,
-                  },
-                },
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: {
+          ...document,
+          paths: {
+            ...document.paths,
+            '/external': {
+              get: {
+                $ref: url,
               },
             },
           },
-        ],
+        },
       })
 
-      if (store.workspace.activeDocument?.info?.title) {
-        store.workspace.activeDocument.info.title = 'Updated API'
+      const activeDoc = getActiveOpenApiDocument(store)
+      if (activeDoc?.info?.title) {
+        activeDoc.info.title = 'Updated API'
       }
 
-      // Bundle external documents
-      await store.resolve(['paths'])
-
       // Write the changes back to the original document
-      store.saveDocument('default')
+      await store.saveDocument('default')
 
       // Should return the updated document without any extensions
-      expect(store.exportDocument('default', 'json')).toEqual(
-        '{"openapi":"3.1.1","info":{"title":"Updated API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"http://localhost:9988"}}}}',
+      expect(store.exportDocument('default', 'json', true)).toEqual(
+        '{"openapi":"3.1.1","info":{"title":"Updated API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"http://localhost:9988"}}},"x-scalar-order":["default/description/introduction","default/GET/users","default/GET/external","default/models"]}',
+      )
+    })
+
+    it('does detect changes on the refs and write them back', async () => {
+      const store = createWorkspaceStore()
+
+      server.get('/', () => {
+        return { description: 'This is an external document' }
+      })
+
+      server.get('/some-other-path', () => {
+        return { description: 'New content' }
+      })
+
+      await server.listen({ port })
+
+      const document = getDocument()
+
+      await store.addDocument({
+        name: 'default',
+        document: {
+          ...document,
+          paths: {
+            ...document.paths,
+            '/external': {
+              get: {
+                $ref: url,
+              },
+            },
+          },
+        },
+      })
+
+      expect(JSON.stringify(store.exportWorkspace())).toEqual(
+        '{"documents":{"default":{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"#/x-ext/c9f3677"}}},"x-original-oas-version":"3.0.0","x-scalar-original-document-hash":"6d9bcd00d4525750","x-ext-urls":{"c9f3677":"http://localhost:9988"},"x-ext":{"c9f3677":{"description":"This is an external document"}},"x-scalar-order":["default/description/introduction","default/GET/users","default/GET/external","default/models"],"x-scalar-navigation":{"id":"default","type":"document","title":"My API","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"Get all users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false},{"id":"default/GET/external","title":"/external","path":"/external","method":"get","ref":"#/paths/~1external/get","type":"operation","isDeprecated":false},{"type":"models","id":"default/models","title":"Models","name":"Models","children":[{"id":"default/models/User","title":"User","name":"User","ref":"#/components/schemas/User","type":"model"}]}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"http://localhost:9988"}}}}},"intermediateDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"http://localhost:9988"}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+      )
+
+      await store.replaceDocument('default', {
+        ...document,
+        paths: {
+          ...document.paths,
+          '/external': {
+            get: {
+              $ref: `${url}/some-other-path`,
+            },
+          },
+        },
+      })
+
+      expect(JSON.stringify(store.exportWorkspace())).toEqual(
+        '{"documents":{"default":{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"#/x-ext/c22ed8d"}}},"x-scalar-is-dirty":true,"x-scalar-navigation":{"id":"default","type":"document","title":"My API","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"Get all users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false},{"id":"default/GET/external","title":"/external","path":"/external","method":"get","ref":"#/paths/~1external/get","type":"operation","isDeprecated":false},{"type":"models","id":"default/models","title":"Models","name":"Models","children":[{"id":"default/models/User","title":"User","name":"User","ref":"#/components/schemas/User","type":"model"}]}]},"x-original-oas-version":"3.0.0","x-scalar-original-document-hash":"6d9bcd00d4525750","x-ext-urls":{"c22ed8d":"http://localhost:9988/some-other-path"},"x-ext":{"c22ed8d":{"description":"New content"}},"x-scalar-order":["default/description/introduction","default/GET/users","default/GET/external","default/models"]}},"meta":{},"originalDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"http://localhost:9988"}}}}},"intermediateDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}},"/external":{"get":{"$ref":"http://localhost:9988"}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
       )
     })
   })
 
   describe('revert', () => {
     it('should revert the changes made to the document', async () => {
-      const store = createWorkspaceStore({
-        documents: [
-          {
-            name: 'api-1',
-            document: {
-              info: { title: 'My API', version: '1.0.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-2',
-            document: {
-              info: { title: 'My API 2', version: '1.2.0' },
-              openapi: '3.1.1',
-            },
-          },
-          {
-            name: 'api-3',
-            document: getDocument(),
-          },
-        ],
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'api-1',
+        document: {
+          info: { title: 'My API', version: '1.0.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-2',
+        document: {
+          info: { title: 'My API 2', version: '1.2.0' },
+          openapi: '3.1.1',
+        },
+      })
+      await store.addDocument({
+        name: 'api-3',
+        document: getDocument(),
       })
 
-      if (store.workspace.documents['api-3']?.info?.title) {
-        store.workspace.documents['api-3'].info.title = 'Updated API'
+      const apiThreeDoc = getOpenApiDocument(store, 'api-3')
+      if (apiThreeDoc?.info?.title) {
+        apiThreeDoc.info.title = 'Updated API'
       }
 
       expect(store.workspace?.documents['api-3']?.info?.title).toBe('Updated API')
 
       // Revert the changes
-      store.revertDocumentChanges('api-3')
+      await store.revertDocumentChanges('api-3')
 
       // Should return the original document without any modifications
-      expect(store.exportDocument('api-1', 'json')).toBe(
+      expect(store.exportDocument('api-1', 'json', true)).toBe(
         '{"info":{"title":"My API","version":"1.0.0"},"openapi":"3.1.1"}',
       )
 
-      expect(store.exportDocument('api-2', 'json')).toBe(
+      expect(store.exportDocument('api-2', 'json', true)).toBe(
         '{"info":{"title":"My API 2","version":"1.2.0"},"openapi":"3.1.1"}',
       )
 
       // Should return the updated document without any extensions
-      expect(store.exportDocument('api-3', 'json')).toEqual(
-        '{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}}}',
+      expect(store.exportDocument('api-3', 'json', true)).toEqual(
+        '{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}}}',
       )
+    })
+
+    it('persists registry meta as plain data after revert (regression: DataCloneError)', async () => {
+      // The persistence plugin forwards `event.value` straight into
+      // IndexedDB, which uses structured cloning. Forwarding the proxied
+      // workspace document back into `addInMemoryDocument` used to leak
+      // a magic proxy onto `x-scalar-registry-meta`, throwing
+      // `DataCloneError` when the change event was persisted.
+      const { store, cloneErrors, persistedDocumentEvents } = createPersistedStoreSpy()
+
+      await store.addDocument({
+        name: 'default',
+        document: getDocument(),
+        meta: { 'x-scalar-registry-meta': { ...REGISTRY_META } },
+      })
+
+      const defaultDocument = store.workspace.documents['default']
+      assert(defaultDocument, 'Default document should exist')
+
+      defaultDocument.info.title = 'Edited title'
+      expect(defaultDocument['x-scalar-is-dirty']).toBe(true)
+
+      cloneErrors.length = 0
+      persistedDocumentEvents.length = 0
+
+      await store.revertDocumentChanges('default')
+
+      expect(cloneErrors).toEqual([])
+      expect(persistedDocumentEvents.at(-1)?.['x-scalar-registry-meta']).toEqual(REGISTRY_META)
+    })
+  })
+
+  describe('getEditableDocument', () => {
+    it('returns null when document name does not exist', async () => {
+      const store = createWorkspaceStore()
+      const result = await store.getEditableDocument('non-existent')
+      expect(result).toBeNull()
+    })
+
+    it('returns editable document with openapi structure preserved', async () => {
+      const store = createWorkspaceStore()
+      const doc = getDocument()
+      await store.addDocument({ name: 'default', document: doc })
+
+      const result = (await store.getEditableDocument('default')) as OpenApiDocument | null
+
+      expect(result).not.toBeNull()
+      // Store upgrades OpenAPI to 3.1.x when adding document
+      expect(result?.openapi).toBe('3.1.1')
+      expect(result?.info).toStrictEqual({ title: 'My API', version: '1.0.0' })
+      expect(result?.paths).toBeDefined()
+      expect(result?.components?.schemas?.User).toBeDefined()
+    })
+
+    it('strips internal and bundler metadata keys from result', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: {
+          ...getDocument(),
+          components: {
+            ...getDocument().components,
+            schemas: {
+              ...getDocument().components?.schemas,
+              oneOfExample: {
+                oneOf: [
+                  {
+                    type: 'string',
+                  },
+                  {
+                    type: 'number',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      })
+
+      const result = await store.getEditableDocument('default')
+
+      expect(JSON.stringify(result)).toBe(
+        '{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}},"oneOfExample":{"oneOf":[{"type":"string"},{"type":"number"}]}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}},"x-scalar-order":["default/description/introduction","default/GET/users","default/models"]}',
+      )
+    })
+
+    it('returns an independent clone so mutations do not affect workspace document', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: getDocument(),
+      })
+
+      const result = await store.getEditableDocument('default')
+      expect(result).not.toBeNull()
+      if (result?.info) {
+        result.info.title = 'Mutated title'
+      }
+
+      const workspaceDoc = getOpenApiDocument(store, 'default')
+      const rawDoc = getRaw(workspaceDoc as object) as { info?: { title?: string } }
+      expect(rawDoc?.info?.title).not.toBe('Mutated title')
+    })
+  })
+
+  describe('promoteIntermediateToOriginal', () => {
+    // The intermediate document layer has been deprecated. `saveDocument`
+    // now writes directly into `originalDocuments` (and mirrors the same
+    // content into the intermediate map for backward compatibility), so
+    // `promoteIntermediateToOriginal` has nothing meaningful left to do
+    // and becomes a no-op. The remaining tests pin down that contract:
+    // the deprecated method still returns a sensible boolean, and the two
+    // maps stay in sync after a save.
+    it('keeps original and intermediate aligned with the saved state', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: { openapi: '3.1.0', info: { title: 'Initial', version: '1.0.0' } },
+      })
+      const doc = getOpenApiDocument(store, 'default')
+      if (doc?.info) {
+        doc.info.title = 'Updated title'
+      }
+      await store.saveDocument('default')
+
+      // After save, both the original and the (deprecated) intermediate
+      // map hold the saved baseline. Mirroring keeps any consumer still
+      // reading `getIntermediateDocument` on fresh data while the layer
+      // is being phased out.
+      const originalAfterSave = store.getOriginalDocument('default') as { info?: { title?: string } } | null
+      expect(originalAfterSave?.info?.title).toBe('Updated title')
+      const intermediateAfterSave = store.getIntermediateDocument('default') as { info?: { title?: string } } | null
+      expect(intermediateAfterSave?.info?.title).toBe('Updated title')
+
+      // Promote is now a no-op for a saved document because original is
+      // already the new baseline. It still reports success so callers that
+      // ignored the deprecation notice keep working.
+      const promoted = store.promoteIntermediateToOriginal('default')
+      expect(promoted).toBe(true)
+
+      const originalAfterPromote = store.getOriginalDocument('default') as { info?: { title?: string } } | null
+      expect(originalAfterPromote?.info?.title).toBe('Updated title')
+    })
+
+    it('does nothing when document name has no intermediate document', () => {
+      const store = createWorkspaceStore()
+      expect(store.getOriginalDocument('missing')).toBeNull()
+      expect(store.getIntermediateDocument('missing')).toBeNull()
+      const promoted = store.promoteIntermediateToOriginal('missing')
+      expect(promoted).toBe(false)
+      expect(store.getOriginalDocument('missing')).toBeNull()
+    })
+
+    it('persists the saved baseline in exportWorkspace.originalDocuments', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'api',
+        document: { openapi: '3.1.0', info: { title: 'A', version: '1.0.0' } },
+      })
+      const doc = getOpenApiDocument(store, 'api')
+      if (doc?.info) {
+        doc.info.title = 'B'
+      }
+      await store.saveDocument('api')
+      const promoted = store.promoteIntermediateToOriginal('api')
+      expect(promoted).toBe(true)
+
+      const exported = store.exportWorkspace()
+      const origDoc = exported.originalDocuments?.api as { info?: { title?: string } } | undefined
+      const interDoc = exported.intermediateDocuments?.api as { info?: { title?: string } } | undefined
+      expect(origDoc?.info?.title).toBe('B')
+      // Intermediate is mirrored from the saved baseline so backward-
+      // compatible consumers still observe the latest content.
+      expect(interDoc?.info?.title).toBe('B')
     })
   })
 
   describe('export', () => {
-    it('should export the workspace internal state as a json document', () => {
+    it('should export the workspace internal state as a json document', async () => {
       const store = createWorkspaceStore({
-        documents: [
-          {
-            name: 'default',
-            document: {
-              openapi: '3.0.0',
-              info: {
-                title: 'My API',
-                version: '1.0.0',
-              },
-            },
-            config: {
-              'x-scalar-reference-config': {
-                features: {
-                  showModels: false,
-                  showDownload: false,
-                },
-              },
-            },
-            meta: {
-              'x-scalar-active-server': 'server-1',
-            },
-          },
-        ],
         meta: {
           'x-scalar-active-document': 'default',
-          'x-scalar-dark-mode': true,
+          'x-scalar-color-mode': 'dark',
           'x-scalar-default-client': 'c/libcurl',
           'x-scalar-theme': 'saturn',
         },
       })
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: {
+            title: 'My API',
+            version: '1.0.0',
+          },
+        },
+        meta: {
+          'x-scalar-selected-server': 'server-1',
+        },
+      })
 
-      store.addDocumentSync({
+      await store.addDocument({
         name: 'pet-store',
         document: {
           openapi: '3.0.0',
@@ -899,66 +3249,8 @@ describe('create-workspace-store', () => {
         },
       })
 
-      expect(store.exportWorkspace()).toBe(
-        JSON.stringify({
-          documents: {
-            default: {
-              openapi: '3.1.1',
-              info: { title: 'My API', version: '1.0.0' },
-              'x-scalar-navigation': [],
-              'x-scalar-active-server': 'server-1',
-            },
-            'pet-store': {
-              openapi: '3.1.1',
-              info: { title: 'Pet Store API', version: '1.0.0' },
-              paths: { '/users': { get: { description: 'Get all users' } } },
-              'x-scalar-navigation': [
-                {
-                  id: '',
-                  title: '/users',
-                  path: '/users',
-                  method: 'get',
-                  ref: '#/paths/~1users/get',
-                  type: 'operation',
-                },
-              ],
-            },
-          },
-          meta: {
-            'x-scalar-active-document': 'default',
-            'x-scalar-dark-mode': true,
-            'x-scalar-default-client': 'c/libcurl',
-            'x-scalar-theme': 'saturn',
-          },
-          documentConfigs: {
-            default: { 'x-scalar-reference-config': { 'features': { 'showModels': false, 'showDownload': false } } },
-            'pet-store': {},
-          },
-          originalDocuments: {
-            default: {
-              openapi: '3.1.1',
-              info: { title: 'My API', version: '1.0.0' },
-              'x-scalar-active-server': 'server-1',
-            },
-            'pet-store': {
-              openapi: '3.1.1',
-              info: { title: 'Pet Store API', version: '1.0.0' },
-              paths: { '/users': { get: { description: 'Get all users' } } },
-            },
-          },
-          intermediateDocuments: {
-            default: {
-              openapi: '3.1.1',
-              info: { title: 'My API', version: '1.0.0' },
-              'x-scalar-active-server': 'server-1',
-            },
-            'pet-store': {
-              openapi: '3.1.1',
-              info: { title: 'Pet Store API', version: '1.0.0' },
-              'paths': { '/users': { 'get': { 'description': 'Get all users' } } },
-            },
-          },
-        }),
+      expect(JSON.stringify(store.exportWorkspace())).toEqual(
+        '{"documents":{"default":{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"x-scalar-selected-server":"server-1","x-original-oas-version":"3.0.0","x-scalar-original-document-hash":"aafc5f6a5f638791","x-ext-urls":{},"x-scalar-order":["default/description/introduction"],"x-scalar-navigation":{"id":"default","type":"document","title":"My API","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"}]}},"pet-store":{"openapi":"3.1.1","info":{"title":"Pet Store API","version":"1.0.0"},"paths":{"/users":{"get":{"description":"Get all users"}}},"x-original-oas-version":"3.0.0","x-scalar-original-document-hash":"d3cdd82b486c3cb0","x-ext-urls":{},"x-scalar-order":["pet-store/description/introduction","pet-store/GET/users"],"x-scalar-navigation":{"id":"pet-store","type":"document","title":"Pet Store API","name":"pet-store","children":[{"id":"pet-store/description/introduction","title":"Introduction","type":"text"},{"id":"pet-store/GET/users","title":"/users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false}]}}},"meta":{"x-scalar-active-document":"default","x-scalar-color-mode":"dark","x-scalar-default-client":"c/libcurl","x-scalar-theme":"saturn"},"originalDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"}},"pet-store":{"openapi":"3.0.0","info":{"title":"Pet Store API","version":"1.0.0"},"paths":{"/users":{"get":{"description":"Get all users"}}}}},"intermediateDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"}},"pet-store":{"openapi":"3.0.0","info":{"title":"Pet Store API","version":"1.0.0"},"paths":{"/users":{"get":{"description":"Get all users"}}}}},"overrides":{"default":{},"pet-store":{}},"history":{},"auth":{}}',
       )
     })
   })
@@ -968,20 +3260,31 @@ describe('create-workspace-store', () => {
       const store = createWorkspaceStore()
 
       // Load the workspace form a json document
-      store.loadWorkspace(
-        JSON.stringify({
-          documents: {
-            default: {
-              openapi: '3.1.1',
-              info: { title: 'My API', version: '1.0.0' },
-              'x-scalar-navigation': [],
-              'x-scalar-active-server': 'server-1',
+      store.loadWorkspace({
+        documents: {
+          default: {
+            openapi: '3.1.1',
+            info: { title: 'My API', version: '1.0.0' },
+            'x-scalar-navigation': {
+              type: 'document',
+              id: 'default',
+              name: 'default',
+              title: 'My API',
+              children: [],
             },
-            'pet-store': {
-              openapi: '3.1.1',
-              info: { title: 'Pet Store API', version: '1.0.0' },
-              paths: { '/users': { get: { description: 'Get all users' } } },
-              'x-scalar-navigation': [
+            'x-scalar-selected-server': 'server-1',
+            'x-scalar-original-document-hash': '',
+          },
+          'pet-store': {
+            openapi: '3.1.1',
+            info: { title: 'Pet Store API', version: '1.0.0' },
+            paths: { '/users': { get: { description: 'Get all users' } } },
+            'x-scalar-navigation': {
+              type: 'document',
+              id: 'pet-store',
+              name: 'pet-store',
+              title: 'Pet Store API',
+              children: [
                 {
                   id: '',
                   title: '/users',
@@ -992,93 +3295,419 @@ describe('create-workspace-store', () => {
                 },
               ],
             },
+            'x-scalar-original-document-hash': '',
           },
-          meta: {
-            'x-scalar-active-document': 'default',
-            'x-scalar-dark-mode': true,
-            'x-scalar-default-client': 'c/libcurl',
-            'x-scalar-theme': 'saturn',
+        },
+        meta: {
+          'x-scalar-active-document': 'default',
+          'x-scalar-color-mode': 'dark',
+          'x-scalar-default-client': 'c/libcurl',
+          'x-scalar-theme': 'saturn',
+        },
+        originalDocuments: {
+          default: {
+            openapi: '3.1.1',
+            info: { title: 'My API', version: '1.0.0' },
+            'x-scalar-selected-server': 'server-1',
           },
-          documentConfigs: {
-            default: { 'x-scalar-reference-config': { 'features': { 'showModels': false, 'showDownload': false } } },
-            'pet-store': {},
+          'pet-store': {
+            openapi: '3.1.1',
+            info: { title: 'Pet Store API', version: '1.0.0' },
+            paths: { '/users': { get: { description: 'Get all users' } } },
           },
-          originalDocuments: {
-            default: {
-              openapi: '3.1.1',
-              info: { title: 'My API', version: '1.0.0' },
-              'x-scalar-active-server': 'server-1',
-            },
-            'pet-store': {
-              openapi: '3.1.1',
-              info: { title: 'Pet Store API', version: '1.0.0' },
-              paths: { '/users': { get: { description: 'Get all users' } } },
-            },
+        },
+        intermediateDocuments: {
+          default: {
+            openapi: '3.1.1',
+            info: { title: 'My API', version: '1.0.0' },
+            'x-scalar-selected-server': 'server-1',
           },
-          intermediateDocuments: {
-            default: {
-              openapi: '3.1.1',
-              info: { title: 'My API', version: '1.0.0' },
-              'x-scalar-active-server': 'server-1',
-            },
-            'pet-store': {
-              openapi: '3.1.1',
-              info: { title: 'Pet Store API', version: '1.0.0' },
-              'paths': { '/users': { 'get': { 'description': 'Get all users' } } },
-            },
+          'pet-store': {
+            openapi: '3.1.1',
+            info: { title: 'Pet Store API', version: '1.0.0' },
+            'paths': { '/users': { 'get': { 'description': 'Get all users' } } },
           },
-        }),
-      )
+        },
+        overrides: {},
+        history: {},
+        auth: {},
+      })
 
       // Should have loaded the workspace correctly
       expect(store.workspace.activeDocument).toEqual({
         openapi: '3.1.1',
         info: { title: 'My API', version: '1.0.0' },
-        'x-scalar-navigation': [],
-        'x-scalar-active-server': 'server-1',
+        'x-scalar-navigation': {
+          type: 'document',
+          id: 'default',
+          name: 'default',
+          title: 'My API',
+          children: [],
+        },
+        'x-scalar-selected-server': 'server-1',
+        'x-scalar-original-document-hash': '',
       })
-
-      expect(store.config['x-scalar-reference-config'].features.showModels).toBe(false)
-      expect(store.config['x-scalar-reference-config'].features.showDownload).toBe(false)
 
       expect(store.workspace.documents).toEqual({
         default: {
           openapi: '3.1.1',
           info: { title: 'My API', version: '1.0.0' },
-          'x-scalar-navigation': [],
-          'x-scalar-active-server': 'server-1',
+          'x-scalar-navigation': {
+            type: 'document',
+            id: 'default',
+            name: 'default',
+            title: 'My API',
+            children: [],
+          },
+          'x-scalar-selected-server': 'server-1',
+          'x-scalar-original-document-hash': '',
         },
         'pet-store': {
           openapi: '3.1.1',
           info: { title: 'Pet Store API', version: '1.0.0' },
           paths: { '/users': { get: { description: 'Get all users' } } },
-          'x-scalar-navigation': [
-            {
-              id: '',
-              title: '/users',
-              path: '/users',
-              method: 'get',
-              ref: '#/paths/~1users/get',
-              type: 'operation',
-            },
-          ],
+          'x-scalar-navigation': {
+            type: 'document',
+            id: 'pet-store',
+            name: 'pet-store',
+            title: 'Pet Store API',
+            children: [
+              {
+                id: '',
+                title: '/users',
+                path: '/users',
+                method: 'get',
+                ref: '#/paths/~1users/get',
+                type: 'operation',
+              },
+            ],
+          },
+          'x-scalar-original-document-hash': '',
         },
       })
 
       expect(store.workspace['x-scalar-theme']).toBe('saturn')
-      expect(store.workspace['x-scalar-dark-mode']).toBe(true)
+      expect(store.workspace['x-scalar-color-mode']).toBe('dark')
       expect(store.workspace['x-scalar-active-document']).toBe('default')
       expect(store.workspace['x-scalar-default-client']).toBe('c/libcurl')
     })
   })
 
+  describe('override documents', () => {
+    it('override documents with new content', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: { title: 'My API', version: '1.0.0' },
+        },
+        overrides: {
+          openapi: '3.1.1',
+          info: { title: 'My Updated API', version: '2.0.0' },
+        },
+      })
+
+      expect(getOpenApiDocument(store, 'default')?.info?.title).toBe('My Updated API')
+      expect(getOpenApiDocument(store, 'default')?.info?.version).toBe('2.0.0')
+      expect(getOpenApiDocument(store, 'default')?.openapi).toBe('3.1.1')
+    })
+
+    it('edit the override values', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: { title: 'My API', version: '1.0.0' },
+        },
+        overrides: {
+          openapi: '3.1.1',
+          info: { title: 'My Updated API', version: '2.0.0' },
+        },
+      })
+
+      const defaultDocument = getOpenApiDocument(store, 'default')
+
+      if (!defaultDocument) {
+        throw new Error('Default document not found')
+      }
+
+      defaultDocument.info.title = 'Edited title'
+
+      expect(defaultDocument.info.title).toBe('Edited title')
+      expect(defaultDocument.info.version).toBe('2.0.0')
+      expect(defaultDocument.openapi).toBe('3.1.1')
+    })
+
+    it('does not write back the overrides to the intermediate object', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: { title: 'My API', version: '1.0.0' },
+        },
+        overrides: {
+          openapi: '3.1.1',
+          info: { title: 'My Updated API', version: '2.0.0' },
+        },
+      })
+
+      const defaultDocument = getOpenApiDocument(store, 'default')
+
+      if (!defaultDocument) {
+        throw new Error('Default document not found')
+      }
+
+      defaultDocument.info.title = 'Edited title'
+
+      expect(defaultDocument.info.title).toBe('Edited title')
+      expect(defaultDocument.info.version).toBe('2.0.0')
+      expect(defaultDocument.openapi).toBe('3.1.1')
+
+      await store.saveDocument('default')
+      expect(store.exportDocument('default', 'json', true)).toBe(
+        '{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"x-scalar-order":["default/description/introduction"]}',
+      )
+    })
+
+    it('should preserve overrides when exporting and reloading the workspace', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: { title: 'My API', version: '1.0.0' },
+        },
+        overrides: {
+          openapi: '3.1.1',
+          info: { title: 'My Updated API', version: '2.0.0' },
+        },
+      })
+
+      const defaultDocument = getOpenApiDocument(store, 'default')
+
+      if (!defaultDocument) {
+        throw new Error('Default document not found')
+      }
+
+      defaultDocument.info.title = 'Edited title'
+
+      expect(defaultDocument.info.title).toBe('Edited title')
+      expect(defaultDocument.info.version).toBe('2.0.0')
+      expect(defaultDocument.openapi).toBe('3.1.1')
+
+      await store.saveDocument('default')
+      const exported = store.exportWorkspace()
+
+      // Create a new store and load the exported workspace
+      const newStore = createWorkspaceStore()
+      newStore.loadWorkspace(exported)
+
+      expect(newStore.workspace.documents['default']?.info.title).toBe('Edited title')
+      expect(newStore.workspace.documents['default']?.info.version).toBe('2.0.0')
+      expect(getOpenApiDocument(newStore, 'default')?.openapi).toBe('3.1.1')
+    })
+
+    it('revert should never change the overrides fields', async () => {
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: { title: 'My API', version: '1.0.0' },
+        },
+        overrides: {
+          openapi: '3.1.1',
+          info: { title: 'My Updated API', version: '2.0.0' },
+        },
+      })
+
+      const defaultDocument = getOpenApiDocument(store, 'default')
+
+      if (!defaultDocument) {
+        throw new Error('Default document not found')
+      }
+
+      defaultDocument.info.title = 'Edited title'
+
+      expect(defaultDocument.info.title).toBe('Edited title')
+      expect(defaultDocument.info.version).toBe('2.0.0')
+      expect(defaultDocument.openapi).toBe('3.1.1')
+
+      // Revert the changes
+      await store.revertDocumentChanges('default')
+
+      expect(defaultDocument.info.title).toBe('Edited title')
+      expect(defaultDocument.info.version).toBe('2.0.0')
+      expect(defaultDocument.openapi).toBe('3.1.1')
+    })
+
+    it('correctly reverts back the document while preserving external references', async () => {
+      server.get('/', () => ({
+        description: 'some description',
+      }))
+      server.get('/a', () => ({
+        description: 'updated',
+      }))
+      await server.listen({ port })
+
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.1.1',
+          paths: {
+            '/': {
+              get: {
+                requestBody: {
+                  $ref: url,
+                },
+              },
+            },
+          },
+        },
+      })
+
+      expect(JSON.stringify(store.exportWorkspace())).toBe(
+        '{"documents":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"#/x-ext/c9f3677"}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"a73f7f3432e7e83d","x-ext-urls":{"c9f3677":"http://localhost:9988"},"x-ext":{"c9f3677":{"description":"some description","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/","title":"/","path":"/","method":"get","ref":"#/paths/~1/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+      )
+
+      await store.replaceDocument('default', {
+        openapi: '3.1.1',
+        paths: {
+          '/': {
+            get: {
+              requestBody: {
+                $ref: `${url}/a`,
+              },
+            },
+          },
+        },
+      })
+      expect(JSON.stringify(store.exportWorkspace())).toBe(
+        '{"documents":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"#/x-ext/6831e08"}}}},"x-scalar-is-dirty":true,"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/","title":"/","path":"/","method":"get","ref":"#/paths/~1/get","type":"operation","isDeprecated":false}]},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"a73f7f3432e7e83d","x-ext-urls":{"6831e08":"http://localhost:9988/a"},"x-ext":{"6831e08":{"description":"updated","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/"]}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+      )
+
+      await store.revertDocumentChanges('default')
+
+      expect(JSON.stringify(store.exportWorkspace())).toBe(
+        '{"documents":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"#/x-ext/c9f3677"}}}},"x-original-oas-version":"3.1.1","x-scalar-original-document-hash":"a73f7f3432e7e83d","x-ext-urls":{"c9f3677":"http://localhost:9988"},"x-ext":{"c9f3677":{"description":"some description","content":{}}},"info":{"title":"","version":""},"x-scalar-order":["default/description/introduction","default/GET/"],"x-scalar-navigation":{"id":"default","type":"document","title":"Untitled Document","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/","title":"/","path":"/","method":"get","ref":"#/paths/~1/get","type":"operation","isDeprecated":false}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"intermediateDocuments":{"default":{"openapi":"3.1.1","paths":{"/":{"get":{"requestBody":{"$ref":"http://localhost:9988"}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+      )
+    })
+  })
+
+  describe('importWorkspaceFromSpecification', () => {
+    let server: FastifyInstance
+    const port = 9989
+    const url = `http://localhost:${port}`
+
+    beforeEach(() => {
+      server = fastify({ logger: false })
+
+      return async () => {
+        await server.close()
+      }
+    })
+
+    it('should create a workspace from a specification file', async () => {
+      server.get('/default', () => {
+        return getDocument()
+      })
+      await server.listen({ port })
+
+      const store = createWorkspaceStore()
+      await store.importWorkspaceFromSpecification({
+        info: {
+          title: 'Scalar Workspace',
+        },
+        workspace: 'draft',
+        documents: {
+          'default': {
+            $ref: `${url}/default`,
+          },
+        },
+      })
+
+      expect(JSON.stringify(store.exportWorkspace())).toEqual(
+        '{"documents":{"default":{"openapi":"3.1.1","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}},"x-original-oas-version":"3.0.0","x-scalar-original-document-hash":"de08f342f83a5fc3","x-scalar-original-source-url":"http://localhost:9989/default","x-ext-urls":{},"x-scalar-order":["default/description/introduction","default/GET/users","default/models"],"x-scalar-navigation":{"id":"default","type":"document","title":"My API","name":"default","children":[{"id":"default/description/introduction","title":"Introduction","type":"text"},{"id":"default/GET/users","title":"Get all users","path":"/users","method":"get","ref":"#/paths/~1users/get","type":"operation","isDeprecated":false},{"type":"models","id":"default/models","title":"Models","name":"Models","children":[{"id":"default/models/User","title":"User","name":"User","ref":"#/components/schemas/User","type":"model"}]}]}}},"meta":{},"originalDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}}}},"intermediateDocuments":{"default":{"openapi":"3.0.0","info":{"title":"My API","version":"1.0.0"},"components":{"schemas":{"User":{"type":"object","properties":{"id":{"type":"string","description":"The user ID"},"name":{"type":"string","description":"The user name"},"email":{"type":"string","format":"email","description":"The user email"}}}}},"paths":{"/users":{"get":{"summary":"Get all users","responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/User"}}}}}}}}}}},"overrides":{"default":{}},"history":{},"auth":{}}',
+      )
+    })
+
+    it('should add the overrides to the workspace when we import from the specifications', async () => {
+      server.get('/default', () => {
+        return getDocument()
+      })
+      await server.listen({ port })
+
+      const store = createWorkspaceStore()
+      await store.importWorkspaceFromSpecification({
+        info: {
+          title: 'Scalar Workspace',
+        },
+        workspace: 'draft',
+        documents: {
+          'default': {
+            $ref: `${url}/default`,
+          },
+        },
+        overrides: {
+          default: {
+            openapi: '3.1.1',
+            info: { title: 'My Updated API', version: '2.0.0' },
+          },
+        },
+      })
+
+      expect(getOpenApiDocument(store, 'default')?.info.title).toBe('My Updated API')
+    })
+  })
+
+  it('loads a prefetched URL response and uses the configured transport for relative references', async () => {
+    const url = 'https://example.com/api/document'
+    const document = {
+      openapi: '3.1.0',
+      info: { title: 'Prefetched API', version: '1.0.0' },
+      components: { schemas: { Pet: { $ref: './pet.json' } } },
+    }
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ type: 'object', properties: { name: { type: 'string' } } }),
+    )
+    const store = createWorkspaceStore({ fetch })
+
+    expect(await store.addDocument({ name: 'api', url, response: Response.json(document) })).toBe(true)
+    expect(store.workspace.documents.api?.info.title).toBe('Prefetched API')
+    expect(store.workspace.documents.api?.['x-scalar-original-source-url']).toBe(url)
+    expect(fetch.mock.calls.map(([input]) => input)).toStrictEqual(['https://example.com/api/pet.json'])
+    expect(getResolvedRef(getOpenApiDocument(store, 'api')?.components?.schemas?.Pet)).toStrictEqual({
+      type: 'object',
+      properties: { name: { type: 'string' } },
+    })
+  })
+
+  it('rejects a failed prefetched response without downloading it again', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    const store = createWorkspaceStore({ fetch })
+
+    expect(
+      await store.addDocument({
+        name: 'api',
+        url: 'https://example.com/document',
+        response: new Response(null, { status: 503 }),
+      }),
+    ).toBe(false)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   describe('addDocument error handling', () => {
     beforeEach(() => {
       resetConsoleSpies()
-    })
 
-    afterEach(() => {
-      resetConsoleSpies()
+      return () => {
+        resetConsoleSpies()
+      }
     })
 
     it('logs specific error when resolve.ok is false', async () => {
@@ -1125,7 +3754,7 @@ describe('create-workspace-store', () => {
     it('allows relative urls', async () => {
       const store = createWorkspaceStore()
 
-      // We dont' care about the response, we just want to make sure the fetch is called
+      // We don not care about the response, we just want to make sure the fetch is called
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
       })
@@ -1137,6 +3766,41 @@ describe('create-workspace-store', () => {
       })
 
       expect(mockFetch).toHaveBeenCalledWith('examples/openapi.json', { headers: undefined })
+    })
+
+    it('resolves external refs of a relative url against the page', async () => {
+      vi.stubGlobal('window', { location: { href: 'https://example.com/docs/' } })
+
+      const store = createWorkspaceStore()
+
+      const responses: Record<string, unknown> = {
+        'examples/openapi.json': {
+          openapi: '3.1.0',
+          info: { title: 'Relative API', version: '1.0.0' },
+          components: { schemas: { Item: { $ref: 'schemas/item.json' } } },
+        },
+        'https://example.com/docs/examples/schemas/item.json': { type: 'object' },
+      }
+      const mockFetch = vi
+        .fn()
+        .mockImplementation((input: string) =>
+          Promise.resolve({ ok: true, text: () => Promise.resolve(JSON.stringify(responses[input])) }),
+        )
+
+      await store.addDocument({
+        name: 'relative-doc',
+        url: 'examples/openapi.json',
+        fetch: mockFetch,
+      })
+
+      vi.unstubAllGlobals()
+
+      expect(mockFetch).toHaveBeenCalledWith('https://example.com/docs/examples/schemas/item.json', {
+        headers: undefined,
+      })
+      expect(getOpenApiDocument(store, 'relative-doc')?.components?.schemas?.Item).toMatchObject({
+        '$ref-value': { type: 'object' },
+      })
     })
 
     it('logs different errors for different failure conditions', async () => {
@@ -1177,6 +3841,1557 @@ describe('create-workspace-store', () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "Failed to load document 'null-data-doc': response data is not a valid object",
       )
+    })
+  })
+
+  describe('replaceDocument', () => {
+    it('should replace the document with the new provided document', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: {
+            title: 'My API',
+            version: '1.0.0',
+          },
+          paths: {
+            '/users': {
+              get: {
+                summary: 'Get all users',
+                responses: {
+                  '200': {
+                    description: 'Successful response',
+                    content: {
+                      'application/json': {
+                        schema: {
+                          type: 'array',
+                          items: {
+                            $ref: '#/components/schemas/User',
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          components: {
+            schemas: {
+              User: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'The user ID' },
+                  name: { type: 'string', description: 'The user name' },
+                  email: { type: 'string', format: 'email', description: 'The user email' },
+                },
+              },
+            },
+          },
+        },
+      })
+
+      expect(getOpenApiDocument(store, 'default')).toEqual({
+        'openapi': '3.1.1',
+        'info': { 'title': 'My API', 'version': '1.0.0' },
+        'paths': {
+          '/users': {
+            'get': {
+              'summary': 'Get all users',
+              'responses': {
+                '200': {
+                  'description': 'Successful response',
+                  'content': {
+                    'application/json': {
+                      'schema': {
+                        'type': 'array',
+                        'items': {
+                          '$ref': '#/components/schemas/User',
+                          '$ref-value': {
+                            'type': 'object',
+                            'properties': {
+                              'id': { 'type': 'string', 'description': 'The user ID' },
+                              'name': { 'type': 'string', 'description': 'The user name' },
+                              'email': { 'type': 'string', 'format': 'email', 'description': 'The user email' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        'components': {
+          'schemas': {
+            'User': {
+              'type': 'object',
+              'properties': {
+                'id': { 'type': 'string', 'description': 'The user ID' },
+                'name': { 'type': 'string', 'description': 'The user name' },
+                'email': { 'type': 'string', 'format': 'email', 'description': 'The user email' },
+              },
+            },
+          },
+        },
+        'x-original-oas-version': '3.0.0',
+        'x-ext-urls': {},
+        'x-scalar-order': ['default/description/introduction', 'default/GET/users', 'default/models'],
+        'x-scalar-navigation': {
+          type: 'document',
+          id: 'default',
+          name: 'default',
+          title: 'My API',
+          children: [
+            {
+              id: 'default/description/introduction',
+              title: 'Introduction',
+              type: 'text',
+            },
+            {
+              'id': 'default/GET/users',
+              'title': 'Get all users',
+              'isDeprecated': false,
+              'path': '/users',
+              'method': 'get',
+              'ref': '#/paths/~1users/get',
+              'type': 'operation',
+            },
+            {
+              'id': 'default/models',
+              'name': 'Models',
+              'title': 'Models',
+              'children': [
+                {
+                  'id': 'default/models/User',
+                  'title': 'User',
+                  'name': 'User',
+                  'ref': '#/components/schemas/User',
+                  'type': 'model',
+                },
+              ],
+              'type': 'models',
+            },
+          ],
+        },
+        'x-scalar-original-document-hash': '90501ef12d98581a',
+      })
+
+      await store.replaceDocument('default', {
+        openapi: '3.0.0',
+        info: {
+          title: 'Updated API',
+          version: '1.0.0',
+        },
+        paths: {
+          '/users-v2': {
+            get: {
+              summary: 'Get all users',
+              responses: {
+                '200': {
+                  description: 'This is an updated description',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        type: 'array',
+                        items: {
+                          $ref: '#/components/schemas/User',
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        components: {
+          schemas: {
+            User: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Updated user id schema description' },
+                name: { type: 'string', description: 'The user name' },
+                email: { type: 'string', format: 'email', description: 'The user email' },
+              },
+            },
+          },
+        },
+      })
+
+      // Should still preserve the generated navigation and upgrade the document to the latest when we try to replace it
+      expect(getOpenApiDocument(store, 'default')).toEqual({
+        components: {
+          schemas: {
+            User: {
+              properties: {
+                email: {
+                  description: 'The user email',
+                  format: 'email',
+                  type: 'string',
+                },
+                id: {
+                  description: 'Updated user id schema description',
+                  type: 'string',
+                },
+                name: {
+                  description: 'The user name',
+                  type: 'string',
+                },
+              },
+              type: 'object',
+            },
+          },
+        },
+        info: {
+          title: 'Updated API',
+          version: '1.0.0',
+        },
+        openapi: '3.1.1',
+        paths: {
+          '/users-v2': {
+            get: {
+              responses: {
+                '200': {
+                  content: {
+                    'application/json': {
+                      schema: {
+                        items: {
+                          '$ref': '#/components/schemas/User',
+                          '$ref-value': {
+                            properties: {
+                              email: {
+                                description: 'The user email',
+                                format: 'email',
+                                type: 'string',
+                              },
+                              id: {
+                                description: 'Updated user id schema description',
+                                type: 'string',
+                              },
+                              name: {
+                                description: 'The user name',
+                                type: 'string',
+                              },
+                            },
+                            type: 'object',
+                          },
+                        },
+                        type: 'array',
+                      },
+                    },
+                  },
+                  description: 'This is an updated description',
+                },
+              },
+              summary: 'Get all users',
+            },
+          },
+        },
+        'x-ext-urls': {},
+        'x-original-oas-version': '3.0.0',
+        'x-scalar-order': ['default/description/introduction', 'default/GET/users-v2', 'default/models'],
+        'x-scalar-navigation': {
+          type: 'document',
+          id: 'default',
+          name: 'default',
+          title: 'Updated API',
+          children: [
+            {
+              id: 'default/description/introduction',
+              title: 'Introduction',
+              type: 'text',
+            },
+            {
+              id: 'default/GET/users-v2',
+              method: 'get',
+              path: '/users-v2',
+              isDeprecated: false,
+              ref: '#/paths/~1users-v2/get',
+              title: 'Get all users',
+              type: 'operation',
+            },
+            {
+              children: [
+                {
+                  'id': 'default/models/User',
+                  name: 'User',
+                  ref: '#/components/schemas/User',
+                  title: 'User',
+                  type: 'model',
+                },
+              ],
+              id: 'default/models',
+              title: 'Models',
+              name: 'Models',
+              type: 'models',
+            },
+          ],
+        },
+        'x-scalar-original-document-hash': '90501ef12d98581a',
+        'x-scalar-is-dirty': true,
+      })
+    })
+
+    it('should log a warning if the document does not exist', () => {
+      const store = createWorkspaceStore()
+
+      // Spy on console.warn
+      void store.replaceDocument('non-existing', {
+        openapi: '3.0.0',
+        info: {
+          title: 'My API',
+          version: '1.0.0',
+        },
+      })
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Document 'non-existing' does not exist in the workspace.")
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('persists registry meta as plain data after replace (regression: DataCloneError)', async () => {
+      // The persistence plugin forwards `event.value` straight into
+      // IndexedDB, which uses structured cloning. Forwarding the proxied
+      // workspace document back into `addInMemoryDocument` used to leak
+      // a magic proxy onto `x-scalar-registry-meta`, throwing
+      // `DataCloneError` when the change event was persisted.
+      const { store, cloneErrors, persistedDocumentEvents } = createPersistedStoreSpy()
+
+      await store.addDocument({
+        name: 'default',
+        document: getDocument(),
+        meta: { 'x-scalar-registry-meta': { ...REGISTRY_META } },
+      })
+
+      cloneErrors.length = 0
+      persistedDocumentEvents.length = 0
+
+      await store.replaceDocument('default', {
+        openapi: '3.1.1',
+        info: { title: 'Replaced API', version: '2.0.0' },
+        paths: {},
+      })
+
+      expect(cloneErrors).toEqual([])
+      expect(persistedDocumentEvents.at(-1)?.['x-scalar-registry-meta']).toEqual(REGISTRY_META)
+    })
+  })
+
+  describe('rebaseDocument', () => {
+    // Rebase used to merge against the intermediate snapshot that
+    // `saveDocument` wrote into. With the intermediate layer deprecated,
+    // rebase now compares the original (last saved baseline) against the
+    // active in-memory document - so these tests deliberately leave the
+    // local edit unsaved to keep a meaningful local diff for the merge.
+    it('should correctly return all conflicts when we try to rebase with a new origin', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: documentName,
+        document: getDocument(),
+      })
+
+      store.workspace.activeDocument!.info.title = 'new title'
+
+      const result = await store.rebaseDocument({
+        document: {
+          ...getDocument(),
+          info: { title: 'A new title which should conflict', version: '1.0.0' },
+        },
+        name: documentName,
+      })
+
+      assert(result.ok)
+
+      expect(result.conflicts).toEqual([
+        [
+          [
+            {
+              changes: 'A new title which should conflict',
+              path: ['info', 'title'],
+              type: 'update',
+            },
+          ],
+          [
+            {
+              changes: 'new title',
+              path: ['info', 'title'],
+              type: 'update',
+            },
+          ],
+        ],
+      ])
+    })
+
+    it('should apply the changes when there are conflicts but we have a resolved conflicts array provided', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: documentName,
+        document: getDocument(),
+      })
+
+      store.workspace.activeDocument!.info.title = 'new title'
+
+      const newDocument = {
+        ...getDocument(),
+        info: { title: 'A new title which should conflict', version: '1.0.0' },
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: newDocument })
+
+      assert(result.ok)
+
+      expect(result.conflicts).toEqual([
+        [
+          [
+            {
+              changes: 'A new title which should conflict',
+              path: ['info', 'title'],
+              type: 'update',
+            },
+          ],
+          [
+            {
+              changes: 'new title',
+              path: ['info', 'title'],
+              type: 'update',
+            },
+          ],
+        ],
+      ])
+
+      // Apply the resolved changes (we choose the incoming changes in this case)
+      await result.applyChanges({ resolvedConflicts: result.conflicts.flatMap((it) => it[0]) })
+
+      // After the merge, the active document and the saved baseline both
+      // reflect the resolved title.
+      expect(store.workspace.activeDocument?.info.title).toEqual('A new title which should conflict')
+      expect((store.getOriginalDocument(documentName) as { info?: { title?: string } } | null)?.info?.title).toBe(
+        'A new title which should conflict',
+      )
+    })
+
+    it('applies the whole document when user passes resolvedDocument instead of resolvedConflicts', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: documentName,
+        document: getDocument(),
+      })
+
+      store.workspace.activeDocument!.info.title = 'local title'
+
+      const newDocumentFromSource = {
+        ...getDocument(),
+        info: { title: 'Remote title', version: '1.0.0' },
+      }
+
+      const result = await store.rebaseDocument({
+        name: documentName,
+        document: newDocumentFromSource,
+      })
+
+      assert(result.ok)
+      expect(result.conflicts.length).toBeGreaterThan(0)
+
+      const userResolvedDocument = {
+        ...getDocument(),
+        info: { title: 'User-provided full document', version: '2.0.0' },
+      }
+
+      await result.applyChanges({ resolvedDocument: userResolvedDocument })
+
+      // The merged result becomes both the active document and the new
+      // saved baseline (replacing what `getOriginalDocument` returns).
+      const original = store.getOriginalDocument(documentName) as {
+        info?: { title?: string; version?: string }
+      } | null
+      expect(original?.info?.title).toBe('User-provided full document')
+      expect(original?.info?.version).toBe('2.0.0')
+      expect(store.workspace.activeDocument?.info.title).toBe('User-provided full document')
+      expect(store.workspace.activeDocument?.info.version).toBe('2.0.0')
+    })
+
+    it('should override conflicting changes made to the active document while we are rebasing with a new origin', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: documentName,
+        document: getDocument(),
+      })
+
+      // Local edits land on the active document without being saved -
+      // rebase now reasons over the original→active diff directly.
+      store.workspace.activeDocument!.info.title = 'new title'
+      store.workspace.activeDocument!.info.version = '2.0'
+
+      const newDocument = {
+        ...getDocument(),
+        info: { title: 'A new title which should conflict', version: '1.0.1' },
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: newDocument })
+
+      assert(result.ok)
+
+      // Apply the resolved changes (we choose the incoming changes in this
+      // case so the upstream version overrides the local edit).
+      await result.applyChanges({ resolvedConflicts: result.conflicts.flatMap((it) => it[0]) })
+
+      // The active document reflects the upstream resolution.
+      expect(store.workspace.activeDocument?.info.version).toBe('1.0.1')
+      expect(store.workspace.activeDocument?.info.title).toBe('A new title which should conflict')
+    })
+
+    it('should return the error if the document we try to rebase does not exists', async () => {
+      const store = createWorkspaceStore()
+      const result = await store.rebaseDocument({
+        name: 'some-document',
+        document: {
+          openapi: '3.1.1',
+          info: { title: 'API', description: 'My beautiful API' },
+        },
+      })
+
+      expect(result.ok).toBe(false)
+      assert(result.ok === false)
+      expect(result.type).toBe('CORRUPTED_STATE')
+      expect(result.message).toBe("Cannot rebase document 'some-document': missing original or active document state")
+    })
+
+    it('should load new origin from a url', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        name: 'default',
+        document: {
+          ...getDocument(),
+          info: {
+            title: 'Some API',
+            version: '1.0.0',
+          },
+        },
+      })
+
+      expect(store.workspace.documents.default?.info.title).toBe('Some API')
+
+      const fetchDocument = vi.fn().mockResolvedValue(new Response(JSON.stringify(getDocument())))
+
+      const result = await store.rebaseDocument({
+        name: 'default',
+        url: 'https://api.example.com',
+        fetch: fetchDocument,
+      })
+
+      assert(result.ok)
+
+      await result.applyChanges({ resolvedConflicts: [] }) // No conflicts to apply
+
+      expect(fetchDocument).toHaveBeenCalledTimes(1)
+      expect(store.workspace.documents.default?.info.title).toBe('My API')
+    })
+
+    it('should rebuild the sidebar when we rebase the document', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        name: 'default',
+        document: getDocument(),
+      })
+
+      expect(getActiveOpenApiDocument(store)?.['x-scalar-navigation']).toEqual({
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'My API',
+        icon: undefined,
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            'id': 'default/GET/users',
+            'isDeprecated': false,
+            'method': 'get',
+            'path': '/users',
+            'ref': '#/paths/~1users/get',
+            'title': 'Get all users',
+            'type': 'operation',
+            'children': undefined,
+          },
+          {
+            'children': [
+              {
+                'id': 'default/models/User',
+                'name': 'User',
+                'ref': '#/components/schemas/User',
+                'title': 'User',
+                'type': 'model',
+              },
+            ],
+            'id': 'default/models',
+            'title': 'Models',
+            'name': 'Models',
+            'type': 'models',
+          },
+        ],
+      })
+
+      const result = await store.rebaseDocument({
+        name: 'default',
+        document: {
+          openapi: '3.0.0',
+          info: {
+            title: 'My API',
+            version: '1.0.0',
+          },
+          paths: {
+            '/pets': {
+              get: {
+                summary: 'Get all pets',
+                responses: {
+                  '200': {
+                    description: 'Successful response',
+                  },
+                },
+              },
+            },
+          },
+        },
+      })
+
+      assert(result.ok)
+      await result.applyChanges({ resolvedConflicts: [] }) // No conflicts to apply
+
+      expect(getActiveOpenApiDocument(store)?.['x-scalar-navigation']).toEqual({
+        type: 'document',
+        id: 'default',
+        name: 'default',
+        title: 'My API',
+        icon: undefined,
+        children: [
+          {
+            id: 'default/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            'id': 'default/GET/pets',
+            'isDeprecated': false,
+            'method': 'get',
+            'path': '/pets',
+            'ref': '#/paths/~1pets/get',
+            'title': 'Get all pets',
+            'type': 'operation',
+            'children': undefined,
+          },
+        ],
+      })
+    })
+
+    it('leaves the document clean after a fast-forward rebase with no local edits', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: documentName, document: getDocument() })
+      await store.saveDocument(documentName)
+
+      const upstream = {
+        ...getDocument(),
+        info: { title: 'Remote title', version: '1.0.0' },
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: upstream })
+      assert(result.ok)
+      await result.applyChanges({ resolvedConflicts: [] })
+
+      // A pure fast-forward - the rebased document matches upstream
+      // exactly - must not flag the workspace as dirty, otherwise the
+      // push button would light up after every clean pull.
+      expect(store.workspace.activeDocument?.['x-scalar-is-dirty']).toBe(false)
+    })
+
+    it('marks the document dirty when the rebase folds local edits on top of upstream', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: documentName, document: getDocument() })
+      await store.saveDocument(documentName)
+
+      // Local edit on a field upstream does not touch - no conflict,
+      // but the merged result carries changes the registry has not seen.
+      store.workspace.activeDocument!.info.title = 'locally edited title'
+
+      const upstream = {
+        ...getDocument(),
+        info: { ...getDocument().info, description: 'description added upstream' },
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: upstream })
+      assert(result.ok)
+      await result.applyChanges({ resolvedConflicts: [] })
+
+      // `git pull --rebase` leaves you "ahead of origin" after replaying
+      // local commits. We mirror that so the push flow can surface the
+      // unpushed local edits.
+      expect(store.workspace.activeDocument?.['x-scalar-is-dirty']).toBe(true)
+      expect(store.workspace.activeDocument?.info.title).toBe('locally edited title')
+      expect(store.workspace.activeDocument?.info.description).toBe('description added upstream')
+    })
+
+    it('marks the document dirty when a user-resolved document diverges from upstream', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: documentName, document: getDocument() })
+      await store.saveDocument(documentName)
+
+      store.workspace.activeDocument!.info.title = 'local title'
+
+      const upstream = {
+        ...getDocument(),
+        info: { title: 'Remote title', version: '1.0.0' },
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: upstream })
+      assert(result.ok)
+
+      const userResolvedDocument = {
+        ...getDocument(),
+        info: { title: 'User-provided full document', version: '2.0.0' },
+      }
+
+      await result.applyChanges({ resolvedDocument: userResolvedDocument })
+
+      expect(store.workspace.activeDocument?.['x-scalar-is-dirty']).toBe(true)
+    })
+
+    it('leaves the document clean when a user-resolved document matches upstream exactly', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: documentName, document: getDocument() })
+      await store.saveDocument(documentName)
+
+      store.workspace.activeDocument!.info.title = 'local title'
+
+      const upstream = {
+        ...getDocument(),
+        info: { title: 'Remote title', version: '1.0.0' },
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: upstream })
+      assert(result.ok)
+
+      // Resolving every conflict by taking upstream leaves no local
+      // divergence, so the push button must stay disabled.
+      await result.applyChanges({ resolvedDocument: upstream })
+
+      expect(store.workspace.activeDocument?.['x-scalar-is-dirty']).toBe(false)
+    })
+
+    it('preserves document-level UI settings and user servers across a rebase', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: documentName, document: getDocument() })
+
+      const active = getActiveOpenApiDocument(store)!
+      active['x-scalar-watch-mode'] = true
+      active['x-scalar-selected-server'] = 'my-server-uid'
+      active['x-scalar-environments'] = { staging: { color: '#FFFFFF', variables: [] } }
+      // A custom sidebar order, expressed with the real navigation entry IDs.
+      // Reverse the default order so the rebase has something non-trivial to
+      // restore — without the preservation it resets to the default order.
+      const customOrder = [...(active['x-scalar-order'] ?? [])].reverse()
+      active['x-scalar-order'] = customOrder
+      // Servers configured by the user — the upstream document defines none
+      active.servers = [{ url: 'http://localhost:1234' }]
+
+      // Bake the settings into the saved baseline. This is what makes the test
+      // meaningful: as unsaved local edits they would survive the rebase merge
+      // on their own, so the regression would not be caught. Once they are part
+      // of the baseline, the incoming upstream diff carries a deletion for each
+      // (upstream has none), and only the explicit preservation keeps them.
+      await store.saveDocument(documentName)
+
+      const upstream = {
+        ...getDocument(),
+        info: { title: 'Updated upstream', version: '1.0.0' },
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: upstream })
+      assert(result.ok)
+      await result.applyChanges({ resolvedConflicts: [] })
+
+      const doc = getOpenApiDocument(store, documentName)!
+      expect(doc.info?.title).toBe('Updated upstream')
+      expect(doc['x-scalar-watch-mode']).toBe(true)
+      expect(doc['x-scalar-selected-server']).toBe('my-server-uid')
+      expect(doc['x-scalar-environments']).toEqual({ staging: { color: '#FFFFFF', variables: [] } })
+      expect(doc['x-scalar-order']).toEqual(customOrder)
+      expect(doc.servers).toEqual([{ url: 'http://localhost:1234' }])
+    })
+
+    it('keeps upstream servers authoritative when the upstream document defines them', async () => {
+      const documentName = 'default'
+      const store = createWorkspaceStore()
+      await store.addDocument({ name: documentName, document: getDocument() })
+
+      const active = getActiveOpenApiDocument(store)!
+      // A user server baked into the baseline
+      active.servers = [{ url: 'http://localhost:1234' }]
+      await store.saveDocument(documentName)
+
+      // Upstream now ships its own servers — those must win over the local ones.
+      const upstream = {
+        ...getDocument(),
+        info: { title: 'Updated upstream', version: '1.0.0' },
+        servers: [{ url: 'https://api.example.com' }],
+      }
+
+      const result = await store.rebaseDocument({ name: documentName, document: upstream })
+      assert(result.ok)
+      await result.applyChanges({ resolvedConflicts: [] })
+
+      const doc = getOpenApiDocument(store, documentName)!
+      expect(doc.servers).toEqual([{ url: 'https://api.example.com' }])
+    })
+  })
+
+  describe('navigation generation', () => {
+    it('should prefix navigation id correctly with the document name when providing custom slug function', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument(
+        {
+          name: 'document-1',
+          document: {
+            openapi: '3.0.0',
+            info: {
+              title: 'Document 1',
+              version: '1.0.0',
+            },
+            paths: {
+              '/users': {
+                get: {
+                  summary: 'Get all users',
+                  tags: ['users'],
+                },
+              },
+            },
+          },
+        },
+        {
+          generateOperationSlug: () => 'some-id',
+          generateTagSlug: () => 'some-tag-id',
+        },
+      )
+
+      expect(getActiveOpenApiDocument(store)?.['x-scalar-navigation']).toEqual({
+        type: 'document',
+        id: 'document-1',
+        name: 'document-1',
+        title: 'Document 1',
+        children: [
+          {
+            id: 'document-1/description/introduction',
+            title: 'Introduction',
+            type: 'text',
+          },
+          {
+            'children': [
+              {
+                'children': undefined,
+                'id': 'document-1/tag/some-tag-id/some-id',
+                'isDeprecated': false,
+                'method': 'get',
+                'path': '/users',
+                'ref': '#/paths/~1users/get',
+                'title': 'Get all users',
+                'type': 'operation',
+              },
+            ],
+            'description': undefined,
+            'id': 'document-1/tag/some-tag-id',
+            'isGroup': false,
+            'isWebhooks': false,
+            'name': 'users',
+            'title': 'users',
+            'type': 'tag',
+            'xKeys': {
+              'x-scalar-order': ['document-1/tag/some-tag-id/some-id'],
+            },
+          },
+        ],
+      })
+    })
+  })
+
+  describe('asyncapi documents', () => {
+    it('retains boolean schemas during ingestion', async () => {
+      const store = createWorkspaceStore()
+      const schema = { type: 'object', properties: { anything: true, nothing: false } }
+
+      await store.addDocument({
+        name: 'booleans',
+        document: {
+          asyncapi: '3.1.0',
+          info: { title: 'Boolean schemas', version: '1.0.0' },
+          channels: { events: { messages: { event: { payload: schema, headers: schema } } } },
+          components: { schemas: { Anything: true, Nothing: false, Object: schema } },
+        },
+      })
+
+      const document = store.workspace.documents['booleans']
+      assert(isAsyncApiDocument(document))
+      const message = getResolvedRef(getResolvedRef(document.channels?.events)?.messages?.event)
+      expect(getResolvedRef(message?.payload)).toStrictEqual(schema)
+      expect(getResolvedRef(message?.headers)).toStrictEqual(schema)
+      expect(getResolvedRef(document.components)?.schemas).toStrictEqual({
+        Anything: true,
+        Nothing: false,
+        Object: schema,
+      })
+    })
+
+    it('preserves the asyncapi discriminator and sets workspace metadata on ingestion', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        document: {
+          asyncapi: '3.0.0',
+          info: { title: 'Streetlights API', version: '1.0.0' },
+        },
+        name: 'streetlights',
+      })
+
+      const document = store.workspace.documents['streetlights']
+
+      // The OpenAPI coerce step would otherwise inject `openapi: ''`, breaking
+      // the type discriminator. Asserting both presence and absence guards
+      // against that regression.
+      expect(document).toMatchObject({
+        // The upgrader canonicalizes 3.0 documents to 3.1 (the original is kept below).
+        asyncapi: '3.1.0',
+        info: { title: 'Streetlights API', version: '1.0.0' },
+        'x-original-aas-version': '3.0.0',
+        'x-scalar-original-document-hash': expect.any(String),
+      })
+      expect(document?.['x-scalar-original-document-hash']).not.toBe('')
+      expect(document).not.toHaveProperty('openapi')
+      // AsyncAPI docs always carry an `x-scalar-navigation` tree so the sidebar can
+      // surface `info.description`. Without channels, tags, or a description, the only
+      // entry is the default Introduction.
+      expect(document?.['x-scalar-navigation']).toMatchObject({
+        id: 'streetlights',
+        name: 'streetlights',
+        title: 'Streetlights API',
+        type: 'document',
+        children: [{ type: 'text', title: 'Introduction' }],
+      })
+    })
+
+    it('preserves security scheme types referenced by a server during ingestion', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        document: {
+          asyncapi: '3.0.0',
+          info: { title: 'Secured API', version: '1.0.0' },
+          servers: {
+            production: {
+              host: 'example.com',
+              protocol: 'wss',
+              // Referencing the schemes from a server is what used to clobber them: the synthetic
+              // `$ref-value` default leaked back over the real definition through the magic proxy.
+              security: [
+                { $ref: '#/components/securitySchemes/bearerAuth' },
+                { $ref: '#/components/securitySchemes/apiKey' },
+                { $ref: '#/components/securitySchemes/oauth2' },
+              ],
+            },
+          },
+          components: {
+            securitySchemes: {
+              bearerAuth: { type: 'http', scheme: 'bearer' },
+              apiKey: { type: 'httpApiKey', name: 'X-Api-Key', in: 'header' },
+              oauth2: {
+                type: 'oauth2',
+                flows: { clientCredentials: { tokenUrl: 'https://example.com/token', availableScopes: {} } },
+              },
+            },
+          },
+        },
+        name: 'secured',
+      })
+
+      const document = store.workspace.documents['secured']
+      assert(isAsyncApiDocument(document))
+
+      const schemes = getResolvedRef(document.components)?.securitySchemes
+      expect(getResolvedRef(schemes?.bearerAuth)?.type).toBe('http')
+      expect(getResolvedRef(schemes?.apiKey)?.type).toBe('httpApiKey')
+      expect(getResolvedRef(schemes?.oauth2)?.type).toBe('oauth2')
+    })
+
+    it('upgrades the asyncapi version during ingestion and records the original', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        document: {
+          asyncapi: '2.6.0',
+          info: { title: 'Legacy API', version: '1.0.0' },
+        },
+        name: 'legacy',
+      })
+
+      const legacy = store.workspace.documents['legacy']
+      expect(isAsyncApiDocument(legacy)).toBe(true)
+      assert(isAsyncApiDocument(legacy))
+      // The AsyncAPI upgrader lifts the document to the latest 3.x shape the renderer expects.
+      expect(legacy.asyncapi).toBe('3.1.0')
+      // The original version is preserved for reference.
+      expect(legacy['x-original-aas-version']).toBe('2.6.0')
+    })
+
+    it('lifts 2.x channel operations into top-level operations so they render', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        document: {
+          asyncapi: '2.4.0',
+          info: { title: 'Cube Local API', version: 'dev' },
+          servers: { local: { url: 'localhost:1883', protocol: 'mqtt' } },
+          channels: {
+            'devices/{deviceID}/logs': {
+              parameters: { deviceID: { description: 'The ID of the device', schema: { type: 'string' } } },
+              subscribe: {
+                operationId: 'subscribeLogMessage',
+                message: { $ref: '#/components/messages/subscribeLogMessage' },
+              },
+            },
+          },
+          components: {
+            messages: {
+              subscribeLogMessage: { name: 'LogMessage', payload: { type: 'object' } },
+            },
+          },
+        },
+        name: 'cube',
+      })
+
+      const cube = store.workspace.documents['cube']
+      assert(isAsyncApiDocument(cube))
+
+      // 2.x `subscribe` is lifted to a top-level operation, and the server `url` becomes `host`.
+      expect(cube.operations?.['subscribeLogMessage']).toBeDefined()
+      expect(cube.servers?.['local']).toMatchObject({ host: 'localhost:1883', protocol: 'mqtt' })
+
+      // The channel now surfaces in the navigation tree instead of being dropped.
+      const channelTitles = JSON.stringify(cube['x-scalar-navigation'])
+      expect(channelTitles).toContain('devices/{deviceID}/logs')
+    })
+
+    it('bundles external channel references when the document is not preprocessed', async () => {
+      server.get('/channel', () => ({
+        address: 'user/signup',
+        messages: {
+          userSignedUp: {
+            payload: {
+              type: 'object',
+              properties: {
+                email: { type: 'string' },
+              },
+            },
+          },
+        },
+      }))
+      await server.listen({ port })
+
+      const store = createWorkspaceStore()
+      await store.addDocument({
+        name: 'events',
+        document: {
+          asyncapi: '3.0.0',
+          info: { title: 'Events API', version: '1.0.0' },
+          channels: {
+            'user/signedup': {
+              $ref: `${url}/channel`,
+            },
+          },
+        },
+      })
+
+      const document = store.workspace.documents['events']
+
+      assert(isAsyncApiDocument(document))
+      assert('x-ext-urls' in document && isObject(document['x-ext-urls']))
+      assert('x-ext' in document && isObject(document['x-ext']))
+
+      const extKey = Object.keys(document['x-ext-urls'] ?? {})[0]!
+      const channel = document.channels?.['user/signedup']
+
+      expect(channel && '$ref' in channel).toBe(true)
+      assert(channel && '$ref' in channel)
+
+      expect(channel?.['$ref']).toBe(`#/x-ext/${extKey}`)
+      expect(document['x-ext-urls']?.[extKey]).toBe(`${url}/channel`)
+      expect(document['x-ext']?.[extKey]).toMatchObject({
+        address: 'user/signup',
+        messages: {
+          userSignedUp: {
+            payload: {
+              type: 'object',
+              properties: {
+                email: { type: 'string' },
+              },
+            },
+          },
+        },
+      })
+      expect(store.workspace.documents['events']).not.toHaveProperty('openapi')
+    })
+
+    it('records the source url when the asyncapi document is loaded from a URL', async () => {
+      const customFetch: typeof fetch = async () => {
+        return await Promise.resolve(
+          new Response(JSON.stringify({ asyncapi: '3.0.0', info: { title: 'Remote', version: '1.0.0' } }), {
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
+      const store = createWorkspaceStore({ fetch: customFetch })
+
+      await store.addDocument({ url: 'https://example.com/asyncapi.json', name: 'remote' })
+
+      expect(store.workspace.documents['remote']).toMatchObject({
+        asyncapi: '3.1.0',
+        'x-scalar-original-source-url': 'https://example.com/asyncapi.json',
+      })
+    })
+
+    it('does coerces the values of the document and stores it on the original documents', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        document: {
+          'asyncapi': '3.0.0',
+          'info': {
+            'title': 'Simple Chat WebSocket API',
+            'version': '1.0.0',
+            'description': 'Basic AsyncAPI example for a chat service',
+          },
+          'servers': {
+            'production': {
+              'host': 'api.example.com',
+              'protocol': 'wss',
+              'description': 'Production WebSocket server',
+            },
+          },
+          'channels': {
+            'chat': {
+              'address': '/chat',
+              'messages': {
+                'sendMessage': {
+                  '$ref': '#/components/messages/SendMessage',
+                },
+                'receiveMessage': {
+                  '$ref': '#/components/messages/ReceiveMessage',
+                },
+              },
+            },
+          },
+          'operations': {
+            'sendChatMessage': {
+              'action': 'send',
+              'channel': {
+                '$ref': '#/channels/chat',
+              },
+              'messages': [
+                {
+                  '$ref': '#/channels/chat/messages/sendMessage',
+                },
+              ],
+            },
+            'receiveChatMessage': {
+              'action': 'receive',
+              'channel': {
+                '$ref': '#/channels/chat',
+              },
+              'messages': [
+                {
+                  '$ref': '#/channels/chat/messages/receiveMessage',
+                },
+              ],
+            },
+          },
+          'components': {
+            'messages': {
+              'SendMessage': {
+                'name': 'SendMessage',
+                'title': 'Send a chat message',
+                'payload': {
+                  'type': 'object',
+                  'properties': {
+                    'userId': {
+                      'type': 'string',
+                      'example': '123',
+                    },
+                    'message': {
+                      'type': 'string',
+                      'example': 'Hello world',
+                    },
+                    'timestamp': {
+                      'type': 'string',
+                      'format': 'date-time',
+                    },
+                  },
+                  'required': ['userId', 'message', 'timestamp'],
+                },
+              },
+              'ReceiveMessage': {
+                'name': 'ReceiveMessage',
+                'title': 'Receive a chat message',
+                'payload': {
+                  'type': 'object',
+                  'properties': {
+                    'id': {
+                      'type': 'string',
+                      'example': 'msg_001',
+                    },
+                    'userId': {
+                      'type': 'string',
+                      'example': '123',
+                    },
+                    'message': {
+                      'type': 'string',
+                      'example': 'Hello world',
+                    },
+                    'timestamp': {
+                      'type': 'string',
+                      'format': 'date-time',
+                    },
+                  },
+                  'required': ['id', 'userId', 'message', 'timestamp'],
+                },
+              },
+            },
+          },
+        },
+        name: 'chatapp',
+      })
+
+      const document = store.workspace.documents['chatapp']
+      assert(isAsyncApiDocument(document))
+
+      const navigation = document['x-scalar-navigation']
+      expect(navigation).toEqual({
+        'children': [
+          {
+            'id': 'chatapp/description/introduction',
+            'title': 'Introduction',
+            'type': 'text',
+          },
+          {
+            'channelAddress': '/chat',
+            'channelName': 'chat',
+            'children': [
+              {
+                'action': 'send',
+                'channelAddress': '/chat',
+                'channelName': 'chat',
+                'children': [
+                  {
+                    'channelName': 'chat',
+                    'id': 'chatapp/channel/chat/operation/sendchatmessage/message/sendmessage',
+                    'messageName': 'sendMessage',
+                    'title': 'Send a chat message',
+                    'type': 'asyncapi-message',
+                  },
+                ],
+                'id': 'chatapp/channel/chat/operation/sendchatmessage',
+                'operationName': 'sendChatMessage',
+                'title': 'sendChatMessage',
+                'type': 'asyncapi-operation',
+              },
+              {
+                'action': 'receive',
+                'channelAddress': '/chat',
+                'channelName': 'chat',
+                'children': [
+                  {
+                    'channelName': 'chat',
+                    'id': 'chatapp/channel/chat/operation/receivechatmessage/message/receivemessage',
+                    'messageName': 'receiveMessage',
+                    'title': 'Receive a chat message',
+                    'type': 'asyncapi-message',
+                  },
+                ],
+                'id': 'chatapp/channel/chat/operation/receivechatmessage',
+                'operationName': 'receiveChatMessage',
+                'title': 'receiveChatMessage',
+                'type': 'asyncapi-operation',
+              },
+            ],
+            'id': 'chatapp/channel/chat',
+            'title': '/chat',
+            'type': 'asyncapi-channel',
+          },
+        ],
+        'id': 'chatapp',
+        'name': 'chatapp',
+        'title': 'Simple Chat WebSocket API',
+        'type': 'document',
+      })
+    })
+  })
+
+  describe('registered document types', () => {
+    const arazzoDocument = () => ({
+      arazzo: '1.0.1',
+      info: { title: 'Pet adoption', version: '1.0.0' },
+      sourceDescriptions: [{ name: 'petstore', url: './petstore.json', type: 'openapi' }],
+      workflows: [{ workflowId: 'adopt', steps: [{ stepId: 'find', operationId: 'findPets' }] }],
+    })
+
+    const arazzo = (overrides: Partial<DocumentTypeDefinition> = {}): DocumentTypeDefinition => ({
+      type: 'arazzo',
+      detect: (document) => typeof document.arazzo === 'string',
+      traverse: ({ documentId, document }) =>
+        (document.workflows as { workflowId: string }[]).map((workflow) => ({
+          id: `${documentId}/workflow/${workflow.workflowId}`,
+          title: workflow.workflowId,
+          type: 'plugin',
+          documentType: 'arazzo',
+          kind: 'workflow',
+        })),
+      ...overrides,
+    })
+
+    it('stores a claimed document as-is, tagged with its document type', async () => {
+      const store = createWorkspaceStore({ documentTypes: [arazzo()] })
+
+      await store.addDocument({ name: 'adoption', document: arazzoDocument() })
+
+      const document = store.workspace.documents['adoption']
+      assert(isPluginDocument(document))
+      expect(document).toMatchObject({
+        ...arazzoDocument(),
+        'x-scalar-document-type': 'arazzo',
+        'x-scalar-original-document-hash': expect.any(String),
+      })
+      // The OpenAPI pipeline must not have touched it.
+      expect(document).not.toHaveProperty('openapi')
+      expect(isOpenApiDocument(document)).toBe(false)
+      expect(isAsyncApiDocument(document)).toBe(false)
+    })
+
+    it('builds the navigation from the document type', async () => {
+      const store = createWorkspaceStore({ documentTypes: [arazzo()] })
+
+      await store.addDocument({ name: 'adoption', document: arazzoDocument() })
+
+      expect(store.workspace.documents['adoption']?.['x-scalar-navigation']).toStrictEqual({
+        id: 'adoption',
+        type: 'document',
+        title: 'Pet adoption',
+        name: 'adoption',
+        icon: undefined,
+        children: [
+          {
+            id: 'adoption/workflow/adopt',
+            title: 'adopt',
+            type: 'plugin',
+            documentType: 'arazzo',
+            kind: 'workflow',
+          },
+        ],
+      })
+    })
+
+    it('stores the result of ingest', async () => {
+      const ingest = vi.fn((document: Record<string, unknown>) => ({ ...document, normalized: true }))
+      const store = createWorkspaceStore({ documentTypes: [arazzo({ ingest })] })
+
+      await store.addDocument({ name: 'adoption', document: arazzoDocument() })
+
+      expect(ingest).toHaveBeenCalledWith(arazzoDocument(), { documentName: 'adoption' })
+      expect(store.workspace.documents['adoption']).toMatchObject({ normalized: true })
+    })
+
+    it('adds an empty info object when the format has none', async () => {
+      const store = createWorkspaceStore({
+        documentTypes: [arazzo({ detect: (document) => 'overlay' in document, traverse: () => [] })],
+      })
+
+      await store.addDocument({ name: 'overlay', document: { overlay: '1.0.0', actions: [] } })
+
+      const document = store.workspace.documents['overlay']
+      expect(document?.info).toStrictEqual({})
+      expect(document?.['x-scalar-navigation']?.title).toBe('Untitled Document')
+    })
+
+    it('lets the first matching document type claim the document', async () => {
+      const store = createWorkspaceStore({
+        documentTypes: [arazzo({ type: 'first' }), arazzo({ type: 'second' })],
+      })
+
+      await store.addDocument({ name: 'adoption', document: arazzoDocument() })
+
+      const document = store.workspace.documents['adoption']
+      assert(isPluginDocument(document))
+      expect(document['x-scalar-document-type']).toBe('first')
+    })
+
+    it('leaves documents no type claims on the built-in pipelines', async () => {
+      const store = createWorkspaceStore({ documentTypes: [arazzo()] })
+
+      await store.addDocument({
+        name: 'petstore',
+        document: { openapi: '3.1.0', info: { title: 'Petstore', version: '1.0.0' }, paths: {} },
+      })
+
+      const document = store.workspace.documents['petstore']
+      expect(isOpenApiDocument(document)).toBe(true)
+      expect(isPluginDocument(document)).toBe(false)
+    })
+
+    it('ignores the document type marker on a document no type claims', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        name: 'petstore',
+        document: {
+          openapi: '3.1.0',
+          info: { title: 'Petstore', version: '1.0.0' },
+          paths: {},
+          'x-scalar-document-type': 'arazzo',
+        },
+      })
+
+      const document = store.workspace.documents['petstore']
+      expect(isOpenApiDocument(document)).toBe(true)
+      expect(isPluginDocument(document)).toBe(false)
+    })
+
+    it.each(['json', 'yaml'] as const)('omits source type markers from immediate %s exports', async (format) => {
+      const store = createWorkspaceStore({ documentTypes: [arazzo()] })
+      const documents = {
+        petstore: { openapi: '3.1.0', info: { title: 'Petstore', version: '1.0.0' }, paths: {} },
+        adoption: arazzoDocument(),
+      }
+
+      for (const [name, document] of Object.entries(documents)) {
+        const input = { ...document, 'x-scalar-document-type': 'untrusted' }
+        await store.addDocument({ name, document: input })
+
+        const exported = store.exportDocument(name, format)
+        assert(exported !== undefined)
+        expect(YAML.parse(exported)).toStrictEqual(document)
+        expect(input['x-scalar-document-type']).toBe('untrusted')
+      }
+
+      expect(isOpenApiDocument(store.workspace.documents.petstore)).toBe(true)
+      const adoption = store.workspace.documents.adoption
+      assert(isPluginDocument(adoption))
+      expect(adoption['x-scalar-document-type']).toBe('arazzo')
+    })
+
+    it('keeps loading built-in documents when a detect hook throws', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const store = createWorkspaceStore({
+        documentTypes: [
+          arazzo({
+            detect: () => {
+              throw new Error('broken plugin')
+            },
+          }),
+        ],
+      })
+
+      const result = await store.addDocument({
+        name: 'petstore',
+        document: { openapi: '3.1.0', info: { title: 'Petstore', version: '1.0.0' }, paths: {} },
+      })
+
+      expect(result).toBe(true)
+      expect(isOpenApiDocument(store.workspace.documents['petstore'])).toBe(true)
+      expect(consoleError).toHaveBeenCalled()
+      consoleError.mockRestore()
+    })
+
+    it.each([
+      [
+        'ingest',
+        {
+          ingest: () => {
+            throw new Error('broken plugin')
+          },
+        },
+      ],
+      [
+        'traverse',
+        {
+          traverse: () => {
+            throw new Error('broken plugin')
+          },
+        },
+      ],
+    ])('adds the could-not-be-loaded document when %s throws', async (_hook, overrides) => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const store = createWorkspaceStore({ documentTypes: [arazzo(overrides)] })
+
+      const result = await store.addDocument({ name: 'adoption', document: arazzoDocument() })
+
+      expect(result).toBe(false)
+      expect(store.workspace.documents['adoption']?.info?.title).toBe("Document 'adoption' could not be loaded")
+      consoleError.mockRestore()
+    })
+
+    it('keeps the document type marker out of saved documents', async () => {
+      const store = createWorkspaceStore({ documentTypes: [arazzo()] })
+      await store.addDocument({ name: 'adoption', document: arazzoDocument() })
+
+      await store.saveDocument('adoption')
+
+      expect(JSON.parse(store.exportDocument('adoption', 'json') ?? '{}')).toStrictEqual(arazzoDocument())
+
+      await store.revertDocumentChanges('adoption')
+      expect(isPluginDocument(store.workspace.documents['adoption'])).toBe(true)
+    })
+  })
+
+  describe('openapi security schemes', () => {
+    it('preserves a mutualTLS security scheme during ingestion', async () => {
+      const store = createWorkspaceStore()
+
+      await store.addDocument({
+        name: 'mtls',
+        document: {
+          openapi: '3.1.0',
+          info: { title: 'Example', version: '1.0' },
+          paths: {
+            '/ping': { get: { security: [{ mutualTLS: [] }], responses: { '200': { description: 'OK' } } } },
+          },
+          components: {
+            securitySchemes: {
+              mutualTLS: { type: 'mutualTLS', description: 'some desc' },
+            },
+          },
+        },
+      })
+
+      const document = store.workspace.documents['mtls']
+      assert(document && isOpenApiDocument(document))
+
+      // Coercion used to downgrade the unknown type to the first union member (apiKey), which is
+      // why the UI rendered a Name/Value form. The type must survive so the auth UI can react to it.
+      const scheme = getResolvedRef(getResolvedRef(document.components)?.securitySchemes?.mutualTLS)
+      expect(scheme?.type).toBe('mutualTLS')
+      expect(scheme?.description).toBe('some desc')
     })
   })
 })

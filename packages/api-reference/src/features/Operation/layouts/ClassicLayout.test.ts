@@ -1,0 +1,460 @@
+import { REQUEST_BODY_COMPOSITION_INDEX_SYMBOL } from '@scalar/blocks/schema'
+import { ScalarListbox } from '@scalar/components/listbox'
+import { useModal } from '@scalar/components/modal'
+import type { ApiReferenceLocalization } from '@scalar/types/api-reference'
+import { createWorkspaceEventBus } from '@scalar/workspace-store/events'
+import { coerceValue } from '@scalar/workspace-store/schemas/typebox-coerce'
+import type { OperationObject, ServerObject } from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import {
+  OpenAPIDocumentSchema,
+  PathItemObjectSchema,
+  SchemaObjectSchema,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { type VueWrapper, mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import { computed, defineComponent, h, nextTick, ref } from 'vue'
+
+import { GENERATE_SDK_CONTEXT_SYMBOL, type GenerateSdkContext } from '@/features/generate-sdk/use-generate-sdk'
+import { provideLocalization } from '@/features/localization'
+import type { RequiredSecurity } from '@/features/Operation/helpers/get-required-security'
+
+import ClassicLayout from './ClassicLayout.vue'
+import ModernLayout from './ModernLayout.vue'
+
+const requiredSecurity: RequiredSecurity = { state: 'none', requirements: [] }
+
+type ExtractComponentProps<TComponent> = TComponent extends new () => { $props: infer Props } ? Props : never
+
+const eventBus = createWorkspaceEventBus()
+
+const selectedServer: ServerObject = {
+  url: 'https://api.example.com',
+}
+
+const operation: OperationObject = {
+  summary: 'Create widget',
+  requestBody: {
+    required: true,
+    content: {
+      'application/json': {
+        schema: coerceValue(SchemaObjectSchema, {
+          anyOf: [
+            {
+              title: 'Primary',
+              type: 'object',
+              properties: {
+                primaryOnlyField: {
+                  type: 'string',
+                },
+              },
+              required: ['primaryOnlyField'],
+            },
+            {
+              title: 'Secondary',
+              type: 'object',
+              properties: {
+                secondaryOnlyField: {
+                  type: 'integer',
+                },
+              },
+              required: ['secondaryOnlyField'],
+            },
+          ],
+        }),
+      },
+    },
+  },
+}
+
+const nestedOperation: OperationObject = {
+  summary: 'Create nested widget',
+  requestBody: {
+    required: true,
+    content: {
+      'application/json': {
+        schema: coerceValue(SchemaObjectSchema, {
+          type: 'object',
+          properties: {
+            payload: {
+              anyOf: [
+                {
+                  title: 'Nested Primary',
+                  type: 'object',
+                  properties: {
+                    nestedPrimaryOnlyField: {
+                      type: 'string',
+                    },
+                  },
+                  required: ['nestedPrimaryOnlyField'],
+                },
+                {
+                  title: 'Nested Secondary',
+                  type: 'object',
+                  properties: {
+                    nestedSecondaryOnlyField: {
+                      type: 'integer',
+                    },
+                  },
+                  required: ['nestedSecondaryOnlyField'],
+                },
+              ],
+            },
+          },
+          required: ['payload'],
+        }),
+      },
+    },
+  },
+}
+
+const props: ExtractComponentProps<typeof ClassicLayout> = {
+  id: 'create-widget',
+  pathValue: undefined,
+  clientOptions: [
+    {
+      label: 'Shell',
+      key: 'shell',
+      options: [
+        {
+          clientKey: 'curl',
+          id: 'shell/curl',
+          label: 'cURL',
+          lang: 'curl',
+          targetKey: 'shell',
+          targetTitle: 'Shell',
+          title: 'Shell cURL',
+        },
+      ],
+    },
+  ],
+  eventBus,
+  isCollapsed: false,
+  isWebhook: false,
+  method: 'post',
+  operation,
+  options: {
+    expandAllParameters: true,
+    expandAllResponses: false,
+    expandAllSchemaProperties: false,
+    maxVisibleRequestBodyProperties: 12,
+    schemaKeyboardNav: false,
+    hideModels: false,
+    hideTestRequestButton: true,
+    layout: 'classic',
+    orderRequiredPropertiesFirst: false,
+    orderSchemaPropertiesBy: 'alpha',
+    showOperationId: false,
+  },
+  path: '/widgets',
+  requiredSecurity,
+  selectedClient: 'shell/curl',
+  selectedExample: '',
+  selectedSecuritySchemes: [],
+  selectedServer,
+}
+
+const nestedProps: ExtractComponentProps<typeof ClassicLayout> = {
+  ...props,
+  id: 'create-nested-widget',
+  operation: nestedOperation,
+}
+
+const getRequestBodyCompositionSelection = <T>(wrapper: VueWrapper<T>) =>
+  (
+    wrapper.vm.$ as unknown as {
+      provides: Record<PropertyKey, unknown>
+    }
+  ).provides[REQUEST_BODY_COMPOSITION_INDEX_SYMBOL] as
+    | {
+        value: Record<string, number>
+      }
+    | undefined
+
+describe('ClassicLayout', () => {
+  it('mounts Paths and Path Item extension sections only when selected', async () => {
+    const wrapper = mount(ClassicLayout, {
+      props: {
+        ...props,
+        document: coerceValue(OpenAPIDocumentSchema, {
+          openapi: '3.2.1',
+          info: { title: 'Pets', version: '1' },
+          paths: { 'x-owner': 'Paths owner' },
+        }),
+        pathValue: coerceValue(PathItemObjectSchema, { 'x-owner': 'Path owner' }),
+      },
+    })
+    expect(wrapper.findAllComponents({ name: 'SpecificationExtension' }).length).toBe(0)
+    await wrapper.setProps({ options: { ...props.options, showExtensions: ['x-owner'] } })
+    expect(wrapper.findAllComponents({ name: 'SpecificationExtension' }).length).toBe(2)
+    expect(wrapper.text()).toContain('Paths owner')
+    expect(wrapper.text()).toContain('Path owner')
+    await wrapper.setProps({ options: { ...props.options, showExtensions: ['x-missing'] } })
+    expect(wrapper.findAllComponents({ name: 'SpecificationExtension' }).length).toBe(0)
+    wrapper.unmount()
+  })
+
+  it.each([
+    { name: 'classic', Layout: ClassicLayout },
+    { name: 'modern', Layout: ModernLayout },
+  ])('localizes missing linked samples in the $name layout', async ({ Layout }) => {
+    const localization = ref<ApiReferenceLocalization>({ locale: 'de' })
+    const wrapper = mount(
+      defineComponent({
+        setup() {
+          provideLocalization(localization)
+          return () =>
+            h(Layout, {
+              ...props,
+              selectedClient: 'custom/python',
+              selectedExample: 'missing',
+              operation: {
+                'x-codeSamples': [{ lang: 'python', example: 'first', source: 'create()' }],
+                requestBody: { content: { 'application/json': { examples: { missing: { value: {} } } } } },
+              },
+            })
+        },
+      }),
+    )
+    expect(wrapper.get('[role="status"]').text()).toBe('Für dieses Beispiel ist kein Codebeispiel verfügbar.')
+
+    localization.value = { locale: 'fr' }
+    await nextTick()
+    expect(wrapper.get('[role="status"]').text()).toBe('Aucun extrait de code disponible pour cet exemple.')
+
+    localization.value = {
+      locale: 'fr',
+      translations: { operation: { codeSampleUnavailable: 'Exemple indisponible.', codeSample: 'Extrait' } },
+    }
+    await nextTick()
+    expect(wrapper.get('[role="status"]').text()).toBe('Exemple indisponible.')
+    // The accessible name of the focusable code sample follows the same dictionary
+    expect(wrapper.findComponent({ name: 'CodeExample' }).props('codeSampleLabel')).toBe('Extrait')
+    wrapper.unmount()
+  })
+
+  it('updates shared request body composition state when the root selection changes', async () => {
+    const wrapper = mount(ClassicLayout, {
+      props: props,
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ScalarCodeBlock' }).exists()).toBe(true)
+
+    const compositionSelector = wrapper.findComponent(ScalarListbox)
+    const listboxOptions = compositionSelector.props('options')
+    await compositionSelector.vm.$emit('update:modelValue', listboxOptions[1])
+    await nextTick()
+    await nextTick()
+
+    expect(getRequestBodyCompositionSelection(wrapper)?.value).toStrictEqual({
+      'requestBody.anyOf': 1,
+    })
+  })
+
+  it('updates shared request body composition state when a nested selection changes', async () => {
+    const wrapper = mount(ClassicLayout, {
+      props: nestedProps,
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'ScalarCodeBlock' }).exists()).toBe(true)
+
+    const compositionSelector = wrapper.findComponent(ScalarListbox)
+    const listboxOptions = compositionSelector.props('options')
+    await compositionSelector.vm.$emit('update:modelValue', listboxOptions[1])
+    await nextTick()
+    await nextTick()
+
+    expect(getRequestBodyCompositionSelection(wrapper)?.value).toStrictEqual({
+      'requestBody.payload.anyOf': 1,
+    })
+  })
+  it('updates the code sample when the body content type is changed', async () => {
+    const multiContentProps: ExtractComponentProps<typeof ClassicLayout> = {
+      ...props,
+      id: 'create-widget-multi-content',
+      operation: {
+        ...operation,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: coerceValue(SchemaObjectSchema, {
+                type: 'object',
+                properties: { foo: { type: 'string' } },
+              }),
+            },
+            'application/x-www-form-urlencoded': {
+              schema: coerceValue(SchemaObjectSchema, {
+                type: 'object',
+                properties: { bar: { type: 'string' } },
+              }),
+            },
+          },
+        },
+      },
+    }
+
+    const wrapper = mount(ClassicLayout, {
+      props: multiContentProps,
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    const requestBody = wrapper.findComponent({ name: 'RequestBody' })
+    await requestBody.vm.$emit('update:selectedContentType', 'application/x-www-form-urlencoded')
+    await nextTick()
+
+    const codeSample = wrapper.findComponent({ name: 'CodeExample' })
+    expect(codeSample.props('selectedContentType')).toBe('application/x-www-form-urlencoded')
+  })
+
+  it('opens the test request with the example shown in the snippet, even when the document-wide selection is missing', async () => {
+    const exampleProps: ExtractComponentProps<typeof ClassicLayout> = {
+      ...props,
+      id: 'create-widget-examples',
+      // The document-wide selection points at an example this operation does not define
+      selectedExample: 'missing',
+      options: { ...props.options, hideTestRequestButton: false },
+      operation: {
+        ...operation,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              examples: {
+                first: { value: { foo: 'bar' } },
+                second: { value: { foo: 'baz' } },
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const wrapper = mount(ClassicLayout, {
+      props: exampleProps,
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    const testButton = wrapper.findComponent({ name: 'TestRequestButton' })
+    expect(testButton.exists()).toBe(true)
+    // The button mirrors the snippet's resolved key (first example), not the missing document-wide one
+    expect(testButton.props('exampleName')).toBe('first')
+  })
+
+  it('shows the test request button for an active webhook', async () => {
+    const wrapper = mount(ClassicLayout, {
+      props: {
+        ...props,
+        id: 'delivery-created',
+        isWebhook: true,
+        path: 'delivery.created',
+        options: { ...props.options, hideTestRequestButton: false },
+      },
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await nextTick()
+
+    const testButton = wrapper.findComponent({ name: 'TestRequestButton' })
+    expect(testButton.exists()).toBe(true)
+    expect(testButton.props('path')).toBe('delivery.created')
+  })
+
+  describe('Generate SDK', () => {
+    const mountWithGenerateSdk = (Layout: typeof ClassicLayout | typeof ModernLayout, enabled: boolean) => {
+      const context: GenerateSdkContext = { enabled: computed(() => enabled), dialog: useModal(), open: vi.fn() }
+      const wrapper = mount(Layout, {
+        props,
+        global: {
+          provide: { [GENERATE_SDK_CONTEXT_SYMBOL as symbol]: context },
+          stubs: { RouterLink: { name: 'RouterLink', template: '<a><slot /></a>' } },
+        },
+      })
+      return { context, wrapper }
+    }
+
+    // Generate SDK lives in the developer toolbar only, so offering it adds nothing to the request example
+    it.each([
+      { name: 'classic', Layout: ClassicLayout },
+      { name: 'modern', Layout: ModernLayout },
+    ])('keeps Generate SDK out of the request example in the $name layout', async ({ Layout }) => {
+      const { wrapper } = mountWithGenerateSdk(Layout, true)
+      await nextTick()
+
+      const codeExample = wrapper.findComponent({ name: 'CodeExample' })
+      expect(codeExample.findAll('button').some((button) => button.text() === 'Generate SDK')).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('adds no footer to the classic request example while Generate SDK is offered', async () => {
+      // The classic layout has no other footer controls here, so a footer would be an empty bar
+      const { wrapper } = mountWithGenerateSdk(ClassicLayout, true)
+      await nextTick()
+
+      expect(wrapper.findComponent({ name: 'CodeExample' }).findComponent({ name: 'ScalarCardFooter' }).exists()).toBe(
+        false,
+      )
+      wrapper.unmount()
+    })
+  })
+
+  describe('responses', () => {
+    const responsesFor = (expandAllResponses: boolean) =>
+      mount(ClassicLayout, {
+        props: { ...props, options: { ...props.options, expandAllResponses } },
+        global: {
+          stubs: {
+            RouterLink: { name: 'RouterLink', template: '<a><slot /></a>' },
+          },
+        },
+      }).findComponent({ name: 'OperationResponses' })
+
+    it('renders responses as disclosures', () => {
+      expect(responsesFor(false).props('collapsableItems')).toBe(true)
+    })
+
+    it('renders responses as static panels when every response is expanded', () => {
+      // `expandAllResponses` is the reader's request to see everything at
+      // once, so no disclosure may hide a response behind a click.
+      expect(responsesFor(true).props('collapsableItems')).toBe(false)
+    })
+  })
+})

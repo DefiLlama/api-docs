@@ -1,0 +1,145 @@
+<script lang="ts" setup>
+import { isHttpMethod } from '@scalar/helpers/http/is-http-method'
+import { makeUrlAbsolute } from '@scalar/helpers/url/make-url-absolute'
+import { ScalarIconArrowUpRight } from '@scalar/icons'
+import { computed, onMounted, ref } from 'vue'
+
+import { useLocalization } from '@/v2/features/localization'
+
+const {
+  integration,
+  isDevelopment,
+  url,
+  operationPath,
+  operationMethod,
+  buttonSource,
+  source = 'api-reference',
+} = defineProps<{
+  buttonSource: 'sidebar' | 'modal'
+  source?: 'api-reference' | 'gitbook'
+  isDevelopment?: boolean
+  integration?: string | null
+  url?: string
+  /** Operation path to open in the client after import */
+  operationPath?: string
+  /** HTTP method for the operation to open in the client after import */
+  operationMethod?: string
+}>()
+
+const { translate } = useLocalization()
+
+// Resolve browser-dependent URLs only after hydration so the button stays in the server output.
+const pageUrl = ref<string>()
+onMounted(() => {
+  pageUrl.value = window.location.href
+})
+
+/** Link to import an OpenAPI document */
+const href = computed((): string | undefined => {
+  /**
+   * The URL we want to pass to client.scalar.com for the import.
+   * Might be an OpenAPI document URL, but could also just be the URL of the API reference.
+   */
+  const urlToImportFrom = url ?? pageUrl.value
+
+  if (!urlToImportFrom) {
+    return undefined
+  }
+
+  const absoluteUrl = pageUrl.value
+    ? makeUrlAbsolute(urlToImportFrom, { baseUrl: pageUrl.value })
+    : urlToImportFrom
+
+  if (!absoluteUrl?.length) {
+    return undefined
+  }
+
+  // Base URL
+  const link = new URL(
+    isDevelopment ? 'http://localhost:5065' : 'https://client.scalar.com',
+  )
+
+  // URL that we'd like to import
+  link.searchParams.set('url', absoluteUrl)
+
+  if (operationPath?.length && operationMethod?.length) {
+    link.searchParams.set('operation_path', operationPath)
+    link.searchParams.set(
+      'operation_method',
+      operationMethod === operationMethod.toUpperCase() &&
+        isHttpMethod(operationMethod)
+        ? operationMethod.toLowerCase()
+        : operationMethod,
+    )
+  }
+
+  // Integration identifier
+  if (integration !== null) {
+    link.searchParams.set('integration', integration ?? 'vue')
+  }
+
+  // UTM Source
+  link.searchParams.set('utm_source', 'api-reference')
+  link.searchParams.set('utm_medium', 'button')
+  link.searchParams.set('utm_campaign', buttonSource)
+
+  // Special for gitbook, set the source and grab the logos (hacky)
+  if (source === 'gitbook' && pageUrl.value) {
+    link.searchParams.set('utm_source', 'gitbook')
+
+    const darkLogo = document.querySelector("img.dark\\:block[alt='Logo']")
+    const lightLogo = document.querySelector("img.dark\\:hidden[alt='Logo']")
+
+    if (darkLogo && darkLogo instanceof HTMLImageElement) {
+      link.searchParams.set('dark_logo', encodeURIComponent(darkLogo.src))
+    }
+    if (lightLogo && lightLogo instanceof HTMLImageElement) {
+      link.searchParams.set('light_logo', encodeURIComponent(lightLogo.src))
+    }
+  }
+
+  return link.toString()
+})
+</script>
+
+<template>
+  <a
+    class="open-api-client-button"
+    :href="href"
+    target="_blank">
+    <ScalarIconArrowUpRight
+      class="size-3"
+      weight="regular" />{{
+      translate('apiClient.openApiClientButton.openAPIClient')
+    }}</a
+  >
+</template>
+
+<style scoped>
+.open-api-client-button {
+  cursor: pointer;
+  width: 100%;
+  padding: 9px 12px;
+  height: 31px;
+  display: block;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: var(--scalar-small);
+  line-height: 1.385;
+  text-decoration: none;
+  border-radius: var(--scalar-radius);
+  box-shadow: 0 0 0 0.5px var(--scalar-border-color);
+  gap: 6px;
+  color: var(--scalar-sidebar-color-1);
+}
+
+.open-api-client-button:hover {
+  background: var(
+    --scalar-sidebar-item-hover-background,
+    var(--scalar-background-2)
+  );
+}
+</style>

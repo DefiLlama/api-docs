@@ -9,25 +9,32 @@
     "url": "git+https://github.com/scalar/scalar.git",
     "directory": "packages/snippetz"
   },
-  "version": "0.4.2",
+  "version": "0.10.22",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "scalar-build-esbuild",
-    "lint:check": "scalar-lint-check",
-    "lint:fix": "scalar-lint-fix",
-    "test": "vitest",
-    "types:build": "scalar-types-build",
-    "types:check": "scalar-types-check"
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "generate:dotnet-enums": "tsx scripts/generate-dotnet-enums.ts",
+    "generate:java-enums": "tsx scripts/generate-java-enums.ts",
+    "generate:markdown-docs": "tsx scripts/generate-markdown-docs.ts",
+    "postbuild": "pnpm generate:dotnet-enums && pnpm generate:java-enums && pnpm generate:markdown-docs",
+    "test": "vitest --run",
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./clients": {
+      "import": "./dist/clients/index.js",
+      "types": "./dist/clients/index.d.ts",
+      "default": "./dist/clients/index.js"
     },
     "./plugins/c/libcurl": {
       "import": "./dist/plugins/c/libcurl/index.js",
@@ -53,6 +60,11 @@
       "import": "./dist/plugins/dart/http/index.js",
       "types": "./dist/plugins/dart/http/index.d.ts",
       "default": "./dist/plugins/dart/http/index.js"
+    },
+    "./plugins/fsharp/httpclient": {
+      "import": "./dist/plugins/fsharp/httpclient/index.js",
+      "types": "./dist/plugins/fsharp/httpclient/index.d.ts",
+      "default": "./dist/plugins/fsharp/httpclient/index.js"
     },
     "./plugins/go/native": {
       "import": "./dist/plugins/go/native/index.js",
@@ -109,6 +121,11 @@
       "types": "./dist/plugins/js/xhr/index.d.ts",
       "default": "./dist/plugins/js/xhr/index.js"
     },
+    "./plugins/julia/http": {
+      "import": "./dist/plugins/julia/http/index.js",
+      "types": "./dist/plugins/julia/http/index.d.ts",
+      "default": "./dist/plugins/julia/http/index.js"
+    },
     "./plugins/kotlin/okhttp": {
       "import": "./dist/plugins/kotlin/okhttp/index.js",
       "types": "./dist/plugins/kotlin/okhttp/index.d.ts",
@@ -154,6 +171,11 @@
       "types": "./dist/plugins/php/guzzle/index.d.ts",
       "default": "./dist/plugins/php/guzzle/index.js"
     },
+    "./plugins/php/laravel": {
+      "import": "./dist/plugins/php/laravel/index.js",
+      "types": "./dist/plugins/php/laravel/index.d.ts",
+      "default": "./dist/plugins/php/laravel/index.js"
+    },
     "./plugins/powershell/restmethod": {
       "import": "./dist/plugins/powershell/restmethod/index.js",
       "types": "./dist/plugins/powershell/restmethod/index.d.ts",
@@ -163,6 +185,11 @@
       "import": "./dist/plugins/powershell/webrequest/index.js",
       "types": "./dist/plugins/powershell/webrequest/index.d.ts",
       "default": "./dist/plugins/powershell/webrequest/index.js"
+    },
+    "./plugins/python/aiohttp": {
+      "import": "./dist/plugins/python/aiohttp/index.js",
+      "types": "./dist/plugins/python/aiohttp/index.d.ts",
+      "default": "./dist/plugins/python/aiohttp/index.js"
     },
     "./plugins/python/httpx": {
       "import": "./dist/plugins/python/httpx/index.js",
@@ -179,10 +206,10 @@
       "types": "./dist/plugins/python/requests/index.d.ts",
       "default": "./dist/plugins/python/requests/index.js"
     },
-    "./plugins/r/httr": {
-      "import": "./dist/plugins/r/httr/index.js",
-      "types": "./dist/plugins/r/httr/index.d.ts",
-      "default": "./dist/plugins/r/httr/index.js"
+    "./plugins/r/httr2": {
+      "import": "./dist/plugins/r/httr2/index.js",
+      "types": "./dist/plugins/r/httr2/index.d.ts",
+      "default": "./dist/plugins/r/httr2/index.js"
     },
     "./plugins/ruby/native": {
       "import": "./dist/plugins/ruby/native/index.js",
@@ -213,24 +240,19 @@
       "import": "./dist/plugins/swift/nsurlsession/index.js",
       "types": "./dist/plugins/swift/nsurlsession/index.d.ts",
       "default": "./dist/plugins/swift/nsurlsession/index.js"
-    },
-    "./utils": {
-      "import": "./dist/utils/index.js",
-      "types": "./dist/utils/index.d.ts",
-      "default": "./dist/utils/index.js"
     }
   },
   "files": [
     "dist",
     "CHANGELOG"
   ],
-  "module": "./dist/index.js",
   "dependencies": {
+    "@scalar/helpers": "workspace:*",
     "@scalar/types": "workspace:*",
-    "stringify-object": "^5.0.0"
+    "js-base64": "catalog:*"
   },
   "devDependencies": {
-    "@scalar/build-tooling": "workspace:*",
+    "undici": "catalog:*",
     "vite": "catalog:*"
   }
 }

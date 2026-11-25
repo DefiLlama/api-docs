@@ -9,6 +9,9 @@
 *.mov
 *.cjs
 
+# TODO: [error] [prettier-plugin-sort-imports]: import sorting aborted due to babel parsing error.
+*.md
+*.mdx
 
 .git
 .venv
@@ -18,15 +21,15 @@
 **/dist/**
 **/.vscode/**
 **/.output/**
-**/.vite-ssg-temp/**
 **/.docusaurus/**
 **/obj/**
 **/bin/**
-integrations/docker/assets/**
-
+**/target/**
+**/.vite-ssg-temp/**
 **/vite.config.ts.timestamp-*.mjs
 
-dist
+*.mjs
+
 fixtures
 node_modules
 playwright-report
@@ -35,15 +38,21 @@ scalar.config.json
 
 pnpm-lock.yaml
 
-.changeset/*.md
 cdn
-cloudbuild.json
-examples/docusaurus/**/*.mdx
+
+.changeset/*.md
+
+integrations/docusaurus/**/*.mdx
+integrations/docusaurus/playground/build/**
+
+integrations/docker/assets/**
 integrations/nuxt/src/runtime/plugins/hydrateClient.d.mts
+
 packages/components/storybook-static/**/*
 packages/openapi-parser/tests/**/*.yaml
-packages/snippetz/src/httpsnippet-lite/**/*
+packages/openapi-validator/tests/**/*.yaml
 
-# TODO: [error] [prettier-plugin-sort-imports]: import sorting aborted due to babel parsing error.
-*.md
-*.mdx
+# Nested Git worktrees
+**/.worktrees/
+**/.claude/worktrees/
+**/.codex/worktrees/

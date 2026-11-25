@@ -1,31 +1,40 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick, onMounted } from 'vue'
 
 import { useColorMode } from './useColorMode'
 
 // Mock only onMounted, keep real nextTick
-vi.mock('vue', async () => {
-  const actual = await vi.importActual('vue')
-  return { ...actual, onMounted: vi.fn((fn) => fn()), onUnmounted: vi.fn() }
-})
+vi.mock(import('vue'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  onMounted: vi.fn((fn) => fn()),
+  onUnmounted: vi.fn(),
+}))
 
-const actualMatchMedia = window.matchMedia
+const createMatchMediaMock = (mode: 'light' | 'dark' = 'dark'): (() => MediaQueryList) => {
+  const mediaQueryListMock: Partial<MediaQueryList> = {
+    matches: mode === 'dark',
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }
+  return () => mediaQueryListMock as MediaQueryList
+}
 
 describe('useColorMode', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
+
     // Reset the DOM
     document.body.classList.remove('dark-mode', 'light-mode')
 
     // Clear localStorage
     localStorage.clear()
-  })
 
-  afterEach(() => {
-    // Restore all mocks
-    vi.restoreAllMocks()
+    // Provide a default matchMedia mock since jsdom does not implement it
+    window.matchMedia = vi.fn().mockImplementation(createMatchMediaMock('light'))
 
-    // Restore the original matchMedia
-    window.matchMedia = actualMatchMedia
+    // `systemPreference` is shared module state, so reset it to a fresh `'light'` baseline before
+    // each test. A throwaway hook resolves it via the immediate (mocked) `onMounted` above.
+    useColorMode()
   })
 
   it('defaults to system mode preference', () => {
@@ -46,11 +55,7 @@ describe('useColorMode', () => {
 
   it.each(['light', 'dark'] as const)('toggles between light and dark mode when system is %s', (mode) => {
     // Mock the matchMedia to simulate system dark mode
-    window.matchMedia = vi.fn().mockImplementation((query) => ({
-      matches: query === `(prefers-color-scheme: ${mode})`,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    }))
+    vi.spyOn(window, 'matchMedia').mockImplementation(createMatchMediaMock(mode))
 
     const { colorMode, darkLightMode, toggleColorMode } = useColorMode()
     expect(colorMode.value).toBe('system')
@@ -110,11 +115,7 @@ describe('useColorMode', () => {
   })
 
   it.each(['light', 'dark'] as const)('detects system %s mode preference', (mode) => {
-    window.matchMedia = vi.fn().mockImplementation((query) => ({
-      matches: query === `(prefers-color-scheme: ${mode})`,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    }))
+    vi.spyOn(window, 'matchMedia').mockImplementation(createMatchMediaMock(mode))
 
     const { getSystemModePreference, darkLightMode } = useColorMode()
     expect(getSystemModePreference()).toBe(mode)
@@ -136,17 +137,19 @@ describe('useColorMode', () => {
   })
 
   it('listens to system preference changes', async () => {
-    let mediaQueryCallback: () => void = () => {}
+    const matchMediaSpy = vi.spyOn(window, 'matchMedia')
 
-    const mockMediaQuery = (matches: boolean) => ({
-      matches,
+    let mediaQueryCallback: () => void = vi.fn()
+
+    const createMediaQueryListMock = (mode: 'light' | 'dark') => ({
+      // need to generate the mediaQueryList right away to update addEventListener
+      ...createMatchMediaMock(mode)(),
       addEventListener: vi.fn((_, callback) => (mediaQueryCallback = callback)),
-      removeEventListener: vi.fn(),
     })
 
     // Set the mock to return false for '(prefers-color-scheme: dark)'
-    const mocked = mockMediaQuery(false)
-    window.matchMedia = vi.fn().mockReturnValue(mocked)
+    const mocked = createMediaQueryListMock('light')
+    matchMediaSpy.mockImplementation(() => mocked)
 
     const { setColorMode } = useColorMode()
     setColorMode('system')
@@ -159,13 +162,11 @@ describe('useColorMode', () => {
     expect(document.body.classList.contains('dark-mode')).toBe(false)
 
     // Simulate system preference change
-    if (mediaQueryCallback) {
-      window.matchMedia = vi.fn().mockReturnValue(mockMediaQuery(true))
-      mediaQueryCallback()
-      await nextTick()
-      expect(document.body.classList.contains('light-mode')).toBe(false)
-      expect(document.body.classList.contains('dark-mode')).toBe(true)
-    }
+    matchMediaSpy.mockImplementation(() => createMediaQueryListMock('dark'))
+    mediaQueryCallback()
+    await nextTick()
+    expect(document.body.classList.contains('light-mode')).toBe(false)
+    expect(document.body.classList.contains('dark-mode')).toBe(true)
   })
 
   it.each(['light', 'dark', 'system'] as const)('respects initialColorMode option: %s', (initialColorMode) => {
@@ -189,11 +190,7 @@ describe('useColorMode', () => {
     expect(document.body.classList.contains('light-mode')).toBe(false)
 
     // Should stay dark even when system preference is light
-    window.matchMedia = vi.fn().mockImplementation((query) => ({
-      matches: query === '(prefers-color-scheme: light)',
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    }))
+    vi.spyOn(window, 'matchMedia').mockImplementation(createMatchMediaMock('light'))
 
     setColorMode('system')
     await nextTick()
@@ -201,15 +198,13 @@ describe('useColorMode', () => {
     expect(document.body.classList.contains('light-mode')).toBe(false)
   })
 
-  it('works in SSG environment without window/document', () => {
-    const originalWindow = global.window
-    const originalDocument = global.document
+  it('works in SSG environment without window/document', ({ onTestFinished }) => {
+    vi.stubGlobal('window', undefined)
+    vi.stubGlobal('document', undefined)
 
-    // Mock SSG environment by removing window/document
-    // @ts-expect-error
-    delete global.window
-    // @ts-expect-error
-    delete global.document
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
 
     const { colorMode, darkLightMode, setColorMode, toggleColorMode } = useColorMode()
 
@@ -220,20 +215,93 @@ describe('useColorMode', () => {
     // Methods should not throw without window/document
     expect(() => setColorMode('dark')).not.toThrow()
     expect(() => toggleColorMode()).not.toThrow()
-
-    // Restore window/document/localStorage
-    global.window = originalWindow
-    global.document = originalDocument
   })
 
-  it('handles missing matchMedia gracefully', () => {
-    const originalMatchMedia = window.matchMedia
-    // @ts-expect-error - Intentionally removing matchMedia
-    delete window.matchMedia
+  it('uses system mode on SSG even when initialColorMode is set', ({ onTestFinished }) => {
+    vi.stubGlobal('window', undefined)
+    vi.stubGlobal('document', undefined)
+
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+
+    const { colorMode } = useColorMode({ initialColorMode: 'dark' })
+    expect(colorMode.value).toBe('system')
+  })
+
+  it('defers the system preference to onMounted to stay hydration-safe', async () => {
+    // A dark system preference that, like the real one, only exists on the client.
+    vi.spyOn(window, 'matchMedia').mockImplementation(createMatchMediaMock('dark'))
+
+    // Capture the onMounted callback instead of running it right away, so we can
+    // inspect the pre-mount render that has to match the server.
+    let mountedCallback: (() => void) | undefined
+    vi.mocked(onMounted).mockImplementationOnce((fn) => {
+      mountedCallback = fn as () => void
+    })
+
+    const { darkLightMode } = useColorMode()
+
+    // Before mount it matches the server default, not the dark system preference.
+    expect(darkLightMode.value).toBe('light')
+
+    // After mount it upgrades to the real system preference.
+    mountedCallback?.()
+    await nextTick()
+    expect(darkLightMode.value).toBe('dark')
+  })
+
+  it('keeps the body class aligned with the toggle before mount', async () => {
+    // A dark system preference that only exists on the client (resolved in onMounted).
+    vi.spyOn(window, 'matchMedia').mockImplementation(createMatchMediaMock('dark'))
+
+    // Defer the mount so we can inspect the pre-mount render that has to match the server.
+    let mountedCallback: (() => void) | undefined
+    vi.mocked(onMounted).mockImplementationOnce((fn) => {
+      mountedCallback = fn as () => void
+    })
+
+    const { darkLightMode } = useColorMode()
+    await nextTick()
+
+    // Before mount the body must agree with the light toggle, not the dark system preference.
+    expect(darkLightMode.value).toBe('light')
+    expect(document.body.classList.contains('light-mode')).toBe(true)
+    expect(document.body.classList.contains('dark-mode')).toBe(false)
+
+    // After mount the body and the toggle upgrade to the real preference together.
+    mountedCallback?.()
+    await nextTick()
+    expect(darkLightMode.value).toBe('dark')
+    expect(document.body.classList.contains('dark-mode')).toBe(true)
+    expect(document.body.classList.contains('light-mode')).toBe(false)
+  })
+
+  it('shares the resolved system preference across instances', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(createMatchMediaMock('dark'))
+
+    // The first instance never mounts, so it still reports the server default on its own.
+    vi.mocked(onMounted).mockImplementationOnce(() => undefined)
+    const first = useColorMode()
+    expect(first.darkLightMode.value).toBe('light')
+
+    // A second instance mounts and resolves the real (dark) preference.
+    const second = useColorMode()
+    await nextTick()
+
+    // Because the preference is shared, the still-unmounted first instance agrees immediately.
+    expect(second.darkLightMode.value).toBe('dark')
+    expect(first.darkLightMode.value).toBe('dark')
+  })
+
+  it('handles missing matchMedia gracefully', ({ onTestFinished }) => {
+    vi.stubGlobal('matchMedia', undefined)
+
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
 
     const { darkLightMode } = useColorMode()
     expect(darkLightMode.value).toBe('dark') // Should default to dark when matchMedia is unavailable
-
-    window.matchMedia = originalMatchMedia
   })
 })

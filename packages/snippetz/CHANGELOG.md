@@ -1,5 +1,685 @@
 # @scalar/snippetz
 
+## 0.10.22
+
+### Patch Changes
+
+- [#11146](https://github.com/scalar/scalar/pull/11146): Update compatible npm dependencies for AI chat, encoding, analytics, date handling, HTTP serving, and application query caching.
+
+## 0.10.21
+
+No changes in this release.
+
+## 0.10.20
+
+### Patch Changes
+
+- [#11099](https://github.com/scalar/scalar/pull/11099): Update compatible runtime and styling dependencies, align editor dependency versions, and preserve document-change comparisons with updated microdiff semantics.
+
+## 0.10.19
+
+### Patch Changes
+
+- [#11068](https://github.com/scalar/scalar/pull/11068): fix(snippetz): send text-only multipart forms as multipart
+
+  Code examples for a `multipart/form-data` body with only text fields kept a bare `Content-Type: multipart/form-data` header with no boundary, so clients sent either two Content-Type headers or a body the server cannot split. The header is now left to the HTTP client for every structured multipart body, as it already was for file uploads.
+
+  Python `requests` and `httpx` examples now pass text-only fields through `files=` as `(None, value)` tuples, and `aiohttp` uses `FormData(default_to_multipart=True)`, because all three send plain text fields urlencoded otherwise.
+- [#11004](https://github.com/scalar/scalar/pull/11004): Preserve package output paths and application aliases when building with TypeScript 6.
+- [#11063](https://github.com/scalar/scalar/pull/11063): fix(snippetz): stop F# examples from adding Content-Type to request headers
+
+  The `fsharp/httpclient` example no longer calls `httpRequestMessage.Headers.Add("Content-Type", ...)` when the request has a body. .NET throws `Misused header name 'Content-Type'` for that call, and the generated `StringContent` or form content already sets the content type.
+- [#11062](https://github.com/scalar/scalar/pull/11062): fix(snippetz): make Guzzle cookie and file upload examples run
+
+  The `php/guzzle` example now passes cookies as a `\GuzzleHttp\Cookie\CookieJar` scoped to the request host, because Guzzle throws when the `cookies` option is a plain array. Multipart file names are now escaped inside `fopen(...)`, so a name containing `'` or `\` no longer produces invalid PHP.
+- [#11066](https://github.com/scalar/scalar/pull/11066): fix(snippetz): send repeated query parameters in R httr2 examples
+
+  The `r/httr2` example now adds `.multi = "explode"` to `req_url_query()` when a query parameter repeats. httr2 rejects vector values there by default, so `status=active&status=inactive` failed with "All vector elements of `...` must be length 1" instead of being sent.
+
+## 0.10.18
+
+### Patch Changes
+
+- [#10981](https://github.com/scalar/scalar/pull/10981): Remove unnecessary curl_close from php
+- [#11048](https://github.com/scalar/scalar/pull/11048): Escape the request URL in the fetch, ofetch, undici, Guzzle, PHP cURL, Dart, Requests and HTTPX snippets, the method in the Guzzle and PHP cURL snippets, the Basic auth credentials in the PHP cURL and Dart snippets, array keys in the PHP snippets, and `#{`, `#$` and `#@` interpolation in the Ruby snippet.
+- [#11056](https://github.com/scalar/scalar/pull/11056): fix(snippetz): keep Ruby request bodies as written
+
+  The `ruby/native` JSON body now uses a quoted heredoc (`<<~'JSON'`), so Ruby no longer turns `\"` into `"`, `\\` into `\`, or runs `#{}` inside the payload. String bodies (the JSON fallback, `application/octet-stream` and other text types) also escape a `#` that would start `#{}`, `#$` or `#@` interpolation.
+
+## 0.10.17
+
+No changes in this release.
+
+## 0.10.16
+
+### Patch Changes
+
+- [#10942](https://github.com/scalar/scalar/pull/10942): Keep application/x-www-form-urlencoded bodies in the ofetch and undici snippets, preserve the order of repeated, empty and prototype-named fields in the fetch, Go, F#, Julia and Clojure snippets, and escape apostrophes in the PHP cURL body.
+
+## 0.10.15
+
+### Patch Changes
+
+- [#10823](https://github.com/scalar/scalar/pull/10823): Send cookies with the Cookie request header in Node fetch, ofetch, and undici snippets, merge existing cookie headers in Node and axios snippets, and use the browser cookie store in JavaScript fetch, ofetch, and axios snippets.
+
+  Preserve both explicit Cookie headers and structured cookies across the other HTTP header-based generators, including curl, wget, Ruby, Go, Swift, Objective-C, Rust, Dart, Clojure, R, Kotlin, C#, PHP cURL, Python http.client, and C libcurl. Include structured cookies in raw HTTP examples.
+
+  Explain cookie header entries without `=` in browser snippets instead of silently dropping them.
+
+- [#10838](https://github.com/scalar/scalar/pull/10838): Generate valid Python literals for boolean JSON request bodies in Requests, HTTPX, and aiohttp snippets.
+- [#10838](https://github.com/scalar/scalar/pull/10838): Preserve root JSON scalars in browser Fetch, Node Fetch, Undici, clj-http, and Objective-C NSURLSession code examples instead of converting booleans to objects, omitting false bodies, or rejecting JSON fragments.
+
+## 0.10.14
+
+## 0.10.13
+
+## 0.10.12
+
+## 0.10.11
+
+### Patch Changes
+
+- [#10721](https://github.com/scalar/scalar/pull/10721): Update compatible dependencies while retaining the existing Node.js support and five-day release-age policy.
+
+## 0.10.10
+
+### Patch Changes
+
+- [#10673](https://github.com/scalar/scalar/pull/10673): Keep the port in the `Host` header of HTTP/1.1 snippets. A request to `http://localhost:8080/api` now shows `Host: localhost:8080` instead of `Host: localhost`.
+
+## 0.10.9
+
+## 0.10.8
+
+### Patch Changes
+
+- [#10559](https://github.com/scalar/scalar/pull/10559): Clean up Biome warnings in package code and tests. Handle rejected debounced callbacks and await streaming writes.
+
+## 0.10.7
+
+### Patch Changes
+
+- [#10507](https://github.com/scalar/scalar/pull/10507): fix: keep line breaks and unusual header or query names valid in clj-http code examples
+- [#10503](https://github.com/scalar/scalar/pull/10503): fix: escape quotes, backslashes and line breaks in C# HttpClient code examples
+- [#10496](https://github.com/scalar/scalar/pull/10496): fix: escape strings and send text bodies in the dart/http example
+- [#10479](https://github.com/scalar/scalar/pull/10479): Keep query parameter values raw for code examples that use client query maps, and encode values once when constructing snippet URLs.
+- [#10499](https://github.com/scalar/scalar/pull/10499): fix: keep every value of a repeated form field in the php/guzzle example
+- [#10510](https://github.com/scalar/scalar/pull/10510): fix: send the body in http/http1.1 examples for JSON media types with parameters or a +json suffix, and for plain text bodies
+- [#10487](https://github.com/scalar/scalar/pull/10487): Honor OpenAPI 3.2 allowReserved for path parameters while escaping forbidden path characters and preserving the encoded path in Ruby code examples.
+- [#10495](https://github.com/scalar/scalar/pull/10495): fix: escape quotes and backslashes in php/curl request bodies
+- [#10497](https://github.com/scalar/scalar/pull/10497): fix: send the body in python examples for JSON media types with parameters or a +json suffix, and for plain text bodies
+- [#10492](https://github.com/scalar/scalar/pull/10492): Escape quotes and backslashes in R httr2 code examples, so header, query and form values that contain them (an ETag, for example) produce valid R code.
+
+## 0.10.6
+
+### Patch Changes
+
+- [#10460](https://github.com/scalar/scalar/pull/10460): Preserve multipart file metadata in generated code examples, including arrays and composed schemas, read actual file bytes across code example targets, let HTTP clients set the multipart boundary, and preserve typed text fields without turning them into file attachments.
+
+## 0.10.5
+
+## 0.10.4
+
+## 0.10.3
+
+## 0.10.2
+
+## 0.10.1
+
+### Patch Changes
+
+- [#10186](https://github.com/scalar/scalar/pull/10186): Preserve authored method variants in request data and navigation links. Generate custom-method requests with generic client APIs, and explain when RestSharp cannot represent a method.
+- [#10305](https://github.com/scalar/scalar/pull/10305): Preserve nested arrays and escape string values in JavaScript and Node.js request snippets.
+- [#10186](https://github.com/scalar/scalar/pull/10186): Support OpenAPI 3.2 additionalOperations in operation storage, navigation, documentation, callbacks, and the API client. Preserve custom HTTP method spelling when displaying and sending requests and generating code samples.
+
+  Traversed operation and webhook methods now use the exported `OperationMethod` type, which accepts custom strings while retaining known-method editor completion. Consumers must handle unknown methods; this open type cannot provide exhaustive checking over the fixed HTTP method set. Unknown method presentation uses `colorClass` and `colorVar`, matching known methods. Preserve uppercase and mixed-case additional operation names consistently.
+
+## 0.10.0
+
+### Minor Changes
+
+- [#10198](https://github.com/scalar/scalar/pull/10198): Support OpenAPI 3.2 cookie serialization with semicolon-separated entries and no percent-encoding in requests and code examples.
+
+  Browser XHR and jQuery code examples now set explicit Cookie header values through `document.cookie` and enable credentialed requests, including when no structured HAR cookies are supplied. Run the cookie setup on the request origin. Requests without cookie-style parameters retain structured HAR cookies alongside explicit Cookie headers.
+
+  Warn once per parameter name in the developer console when cookie-style parameters declare invalid `explode: false`, then use the expanded fallback consistently for requests and snippets. Browser cookie setup cannot assign cookies to an unrelated API domain; credentialed cross-origin responses require the appropriate CORS configuration and eligible stored cookies.
+
+### Patch Changes
+
+- [#10178](https://github.com/scalar/scalar/pull/10178): Share JSON media-type detection across curl, wget, and RestSharp snippets.
+
+  Share streaming media type detection and format selection between cURL snippets and streaming example serialization.
+
+- [#10178](https://github.com/scalar/scalar/pull/10178): Support OpenAPI 3.2 streaming item schemas in the workspace store, request body examples, and API reference schema views. Frame generated and structured examples as JSON Lines, JSON Sequence, or server-sent events while preserving explicit wire-format strings.
+
+  Preserve generated falsy request examples (`0`, `false`, and empty strings) for non-streaming bodies as well.
+
+  Use cURL `--data-binary` for supported streaming media types, making framed body handling explicit. Authored arrays and objects are framed as stream records; authored wire-format strings remain unchanged. SSE records with no valid fields are safely omitted with one console warning per serialization call reporting the omitted count, including when all records are omitted.
+
+## 0.9.32
+
+## 0.9.31
+
+### Patch Changes
+
+- [#10120](https://github.com/scalar/scalar/pull/10120): Add `--globoff` to generated curl commands whose URL contains square brackets, or curly braces in the query string, so snippets for bracket-notation query parameters such as `filter[user_id]=me` and glob-set values such as `ids={1,2,3}` can be pasted into a shell and run as they are. Curly braces in the path, which are almost always placeholders like `/users/{id}`, are left untouched.
+- [#10140](https://github.com/scalar/scalar/pull/10140): Replace redundant type assertions with compiler-checked annotations, typed accumulators, and existing guards across helpers, API conversion, request handling, and schema rendering.
+
+  Narrow DOM elements and caught errors before accessing their properties. Correct header lookup to include missing values and handle them during PowerShell snippet generation.
+
+  Validate release-note provider responses, represent unresolved references and absent groups in helper return types, and require narrowing merged object values. Preserve AsyncAPI broker credentials separately from HTTP authentication schemes.
+
+- [#10142](https://github.com/scalar/scalar/pull/10142): Send multipart array properties as separate parts with the same field name, applying encoding to each item. Preserve JSON item content types, uploaded files, and array values after form edits, and generate matching code snippets.
+
+  Send JSON form fields without an upload filename and preserve fields and files in request history.
+
+  Rename the RestSharp snippet's internal `getMethod` helper so it no longer clashes with the `getMethod` that Nitro bundles into server builds (the new multipart imports shifted chunking and surfaced the collision).
+
+- [#10128](https://github.com/scalar/scalar/pull/10128): Replace legacy HTTP snippet generators with native snippetz plugins.
+
+## 0.9.30
+
+## 0.9.29
+
+## 0.9.28
+
+### Patch Changes
+
+- [#9941](https://github.com/scalar/scalar/pull/9941): Republish every package through npm trusted publishing. No functional changes.
+
+## 0.9.27
+
+### Patch Changes
+
+- [#9872](https://github.com/scalar/scalar/pull/9872): Bump shared runtime dependencies: `js-base64` (`^3.7.8` -> `^3.9.2`) and `type-fest` (`^5.3.1` -> `^5.8.0`).
+- [#9913](https://github.com/scalar/scalar/pull/9913): Add Julia (HTTP.jl) as a code example target. The new `julia/http` client generates HTTP.jl snippets, including headers, query parameters, cookies, basic auth, JSON bodies (as `Dict`s serialized with `JSON.json`), url-encoded bodies and `HTTP.Form` multipart uploads. Julia syntax highlighting and a Julia icon are included, so the client shows up in the code example picker like any other language.
+
+## 0.9.26
+
+## 0.9.25
+
+## 0.9.24
+
+### Patch Changes
+
+- [#9680](https://github.com/scalar/scalar/pull/9680): Tie a snippetz plugin's `client` to its `target` at the type level. Before, a plugin could pair any target with any client (for example `node` + `curl`) without a type error. Now `target: 'node'` only allows node clients, and TypeScript catches mistakes like using the display title `'Fetch'` where the lowercase client id `'fetch'` is expected.
+
+## 0.9.23
+
+### Patch Changes
+
+- [#9719](https://github.com/scalar/scalar/pull/9719): docs: update the Scalar platform overview block in the README
+
+## 0.9.22
+
+### Patch Changes
+
+- [#9710](https://github.com/scalar/scalar/pull/9710): Republish so the updated README (with the Scalar platform overview) reaches npm. Also renames the README generator metadata in package.json from `readme` to `scalarReadme`: npm treats a `readme` field as the readme text itself, so affected packages were published with a literal `[object Object]` readme on the registry instead of README.md.
+
+## 0.9.21
+
+## 0.9.20
+
+## 0.9.19
+
+## 0.9.18
+
+## 0.9.17
+
+### Patch Changes
+
+- [#9501](https://github.com/scalar/scalar/pull/9501): Pretty-print JSON bodies in the C/libcurl snippet across multiple lines instead of cramming the whole payload onto a single line
+
+## 0.9.16
+
+## 0.9.15
+
+## 0.9.14
+
+## 0.9.13
+
+### Patch Changes
+
+- [#9429](https://github.com/scalar/scalar/pull/9429): replace `clojure/clj_http` with a native snippetz plugin and remove the legacy httpsnippet-lite clojure target
+- [#9430](https://github.com/scalar/scalar/pull/9430): fix(snippetz): correct curl URL query separator and shell quoting
+- [#9427](https://github.com/scalar/scalar/pull/9427): refactor(snippetz): replace the httpsnippet-lite Kotlin/OkHttp target with a native plugin
+- [#9425](https://github.com/scalar/scalar/pull/9425): refactor(snippetz): replace httpsnippet-lite with a native objc/nsurlsession plugin
+- [#9424](https://github.com/scalar/scalar/pull/9424): Replace the httpsnippet-lite-based csharp/restsharp generator with a native snippetz plugin
+- [#9428](https://github.com/scalar/scalar/pull/9428): refactor(snippetz): replace the httpsnippet-lite Wget client with a native plugin
+
+## 0.9.12
+
+## 0.9.11
+
+## 0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- [#9145](https://github.com/scalar/scalar/pull/9145): feat(snippetz): pretty-print JSON values inside cURL `--data` bodies and `--form` multipart parts, including RFC 6839 `+json` structured-syntax types (e.g. `application/vnd.api+json`) and parameterized variants (e.g. `application/json;charset=utf-8`)
+
+## 0.9.8
+
+### Patch Changes
+
+- [#9211](https://github.com/scalar/scalar/pull/9211): fix(snippetz): emit `CURLOPT_CUSTOMREQUEST` for PHP cURL snippets when the method is not GET or POST, so DELETE/PUT/PATCH requests render with the correct verb
+
+## 0.9.7
+
+### Patch Changes
+
+- [#9141](https://github.com/scalar/scalar/pull/9141): fix(snippetz): emit `CURLOPT_CUSTOMREQUEST` for PHP cURL snippets when the method is not GET or POST, so DELETE/PUT/PATCH requests render with the correct verb
+
+## 0.9.6
+
+## 0.9.5
+
+## 0.9.4
+
+## 0.9.3
+
+## 0.9.2
+
+## 0.9.1
+
+### Patch Changes
+
+- [#8862](https://github.com/scalar/scalar/pull/8862): add `python/aiohttp` as a supported code snippet client and expose it through shared snippet client types and config schemas
+- [#8874](https://github.com/scalar/scalar/pull/8874): refactor c/libcurl plugin to use shared PluginConfiguration type
+- [#8874](https://github.com/scalar/scalar/pull/8874): replace c/libcurl httpsnippet-lite conversion with native plugin
+- [#8874](https://github.com/scalar/scalar/pull/8874): Fix C libcurl snippet cleanup ordering to call `curl_easy_cleanup` before freeing `curl_mime` and header slists.
+- [#8870](https://github.com/scalar/scalar/pull/8870): feat(snippetz): migrate python3 plugin off httpsnippet-lite
+- [#8869](https://github.com/scalar/scalar/pull/8869): replace `swift/nsurlsession` with a native snippetz plugin and remove the legacy httpsnippet-lite swift target
+
+## 0.9.0
+
+### Minor Changes
+
+- [#8771](https://github.com/scalar/scalar/pull/8771): feat(snippetz): migrate R code snippets from httr to httr2
+- [#8817](https://github.com/scalar/scalar/pull/8817): feat(snippetz): add a Laravel HTTP client plugin for PHP snippets
+
+  Added a new `php/laravel` client generator in `@scalar/snippetz`, including comprehensive request coverage for headers, cookies, auth, query params, JSON, multipart, form-encoded, binary, and fallback bodies.
+
+  Updated generated client registries and schema wiring so the new client is available across Scalar:
+  - `@scalar/types` `GROUPED_CLIENTS` / `AVAILABLE_CLIENTS`
+  - `@scalar/workspace-store` reference-config schema
+  - generated docs and integration client enums
+
+  Updated api-client expectations for the increased total built-in client count.
+
+### Patch Changes
+
+- [#8817](https://github.com/scalar/scalar/pull/8817): Refactor the Laravel PHP string escaping helpers to reuse one implementation and avoid duplicate logic.
+- [#8832](https://github.com/scalar/scalar/pull/8832): feat(snippetz): add first-party go native code generator
+- [#8818](https://github.com/scalar/scalar/pull/8818): refactor(snippetz): migrate js and node axios plugins off httpsnippet-lite fallback
+- [#8832](https://github.com/scalar/scalar/pull/8832): fix(snippetz): avoid go short declaration redeclaration for multipart files
+- [#8858](https://github.com/scalar/scalar/pull/8858): fix(snippetz): replace ruby native plugin legacy converter
+
+## 0.8.0
+
+### Minor Changes
+
+- [#8748](https://github.com/scalar/scalar/pull/8748): feat: support `allowReserved` for code samples
+
+## 0.7.8
+
+### Patch Changes
+
+- [#8662](https://github.com/scalar/scalar/pull/8662): fix(snippetz): preserve duplicate multipart field names in python request snippets
+
+## 0.7.7
+
+## 0.7.6
+
+### Patch Changes
+
+- [#8465](https://github.com/scalar/scalar/pull/8465): fix multipart encoding.contentType request handling and curl snippets
+
+## 0.7.5
+
+### Patch Changes
+
+- [#8466](https://github.com/scalar/scalar/pull/8466): chore: new build pipeline
+
+## 0.7.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.3**
+
+## 0.7.3
+
+### Patch Changes
+
+- [#8404](https://github.com/scalar/scalar/pull/8404): Preserve duplicate query parameters in generated code snippets. php/guzzle: preserve duplicate query parameters as arrays.
+
+## 0.7.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.2**
+
+## 0.7.1
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.1**
+  - [#8381](https://github.com/scalar/scalar/pull/8381): feat: add mcp config support
+
+## 0.7.0
+
+### Minor Changes
+
+- [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.7.0**
+  - [#8322](https://github.com/scalar/scalar/pull/8322): chore: bump required node version to >=22 (LTS)
+
+## 0.6.19
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.10**
+
+## 0.6.18
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.9**
+
+## 0.6.17
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.8**
+  - [#8274](https://github.com/scalar/scalar/pull/8274): feat(agent): add config to hide search api
+
+## 0.6.16
+
+### Patch Changes
+
+- [#8248](https://github.com/scalar/scalar/pull/8248): fix: duplicate http headers for PHP CURL
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.7**
+
+## 0.6.15
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.6**
+  - [#8212](https://github.com/scalar/scalar/pull/8212): chore: version bump
+
+## 0.6.14
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.5**
+  - [#8207](https://github.com/scalar/scalar/pull/8207): chore: version bump
+
+## 0.6.13
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.4**
+  - [#8174](https://github.com/scalar/scalar/pull/8174): feat: add `createAnySecurityScheme` config option to control generic auth scheme creation
+
+## 0.6.12
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.3**
+
+## 0.6.11
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.2**
+
+## 0.6.10
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.1**
+  - [#8000](https://github.com/scalar/scalar/pull/8000): fix(agent): change enabled flag to disabled
+  - [#7995](https://github.com/scalar/scalar/pull/7995): feat: enable/disable agent scalar
+
+## 0.6.9
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.6.0**
+  - [#7959](https://github.com/scalar/scalar/pull/7959): feat(agent): add agent scalar to localhost
+
+## 0.6.8
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.10**
+
+## 0.6.7
+
+### Patch Changes
+
+- [#7866](https://github.com/scalar/scalar/pull/7866): chore: expose har types
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.9**
+  - [#7866](https://github.com/scalar/scalar/pull/7866): chore: expose har types
+
+## 0.6.6
+
+### Patch Changes
+
+- [#7859](https://github.com/scalar/scalar/pull/7859): fix the use of httpx.AsyncClient async context manager
+
+## 0.6.5
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.8**
+
+## 0.6.4
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.7**
+
+## 0.6.3
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.6**
+  - [#7661](https://github.com/scalar/scalar/pull/7661): fix: all issues for client modal v2 preparation
+
+## 0.6.2
+
+### Patch Changes
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.5**
+  - [#7605](https://github.com/scalar/scalar/pull/7605): fix: all issues for client modal v2 preparation
+
+## 0.6.1
+
+### Patch Changes
+
+- [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+#### Updated Dependencies
+
+- **@scalar/types@0.5.4**
+  - [#7567](https://github.com/scalar/scalar/pull/7567): feat: add code samples to client v2
+
+## 0.6.0
+
+### Minor Changes
+
+- [#7498](https://github.com/scalar/scalar/pull/7498) [`bb52d9a`](https://github.com/scalar/scalar/commit/bb52d9a21e53628270bab93c0f03b5731c9c97c6) Thanks [@marcalexiei](https://github.com/marcalexiei)! - feat: remove `httpsnippet-lite` declarations
+
+### Patch Changes
+
+- Updated dependencies [[`bb52d9a`](https://github.com/scalar/scalar/commit/bb52d9a21e53628270bab93c0f03b5731c9c97c6)]:
+  - @scalar/types@0.5.3
+
+## 0.5.5
+
+### Patch Changes
+
+- Updated dependencies [[`72cd82f`](https://github.com/scalar/scalar/commit/72cd82fb8df63a9e5d0db1202978aebfefd0457a)]:
+  - @scalar/types@0.5.2
+
+## 0.5.4
+
+### Patch Changes
+
+- [#7435](https://github.com/scalar/scalar/pull/7435) [`fa361d2`](https://github.com/scalar/scalar/commit/fa361d2799e358d582fbb224a7b93d5b6e832c0e) Thanks [@hanspagel](https://github.com/hanspagel)! - fix: single quotes in shell/curl are not escaped
+
+- [#7436](https://github.com/scalar/scalar/pull/7436) [`dd8e9dc`](https://github.com/scalar/scalar/commit/dd8e9dc118d3ae98180e2a93bd6ba11e982abbf8) Thanks [@hanspagel](https://github.com/hanspagel)! - refactor: move javascript util to language lib
+
+- Updated dependencies [[`bfd814a`](https://github.com/scalar/scalar/commit/bfd814a4219660face190041cc4845182b56ab03)]:
+  - @scalar/types@0.5.1
+
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [[`44aeef0`](https://github.com/scalar/scalar/commit/44aeef01073801165e339163462378b7b62ff68d), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47), [`cbedfab`](https://github.com/scalar/scalar/commit/cbedfab576502069be27ceacbea145a917214e47)]:
+  - @scalar/types@0.5.0
+
+## 0.5.2
+
+### Patch Changes
+
+- [#6984](https://github.com/scalar/scalar/pull/6984) [`da7ab2f`](https://github.com/scalar/scalar/commit/da7ab2fb2e422b9cec2de5faba58ea83dd774808) Thanks [@xC0dex](https://github.com/xC0dex)! - feat: custom httpclient generator for C#
+
+- Updated dependencies [[`eb022f2`](https://github.com/scalar/scalar/commit/eb022f2c8f93c84a04c0093fefe8a1e05d6ec80d), [`6ec8c29`](https://github.com/scalar/scalar/commit/6ec8c299d912111b029e8058979d00968b70691a), [`eba18d0`](https://github.com/scalar/scalar/commit/eba18d06267a163a8f91396a66f817100ee59461)]:
+  - @scalar/types@0.4.0
+
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [f3e17d8]
+  - @scalar/types@0.3.2
+
+## 0.5.0
+
+### Minor Changes
+
+- e0cdd9a: Added f# support in code snippets
+
+### Patch Changes
+
+- Updated dependencies [1e01464]
+  - @scalar/types@0.3.1
+
+## 0.4.11
+
+### Patch Changes
+
+- Updated dependencies [008a0f3]
+  - @scalar/types@0.3.0
+
+## 0.4.10
+
+### Patch Changes
+
+- Updated dependencies [005fba9]
+  - @scalar/types@0.2.16
+
+## 0.4.9
+
+### Patch Changes
+
+- Updated dependencies [abe3842]
+  - @scalar/types@0.2.15
+
+## 0.4.8
+
+### Patch Changes
+
+- 40e79b9: fix(snippetz): use correct query format in ofetch snippets
+- Updated dependencies [792c937]
+  - @scalar/types@0.2.14
+
+## 0.4.7
+
+### Patch Changes
+
+- Updated dependencies [50032be]
+  - @scalar/types@0.2.13
+
+## 0.4.6
+
+### Patch Changes
+
+- 86d29c1: feat(snippetz): improve indentation handling in objectToString
+
+## 0.4.5
+
+### Patch Changes
+
+- Updated dependencies [6a88108]
+  - @scalar/types@0.2.12
+
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [ccf875a]
+- Updated dependencies [94d6d0c]
+  - @scalar/types@0.2.11
+
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [fb62e1b]
+  - @scalar/types@0.2.10
+
 ## 0.4.2
 
 ### Patch Changes

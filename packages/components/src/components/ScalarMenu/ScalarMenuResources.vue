@@ -1,7 +1,18 @@
+<script lang="ts">
+/**
+ * Scalar Menu Resources component
+ *
+ * Displays resource links (Terms, Privacy, Sales) inside the ScalarMenu dropdown.
+ *
+ * @example
+ * <ScalarMenuResources />
+ */
+export default {}
+</script>
+
 <script setup lang="ts">
 import {
   ScalarIconBookOpenText,
-  ScalarIconEnvelope,
   ScalarIconEnvelopeSimple,
   ScalarIconFileText,
 } from '@scalar/icons'

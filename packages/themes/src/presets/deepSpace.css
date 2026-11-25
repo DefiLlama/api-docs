@@ -1,11 +1,12 @@
 /* basic theme */
-:root {
+:root,
+:host {
   --scalar-text-decoration: underline;
   --scalar-text-decoration-hover: underline;
 }
 .light-mode {
   --scalar-color-1: rgb(9, 9, 11);
-  --scalar-color-2: rgb(113, 113, 122);
+  --scalar-color-2: rgb(109, 109, 117);
   --scalar-color-3: rgba(25, 25, 28, 0.5);
   --scalar-color-accent: var(--scalar-color-1);
 
@@ -58,13 +59,14 @@
   --scalar-color-green: #069061;
   --scalar-color-red: #ef0006;
   --scalar-color-yellow: #edbe20;
-  --scalar-color-blue: #0082d0;
+  --scalar-color-blue: #0072bd;
   --scalar-color-orange: #fb892c;
   --scalar-color-purple: #5203d1;
+  --scalar-color-query: #007b80;
 
   --scalar-button-1: rgba(0, 0, 0, 1);
   --scalar-button-1-hover: rgba(0, 0, 0, 0.8);
-  --scalar-button-1-color: rgba(255, 255, 255, 0.9);
+  --scalar-button-1-color: #fff;
 }
 .dark-mode {
   --scalar-color-green: rgba(69, 255, 165, 0.823);
@@ -73,6 +75,7 @@
   --scalar-color-blue: #6bc1fe;
   --scalar-color-orange: #f98943;
   --scalar-color-purple: #b191f9;
+  --scalar-color-query: #79e2da;
 
   --scalar-button-1: rgba(255, 255, 255, 1);
   --scalar-button-1-hover: rgba(255, 255, 255, 0.9);
@@ -111,7 +114,9 @@
   --rainbow: repeating-linear-gradient(100deg, #fff 10%, #fff 16%, #fff 22%, #fff 30%);
   background-image: var(--stripesDark), var(--rainbow);
   background-size: 300%, 200%;
-  background-position: 50% 50%, 50% 50%;
+  background-position:
+    50% 50%,
+    50% 50%;
   filter: invert(100%);
   -webkit-mask-image: radial-gradient(ellipse at 100% 0%, black 40%, transparent 70%);
   mask-image: radial-gradient(ellipse at 100% 0%, black 40%, transparent 70%);
@@ -146,7 +151,8 @@
   width: 100%;
   height: 100%;
   position: absolute;
-  background-image: radial-gradient(2px 2px at 20px 30px, var(--star-color2), rgba(0, 0, 0, 0)),
+  background-image:
+    radial-gradient(2px 2px at 20px 30px, var(--star-color2), rgba(0, 0, 0, 0)),
     radial-gradient(2px 2px at 40px 70px, var(--star-color), rgba(0, 0, 0, 0)),
     radial-gradient(2px 2px at 50px 160px, var(--star-color3), rgba(0, 0, 0, 0)),
     radial-gradient(2px 2px at 90px 40px, var(--star-color), rgba(0, 0, 0, 0)),

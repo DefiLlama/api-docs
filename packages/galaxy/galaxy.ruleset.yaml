@@ -1,0 +1,34 @@
+# Scalar ruleset for the Galaxy example document.
+#
+# Extends Spectral's built-in OpenAPI ruleset (spectral:oas) and layers on a few
+# Scalar opinions. The custom rules are kept at "warn" so they surface issues
+# without breaking the build; spectral:oas errors still fail the lint.
+#
+# Run it with:
+#   pnpm --filter @scalar/galaxy lint
+#
+# Only the 3.1 document is linted. Spectral's spectral:oas ruleset does not
+# understand OpenAPI 3.2 yet, so linting src/documents/3.2.yaml validates it
+# against the 3.0 schema and reports false positives (for example, it rejects
+# schema-level "examples", the QUERY method, `additionalOperations` and other
+# 3.2-only constructs). The 3.2 document showcases the OpenAPI 3.2 feature set
+# and its structure is asserted by tests/yaml.test.ts, so its content is already
+# covered. Revisit once Spectral gains OpenAPI 3.2 support.
+extends: spectral:oas
+rules:
+  # Every operation should carry a human-readable description, not just a summary.
+  operation-description:
+    description: Operations should have a description.
+    given: $.paths[*][get,put,post,delete,patch,options,head]
+    severity: warn
+    then:
+      field: description
+      function: truthy
+  # Every operation should be tagged so it groups nicely in the API reference.
+  operation-tags:
+    description: Operations should have at least one tag.
+    given: $.paths[*][get,put,post,delete,patch,options,head]
+    severity: warn
+    then:
+      field: tags
+      function: truthy

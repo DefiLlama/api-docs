@@ -1,0 +1,343 @@
+<script setup lang="ts">
+import { ScalarErrorBoundary } from '@scalar/components/error-boundary'
+import { isDefined } from '@scalar/helpers/array/is-defined'
+import { isElectron } from '@scalar/helpers/general/is-electron'
+import type { ClientPlugin } from '@scalar/oas-utils/helpers'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import type { RequestPayload } from '@scalar/workspace-store/request-example'
+import { computed, ref, useId } from 'vue'
+
+import SectionFilter from '@/components/SectionFilter.vue'
+import ViewLayoutSection from '@/components/ViewLayout/ViewLayoutSection.vue'
+import type { ResponseInstance } from '@/v2/blocks/operation-block/helpers/send-request'
+import HeadersComponent from '@/v2/blocks/response-block/components/Headers.vue'
+import ResponseBody from '@/v2/blocks/response-block/components/ResponseBody.vue'
+import ResponseBodyStreaming from '@/v2/blocks/response-block/components/ResponseBodyStreaming.vue'
+import ResponseBodyVirtual from '@/v2/blocks/response-block/components/ResponseBodyVirtual.vue'
+import ResponseCookies from '@/v2/blocks/response-block/components/ResponseCookies.vue'
+import ResponseEmpty from '@/v2/blocks/response-block/components/ResponseEmpty.vue'
+import ResponseLoadingOverlay from '@/v2/blocks/response-block/components/ResponseLoadingOverlay.vue'
+import ResponseMetaInformation from '@/v2/blocks/response-block/components/ResponseMetaInformation.vue'
+import { textMediaTypes } from '@/v2/blocks/response-block/helpers/media-types'
+import { parseSetCookie } from '@/v2/blocks/response-block/helpers/parse-set-cookie'
+import { useLocalization } from '@/v2/features/localization'
+import type { ClientLayout } from '@/v2/types/layout'
+
+const {
+  layout,
+  totalPerformedRequests,
+  response,
+  requestPayload,
+  requestError,
+} = defineProps<{
+  /** Wait for the selected external request example before sending. */
+  executionDisabled?: boolean
+  /** Failure retained until the next request or operation change. */
+  requestError?: Error | null
+  /** Preprocessed response */
+  response: ResponseInstance | null
+  /** Original request as a [url, RequestInit] tuple */
+  requestPayload: RequestPayload | null
+  /** Client layout */
+  layout: ClientLayout
+  /** Total number of performed requests */
+  totalPerformedRequests: number
+  /** Application version */
+  appVersion: string
+  /** Registered app plugins */
+  plugins: ClientPlugin[]
+  /** Workspace event bus */
+  eventBus: WorkspaceEventBus
+}>()
+
+const { translate } = useLocalization()
+
+/** Browsers hide CORS details, so these messages warrant guidance, not a diagnosis. */
+const showNetworkErrorHelp = computed<boolean>(
+  () =>
+    !isElectron() &&
+    requestError?.name === 'TypeError' &&
+    [
+      'Failed to fetch',
+      'Load failed',
+      'NetworkError when attempting to fetch resource.',
+    ].includes(requestError.message),
+)
+
+// Headers
+const responseHeaders = computed(() => {
+  const headers = response?.headers
+
+  return headers
+    ? Object.keys(headers).map((key) => ({
+        name: key,
+        value: headers[key] ?? '',
+      }))
+    : []
+})
+
+const responseContentType = computed(
+  () => response?.headers['content-type'] ?? response?.headers['Content-Type'],
+)
+
+// Cookies
+const responseCookies = computed(
+  () =>
+    response?.cookieHeaderKeys
+      .map((setCookieValue) => parseSetCookie(setCookieValue))
+      .filter(isDefined) ?? [],
+)
+
+const responseSections = ['Cookies', 'Headers', 'Body'] as const
+type Filter = 'All' | (typeof responseSections)[number]
+const activeFilter = ref<Filter>('All')
+
+const filters = computed<Filter[]>(() => ['All', ...responseSections])
+
+const filterIds = computed<Record<Filter, string>>(() => ({
+  All: useId(),
+  Cookies: useId(),
+  Headers: useId(),
+  Body: useId(),
+}))
+
+/** Threshold for virtualizing response bodies in bytes */
+const VIRTUALIZATION_THRESHOLD = 200_000
+const shouldVirtualize = computed(() => {
+  if (!response || !('size' in response)) {
+    return false
+  }
+
+  // Get content type from headers
+  const contentType =
+    response.headers?.['content-type'] || response.headers?.['Content-Type']
+
+  // If no content type or response size is small, don't virtualize
+  if (!contentType || (response.size ?? 0) <= VIRTUALIZATION_THRESHOLD) {
+    return false
+  }
+
+  // Do not virtualize html
+  if (contentType.includes('text/html')) {
+    return false
+  }
+
+  // Check if content type matches any text-based type
+  const isTextBased = textMediaTypes.some((type) => contentType.includes(type))
+
+  return isTextBased && (response.size ?? 0) > VIRTUALIZATION_THRESHOLD
+})
+
+const requestHeaders = computed(() => {
+  const headers = requestPayload?.[1]?.headers
+  if (!headers) {
+    return []
+  }
+
+  // Normalise via the Headers constructor, and then spread
+  return [...new Headers(headers)].map(([name, value]) => ({
+    name,
+    value,
+    required: false,
+  }))
+})
+
+const isSectionVisible = (
+  section: (typeof responseSections)[number] | 'All',
+) => {
+  if (activeFilter.value === 'All' || activeFilter.value === section) {
+    return true
+  }
+  return false
+}
+
+defineExpose({
+  responseHeaders,
+  responseCookies,
+  requestHeaders,
+  shouldVirtualize,
+  activeFilter,
+  filters,
+})
+
+const filterLabels = computed(() => ({
+  All: translate('apiClient.sectionFilter.all'),
+  Auth: translate('apiClient.sectionFilter.auth'),
+  Variables: translate('apiClient.sectionFilter.variables'),
+  Cookies: translate('apiClient.sectionFilter.cookies'),
+  Headers: translate('apiClient.sectionFilter.headers'),
+  Query: translate('apiClient.sectionFilter.query'),
+  Body: translate('apiClient.sectionFilter.body'),
+}))
+</script>
+<template>
+  <!-- Bound the stacked response section so long bodies keep their own scroll area. -->
+  <ViewLayoutSection
+    :aria-label="translate('apiClient.responseBlock.response')"
+    class="max-xl:max-h-full">
+    <template #title>
+      <div class="flex h-8 flex-1 items-center">
+        <div
+          aria-live="polite"
+          class="flex items-center"
+          :class="{ 'animate-response-heading': response }">
+          <span class="response-heading pointer-events-none absolute">{{
+            translate('apiClient.responseBlock.response')
+          }}</span>
+          <ResponseMetaInformation
+            v-if="response"
+            class="animate-response-children"
+            :eventBus="eventBus"
+            :response="response" />
+        </div>
+        <SectionFilter
+          v-model="activeFilter"
+          :filters="filters"
+          :labels="filterLabels" />
+      </div>
+    </template>
+    <div
+      :id="filterIds.All"
+      class="custom-scroll response-section-content relative grid h-full justify-stretch"
+      :class="{
+        'content-start': response,
+      }"
+      :role="activeFilter === 'All' && response ? 'tabpanel' : 'none'">
+      <div
+        v-if="requestError"
+        class="flex flex-col gap-3 p-4 text-sm"
+        role="alert">
+        <h3 class="text-c-1 font-medium">
+          {{ translate('apiClient.responseBlock.requestFailed') }}
+        </h3>
+        <p class="text-c-2 break-words">{{ requestError.message }}</p>
+        <p
+          v-if="showNetworkErrorHelp"
+          class="text-c-2 leading-relaxed">
+          {{ translate('apiClient.responseBlock.networkErrorHelp') }}
+        </p>
+      </div>
+      <template v-else-if="!response">
+        <ResponseEmpty
+          :appVersion="appVersion"
+          :executionDisabled
+          :layout="layout"
+          :totalPerformedRequests="totalPerformedRequests"
+          @addRequest="
+            eventBus.emit('ui:open:command-palette', {
+              action: 'create-request',
+              payload: undefined,
+            })
+          "
+          @openCommandPalette="eventBus.emit('ui:open:command-palette')"
+          @sendRequest="eventBus.emit('operation:send:request:hotkey')" />
+      </template>
+      <template v-else>
+        <!-- Cookies section -->
+        <ResponseCookies
+          v-if="isSectionVisible('Cookies')"
+          :id="filterIds.Cookies"
+          class="response-section-content-cookies"
+          :cookies="responseCookies"
+          :role="activeFilter === 'All' ? 'none' : 'tabpanel'" />
+        <!-- Request headers section -->
+        <HeadersComponent
+          v-if="isSectionVisible('Headers')"
+          :id="filterIds.Headers"
+          class="response-section-content-headers"
+          :headers="requestHeaders"
+          :role="activeFilter === 'All' ? 'none' : 'tabpanel'">
+          <template #title>
+            {{ translate('apiClient.responseBlock.requestHeaders') }}
+          </template>
+        </HeadersComponent>
+        <!-- Response headers section -->
+        <HeadersComponent
+          v-if="isSectionVisible('Headers')"
+          :id="filterIds.Headers"
+          class="response-section-content-headers"
+          :headers="responseHeaders"
+          :role="activeFilter === 'All' ? 'none' : 'tabpanel'">
+          <template #title>
+            {{ translate('apiClient.responseBlock.responseHeaders') }}
+          </template>
+        </HeadersComponent>
+
+        <!-- Inject response section plugin components -->
+        <ScalarErrorBoundary
+          v-for="(plugin, index) in plugins"
+          :key="index">
+          <component
+            :is="plugin.components.response.component"
+            v-if="plugin?.components?.response"
+            v-show="activeFilter === 'All'"
+            v-bind="plugin.components.response.additionalProps" />
+        </ScalarErrorBoundary>
+
+        <template v-if="activeFilter === 'All' || activeFilter === 'Body'">
+          <!-- Streaming response body -->
+          <ResponseBodyStreaming
+            v-if="'reader' in response"
+            :id="filterIds.Body"
+            class="response-section-content-body"
+            :contentType="responseContentType"
+            :reader="response.reader" />
+
+          <!-- Virtualized Text for massive responses -->
+          <ResponseBodyVirtual
+            v-else-if="shouldVirtualize && typeof response?.data === 'string'"
+            :id="filterIds.Body"
+            :content="response!.data"
+            :data="response?.data"
+            :headers="responseHeaders"
+            :role="activeFilter === 'All' ? 'none' : 'tabpanel'" />
+
+          <!-- Regular response body -->
+          <ResponseBody
+            v-else
+            :id="filterIds.Body"
+            :active="true"
+            class="response-section-content-body"
+            :data="response?.data"
+            :headers="responseHeaders"
+            layout="client"
+            :plugins="plugins"
+            :role="activeFilter === 'All' ? 'none' : 'tabpanel'"
+            :title="translate('apiClient.responseBlock.body')" />
+        </template>
+      </template>
+      <ResponseLoadingOverlay :eventBus="eventBus" />
+    </div>
+  </ViewLayoutSection>
+</template>
+<style scoped>
+.animate-response-heading .response-heading {
+  animation: push-response 0.2s ease-in-out forwards;
+  opacity: 1;
+}
+@keyframes push-response {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.animate-response-heading .animate-response-children {
+  animation: response-spans 0.2s ease-in-out forwards 0.05s;
+  opacity: 0;
+}
+
+@keyframes response-spans {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>

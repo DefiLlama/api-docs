@@ -10,8 +10,8 @@
 export default {}
 </script>
 <script setup lang="ts">
+import { formatBytes } from '@scalar/helpers/formatters/format-bytes'
 import { useBindCx } from '@scalar/use-hooks/useBindCx'
-import prettyBytes from 'pretty-bytes'
 
 import { ScalarButton } from '../ScalarButton'
 
@@ -33,23 +33,23 @@ const { cx } = useBindCx()
       v-for="file in files"
       :key="file.name"
       class="flex flex-col gap-0.5">
-      <li class="border rounded p-1 text-xs">
+      <li class="rounded border p-1 text-xs">
         <div class="flex items-center justify-between">
-          <div class="flex-1 min-w-0 truncate">
+          <div class="min-w-0 flex-1 truncate">
             {{ file.name }}
           </div>
-          <div class="text-c-3">{{ prettyBytes(file.size) }}</div>
+          <div class="text-c-3">{{ formatBytes(file.size) }}</div>
         </div>
       </li>
     </ul>
     <div class="flex items-center gap-1.5">
       <ScalarButton
-        size="sm"
+        size="xs"
         @click="$emit('upload')">
         Upload
       </ScalarButton>
       <ScalarButton
-        size="sm"
+        size="xs"
         variant="outlined"
         @click="files = []">
         Clear

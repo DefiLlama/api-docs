@@ -1,276 +1,506 @@
 <script setup lang="ts">
-import { useActiveEntities, useWorkspace } from '@scalar/api-client/store'
-import { RequestAuth } from '@scalar/api-client/views/Request/RequestSection/RequestAuth'
-import { ScalarErrorBoundary } from '@scalar/components'
-import { getSlugUid } from '@scalar/oas-utils/transforms'
-import type { OpenAPIV3_1 } from '@scalar/openapi-types'
-import type { Spec } from '@scalar/types/legacy'
-import { computed } from 'vue'
+import { mapHiddenClientsConfig } from '@scalar/api-client/modal/map-hidden-clients-config'
+import { generateClientOptions } from '@scalar/blocks/code-example'
+import type { SchemaRenderingProps } from '@scalar/blocks/schema'
+import { ScalarErrorBoundary } from '@scalar/components/error-boundary'
+import type { ApiReferenceConfigurationRaw } from '@scalar/types/api-reference'
+import type { Heading } from '@scalar/types/legacy'
+import {
+  getAsyncApiSecuritySchemes,
+  getAsyncApiServers,
+  getSelectedAsyncApiServer,
+} from '@scalar/workspace-store/channel-example'
+import type { AuthStore } from '@scalar/workspace-store/entities/auth'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import { getResolvedRef } from '@scalar/workspace-store/helpers/get-resolved-ref'
+import {
+  getSecurityRequirements,
+  getSecuritySchemes,
+  getSelectedSecurity,
+  getSelectedServer,
+  getServers,
+  mergeSecurity,
+} from '@scalar/workspace-store/request-example'
+import type { XScalarEnvironment } from '@scalar/workspace-store/schemas/extensions/document/x-scalar-environments'
+import type { TraversedEntry as TraversedEntryType } from '@scalar/workspace-store/schemas/navigation'
+import { isPluginDocument } from '@scalar/workspace-store/schemas/plugin-document'
+import {
+  getDocumentType,
+  isAsyncApiDocument,
+  isOpenApiDocument,
+} from '@scalar/workspace-store/schemas/type-guards'
+import type {
+  Workspace,
+  WorkspaceDocument,
+} from '@scalar/workspace-store/schemas/workspace'
+import { computed, onMounted, ref } from 'vue'
 
-import { ClientLibraries } from '@/components/Content/ClientLibraries'
-import { BaseUrl } from '@/features/base-url'
-import { useConfig } from '@/hooks/useConfig'
+import { AsyncApiServerSelector } from '@/blocks/scalar-asyncapi-server-selector-block'
+import { ClientSelector } from '@/blocks/scalar-client-selector-block'
+import { InfoBlock } from '@/blocks/scalar-info-block'
+import { IntroductionCardItem } from '@/blocks/scalar-info-block/'
+import {
+  getRenderableSdks,
+  SdkInstallationInstructions,
+} from '@/blocks/scalar-sdk-installation-instructions'
+import { ServerSelector } from '@/blocks/scalar-server-selector-block'
+import { AsyncApiTraversedEntry } from '@/components/Content/AsyncApi'
+import { Auth } from '@/components/Content/Auth'
+import { ContextBar } from '@/components/Content/ContextBar'
+import {
+  getInitialContextChain,
+  hasRenderableTagHierarchy,
+} from '@/components/Content/ContextBar/helpers'
+import TraversedEntry from '@/components/Content/Operations/TraversedEntry.vue'
+import { RenderPluginDocument, RenderPlugins } from '@/components/RenderPlugins'
+import { SectionFlare } from '@/components/SectionFlare'
+import { provideDocumentOutline } from '@/features/document-outline'
+import {
+  getXKeysFromObject,
+  SpecificationExtension,
+} from '@/features/specification-extension'
+import {
+  firstLazyLoadComplete,
+  scheduleInitialLoadComplete,
+} from '@/helpers/lazy-bus'
+import { usePluginManager } from '@/plugins'
 
-import { Introduction } from './Introduction'
-import { Loading } from './Lazy'
-import { Models, ModelsAccordion } from './Models'
-import { TagList } from './Tag'
-
-const props = withDefaults(
-  defineProps<{
-    document: OpenAPIV3_1.Document
-    parsedSpec: Spec
-    layout?: 'modern' | 'classic'
-  }>(),
+const {
+  specificationExtension = SpecificationExtension,
+  document,
+  documents,
+  clientDocument,
+  items,
+  environment,
+  eventBus,
+  options,
+  authStore,
+  documentSlug,
+  contextChain = [],
+} = defineProps<
   {
-    layout: 'modern',
-  },
+    infoSectionId: string
+    /**
+     * Ancestor tags (root → section in view) for the sticky context bar. Empty
+     * unless the section currently in view is nested under a parent tag.
+     */
+    contextChain?: { id: string; title: string }[]
+    /** Slug of the active document, used to scope plugin view ids for navigation and deep-linking */
+    documentSlug: string
+    /** The subset of the configuration object required for the content component */
+    options: Pick<
+      ApiReferenceConfigurationRaw,
+      | 'expandAllParameters'
+      | 'authentication'
+      | 'baseServerURL'
+      | 'documentDownloadType'
+      | 'expandAllResponses'
+      | 'featuredClients'
+      | 'showDefaultClientsWithSdkInstallation'
+      | 'hiddenClients'
+      | 'hideTestRequestButton'
+      | 'layout'
+      | 'oauth2RedirectUri'
+      | 'orderRequiredPropertiesFirst'
+      | 'orderSchemaPropertiesBy'
+      | 'expandAllSchemaProperties'
+      | 'schemaKeyboardNav'
+      | 'hideModelNames'
+      | 'showExtensions'
+      | 'maxVisibleRequestBodyProperties'
+      | 'persistAuth'
+      | 'proxyUrl'
+      | 'servers'
+      | 'showOperationId'
+      | 'multipartNaming'
+      | 'hideModels'
+      | 'modelsSectionLabel'
+    >
+    document: WorkspaceDocument | undefined
+    /** Every document in the workspace, handed to plugin document types */
+    documents: Record<string, WorkspaceDocument>
+    clientDocument: WorkspaceDocument | undefined
+    authStore: AuthStore
+    xScalarDefaultClient: Workspace['x-scalar-default-client']
+    xScalarDefaultExample: Workspace['x-scalar-default-example']
+    items: TraversedEntryType[]
+    expandedItems: Record<string, boolean>
+    eventBus: WorkspaceEventBus
+    environment: XScalarEnvironment
+    /** Heading id generator for Markdown headings */
+    headingSlugGenerator: (heading: Heading) => string
+  } & SchemaRenderingProps
+>()
+
+/** Generate all client options so that it can be shared between the top client picker and the operations */
+const clientOptions = computed(() =>
+  generateClientOptions(mapHiddenClientsConfig(options.hiddenClients)),
 )
 
-const config = useConfig()
-const { collections, securitySchemes, servers } = useWorkspace()
-const {
-  activeCollection: _activeCollection,
-  activeEnvVariables,
-  activeEnvironment,
-  activeWorkspace,
-} = useActiveEntities()
+/** Reserve the context-bar slot before scrolling reaches a nested tag. */
+const showContextBar = computed(() =>
+  hasRenderableTagHierarchy(items, options.layout),
+)
 
-/** Match the collection by slug if provided */
-const activeCollection = computed(() => {
-  if (config.value.slug) {
-    const collection = collections[getSlugUid(config.value.slug)]
-    if (collection) {
-      return collection
-    }
-  }
-  return _activeCollection.value
-})
+/** Show useful context during the Introduction before scrolling selects a tag. */
+const contextBarChain = computed(() =>
+  contextChain.length >= 2
+    ? contextChain
+    : getInitialContextChain(items, options.layout),
+)
 
-/** Ensure the server is the one selected in the collection */
-const activeServer = computed(() => {
-  if (!activeCollection.value) {
+/**
+ * Custom SDK installation instructions that actually have something to render.
+ * Entries with only a `lang` are ignored so we can fall back to the client
+ * selector instead of showing an empty card.
+ */
+const sdkInstallation = computed(() =>
+  getRenderableSdks(openApiDocument.value?.info?.['x-scalar-sdk-installation']),
+)
+
+/**
+ * Narrow the (possibly AsyncAPI) documents to OpenAPI documents. api-reference
+ * is OpenAPI-native, so AsyncAPI fields surface as undefined/empty.
+ */
+const openApiDocument = computed(() =>
+  isOpenApiDocument(document) ? document : undefined,
+)
+const openApiClientDocument = computed(() =>
+  isOpenApiDocument(clientDocument) ? clientDocument : undefined,
+)
+
+/** AsyncAPI narrow, used to render the (currently channel-only) AsyncAPI content tree. */
+const asyncApiDocument = computed(() =>
+  isAsyncApiDocument(document) ? document : undefined,
+)
+
+/** Live AsyncAPI document used by server and connection controls. */
+const asyncApiClientDocument = computed(() =>
+  isAsyncApiDocument(clientDocument) ? clientDocument : undefined,
+)
+
+const documentType = computed(() => getDocumentType(document))
+
+const { getDocumentType: getPluginDocumentType } = usePluginManager()
+
+/**
+ * A document claimed by a plugin document type, with the type that renders it. The plugin renders
+ * the whole document, so the built-in introduction and content tree are skipped.
+ */
+const pluginDocument = computed(() => {
+  if (!isPluginDocument(document)) {
     return undefined
   }
-
-  if (activeCollection.value.selectedServerUid) {
-    const server = servers[activeCollection.value.selectedServerUid]
-    if (server) {
-      return server
-    }
-  }
-
-  return servers[activeCollection.value.servers[0]]
+  const pluginDocumentType = getPluginDocumentType(
+    document['x-scalar-document-type'],
+  )
+  return pluginDocumentType
+    ? { document, documentType: pluginDocumentType }
+    : undefined
 })
 
-const introCardsSlot = computed(() =>
-  props.layout === 'classic' ? 'after' : 'aside',
+/** The introduction only renders built-in documents; plugin documents render their own. */
+const builtInInfo = computed(() =>
+  isPluginDocument(document) ? undefined : document?.info,
 )
+
+const specificationVersion = computed(() => {
+  if (isAsyncApiDocument(document)) {
+    return document['x-original-aas-version'] ?? document.asyncapi
+  }
+  return openApiDocument.value?.['x-original-oas-version']
+})
+
+/** Computed property to get all OpenAPI extension fields from the root document object */
+const documentExtensions = computed(() => getXKeysFromObject(document))
+
+/** Computed property to get all OpenAPI extension fields from the document's info object */
+const infoExtensions = computed(() => getXKeysFromObject(document?.info))
+
+/** Compute the servers for the document */
+const servers = computed(() =>
+  getServers(options?.servers ?? openApiClientDocument.value?.servers, {
+    baseServerUrl: options?.baseServerURL,
+    documentUrl: clientDocument?.['x-scalar-original-source-url'],
+  }),
+)
+
+/** Compute the selected server for the document only (for now) */
+const selectedServer = computed(() =>
+  getSelectedServer(
+    openApiClientDocument.value ?? null,
+    null,
+    null,
+    servers.value,
+  ),
+)
+
+/**
+ * Compute the AsyncAPI servers (all protocols, not just WebSocket) for the
+ * document-level server selector.
+ */
+const asyncApiServers = computed(() =>
+  asyncApiClientDocument.value
+    ? getAsyncApiServers(asyncApiClientDocument.value, { webSocketOnly: false })
+    : [],
+)
+
+/** Compute the selected AsyncAPI server for the document */
+const asyncApiSelectedServer = computed(() =>
+  getSelectedAsyncApiServer(
+    asyncApiClientDocument.value ?? null,
+    asyncApiServers.value,
+  ),
+)
+
+/** Merge authentication config with the document security schemes */
+const securitySchemes = computed(() => {
+  // AsyncAPI stores its security schemes in the same `components.securitySchemes` slot and shares
+  // the http/apiKey/oauth2/openIdConnect shapes with OpenAPI; broker-specific types (scramSha*,
+  // plain, X509, …) flow through unchanged and degrade gracefully downstream. Both document types
+  // persist the auth-store scope key on `x-scalar-navigation.name`, so a single call handles both.
+  const sourceDocument =
+    asyncApiClientDocument.value ?? openApiClientDocument.value
+  const components = sourceDocument?.components
+    ? getResolvedRef(sourceDocument.components)
+    : undefined
+
+  return mergeSecurity(
+    asyncApiClientDocument.value
+      ? getAsyncApiSecuritySchemes(asyncApiClientDocument.value, {
+          operations: {},
+        })
+      : components?.securitySchemes,
+    options.authentication?.securitySchemes,
+    authStore,
+    sourceDocument?.['x-scalar-navigation']?.name ?? '',
+    options.oauth2RedirectUri,
+  )
+})
+
+/** Use the same document authentication selection as the introduction auth panel. */
+const sdkSecuritySchemes = computed(() => {
+  const documentName =
+    openApiClientDocument.value?.['x-scalar-navigation']?.name ?? ''
+  const selected = getSelectedSecurity(
+    authStore.getAuthSelectedSchemas({ type: 'document', documentName }),
+    undefined,
+    getSecurityRequirements(openApiClientDocument.value?.security),
+    securitySchemes.value,
+    options.authentication?.preferredSecurityScheme,
+  )
+  return getSecuritySchemes(
+    securitySchemes.value,
+    selected.selectedSchemes[selected.selectedIndex] ?? {},
+  )
+})
+
+/**
+ * Wait for the active client document so initial auth updates can be persisted.
+ *
+ * For OpenAPI it stays tied to `hideTestRequestButton`, since the auth feeds the interactive
+ * test client. AsyncAPI has no document-level test request, so its auth display is decoupled
+ * from that flag and shown whenever a document is present.
+ */
+const showAuthSelector = computed(
+  () =>
+    Boolean(document) &&
+    Boolean(clientDocument) &&
+    (Boolean(asyncApiDocument.value) || !options.hideTestRequestButton),
+)
+
+/**
+ * The server always renders the placeholder, but firstLazyLoadComplete is shared by every instance in a
+ * document and stays true once an earlier instance has loaded. Keeping the placeholder until mount makes a
+ * later instance hydrate against the same markup.
+ */
+const isMounted = ref(false)
+
+/** Ensures firstLazyLoadComplete is set for documents with no Lazy sections (e.g. no operations/tags/models). */
+onMounted(() => {
+  isMounted.value = true
+  scheduleInitialLoadComplete()
+})
+
+// Content renders the info block above the tags, operations and models, so it
+// owns the relationship between them and anchors the outline at the document.
+provideDocumentOutline('document')
 </script>
 <template>
-  <!-- For adding gradients + animations to introduction of documents that :before / :after won't work for -->
-  <div class="section-flare">
-    <div class="section-flare-item"></div>
-    <div class="section-flare-item"></div>
-    <div class="section-flare-item"></div>
-    <div class="section-flare-item"></div>
-    <div class="section-flare-item"></div>
-    <div class="section-flare-item"></div>
-    <div class="section-flare-item"></div>
-    <div class="section-flare-item"></div>
-  </div>
-  <div class="narrow-references-container">
+  <SectionFlare />
+
+  <div class="references-container">
     <slot name="start" />
-    <Loading
-      v-if="activeCollection"
-      :document="document"
-      :collection="activeCollection"
-      :layout="layout"
-      :parsedSpec="parsedSpec"
-      :server="activeServer" />
 
-    <Introduction
-      v-if="document?.info?.title || document?.info?.description"
-      :document="document">
-      <template #[introCardsSlot]>
-        <ScalarErrorBoundary>
-          <div
-            class="introduction-card"
-            :class="{ 'introduction-card-row': layout === 'classic' }">
-            <div
-              v-if="activeCollection?.servers?.length"
+    <!-- Render plugins at content.start view -->
+    <RenderPlugins
+      :documentSlug
+      :eventBus
+      :options
+      viewName="content.start" />
+
+    <!-- A plugin document type renders its whole document -->
+    <RenderPluginDocument
+      v-if="pluginDocument"
+      :document="pluginDocument.document"
+      :documentType="pluginDocument.documentType"
+      :documents
+      :eventBus
+      :navigation="items"
+      :options />
+
+    <template v-else>
+      <!-- Introduction -->
+
+      <InfoBlock
+        :id="infoSectionId"
+        :applicationIdentifier="asyncApiDocument?.id"
+        :documentDownloadType="options.documentDownloadType"
+        :documentExtensions
+        :documentType
+        :documentUrl="document?.['x-scalar-original-source-url']"
+        :eventBus
+        :externalDocs="openApiDocument?.externalDocs"
+        :headingSlugGenerator
+        :info="builtInInfo"
+        :infoExtensions
+        :layout="options.layout"
+        :specificationVersion>
+        <template #selectors>
+          <!-- Server Selector -->
+          <ScalarErrorBoundary>
+            <IntroductionCardItem
+              v-if="servers?.length"
               class="scalar-reference-intro-server scalar-client introduction-card-item text-base leading-normal [--scalar-address-bar-height:0px]">
-              <BaseUrl
-                :collection="activeCollection"
-                :server="activeServer" />
-            </div>
-            <div
-              v-if="
-                activeCollection &&
-                activeWorkspace &&
-                Object.keys(securitySchemes ?? {}).length
-              "
+              <ServerSelector
+                :eventBus
+                :selectedServer
+                :servers />
+            </IntroductionCardItem>
+          </ScalarErrorBoundary>
+
+          <!-- AsyncAPI Server Selector -->
+          <ScalarErrorBoundary>
+            <IntroductionCardItem
+              v-if="asyncApiServers.length"
+              class="scalar-reference-intro-server scalar-client introduction-card-item text-base leading-normal [--scalar-address-bar-height:0px]">
+              <AsyncApiServerSelector
+                :eventBus
+                :options="options"
+                :selectedServer="asyncApiSelectedServer"
+                :servers="asyncApiServers" />
+            </IntroductionCardItem>
+          </ScalarErrorBoundary>
+
+          <!-- Auth selector -->
+          <ScalarErrorBoundary>
+            <IntroductionCardItem
+              v-if="showAuthSelector"
               class="scalar-reference-intro-auth scalar-client introduction-card-item leading-normal">
-              <RequestAuth
-                :collection="activeCollection"
-                :envVariables="activeEnvVariables"
-                :environment="activeEnvironment"
-                layout="reference"
-                :persistAuth="config.persistAuth"
-                :selectedSecuritySchemeUids="
-                  activeCollection?.selectedSecuritySchemeUids ?? []
+              <Auth
+                :authStore
+                :document="clientDocument"
+                :environment
+                :eventBus
+                :options
+                :securitySchemes
+                :selectedServer />
+            </IntroductionCardItem>
+          </ScalarErrorBoundary>
+
+          <!-- Custom SDK installation instructions, or the generic client selector -->
+          <ScalarErrorBoundary>
+            <IntroductionCardItem
+              v-if="sdkInstallation.length"
+              class="introduction-card-item scalar-reference-intro-clients">
+              <SdkInstallationInstructions
+                class="introduction-card-item scalar-reference-intro-clients"
+                :clientOptions="
+                  options.showDefaultClientsWithSdkInstallation
+                    ? clientOptions
+                    : undefined
                 "
-                :server="activeServer"
-                title="Authentication"
-                :workspace="activeWorkspace" />
-            </div>
-            <ClientLibraries
-              class="introduction-card-item scalar-reference-intro-clients" />
-          </div>
-        </ScalarErrorBoundary>
-      </template>
-    </Introduction>
-    <slot
-      v-else
-      name="empty-state" />
-    <template v-if="parsedSpec.tags && activeCollection">
-      <template v-if="parsedSpec['x-tagGroups']">
-        <TagList
-          v-for="tagGroup in parsedSpec['x-tagGroups']"
-          :document="document"
-          :key="tagGroup.name"
-          :collection="activeCollection"
-          :layout="layout"
-          :server="activeServer"
-          :spec="parsedSpec"
-          :tags="
-            tagGroup.tags
-              .map((name) => parsedSpec.tags?.find((t) => t.name === name))
-              .filter((tag) => !!tag)
-          " />
-      </template>
-      <TagList
-        v-else
-        :collection="activeCollection"
-        :document="document"
-        :layout="layout"
-        :server="activeServer"
-        :spec="parsedSpec"
-        :tags="parsedSpec.tags" />
+                :eventBus
+                :featuredClients="options.featuredClients"
+                :securitySchemes="sdkSecuritySchemes"
+                :selectedClient="xScalarDefaultClient"
+                :xScalarSdkInstallation="sdkInstallation" />
+            </IntroductionCardItem>
+            <IntroductionCardItem
+              v-else-if="clientOptions.length && !asyncApiDocument"
+              class="introduction-card-item scalar-reference-intro-clients">
+              <ClientSelector
+                class="introduction-card-item scalar-reference-intro-clients"
+                :clientOptions
+                :eventBus
+                :featuredClients="options.featuredClients"
+                :selectedClient="xScalarDefaultClient" />
+            </IntroductionCardItem>
+          </ScalarErrorBoundary>
+        </template>
+      </InfoBlock>
+
+      <!--
+      Sticky breadcrumb showing where a nested tag sits in the hierarchy. Its
+      fixed slot is mounted before scrolling reaches the tags so changing the
+      active hierarchy does not shift the content below it.
+    -->
+      <ContextBar
+        v-if="showContextBar"
+        :chain="contextBarChain"
+        @navigate="(id) => eventBus.emit('scroll-to:nav-item', { id })" />
+
+      <!-- Render traversed operations and webhooks -->
+      <!-- Use recursive component for cleaner rendering -->
+      <TraversedEntry
+        v-if="items.length && openApiDocument"
+        :authStore
+        :clientOptions
+        :document="openApiDocument"
+        :entries="items"
+        :eventBus
+        :expandedItems
+        :expansion="expansion"
+        :options
+        :scrollTargetId="scrollTargetId"
+        :securitySchemes
+        :selectedClient="xScalarDefaultClient"
+        :selectedExample="xScalarDefaultExample"
+        :selectedServer
+        :specificationExtension="specificationExtension">
+      </TraversedEntry>
+
+      <!-- AsyncAPI: render channels grouped by tag, mirroring the sidebar order. -->
+      <AsyncApiTraversedEntry
+        v-else-if="items.length && asyncApiDocument"
+        :document="asyncApiDocument"
+        :entries="items"
+        :eventBus
+        :expandedItems
+        :expansion="expansion"
+        :options
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension" />
     </template>
 
-    <!-- Webhooks -->
-    <template v-if="parsedSpec.webhooks?.length && activeCollection">
-      <TagList
-        :document="document"
-        id="webhooks"
-        :collection="activeCollection"
-        :layout="layout"
-        :server="activeServer"
-        :spec="parsedSpec"
-        :tags="[
-          {
-            name: 'Webhooks',
-            description: '',
-            operations: parsedSpec.webhooks,
-          },
-        ]">
-      </TagList>
-    </template>
+    <!-- Render plugins at content.end view -->
+    <RenderPlugins
+      :documentSlug
+      :eventBus
+      :options
+      viewName="content.end" />
 
-    <template v-if="document?.components?.schemas && !config.hideModels">
-      <ModelsAccordion
-        v-if="layout === 'classic'"
-        :schemas="document?.components?.schemas" />
-      <Models
-        v-else
-        :schemas="document?.components?.schemas" />
-    </template>
     <slot name="end" />
+    <!-- Placeholder content to allow the active item to be scrolled to the top while the rest of the content is lazy loaded -->
+    <div
+      v-if="!isMounted || !firstLazyLoadComplete"
+      class="h-dvh"></div>
   </div>
 </template>
 
 <style>
-.narrow-references-container {
-  container-name: narrow-references-container;
+.references-container {
+  container-name: references-container;
   container-type: inline-size;
-}
-</style>
-
-<style scoped>
-.render-loading {
-  height: calc(var(--full-height) - var(--refs-header-height));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.introduction-card {
-  display: flex;
-  flex-direction: column;
-}
-.introduction-card-item {
-  display: flex;
-  margin-bottom: 12px;
-  flex-direction: column;
-  justify-content: start;
-}
-.introduction-card-item:has(.description) :deep(.server-form-container) {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
-.introduction-card-item :deep(.request-item) {
-  border-bottom: 0;
-}
-.introduction-card-title {
-  font-weight: var(--scalar-semibold);
-  font-size: var(--scalar-mini);
-  color: var(--scalar-color-3);
-}
-.introduction-card-row {
-  gap: 24px;
-}
-@media (min-width: 600px) {
-  .introduction-card-row {
-    flex-flow: row wrap;
-  }
-}
-.introduction-card-row > * {
-  flex: 1;
-}
-@media (min-width: 600px) {
-  .introduction-card-row > * {
-    min-width: min-content;
-  }
-}
-@media (max-width: 600px) {
-  .introduction-card-row > * {
-    max-width: 100%;
-  }
-}
-@container (max-width: 900px) {
-  .introduction-card-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0px;
-  }
-}
-.introduction-card :deep(.security-scheme-label) {
-  text-transform: uppercase;
-  font-weight: var(--scalar-semibold);
-}
-.references-classic
-  .introduction-card-row
-  :deep(.scalar-card:nth-of-type(2) .scalar-card-header) {
-  display: none;
-}
-.references-classic
-  .introduction-card-row
-  :deep(.scalar-card:nth-of-type(2) .scalar-card-header) {
-  display: none;
-}
-.section-flare {
-  top: 0;
-  right: 0;
-  pointer-events: none;
 }
 </style>

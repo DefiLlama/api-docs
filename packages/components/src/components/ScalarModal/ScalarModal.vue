@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
+import { ScalarIconX } from '@scalar/icons'
 import { cva, cx } from '@scalar/use-hooks/useBindCx'
 import type { VariantProps } from 'cva'
 import { reactive } from 'vue'
@@ -15,6 +16,10 @@ const { size = 'md' } = defineProps<{
   maxWidth?: string
   size?: ModalVariants['size']
   variant?: ModalVariants['variant']
+}>()
+
+const emit = defineEmits<{
+  (event: 'close'): void
 }>()
 
 const modal = cva({
@@ -60,6 +65,19 @@ const body = cva({
 })
 </script>
 <script lang="ts">
+/**
+ * Scalar Modal component
+ *
+ * A dialog overlay with configurable size and variant.
+ * Use the {@link useModal} hook to control the open state.
+ *
+ * @example
+ * <ScalarModal :state="modal" title="My Modal">
+ *   Modal content
+ * </ScalarModal>
+ */
+export default {}
+
 /** Hook for creating a reactive modal state */
 export function useModal() {
   return reactive({
@@ -76,14 +94,19 @@ export function useModal() {
 <template>
   <Dialog
     :open="state.open"
-    @close="state.hide()">
+    @close="
+      () => {
+        state.hide()
+        emit('close')
+      }
+    ">
     <div
       :class="
         cx(
           size === 'full' ? 'scalar-modal-layout-full' : 'scalar-modal-layout',
-          'fixed left-0 top-0 flex items-start justify-center',
-          'z-[1001] h-[100dvh] w-[100dvw]',
-          'bg-backdrop opacity-0 dark:bg-backdrop-dark',
+          'fixed top-0 left-0 flex items-start justify-center',
+          'z-overlay h-dvh w-dvw',
+          'bg-backdrop dark:bg-backdrop-dark opacity-0',
           size === 'full' && 'flex',
         )
       ">
@@ -92,7 +115,7 @@ export function useModal() {
         :style="{ maxWidth }">
         <DialogTitle
           v-if="title"
-          class="scalar-modal-header m-0 -mb-1 rounded-lg pt-3 px-3 text-left text-sm font-medium text-c-1">
+          class="scalar-modal-header text-c-1 m-0 -mb-1 rounded-lg px-3 pt-3 text-left text-sm font-medium">
           {{ title }}
         </DialogTitle>
         <div
@@ -108,12 +131,12 @@ export function useModal() {
       </DialogPanel>
       <div
         v-if="size === 'full'"
-        class="close-button z-10 fixed right-2 top-2">
+        class="close-button fixed top-2 right-2 z-10">
         <ScalarIconButton
           class="hover:bg-b-3 focus:outline-none"
-          icon="Close"
-          label="Clear Search"
-          @close="state.hide()" />
+          :icon="ScalarIconX"
+          label="Close modal"
+          @click="state.hide()" />
       </div>
     </div>
   </Dialog>

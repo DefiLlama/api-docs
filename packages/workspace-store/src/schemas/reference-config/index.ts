@@ -1,11 +1,12 @@
-import { Type, type Static } from '@sinclair/typebox'
-import { AVAILABLE_CLIENTS } from '@scalar/types/snippetz'
-import { defaultMeta, MetaSchema } from '@/schemas/reference-config/meta'
-import { defaultFeatures, FeaturesSchema } from '@/schemas/reference-config/features'
-import { AppearanceSchema, defaultAppearance } from '@/schemas/reference-config/appearance'
-import { defaultRouting, RoutingSchema } from '@/schemas/reference-config/routing'
-import { defaultSettings, SettingsSchema } from '@/schemas/reference-config/settings'
-import type { DeepTransform, MutableArray } from '@/types'
+import { type TArray, type TLiteral, Type } from '@scalar/typebox'
+import { AVAILABLE_CLIENTS, type AvailableClient, type AvailableClients } from '@scalar/types/snippetz'
+import type { RequiredDeep } from 'type-fest'
+
+import { type Appearance, AppearanceSchema, defaultAppearance } from './appearance'
+import { type Features, FeaturesSchema, defaultFeatures } from './features'
+import { type Meta, MetaSchema, defaultMeta } from './meta'
+import { type Routing, RoutingSchema, defaultRouting } from './routing'
+import { type Settings, SettingsSchema, defaultSettings } from './settings'
 
 /**
  * ReferenceConfigSchema defines the shape of the configuration object
@@ -20,10 +21,6 @@ export const ReferenceConfigSchema = Type.Partial(
     slug: Type.String(),
     /** Settings for the API reference (controls behavior and options) */
     settings: SettingsSchema,
-    /** Tag sorting method: currently only 'alpha' (alphabetical) is supported */
-    tagSort: Type.Union([Type.Literal('alpha')]),
-    /** Operation sorting method: by HTTP method or alphabetically */
-    operationSort: Type.Union([Type.Literal('method'), Type.Literal('alpha')]),
     /** Routing configuration (controls navigation) */
     routing: RoutingSchema,
     /** Appearance configuration (controls theming and UI options) */
@@ -33,17 +30,26 @@ export const ReferenceConfigSchema = Type.Partial(
     /** Meta information */
     meta: MetaSchema,
     /** List of enabled HTTP clients for code samples */
-    httpClients: Type.Array(Type.Union(AVAILABLE_CLIENTS.map((client) => Type.Literal(client)))),
+    httpClients: Type.Array(Type.Union(AVAILABLE_CLIENTS.map((client) => Type.Literal(client)))) as unknown as TArray<
+      TLiteral<AvailableClient>
+    >,
   }),
 )
 
-export type ReferenceConfig = Static<typeof ReferenceConfigSchema>
+export type ReferenceConfig = {
+  title?: string
+  slug?: string
+  settings?: Settings
+  routing?: Routing
+  appearance?: Appearance
+  features?: Features
+  meta?: Meta
+  httpClients?: AvailableClients
+}
 
-export const defaultReferenceConfig: DeepTransform<ReferenceConfig, 'NonNullable'> = {
+export const defaultReferenceConfig: RequiredDeep<ReferenceConfig> = {
   title: 'Scalar API Reference',
   slug: 'scalar-api-reference',
-  tagSort: 'alpha',
-  operationSort: 'method',
 
   /**
    * Default settings for the API reference.
@@ -72,5 +78,5 @@ export const defaultReferenceConfig: DeepTransform<ReferenceConfig, 'NonNullable
   /**
    * Default HTTP clients for the API reference.
    */
-  httpClients: AVAILABLE_CLIENTS as MutableArray<typeof AVAILABLE_CLIENTS>,
+  httpClients: AVAILABLE_CLIENTS as AvailableClients,
 }

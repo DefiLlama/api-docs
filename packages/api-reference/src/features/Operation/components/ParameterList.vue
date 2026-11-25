@@ -1,62 +1,89 @@
-<script setup lang="ts">
-import type { Request as RequestEntity } from '@scalar/oas-utils/entities/spec'
-import type { OpenAPIV3_1 } from '@scalar/openapi-types'
+<script setup lang="ts" generic="T extends ParameterObject">
+import type { SchemaRenderingProps } from '@scalar/blocks/schema'
+import type { WorkspaceEventBus } from '@scalar/workspace-store/events'
+import type {
+  OpenApiDocument,
+  ParameterObject,
+} from '@scalar/workspace-store/schemas/v3.2/strict/openapi-document'
+import { useId } from 'vue'
+
+import { SectionHeaderTag } from '@/components/Section'
+import { useDocumentOutline } from '@/features/document-outline'
+import type { OperationProps } from '@/features/Operation/Operation.vue'
 
 import ParameterListItem from './ParameterListItem.vue'
 
-withDefaults(
-  defineProps<{
-    parameters?: RequestEntity['parameters'] | RequestEntity['responses']
-    showChildren?: boolean
-    collapsableItems?: boolean
-    withExamples?: boolean
-    schemas?: Record<string, OpenAPIV3_1.SchemaObject> | unknown
-  }>(),
+const { parameters } = defineProps<
   {
-    showChildren: false,
-    collapsableItems: false,
-    withExamples: true,
-  },
-)
+    parameters: T[]
+    /** Flattened fields displayed inside their original parameter row. */
+    parameterGroups?: Map<ParameterObject, ParameterObject[]>
+    breadcrumb?: string[]
+    eventBus: WorkspaceEventBus | null
+    collapsableItems?: boolean
+    /** The document the operation belongs to, used to resolve schema references for display */
+    document?: OpenApiDocument
+    options: Pick<
+      OperationProps['options'],
+      | 'hideModels'
+      | 'orderRequiredPropertiesFirst'
+      | 'orderSchemaPropertiesBy'
+      | 'expandAllSchemaProperties'
+      | 'schemaKeyboardNav'
+      | 'showExtensions'
+      | 'hideModelNames'
+    >
+  } & SchemaRenderingProps
+>()
+
+defineSlots<{
+  'title'?: () => unknown
+  /** Additional metadata for adapters that reuse the parameter renderer. */
+  'parameter-details'?: (props: { parameter: T }) => unknown
+}>()
+
+/** Accessible id for the heading */
+const id = useId()
+
+const { level: headingLevel } = useDocumentOutline('operationSection')
 </script>
 <template>
   <div
     v-if="parameters?.length"
-    class="parameter-list">
-    <div class="parameter-list-title">
+    class="mt-6">
+    <!-- The heading carries the rule. A static row pads only 6px, so a 6px
+         bottom margin lands the same 12px gap the responses heading gets from
+         its row's 10px trigger padding -->
+    <SectionHeaderTag
+      :id
+      class="text-c-1 parameter-list-title--tree mt-3 mb-1.5 block! text-lg leading-[1.45] font-medium"
+      :level="headingLevel"
+      rule>
       <slot name="title" />
-    </div>
-    <ul class="parameter-list-items">
+    </SectionHeaderTag>
+    <ul
+      :aria-labelledby="id"
+      class="mb-3 list-none p-0 text-sm"
+      role="list">
       <ParameterListItem
         v-for="item in parameters"
         :key="item.name"
-        :collapsableItems="collapsableItems"
+        :breadcrumb="breadcrumb"
+        :childParameters="parameterGroups?.get(item)"
+        :collapsableChildItems="collapsableItems"
+        :collapsableItems="parameterGroups?.has(item) || collapsableItems"
+        :document="document"
+        :eventBus="eventBus"
+        :expansion="expansion"
+        :name="item.name"
+        :options="options"
         :parameter="item"
-        :schemas="schemas"
-        :showChildren="showChildren"
-        :withExamples="withExamples" />
+        :scrollTargetId="scrollTargetId"
+        :specificationExtension="specificationExtension">
+        <slot
+          name="parameter-details"
+          :parameter="item" />
+      </ParameterListItem>
     </ul>
   </div>
 </template>
-
-<style scoped>
-.parameter-list {
-  margin-top: 24px;
-}
-.parameter-list-title {
-  font-size: var(--scalar-font-size-2);
-  font-weight: var(--scalar-semibold);
-  color: var(--scalar-color-1);
-  line-height: 1.45;
-  margin-top: 12px;
-  margin-bottom: 12px;
-}
-
-.parameter-list-items {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  font-size: var(--scalar-small);
-  margin-bottom: 12px;
-}
-</style>

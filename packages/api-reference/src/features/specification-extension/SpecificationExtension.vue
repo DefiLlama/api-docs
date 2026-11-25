@@ -1,55 +1,54 @@
 <script setup lang="ts">
-import { ScalarErrorBoundary } from '@scalar/components'
+import { SpecificationExtensions } from '@scalar/blocks/specification-extensions'
+import { ScalarErrorBoundary } from '@scalar/components/error-boundary'
 import { computed } from 'vue'
 
-import { usePluginManager } from '@/plugins'
+import { useSpecificationExtensions } from './use-specification-extensions'
 
-const { value } = defineProps<{
+const {
+  value,
+  selection,
+  showExtensions = [],
+  compact = false,
+} = defineProps<{
+  /** Reuse the selection that controls the surrounding metadata section. */
+  selection?: ReturnType<typeof useSpecificationExtensions>
+  /** Explicitly selected keys that may use the default renderer. */
+  showExtensions?: string[]
+  /** Use the surrounding panel spacing for default extension values. */
+  compact?: boolean
   /**
-   * Any value that can contain OpenAPI specification extensions.
+   * Any value that can contain specification extensions.
    */
   value: Record<string, unknown> | undefined
 }>()
 
-const { getSpecificationExtensions } = usePluginManager()
-
-/**
- * Extract registered OpenAPI extension names
- */
-function getCustomExtensionNames(
-  value: Record<string, any> | undefined,
-): `x-${string}`[] {
-  return Object.keys(value ?? {}).filter((item) =>
-    item.startsWith('x-'),
-  ) as `x-${string}`[]
-}
-
-/**
- * Get the components for the specification extensions
- */
-function getCustomOpenApiExtensionComponents(extensionNames: `x-${string}`[]) {
-  return extensionNames
-    .flatMap((name) => getSpecificationExtensions(name))
-    .filter((extension) => extension.component)
-}
-
-/**
- * Get the names of custom extensions from the provided value.
- */
-const customExtensionNames = computed(() => getCustomExtensionNames(value))
-
-/**
- * Get the components for the custom extensions.
- */
-const customExtensions = computed(() =>
-  getCustomOpenApiExtensionComponents(customExtensionNames.value),
+const fallbackSelection = useSpecificationExtensions(
+  () => value,
+  () => showExtensions,
+)
+// The fallback computed values stay lazy when the parent supplies its selection.
+const customExtensions = computed(
+  () =>
+    selection?.customExtensions.value ??
+    fallbackSelection.customExtensions.value,
+)
+const defaultExtensions = computed(
+  () =>
+    selection?.defaultExtensions.value ??
+    fallbackSelection.defaultExtensions.value,
 )
 </script>
 
 <template>
+  <SpecificationExtensions
+    :compact="compact"
+    :extensions="defaultExtensions" />
   <template v-if="typeof value === 'object' && customExtensions.length">
     <div class="text-base">
-      <template v-for="extension in customExtensions">
+      <template
+        v-for="(extension, index) in customExtensions"
+        :key="index">
         <ScalarErrorBoundary>
           <template v-if="extension.renderer">
             <!-- Custom rendering -->

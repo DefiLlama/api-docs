@@ -1,11 +1,14 @@
-import type { TraversedEntry } from '@/schemas/navigation'
+import { unpackProxyObject } from '@/helpers/unpack-proxy'
+import { type NavigationOptions, getNavigationOptions } from '@/navigation/get-navigation-options'
+import type { TagsMap } from '@/navigation/types'
+import type { TraversedDocument, TraversedEntry } from '@/schemas/navigation'
+import type { OpenApiDocument } from '@/schemas/v3.2/strict/openapi-document'
+
 import { traverseDescription } from './traverse-description'
 import { traversePaths } from './traverse-paths'
 import { traverseSchemas } from './traverse-schemas'
 import { traverseTags } from './traverse-tags'
 import { traverseWebhooks } from './traverse-webhooks'
-import type { TagsMap, TraverseSpecOptions } from '@/navigation/types'
-import type { OpenApiDocument } from '@/schemas/v3.1/strict/openapi-document'
 
 /**
  * Traverses an OpenAPI Document to generate navigation structure and metadata.
@@ -16,62 +19,127 @@ import type { OpenApiDocument } from '@/schemas/v3.1/strict/openapi-document'
  * - Tag-based organization of operations and webhooks
  * - Optional schema/model documentation
  */
-export const traverseDocument = (
-  document: OpenApiDocument,
-  {
-    hideModels = false,
-    tagsSorter = 'alpha',
-    operationsSorter = 'alpha',
-    getHeadingId = (heading) => heading.value,
-    getOperationId = (operation) => operation.summary ?? '',
-    getWebhookId = (webhook) => webhook?.name ?? 'webhooks',
-    getModelId = (model) => model?.name ?? '',
-    getTagId = (tag) => tag.name ?? '',
-  }: Partial<TraverseSpecOptions>,
-) => {
-  /** Map it ID to title for the mobile header */
-  const titles = new Map<string, string>()
+export const traverseDocument = (documentName: string, document: OpenApiDocument, options?: NavigationOptions) => {
+  const { hideModels, modelsSectionLabel, tagsSorter, operationsSorter, generateId, operationTitleSource } =
+    getNavigationOptions(documentName, options)
+
+  const documentId = generateId({
+    type: 'document',
+    info: document.info,
+    name: documentName,
+  })
 
   /** Map of tags and their entries */
   const tagsMap: TagsMap = new Map(
-    document.tags?.map((tag) => [tag.name ?? 'Untitled Tag', { tag, entries: [] }]) ?? [],
+    document.tags?.map((tag) => [
+      tag.name ?? 'Untitled Tag',
+      { id: generateId({ type: 'tag', tag, parentId: documentId }), parentId: documentId, tag, entries: [] },
+    ]) ?? [],
   )
 
-  const entries: TraversedEntry[] = traverseDescription(document.info?.description, titles, getHeadingId)
-  traversePaths(document, tagsMap, titles, getOperationId)
-  const untaggedWebhooks = traverseWebhooks(document, tagsMap, titles, getWebhookId)
-  const tagsEntries = traverseTags(document, tagsMap, titles, {
-    getTagId,
-    tagsSorter,
-    operationsSorter,
+  /** Generate entries for the document info description field */
+  const entries: TraversedEntry[] = traverseDescription({
+    generateId,
+    parentId: documentId,
+    info: document.info,
+  })
+
+  /** Traverse all the document path  */
+  const { untaggedOperations } = traversePaths({
+    document,
+    tagsMap,
+    generateId,
+    documentId,
+    operationTitleSource,
+  })
+
+  const untaggedWebhooksParentId = generateId({
+    type: 'webhook',
+    name: '',
+    parentId: documentId,
+  })
+
+  const untaggedWebhooks = traverseWebhooks({
+    document,
+    generateId,
+    tagsMap,
+    untaggedWebhooksParentId,
+    documentId,
+  })
+
+  const tagsEntries = traverseTags({
+    document,
+    tagsMap,
+    documentId,
+    options: { tagsSorter, operationsSorter, generateId },
   })
 
   // Add tagged operations, webhooks and tagGroups
   entries.push(...tagsEntries)
+  // Add untagged operations
+  entries.push(...untaggedOperations)
 
   // Add untagged webhooks
   if (untaggedWebhooks.length) {
     entries.push({
-      id: getWebhookId(),
+      type: 'tag',
+      id: untaggedWebhooksParentId,
       title: 'Webhooks',
+      name: 'Webhooks',
       children: untaggedWebhooks,
-      type: 'text',
+      isGroup: false,
+      isWebhooks: true,
     })
   }
 
   // Add models if they are not hidden
   if (!hideModels && document.components?.schemas) {
-    const untaggedModels = traverseSchemas(document, tagsMap, titles, getModelId)
+    const untaggedModels = traverseSchemas({
+      documentId,
+      document,
+      generateId,
+      tagsMap,
+    })
 
     if (untaggedModels.length) {
       entries.push({
-        id: getModelId(),
-        title: 'Models',
+        type: 'models',
+        id: generateId({
+          type: 'model',
+          parentId: documentId,
+        }),
+        title: modelsSectionLabel,
+        name: modelsSectionLabel,
         children: untaggedModels,
-        type: 'text',
       })
     }
   }
 
-  return { entries, titles }
+  const sortOrder = document['x-scalar-order']
+
+  // Try to sort the entries using the x-scalar-order
+  if (sortOrder) {
+    entries.sort((a, b) => {
+      const indexA = sortOrder.indexOf(a.id)
+      const indexB = sortOrder.indexOf(b.id)
+      // If an id is not found, treat it as "infinity" so those items go last.
+      const safeIndexA = indexA === -1 ? Number.POSITIVE_INFINITY : indexA
+      const safeIndexB = indexB === -1 ? Number.POSITIVE_INFINITY : indexB
+      return safeIndexA - safeIndexB
+    })
+  }
+
+  // Now update the sort order of the entries
+  document['x-scalar-order'] = unpackProxyObject(entries.map((entry) => entry.id))
+
+  const documentTitle = document.info?.title?.trim() || 'Untitled Document'
+
+  return {
+    id: documentId,
+    type: 'document',
+    title: documentTitle,
+    name: documentName,
+    children: entries,
+    icon: document['x-scalar-icon'],
+  } satisfies TraversedDocument
 }

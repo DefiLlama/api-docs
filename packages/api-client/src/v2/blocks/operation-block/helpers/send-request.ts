@@ -1,0 +1,330 @@
+import { ERRORS, type ErrorResponse, normalizeError } from '@scalar/helpers/errors/normalize-error'
+import { isElectron } from '@scalar/helpers/general/is-electron'
+import { buildSafeBodyRequest } from '@scalar/helpers/http/can-method-have-body'
+import { httpStatusCodes } from '@scalar/helpers/http/http-status-codes'
+import { normalizeHeaders } from '@scalar/helpers/http/normalize-headers'
+import { X_SCALAR_SET_COOKIE } from '@scalar/helpers/http/scalar-headers'
+import { serializeCookie } from '@scalar/helpers/http/serialize-cookie'
+import type { ClientPlugin } from '@scalar/oas-utils/helpers'
+import type { RequestPayload } from '@scalar/workspace-store/request-example'
+import { parseSetCookie } from 'set-cookie-parser'
+
+import { getCookieHeaderKeys } from '@/v2/blocks/operation-block/helpers/get-cookie-header-keys'
+import { resolveResponseBodyHandler } from '@/v2/blocks/response-block/helpers/resolve-response-body-handler'
+import {
+  resolveResponseContentType,
+  resolveResponseMimeType,
+} from '@/v2/blocks/response-block/helpers/resolve-response-content-type'
+import { getResponseStreamFormat } from '@/v2/blocks/response-block/helpers/response-stream'
+
+import { decodeBuffer } from './decode-buffer'
+
+/** A single set of populated values for a sent request */
+export type ResponseInstance = Omit<Response, 'headers'> & {
+  /** Store headers as an object to match what we had with axios */
+  headers: Record<string, string>
+  /** Keys of headers which set cookies */
+  cookieHeaderKeys: string[]
+  /** Time in ms the request took */
+  duration: number
+  /** The response status */
+  status: number
+  /** The response status text */
+  statusText: string
+  /** The response method */
+  method: string
+  /** The request path */
+  path: string
+} & (
+    | {
+        /** The response data */
+        data: string | Blob
+        /** The response size in bytes */
+        size: number
+      }
+    | {
+        /** A stream reader for a streamable response body */
+        reader: ReadableStreamDefaultReader<Uint8Array>
+      }
+  )
+
+/** HTTP status codes that should not include a response body */
+const NO_BODY_STATUS_CODES = [204, 205, 304]
+
+/** Custom fetch function signature compatible with the global fetch API */
+export type CustomFetch = typeof fetch
+
+/**
+ * Execute the built fetch request and return a structured response.
+ *
+ * This function handles the complete request lifecycle including plugin hooks,
+ * response processing, streaming detection, and error handling. It supports both
+ * standard responses and server-sent event streams.
+ *
+ * @param request - The request built by the buildRequest helper
+ * @param operation - The OpenAPI operation being executed
+ * @param plugins - Array of client plugins to execute hooks
+ * @param isUsingProxy - Whether the request is being proxied for header handling
+ * @returns A tuple with either an error or the response data
+ */
+export const sendRequest = async ({
+  isUsingProxy,
+  requestPayload,
+  request,
+  plugins = [],
+  customFetch = fetch,
+  onResponseReceived,
+}: {
+  isUsingProxy: boolean
+  requestPayload: RequestPayload
+  /**
+   * Pre-built fetch Request to send as-is. When provided, it is used instead of rebuilding
+   * from the request payload so plugin hooks observe the exact bytes that go over the wire
+   * (rebuilding a multipart body generates a different boundary).
+   */
+  request?: Request
+  /** Registered client plugins for custom content type handling */
+  plugins?: ClientPlugin[]
+  /** Optional custom fetch implementation, overrides the global fetch */
+  customFetch?: CustomFetch
+  /** Runs before response processing and returns the response to use. */
+  onResponseReceived?: (response: Response, responseDuration: number) => Promise<Response>
+}): Promise<
+  ErrorResponse<{
+    response: ResponseInstance
+    requestPayload: RequestPayload
+    timestamp: number
+    /**
+     * Completion-hook response. Buffered responses retain their body; streaming responses
+     * expose a cloneable, bodyless metadata snapshot so history never waits for the stream.
+     */
+    originalResponse: Response
+  }>
+> => {
+  try {
+    // Execute the request and measure duration
+    const startTime = performance.now()
+
+    // In electron we allow GET requests to have a body
+    const fetchedResponse = isElectron()
+      ? await customFetch(...requestPayload)
+      : await customFetch(request ?? buildSafeBodyRequest(...requestPayload))
+
+    const endTime = performance.now()
+    const timestamp = Date.now()
+    const duration = endTime - startTime
+
+    const response = onResponseReceived ? await onResponseReceived(fetchedResponse, duration) : fetchedResponse
+
+    // Extract response metadata early for reuse
+    const contentType = response.headers.get('content-type')
+    const responseHeaders = normalizeHeaders(response.headers, isUsingProxy)
+    // A Response built with the Response constructor has an empty url. For intercepted responses,
+    // fall back to the original network response destination, and finally to the requested URL.
+    const responseUrl = new URL(response.url || fetchedResponse.url || requestPayload[0])
+    const fullPath = responseUrl.pathname + responseUrl.search
+    const statusText = response.statusText || httpStatusCodes[response.status]?.name || ''
+    const method = (requestPayload[1].method ?? 'GET') as string
+    const shouldSkipBody = NO_BODY_STATUS_CODES.includes(response.status)
+
+    /**
+     * Handle sequential response formats without buffering the complete body.
+     * These responses need a reader instead of buffered data.
+     * We check this early to avoid unnecessary body reading.
+     */
+    if (!shouldSkipBody && contentType && getResponseStreamFormat(contentType) && response.body) {
+      return buildStreamingResponse({
+        response,
+        requestPayload,
+        timestamp,
+        duration,
+        responseHeaders,
+        statusText,
+        method,
+        fullPath,
+      })
+    }
+
+    return await buildStandardResponse({
+      response,
+      requestPayload,
+      timestamp,
+      duration,
+      responseHeaders,
+      statusText,
+      method,
+      fullPath,
+      contentType,
+      plugins,
+    })
+  } catch (error) {
+    return [normalizeError(error, ERRORS.REQUEST_FAILED), null]
+  }
+}
+
+/**
+ * Extracts and serializes custom cookies from the response using the custom cookie header.
+ *
+ * This function parses the custom cookie header (if present), serializes each cookie using our
+ * in-repo `serializeCookie` helper, and then deletes the custom cookie header from the response.
+ * Returns an array of serialized cookie strings, or null if no cookies were found.
+ */
+const getCustomCookie = (response: Response): string[] | null => {
+  const result = parseSetCookie(response.headers.get(X_SCALAR_SET_COOKIE) ?? '').map((cookie) =>
+    serializeCookie(cookie.name, cookie.value, cookie),
+  )
+
+  if (result.length) {
+    return result
+  }
+
+  return null
+}
+
+/**
+ * Completion hooks clone this snapshot and history reads it independently of the viewer.
+ * Only the viewer owns the live body: teeing it with Response.clone() would buffer unread
+ * chunks on the history branch and can grow without bound for an endless response.
+ * A null body lets history finish immediately, even before the first stream chunk arrives.
+ * Set status separately because the Response constructor rejects nonstandard status codes.
+ * Clones must preserve that status too, instead of reverting to the constructor default.
+ */
+const createStreamingResponseSnapshot = ({
+  status,
+  statusText,
+  headers,
+}: Pick<Response, 'status' | 'statusText' | 'headers'>): Response => {
+  const snapshot = new Response(null, { statusText, headers })
+  Object.defineProperties(snapshot, {
+    status: { value: status },
+    ok: { value: status >= 200 && status <= 299 },
+    clone: { value: (): Response => createStreamingResponseSnapshot(snapshot) },
+  })
+  return snapshot
+}
+
+/**
+ * Build a streaming response for sequential media types.
+ * Streaming responses use a reader instead of buffering the entire body.
+ */
+const buildStreamingResponse = ({
+  response,
+  requestPayload,
+  timestamp,
+  duration,
+  responseHeaders,
+  statusText,
+  method,
+  fullPath,
+}: {
+  response: Response
+  requestPayload: RequestPayload
+  timestamp: number
+  duration: number
+  responseHeaders: Record<string, string>
+  statusText: string
+  method: string
+  fullPath: string
+}): ErrorResponse<{
+  response: ResponseInstance
+  requestPayload: RequestPayload
+  timestamp: number
+  originalResponse: Response
+}> => {
+  const customCookie = getCustomCookie(response)
+  const cookieHeaderKeys = customCookie ?? getCookieHeaderKeys(response.headers)
+
+  return [
+    null,
+    {
+      timestamp,
+      requestPayload,
+      response: {
+        ...response,
+        status: response.status,
+        statusText,
+        headers: responseHeaders,
+        cookieHeaderKeys,
+        reader: response.body!.getReader(),
+        duration,
+        method,
+        path: fullPath,
+      },
+      originalResponse: createStreamingResponseSnapshot({
+        status: response.status,
+        statusText,
+        headers: response.headers,
+      }),
+    },
+  ]
+}
+
+/**
+ * Build a standard response with buffered body data.
+ * This handles all non-streaming responses including JSON, text, and binary data.
+ */
+const buildStandardResponse = async ({
+  response,
+  requestPayload,
+  timestamp,
+  duration,
+  responseHeaders,
+  statusText,
+  method,
+  fullPath,
+  contentType,
+  plugins,
+}: {
+  response: Response
+  requestPayload: RequestPayload
+  timestamp: number
+  duration: number
+  responseHeaders: Record<string, string>
+  statusText: string
+  method: string
+  fullPath: string
+  contentType: string | null
+  plugins: ClientPlugin[]
+}): Promise<
+  ErrorResponse<{
+    response: ResponseInstance
+    requestPayload: RequestPayload
+    timestamp: number
+    originalResponse: Response
+  }>
+> => {
+  /**
+   * Clone so we can decode the body without consuming the network Response.
+   * Keep the original Response (and its real status) for callers — never rebuild
+   * it with `new Response`, which rejects statuses outside [200, 599].
+   */
+  const arrayBuffer = await response.clone().arrayBuffer()
+  const responseType = resolveResponseContentType(contentType)
+  const mimeEssence = resolveResponseMimeType(contentType).essence
+  const pluginHandler = resolveResponseBodyHandler(mimeEssence, plugins)
+  const responseData = await decodeBuffer(arrayBuffer, responseType, pluginHandler)
+
+  const customCookie = getCustomCookie(response)
+  const cookieHeaderKeys = customCookie ?? getCookieHeaderKeys(response.headers)
+
+  return [
+    null,
+    {
+      timestamp,
+      requestPayload,
+      response: {
+        ...response,
+        status: response.status,
+        statusText,
+        headers: responseHeaders,
+        cookieHeaderKeys,
+        data: responseData,
+        size: arrayBuffer.byteLength,
+        duration,
+        method,
+        path: fullPath,
+      },
+      originalResponse: response.clone(),
+    },
+  ]
+}

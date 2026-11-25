@@ -1,0 +1,97 @@
+import type { ErrorResponse } from '@scalar/helpers/errors/normalize-error'
+import { redirectToProxy } from '@scalar/helpers/url/redirect-to-proxy'
+import { type Static, array, coerce, evaluate, object, optional, string } from '@scalar/validation'
+
+import type { CustomFetch } from '@/v2/blocks/operation-block/helpers/send-request'
+
+/**
+ * OpenID Connect Discovery Document (subset)
+ * Represents the metadata fields consumed by the auth selector flow conversion.
+ *
+ * @see https://openid.net/specs/openid-connect-discovery-1_0.html
+ */
+export const OpenIDConnectDiscoverySchema = object({
+  /** URL of the OAuth 2.0 Authorization Endpoint */
+  authorization_endpoint: optional(string()),
+  /** RFC8628 device authorization endpoint. */
+  device_authorization_endpoint: optional(string()),
+  /** URL of the OAuth 2.0 Token Endpoint */
+  token_endpoint: optional(string()),
+  /** List of OAuth 2.0 scope values that this server supports */
+  scopes_supported: optional(array(string())),
+  /** List of OAuth 2.0 grant type values that this server supports */
+  grant_types_supported: optional(
+    evaluate(
+      (value) => (Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.length > 0) : value),
+      array(string()),
+    ),
+  ),
+  /** Supported PKCE code challenge methods (RFC 7636) */
+  code_challenge_methods_supported: optional(array(string())),
+})
+
+export type OpenIDConnectDiscovery = Static<typeof OpenIDConnectDiscoverySchema>
+
+/**
+ * The required scope for OpenID Connect requests.
+ * If this scope is present, the request is an OIDC request; otherwise, it is a standard OAuth 2.0 request.
+ */
+export const OPENID_SCOPE = 'openid'
+
+/**
+ * Fetches the OpenID Connect discovery document from the specified URL.
+ * Supports both full discovery URLs and issuer URLs.
+ *
+ * @param url - The OpenID Connect discovery URL or issuer URL
+ * @param proxyUrl - Optional CORS proxy to route the request through
+ * @param customFetch - Fetch used for the discovery request; the desktop app passes an IPC-backed fetch so it leaves the renderer's network stack.
+ * @returns The discovery document or an error
+ */
+export const fetchOpenIDConnectDiscovery = async (
+  url: string,
+  proxyUrl: string,
+  customFetch: CustomFetch = fetch,
+): Promise<ErrorResponse<OpenIDConnectDiscovery>> => {
+  try {
+    // If the URL does not end with the well-known path, append it
+    let discoveryUrl = url.trim()
+
+    if (!discoveryUrl) {
+      return [new Error('URL cannot be empty'), null]
+    }
+
+    // Remove trailing slash if present
+    if (discoveryUrl.endsWith('/')) {
+      discoveryUrl = discoveryUrl.slice(0, -1)
+    }
+
+    // If the URL does not already include the well-known path, append it
+    if (!discoveryUrl.includes('/.well-known/openid-configuration')) {
+      discoveryUrl = `${discoveryUrl}/.well-known/openid-configuration`
+    }
+
+    const proxiedUrl = redirectToProxy(proxyUrl, discoveryUrl)
+    const response = await customFetch(proxiedUrl)
+
+    if (!response.ok) {
+      return [
+        new Error(`Failed to fetch OpenID Connect discovery document: ${response.status} ${response.statusText}`),
+        null,
+      ]
+    }
+
+    const data = coerce(OpenIDConnectDiscoverySchema, await response.json())
+
+    // Validate that we have the essential fields
+    if (!data.authorization_endpoint && !data.token_endpoint) {
+      return [new Error('Invalid OpenID Connect discovery document: missing required endpoints'), null]
+    }
+
+    return [null, data]
+  } catch (error) {
+    if (error instanceof Error) {
+      return [error, null]
+    }
+    return [new Error('Failed to fetch OpenID Connect discovery document'), null]
+  }
+}

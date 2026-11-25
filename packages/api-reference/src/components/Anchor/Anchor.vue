@@ -1,80 +1,56 @@
 <script setup lang="ts">
-import { useClipboard } from '@scalar/use-hooks/useClipboard'
+import { ScreenReader } from '@scalar/blocks/shared'
+import { ScalarButton } from '@scalar/components/button'
+import { ScalarIconHash } from '@scalar/icons'
+import { useBindCx } from '@scalar/use-hooks/useBindCx'
 import { useId } from 'vue'
 
-import { useNavState } from '@/hooks/useNavState'
+import { useLocalization } from '@/features/localization'
 
-import ScreenReader from '../ScreenReader.vue'
-
-const { id } = defineProps<{
-  id: string
+const emit = defineEmits<{
+  (e: 'copyAnchorUrl'): void
 }>()
 
 const labelId = useId()
+const { translate } = useLocalization()
 
-const { copyToClipboard } = useClipboard()
-const { getHashedUrl } = useNavState()
-
-/** Ensure we copy the hash OR path if pathRouting is enabled */
-const handleCopy = () => {
-  copyToClipboard(getHashedUrl(id))
-}
+const { cx } = useBindCx()
 </script>
 <template>
-  <span class="label">
+  <span v-bind="cx('group/heading wrap-break-word relative')">
     <span
       :id="labelId"
       class="contents">
       <slot />
     </span>
-    <span class="anchor">
+    <span class="relative">
       <!-- Position anchor to align the copy button to the last line of text  -->
       <span>&ZeroWidthSpace;</span>
-      <button
+      <ScalarButton
         :aria-describedby="labelId"
-        class="anchor-copy"
-        type="button"
-        @click.stop="handleCopy">
-        <span aria-hidden="true">#</span>
-        <ScreenReader>Copy link</ScreenReader>
-      </button>
+        class="anchor-copy-button absolute top-1/2 left-0 inline-block h-fit -translate-y-1/2 px-1.5 py-1 opacity-0 group-hover/heading:opacity-100 group-has-focus-visible/heading:opacity-100"
+        variant="ghost"
+        @click.stop="() => emit('copyAnchorUrl')">
+        <ScalarIconHash
+          aria-hidden="true"
+          class="size-4.5" />
+        <ScreenReader>{{ translate('actions.copyLink') }}</ScreenReader>
+      </ScalarButton>
     </span>
   </span>
 </template>
 <style scoped>
-.label {
-  position: relative;
-  display: inline-block;
-  word-break: break-all;
-}
-.anchor {
-  position: relative;
-  display: inline-block;
-  opacity: 0;
-}
-
-.anchor-copy {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-
-  cursor: pointer;
-
-  padding: 0 6px;
-
-  color: var(--scalar-color-3);
-  font-weight: var(--scalar-semibold);
-  font-size: 0.8em;
-}
-
-.anchor-copy:hover,
-.anchor-copy:focus-visible {
-  color: var(--scalar-color-2);
-}
-
-.label:hover .anchor,
-.label:has(:focus-visible) .anchor {
-  opacity: 1;
+/*
+ * In the narrow layout the section inset is only 24px (Section.vue) while
+ * this box protrudes 30px past the heading text, so a heading that ends near
+ * the edge gave the page a horizontal scrollbar at 200-400% zoom (WCAG 1.4.10).
+ * Dropping the trailing 6px only there keeps the icon where it is and leaves
+ * the desktop focus ring and hit area untouched; the target stays 24x26px
+ * (WCAG 2.5.8). The query matches Section.vue's so both flip at the same width.
+ */
+@container references-container (max-width: 900px) {
+  .anchor-copy-button {
+    padding-right: 0;
+  }
 }
 </style>

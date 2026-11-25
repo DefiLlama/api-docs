@@ -1,0 +1,203 @@
+import type { HarRequest, Plugin } from '@scalar/types/snippetz'
+
+import { joinUrlAndQuery } from '@/libs/http'
+
+/**
+ * F# HttpClient plugin for generating HTTP request code
+ */
+export const fsharpHttpclient: Plugin = {
+  target: 'fsharp',
+  client: 'httpclient',
+  title: 'HttpClient',
+  generate: (request, _) => {
+    if (!request) {
+      return ''
+    }
+
+    const finalUrl = joinUrlAndQuery(request.url ?? '', request.queryString)
+    let code = ''
+
+    // Initialize HttpRequestMessage
+    code += generateHttpRequestMessage(request.method, finalUrl)
+
+    // Add headers if present. When there is a body, the content object carries the Content-Type,
+    // and .NET throws "Misused header name" if it is added to the request headers instead.
+    const headers = request.postData
+      ? (request.headers ?? []).filter(({ name }) => name.toLowerCase() !== 'content-type')
+      : (request.headers ?? [])
+    if (headers.length > 0) {
+      code += generateHeadersCode(headers)
+    }
+
+    // Add request body if present
+    if (request.postData) {
+      code += generatePostDataCode(request.postData)
+    }
+
+    // Configure client with cookies if present
+    if (request.cookies && request.cookies.length > 0 && request.url) {
+      code += generateCookiesCode(request.cookies, request.url)
+      code += 'let client = new HttpClient(handler)\n'
+    } else {
+      code += 'let client = new HttpClient()\n'
+    }
+
+    // Send the request
+    code += 'let! result = client.SendAsync(httpRequestMessage)\n'
+
+    return code
+  },
+}
+
+/**
+ * Generates the HttpRequestMessage initialization code
+ */
+function generateHttpRequestMessage(method: string | undefined, url: string): string {
+  return `let httpRequestMessage = new HttpRequestMessage(
+  HttpMethod("${method}"),
+  new Uri("${escapeString(url)}")
+)\n\n`
+}
+
+/**
+ * Generates code to add headers to the HttpRequestMessage
+ */
+function generateHeadersCode(headers: { name: string; value: string }[]): string {
+  let code = ''
+  for (const header of headers) {
+    code += `httpRequestMessage.Headers.Add("${escapeString(header.name ?? '')}", "${escapeString(header.value ?? '')}")\n`
+  }
+  code += '\n'
+  return code
+}
+
+/**
+ * Generates code to configure cookies for the HttpClient
+ */
+function generateCookiesCode(cookies: { name: string; value: string }[], url: string): string {
+  let code = 'let cookieContainer = CookieContainer()\n'
+  for (const cookie of cookies) {
+    code += `cookieContainer.Add(Uri("${escapeString(url)}"), Cookie("${escapeString(cookie.name ?? '')}", "${escapeString(cookie.value ?? '')}"))\n`
+  }
+
+  code += 'use handler = new HttpClientHandler()\n'
+  code += 'handler.CookieContainer <- cookieContainer\n\n'
+
+  return code
+}
+
+/**
+ * Generates code to set the request content based on postData
+ */
+function generatePostDataCode(postData: NonNullable<HarRequest['postData']>): string {
+  if (!postData) {
+    return ''
+  }
+
+  let code = ''
+
+  switch (postData.mimeType) {
+    case 'multipart/form-data':
+      code += generateMultipartFormDataCode(postData)
+      break
+    case 'application/x-www-form-urlencoded':
+      code += generateUrlEncodedFormDataCode(postData)
+      break
+    case 'application/json':
+      code += generateJsonContentCode(postData)
+      break
+    default:
+      code += generateGenericContentCode(postData, postData.mimeType)
+      break
+  }
+
+  code += 'httpRequestMessage.Content <- content\n\n'
+  return code
+}
+
+/**
+ * Generates code for generic content types
+ */
+function generateGenericContentCode(postData: NonNullable<HarRequest['postData']>, contentType: string): string {
+  let code = `let content = new StringContent("${escapeString(postData.text ?? '')}", Encoding.UTF8, "${escapeString(contentType ?? '')}")\n`
+  code += `content.Headers.ContentType <- MediaTypeHeaderValue("${escapeString(contentType ?? '')}")\n`
+  return code
+}
+
+/**
+ * Generates code for multipart/form-data content
+ */
+function generateMultipartFormDataCode(postData: NonNullable<HarRequest['postData']>): string {
+  let code = 'let content = new MultipartFormDataContent()\n'
+
+  let fileIndex = 0
+  let stringContentIndex = 0
+  for (const param of postData.params ?? []) {
+    if (param.fileName !== undefined) {
+      const escapedFileName = escapeString(param.fileName ?? '')
+      code += `let fileStreamContent_${fileIndex} = new StreamContent(File.OpenRead("${escapedFileName}"))\n`
+      if (param.contentType) {
+        code += `fileStreamContent_${fileIndex}.Headers.ContentType <- MediaTypeHeaderValue("${escapeString(param.contentType)}")\n`
+      }
+      code += `content.Add(fileStreamContent_${fileIndex}, "${escapeString(param.name)}", "${escapedFileName}")\n`
+      fileIndex++
+    } else {
+      const escapedName = escapeString(param.name ?? '')
+      const escapedValue = escapeString(param.value ?? '')
+
+      if (param.contentType) {
+        code += `let stringContent_${stringContentIndex} = new StringContent("${escapedValue}")\n`
+        code += `stringContent_${stringContentIndex}.Headers.ContentType <- MediaTypeHeaderValue("${escapeString(param.contentType)}")\n`
+        code += `content.Add(stringContent_${stringContentIndex}, "${escapedName}")\n`
+        stringContentIndex++
+      } else {
+        code += `content.Add(new StringContent("${escapedValue}"), "${escapedName}")\n`
+      }
+    }
+  }
+  return code
+}
+
+/**
+ * Generates code for JSON content
+ */
+function generateJsonContentCode(postData: NonNullable<HarRequest['postData']>): string {
+  let prettyJson: string
+  try {
+    prettyJson = JSON.stringify(JSON.parse(postData.text ?? '{}'), null, 2)
+  } catch {
+    // If JSON parsing fails, use the raw text as-is
+    prettyJson = postData.text ?? '{}'
+  }
+  return `let content = new StringContent("""${prettyJson}""", Encoding.UTF8, "application/json")\n`
+}
+
+/**
+ * Generates code for application/x-www-form-urlencoded content
+ */
+function generateUrlEncodedFormDataCode(postData: NonNullable<HarRequest['postData']>): string {
+  // A Dictionary throws on a repeated name, so the fields are passed as a list of pairs.
+  let code = 'let formUrlEncodedContentPairs = [\n'
+  for (const param of postData.params ?? []) {
+    code += `  KeyValuePair("${escapeString(param.name ?? '')}", "${escapeString(param.value ?? '')}")\n`
+  }
+
+  code += ']\n'
+  code += 'let content = new FormUrlEncodedContent(formUrlEncodedContentPairs)\n'
+  return code
+}
+
+/**
+ * Escapes special characters for F# string literals
+ */
+function escapeString(str: string | undefined): string {
+  if (str == null) {
+    return ''
+  }
+  return str
+    .replace(/\\/g, '\\\\') // Escape backslashes
+    .replace(/"/g, '\\"') // Escape double quotes
+    .replace(/\n/g, '\\n') // Escape newlines
+    .replace(/\r/g, '\\r') // Escape carriage returns
+    .replace(/\t/g, '\\t') // Escape tabs
+}

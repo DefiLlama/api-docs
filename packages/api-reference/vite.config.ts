@@ -1,32 +1,89 @@
-import { URL, fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
+
 import tailwindcss from '@tailwindcss/vite'
-import { autoCSSInject, createViteBuildOptions } from '@scalar/build-tooling'
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vitest/config'
-import { version } from './package.json'
+import { defineConfig } from 'vite'
+
+import {
+  createExternalsFromPackageJson,
+  createLibEntry,
+  createPreserveModulesOutput,
+  findEntryPoints,
+  hasModuleSideEffects,
+} from '../../tooling/scripts/vite-lib-config.ts'
+import packageJson from './package.json' with { type: 'json' }
+
+const { version } = packageJson
+
+const external = createExternalsFromPackageJson()
+const preserveModulesOutput = createPreserveModulesOutput()
+const entryPaths = await findEntryPoints()
+const entry = createLibEntry(entryPaths, import.meta.dirname)
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss()],
+  plugins: [
+    vue(),
+    tailwindcss(),
+    {
+      name: 'playground-path-routing',
+      configureServer(server): void {
+        server.middlewares.use((req, _res, next): void => {
+          if (/^\/path-routing(?:[/?]|$)/.test(req.url ?? '')) {
+            req.url = `/path-routing.html${new URL(req.url ?? '/', 'http://localhost').search}`
+          }
+          next()
+        })
+      },
+    },
+  ],
   define: {
     'process.env.NODE_ENV': '"production"',
-    'process.env.SCALAR_API_REFERENCE_VERSION': `"${version}"`,
+    'PACKAGE_VERSION': `"${version}"`,
+  },
+  server: {
+    // Enable host binding in dev containers for proper port forwarding
+    // See: https://vite.dev/guide/troubleshooting.html#dev-containers-vs-code-port-forwarding
+    ...(process.env.REMOTE_CONTAINERS && { host: '127.0.0.1' }),
+    allowedHosts: ['localhost', 'host.docker.internal'],
   },
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@v2': fileURLToPath(new URL('./src/v2', import.meta.url)),
-      '@test': fileURLToPath(new URL('./test', import.meta.url)),
+      '@': resolve(import.meta.dirname, './src'),
+      '@test': resolve(import.meta.dirname, './test'),
     },
     dedupe: ['vue'],
   },
-  build: createViteBuildOptions({
-    entry: ['src/index.ts'],
-    options: {
-      emptyOutDir: true,
-      cssCodeSplit: false,
-      rollupOptions: {
-        plugins: [autoCSSInject('references')],
+  optimizeDeps: {
+    // posthog-js ships a pre-bundled dist/module.js — excluding it prevents Vite from
+    // crawling its transitive @opentelemetry/otlp-exporter-base dep, which imports the
+    // Node.js 'stream' and 'zlib' built-ins and triggers a browser-externalization warning.
+    exclude: ['posthog-js'],
+  },
+  build: {
+    outDir: './dist',
+    minify: false,
+    emptyOutDir: true,
+    cssCodeSplit: false,
+    sourcemap: true,
+    lib: {
+      formats: ['es'],
+      cssFileName: 'vue-styles',
+      entry,
+    },
+    rolldownOptions: {
+      treeshake: {
+        moduleSideEffects: hasModuleSideEffects,
+      },
+      // The workspace patch is not installed by npm consumers. Ship the corrected parser.
+      external: (id) => !/^proto-parser(?:\/|$)/.test(id) && external.some((pattern) => pattern.test(id)),
+      output: {
+        ...preserveModulesOutput,
+        entryFileNames: (chunk) => {
+          const parserPath = chunk.facadeModuleId?.split('/node_modules/proto-parser/')[1]
+          // npm excludes nested node_modules directories, including those emitted by preserveModules.
+          return parserPath ? `vendor/proto-parser/${parserPath}` : preserveModulesOutput.entryFileNames(chunk)
+        },
       },
     },
-  }),
+  },
 })

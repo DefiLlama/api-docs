@@ -1,0 +1,414 @@
+/**
+ * This file contains a collection of plugins used for the bundler.
+ * Plugins defined here can extend or modify the behavior of the bundling process,
+ * such as adding lifecycle hooks or custom processing logic.
+ */
+
+import { HTTP_METHODS } from '@scalar/helpers/http/http-methods'
+import { isObject } from '@scalar/helpers/object/is-object'
+import { isSchemaPath } from '@scalar/helpers/openapi/is-schema-path'
+import { type LifecyclePlugin, resolveReferencePath } from '@scalar/json-magic/bundle'
+
+import { isLocalRef } from '@/helpers/general'
+import {
+  type MinimalParameterObject,
+  syncParametersForPathChange,
+} from '@/mutators/operation/helpers/sync-path-parameters'
+import { getResolvedRef } from '@/plugins/bundler/helpers'
+
+/**
+ * A lifecycle plugin that adds a `$status` property to nodes during resolution.
+ * - Sets `$status` to 'loading' when resolution starts.
+ * - Sets `$status` to 'error' if resolution fails.
+ * - Removes `$status` when resolution succeeds.
+ */
+export const loadingStatus = (): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onResolveStart: (node) => {
+      node['$status'] = 'loading'
+    },
+    onResolveError: (node) => {
+      node['$status'] = 'error'
+    },
+    onResolveSuccess: (node) => {
+      delete node['$status']
+    },
+  }
+}
+
+/**
+ * Lifecycle plugin to resolve and embed external content referenced by an 'externalValue' property in a node.
+ *
+ * When a node contains an 'externalValue' property (as a string), this plugin will:
+ *   - Fetch the external resource (such as a URL or file) using the fetchUrls plugin.
+ *   - If the fetch is successful, assign the fetched data to the node's 'value' property.
+ *
+ * This is useful for inlining external content (like examples or schemas) into the OpenAPI document during bundling.
+ *
+ * In lazy mode, preserve the absolute URL for on-demand client resolution without fetching a payload.
+ * The default eager mode remains available to existing bundler consumers.
+ */
+export const externalValueResolver = (options?: { lazy?: boolean }): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onAfterNodeProcess: async (node, context) => {
+      const externalValue = node['externalValue']
+      const cache = context.resolutionCache
+
+      // Only process if 'externalValue' is a string
+      if (typeof externalValue !== 'string' || node['value'] !== undefined) {
+        return
+      }
+
+      // `externalValue` may be relative (for example `/examples/pet.json`). Resolve it against the
+      // origin of the document it lives in so it becomes an absolute URL a loader can fetch.
+      const resolvedValue = resolveReferencePath(context.origin, externalValue)
+
+      if (options?.lazy) {
+        const path = context.path.at(-2) === 'examples' ? context.path : (context.referencedFromPath ?? context.path)
+        if (path.at(-2) !== 'examples' || isSchemaPath(path)) {
+          return
+        }
+        // Preserve the referenced document origin before bundling loses that context.
+        node['externalValue'] = resolvedValue
+        return
+      }
+
+      const loader = context.loaders.find((it) => it.validate(resolvedValue))
+
+      // We can not process the external value
+      if (!loader) {
+        return
+      }
+
+      if (!cache.has(resolvedValue)) {
+        cache.set(resolvedValue, loader.exec(resolvedValue))
+      }
+
+      const result = await cache.get(resolvedValue)
+
+      // If fetch is successful, assign the data to the node's 'value' property
+      if (result?.ok) {
+        node['value'] = result.data
+      }
+    },
+  }
+}
+
+/**
+ * Lifecycle plugin to resolve $ref on any object, including non-standard locations like the info object.
+ *
+ * This plugin will:
+ *   - Detect if a node contains a $ref property (as a string).
+ *   - If the node is under the 'info' path, attempt to resolve the reference using fetchUrls.
+ *   - Replace the node's properties with the resolved data if successful.
+ *
+ * Note: This currently only supports refs on the 'info' object and does not handle primitive types.
+ */
+export const refsEverywhere = (): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onBeforeNodeProcess: async (node, context) => {
+      const { path, resolutionCache, parentNode } = context
+      const ref = node['$ref']
+
+      // Only process nodes that have a $ref property as a string
+      if (typeof ref !== 'string') {
+        return
+      }
+
+      // Can not resolve top level refs
+      if (!parentNode || !path.length) {
+        return
+      }
+
+      const loader = context.loaders.find((it) => it.validate(ref))
+
+      // Can not load the external ref
+      if (!loader) {
+        return
+      }
+
+      // Support resolving $ref on the info object
+      if (path[0] === 'info') {
+        // Use the cache to avoid duplicate fetches
+        if (!resolutionCache.has(ref)) {
+          resolutionCache.set(ref, loader.exec(ref))
+        }
+
+        const result = await resolutionCache.get(ref)
+
+        if (result?.ok) {
+          // Replace the ref with the resolved data
+          parentNode[path.at(-1)!] = result.data
+        }
+      }
+    },
+  }
+}
+
+/**
+ * Lifecycle plugin to restore original $ref values after processing.
+ *
+ * This plugin is intended to be used as a "lifecycle" plugin in the bundling process.
+ * It operates in the `onAfterNodeProcess` hook, and its main purpose is to restore
+ * the original $ref values for external references that may have been replaced or
+ * rewritten during the bundling process.
+ *
+ * How it works:
+ * - For each node processed, if the node contains a $ref property (as a string),
+ *   and the root document contains an "x-ext-urls" mapping object,
+ *   the plugin will attempt to restore the original $ref value.
+ * - The "x-ext-urls" object is expected to be a mapping from the rewritten $ref
+ *   (e.g., a hashed or compressed reference) back to the original external URL or path.
+ * - If a mapping exists for the current $ref, the plugin replaces the $ref value
+ *   with the original value from the mapping. If no mapping exists (e.g., for local refs),
+ *   the $ref value is left unchanged.
+ *
+ * This is useful for scenarios where you want to present or export the bundled document
+ * with the original external $ref values, rather than the internal or rewritten ones.
+ *
+ * @returns {LifecyclePlugin} The plugin object for use in the bundler.
+ */
+export const restoreOriginalRefs = (): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onAfterNodeProcess: (node, context) => {
+      const ref = node['$ref']
+      const root = context.rootNode
+      const authoredRefs = root['x-scalar-original-refs']
+      const authored = isObject(authoredRefs) ? authoredRefs[JSON.stringify(context.path)] : undefined
+      if (isObject(authored) && typeof authored.original === 'string' && authored.rewritten === ref) {
+        node['$ref'] = authored.original
+        return
+      }
+      const extUrls = root['x-ext-urls']
+
+      // Only process if $ref is a string and x-ext-urls is a valid object
+      if (typeof ref !== 'string' || typeof extUrls !== 'object' || extUrls === null || !isLocalRef(ref)) {
+        return
+      }
+
+      // Working with local refs
+
+      const segments = ref.split('/')
+      const key = segments.at(-1) ?? ''
+
+      // Replace the $ref with the original version from the mapping,
+      // or keep the current version if there is no mapping (e.g., for local refs)
+      node['$ref'] = (extUrls as Record<string, string>)[key] ?? ref
+    },
+  }
+}
+
+/**
+ * Lifecycle plugin to normalize the `scheme` property in securitySchemes to lowercase.
+ *
+ * Our typebox schemas require the `scheme` property to be a lowercase string.
+ * This plugin ensures that any `scheme` field under `components.securitySchemes` is normalized to lowercase, fixing
+ * potential user input errors such as "Bearer" or "BASIC".
+ *
+ * Example:
+ * ```yaml
+ * Before normalization:
+ *   components:
+ *     securitySchemes:
+ *       bearerAuth:
+ *         type: http
+ *         scheme: Bearer
+ * ```
+ * After normalization:
+ * ```yaml
+ *   components:
+ *     securitySchemes:
+ *       bearerAuth:
+ *         type: http
+ *         scheme: bearer
+ * ```
+ */
+export const normalizeAuthSchemes = (): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onAfterNodeProcess: (node, context) => {
+      const { path } = context
+
+      // Check if we're at components.securitySchemes.{schemeName}
+      if (path.length === 3 && path[0] === 'components' && path[1] === 'securitySchemes') {
+        const targetNode = getResolvedRef(node, context)
+
+        // If the scheme exists and is a string, normalize to lowercase if not already
+        if (
+          typeof targetNode === 'object' &&
+          targetNode !== null &&
+          'scheme' in targetNode &&
+          typeof targetNode['scheme'] === 'string' &&
+          targetNode['scheme'].toLowerCase() !== targetNode['scheme']
+        ) {
+          targetNode['scheme'] = targetNode['scheme'].toLowerCase()
+        }
+      }
+    },
+  }
+}
+
+/**
+ * Lifecycle plugin to normalize $ref nodes:
+ * Ensures that for any OpenAPI Reference Object containing a $ref, only $ref,
+ * summary, description, $status, and $global properties are preserved.
+ * This keeps $ref references clean and predictable for downstream consumers.
+ *
+ * Schema Objects are deliberately skipped: in JSON Schema 2020-12 a $ref may
+ * carry sibling keywords, so their siblings must not be stripped.
+ */
+export const normalizeRefs = (): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onBeforeNodeProcess: (node, context) => {
+      const { path, referencedFromPath } = context
+      const isSchema = isSchemaPath(path) || isSchemaPath(referencedFromPath)
+
+      // Normalization only applies to OpenAPI Reference Objects, where a `$ref` may sit next to nothing but
+      // `summary` and `description`. Schema Objects are left untouched: in JSON Schema 2020-12 a `$ref` may
+      // legally carry sibling keywords — for example a `$defs`/`$dynamicAnchor` binding that specializes a
+      // generic template (the `Paginated<T>` pattern) — and such schemas appear inline, in reusable schemas,
+      // and in raw external schema documents. Stripping those siblings would discard the binding and leave
+      // `$dynamicRef` resolving to the template's empty fallback. See https://github.com/scalar/scalar/issues/9414.
+      if (typeof node['$ref'] === 'string' && !isSchema) {
+        // Keep the server chunk marker so reloads retain the owning document's dialect and media types.
+        const keepProperties = new Set(['$ref', 'summary', 'description', '$status', '$global'])
+
+        Object.keys(node).forEach((key) => {
+          if (!keepProperties.has(key)) {
+            delete node[key]
+          }
+        })
+      }
+    },
+  }
+}
+
+/**
+ * Lifecycle plugin to sync path parameters for all operations under a path item.
+ *
+ * When processing a path item (e.g., '/users/{id}'), this plugin will:
+ *   - Extract path variables from the path string
+ *   - For each HTTP method operation (get, post, put, delete, etc.)
+ *   - Sync the operation's parameters to match the path variables
+ *   - Preserve existing parameter configurations when possible
+ *
+ * This ensures that path parameters are always in sync with the path string,
+ * even after bundling or other transformations.
+ */
+export const syncPathParameters = (): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onBeforeNodeProcess: (node, context) => {
+      const { path } = context
+
+      // Only process path items (e.g., paths -> /users/{id} -> operations)
+      if (path.length !== 2 || path[0] !== 'paths' || typeof path[1] !== 'string' || path[1].startsWith('x-')) {
+        return
+      }
+
+      const pathString = path[1]
+
+      // Sync parameters for each operation method
+      const additionalOperations = isObject(node.additionalOperations) ? Object.values(node.additionalOperations) : []
+      for (const operationNode of [...HTTP_METHODS.map((method) => node[method]), ...additionalOperations]) {
+        const operation = getResolvedRef(operationNode, context)
+
+        if (!isObject(operation)) {
+          continue
+        }
+
+        const isParameterNode = (param: unknown): param is MinimalParameterObject => {
+          const resolved = getResolvedRef(param, context)
+
+          return (
+            isObject(resolved) &&
+            'name' in resolved &&
+            typeof resolved.name === 'string' &&
+            'in' in resolved &&
+            typeof resolved.in === 'string'
+          )
+        }
+
+        const isPathParameterNode = (param: unknown): param is MinimalParameterObject => {
+          const resolved = getResolvedRef(param, context)
+          return isParameterNode(resolved) && resolved.in === 'path'
+        }
+
+        const existingParameters = (
+          'parameters' in operation && Array.isArray(operation.parameters) ? operation.parameters : []
+        ).filter(isParameterNode)
+
+        const existingPathParameters = new Set<string>(
+          existingParameters
+            .map((param) => getResolvedRef(param, context))
+            .filter(isPathParameterNode)
+            .map((param) => param.name),
+        )
+
+        // Include path-item level path parameters as fallbacks for any that the operation does not declare.
+        // Without this, syncParametersForPathChange would create bare `{ name, in: 'path' }` params,
+        // losing description, schema, required, etc. from the path-item definition.
+        const pathItemParameters = 'parameters' in node && Array.isArray(node.parameters) ? node.parameters : []
+
+        const pathItemPathParameters = pathItemParameters.filter((param): param is MinimalParameterObject => {
+          const resolved = getResolvedRef(param, context)
+
+          if (!isPathParameterNode(resolved)) {
+            return false
+          }
+
+          const result = !existingPathParameters.has(resolved.name)
+
+          if (result) {
+            existingPathParameters.add(resolved.name)
+          }
+
+          return result
+        })
+
+        const result = syncParametersForPathChange(
+          pathString,
+          pathString,
+          [...existingParameters, ...pathItemPathParameters],
+          (node) => getResolvedRef(node, context) as MinimalParameterObject,
+        )
+        if (result.length > 0) {
+          operation.parameters = result
+        }
+      }
+    },
+  }
+}
+
+// A list of nested internal keys that should be removed from nodes at any level.
+const NESTED_INTERNAL_KEYS = ['__scalar_', '$status']
+
+/**
+ * Lifecycle plugin to remove extra Scalar internal keys from nodes.
+ *
+ * This plugin is used to remove extra Scalar internal keys from nodes during the bundling process.
+ * These keys are used for internal purposes and are not needed in the final bundled document.
+ */
+export const removeExtraScalarKeys = (): LifecyclePlugin => {
+  return {
+    type: 'lifecycle',
+    onBeforeNodeProcess: (node, context) => {
+      if (isObject(node)) {
+        // Authored edits must reload native dependencies; workspace snapshots retain their prepared graphs.
+        if (context.referenceContext === 'asyncapi-schema') delete node['x-scalar-schema-resources']
+        for (const key of NESTED_INTERNAL_KEYS) {
+          if (key in node) {
+            delete node[key]
+          }
+        }
+      }
+    },
+  }
+}
+
+export { openApiDocument, resolveOpenApiDocument } from './openapi-document'
