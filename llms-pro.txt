@@ -43,8 +43,8 @@ Call these on `https://pro-api.llama.fi/{YOUR_API_KEY}` with the pro path.
 | `/stablecoin/{asset}` | `/stablecoins/stablecoin/{asset}` | Get historical mcap and historical chain distribution of a stablecoin |
 | `/stablecoinchains` | `/stablecoins/stablecoinchains` | Get current mcap sum of all stablecoins on each chain |
 | `/stablecoinprices` | `/stablecoins/stablecoinprices` | Get historical prices of all stablecoins |
-| `/pools` | `/yields/v1/pools` | Retrieve the latest data for all pools, including enriched information such as predictions |
-| `/chart/{pool}` | `/yields/v1/chart/{pool}` | Get historical APY and TVL of a pool |
+| `/pools` | `/yields/v1/pools` | **Deprecated on the free host, use the pro path.** Retrieve the latest data for all pools, including enriched information such as predictions |
+| `/chart/{pool}` | `/yields/v1/chart/{pool}` | **Deprecated on the free host, use the pro path.** Get historical APY and TVL of a pool |
 | `/overview/dexs` | `/api/overview/dexs` | List all dexs along with summaries of their volumes and dataType history data |
 | `/overview/dexs/{chain}` | `/api/overview/dexs/{chain}` | List all dexs along with summaries of their volumes and dataType history data filtering by chain |
 | `/summary/dexs/{protocol}` | `/api/summary/dexs/{protocol}` | Get summary of dex volume with historical data |

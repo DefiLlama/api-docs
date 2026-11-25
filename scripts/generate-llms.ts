@@ -33,6 +33,8 @@ type Endpoint = {
    * (stablecoin supply lives at circulating.peggedUSD). The spec stays the single source.
    */
   responseNote: string
+  /** Marked deprecated in the spec. Agents recommended these as current when the text docs left it out. */
+  deprecated: boolean
 }
 
 /** Build a short one-line response hint from the OpenAPI response schema */
@@ -87,6 +89,7 @@ function loadEndpoints(filePath: string): Endpoint[] {
       })),
       responseHint: summarizeResponse(get.responses?.['200']),
       responseNote: (get.description ?? '').split('\n\n').find((p: string) => p.startsWith('**Response:**')) ?? '',
+      deprecated: get.deprecated === true,
     })
   }
 
@@ -102,6 +105,17 @@ function formatParam(p: Parameter): string {
   return `  - \`${p.name}\` (${p.in}, ${type}, ${req})${desc}${enumValues}${example}`
 }
 
+/**
+ * Without this, every model tested recommended the deprecated free yields routes as current.
+ * Agents also guessed the pro path on the free host, which 404s, so the notice says so.
+ */
+function deprecationNotice(e: Endpoint, proPath?: string): string {
+  if (!proPath) {
+    return '**Deprecated:** this endpoint will shut down soon.'
+  }
+  return `**Deprecated:** this free endpoint will shut down soon. The same data stays available with an API key at \`https://pro-api.llama.fi/{YOUR_API_KEY}${proPath}\`. \`${e.baseUrl}${proPath}\` does not exist (404).`
+}
+
 function formatEndpoint(e: Endpoint, proPath?: string): string {
   const lines: string[] = []
   lines.push(`### GET ${e.path}`)
@@ -112,6 +126,9 @@ function formatEndpoint(e: Endpoint, proPath?: string): string {
    */
   if (proPath) {
     lines.push(`**With an API key:** \`https://pro-api.llama.fi/{YOUR_API_KEY}${proPath}\``)
+  }
+  if (e.deprecated) {
+    lines.push(deprecationNotice(e, proPath))
   }
   lines.push(`${e.summary}`)
 
@@ -232,7 +249,7 @@ No authentication required. Each group has its own base URL.
 ${Array.from(freeGroups.entries())
   .map(
     ([tag, eps]) =>
-      `- **${formatTagName(tag)}** (\`${[...new Set(eps.map((e) => e.baseUrl))].join('`, `')}\`): ${eps.map((e) => `\`${e.path}\``).join(', ')}`,
+      `- **${formatTagName(tag)}** (\`${[...new Set(eps.map((e) => e.baseUrl))].join('`, `')}\`): ${eps.map((e) => `\`${e.path}\`${e.deprecated ? ' (deprecated)' : ''}`).join(', ')}`,
   )
   .join('\n')}
 
@@ -297,7 +314,10 @@ function buildFreeToProMapping(
     for (const prefix of prefixes) {
       const candidate = prefix + free.path.replace(/^\//, '')
       if (proPaths.has(candidate)) {
-        mappings.push({ freePath: free.path, proPath: candidate, summary: free.summary })
+        const summary = free.deprecated
+          ? `**Deprecated on the free host, use the pro path.** ${free.summary}`
+          : free.summary
+        mappings.push({ freePath: free.path, proPath: candidate, summary })
         break
       }
     }
@@ -363,7 +383,7 @@ ${mappingTable}`
   writeFileSync(join(ROOT, 'llms-free.txt'), llmsFree)
   writeFileSync(join(ROOT, 'llms-pro.txt'), llmsPro)
 
-  console.log(`Generated:`)
+  console.log('Generated:')
   console.log(`  llms.txt      — ${llmsIndex.split('\n').length} lines`)
   console.log(`  llms-free.txt — ${llmsFree.split('\n').length} lines`)
   console.log(`  llms-pro.txt  — ${llmsPro.split('\n').length} lines`)
