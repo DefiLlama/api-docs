@@ -205,12 +205,14 @@ Returns: array of {date, prices}
 ### GET /pools
 **Base URL:** `https://yields.llama.fi`
 **With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/pools`
+**Deprecated:** this free endpoint will shut down soon. The same data stays available with an API key at `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/pools`. `https://yields.llama.fi/yields/v1/pools` does not exist (404).
 Retrieve the latest data for all pools, including enriched information such as predictions
 Returns: {status, data}
 
 ### GET /chart/{pool}
 **Base URL:** `https://yields.llama.fi`
 **With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/chart/{pool}`
+**Deprecated:** this free endpoint will shut down soon. The same data stays available with an API key at `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/chart/{pool}`. `https://yields.llama.fi/yields/v1/chart/{pool}` does not exist (404).
 Get historical APY and TVL of a pool
 
 **Parameters:**
