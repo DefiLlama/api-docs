@@ -1,11 +1,7 @@
 packages:
   - examples/web
-  - integrations/**/*
   - packages/**/*
-  - playwright
   - tooling/scripts
-  - tooling/changelog-generator
-  - projects/**/*
   - '!**/.next/**'
   - '!**/dist/**'
   - '!**/.output/**'
@@ -187,5 +183,4 @@ minimumReleaseAgeExclude:
   # Trust packages published by Scalar.
   - '@scalar/*'
 patchedDependencies:
-  postman-collection@5.3.1: patches/postman-collection@5.3.1.patch
   proto-parser@0.0.9: patches/proto-parser@0.0.9.patch

@@ -23,7 +23,7 @@ The Scalar packages in this repository match upstream [scalar/scalar](https://gi
 | --- | --- |
 | API key bar, saved in the browser (`localStorage` key `scalar-api-key-default`) | `src/components/ApiKeyInput.vue`, `src/api-key-storage.ts` |
 | Free spec plus API-plan-only endpoints, or the full pro spec when a key is set | `src/spec-transform.ts` |
-| Key in the path (`pro-api.llama.fi/{key}/…`, and `/usage/{key}`) for snippets, Test Request and Copy URL | `src/spec-transform.ts` (fills the `YOUR_API_KEY` server variable) |
+| Key in the path (`pro-api.llama.fi/{key}/…`, and `/usage/{key}`) for snippets, Test Request and Copy URL, while the Server box shows the bare host | `src/spec-transform.ts` (gives each pro operation a server with the key in it) |
 | API Plan and Beta badges (from `x-api-plan-only` and `x-api-beta`) | `src/spec-transform.ts` (Scalar's `x-badges`), styled in `src/style.css` |
 | "Please set an API key" reply when Test Request has no key | `customFetch` in `src/pages/StandaloneApiReferencePage.vue` |
 | curl as the default code sample | `defaultHttpClient` in the same page |
@@ -39,9 +39,12 @@ The one patch inside Scalar is `packages/api-reference/src/components/Operations
 ```bash
 git fetch upstream
 git merge upstream/main
+sh scripts/prune-upstream.sh
 ```
 
-Conflicts should only be in files we own (README, CLAUDE.md, root `package.json`, `pnpm-workspace.yaml`, `lefthook.yml`, `.gitignore`), in `.github` (keep ours: upstream's workflows publish Scalar's packages and must not run here), and in `OperationsListItem.vue` (keep the `DefiLlama` block). Then run `pnpm install`, `pnpm build:web`, and check the page against the list above.
+The repository only keeps what the docs site builds from. `scripts/prune-upstream.sh` removes the rest of upstream Scalar (its docs site, integrations, desktop app, examples and the packages the site does not depend on), and also resolves the "deleted by us" conflicts upstream changes to those folders cause.
+
+The remaining conflicts should only be in files we own (README, CLAUDE.md, root `package.json`, `pnpm-workspace.yaml`, `lefthook.yml`, `.gitignore`), in `.github` (keep ours: upstream's workflows publish Scalar's packages and must not run here), and in `OperationsListItem.vue` (keep the `DefiLlama` block). Then run `pnpm install`, `pnpm build:web`, and check the page against the list above. If the build fails because a package is missing, the site has started depending on it: take it out of the script and restore it with `git checkout upstream/main -- packages/<name>`.
 
 ## Local development
 

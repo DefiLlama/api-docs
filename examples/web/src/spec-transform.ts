@@ -15,7 +15,7 @@ export const API_KEY_PLACEHOLDER = '<API-KEY>'
 
 export const INTRODUCTION_HEADING = 'Introduction'
 
-/** The name of the pro server variable and of the /usage/{YOUR_API_KEY} path parameter. */
+/** The name of the /usage/{YOUR_API_KEY} path parameter. */
 const KEY_VARIABLE = 'YOUR_API_KEY'
 
 export const API_PLAN_BADGE = { name: 'API Plan', position: 'before', color: 'var(--scalar-color-orange)' }
@@ -34,14 +34,12 @@ const forEachOperation = (spec: Json, callback: (operation: Json) => void): void
 }
 
 /**
- * The pro server with the key filled in. Scalar puts server variable defaults into code snippets
- * and Test Request URLs, so the key lands in the path: https://pro-api.llama.fi/{key}/...
+ * The server each pro operation uses, with the key already in it: https://pro-api.llama.fi/{key}.
+ * It sits on the operations, not the document. The page's Server box then shows the bare host,
+ * as before the upgrade, while snippets, Test Request and Copy URL still carry the key. A plain URL
+ * (not the spec's {YOUR_API_KEY} variable) also keeps Scalar from adding an editable key field.
  */
-const proServer = (proSpec: Json, key: string): Json => {
-  const server = structuredClone(proSpec.servers[0])
-  server.variables[KEY_VARIABLE].default = key
-  return server
-}
+const keyedServer = (key: string): Json => ({ url: `${PRO_HOST}/${key}` })
 
 /**
  * Prepares one operation for display:
@@ -87,16 +85,16 @@ const prepareOperation = (operation: Json, server: Json | undefined, key: string
  */
 export const buildSpec = (freeSpecContent: Json, proSpecContent: Json, apiKey: string | null): Json => {
   const proSpec = structuredClone(proSpecContent)
-  const key = apiKey || API_KEY_PLACEHOLDER
+  const key = apiKey ? encodeURIComponent(apiKey) : API_KEY_PLACEHOLDER
+  const server = keyedServer(key)
 
   if (apiKey) {
-    proSpec.servers = [proServer(proSpecContent, key)]
-    forEachOperation(proSpec, (operation) => prepareOperation(operation, undefined, key))
+    proSpec.servers = [{ url: PRO_HOST }]
+    forEachOperation(proSpec, (operation) => prepareOperation(operation, server, key))
     return proSpec
   }
 
   const freeSpec = structuredClone(freeSpecContent)
-  const server = proServer(proSpecContent, key)
 
   /**
    * When the description opens with text, Scalar adds an "Introduction" sidebar entry and nests

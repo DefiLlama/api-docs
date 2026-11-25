@@ -572,6 +572,10 @@ no longer exist. All DefiLlama behaviour now lives in `examples/web/src` (`spec-
 `packages/api-reference/src/components/OperationsList/OperationsListItem.vue`. See the README sections
 "Where the DefiLlama customizations live" and "Syncing with upstream Scalar".
 
+Unused upstream folders (integrations, projects, documentation, other examples, packages the site does
+not depend on) are deleted by `scripts/prune-upstream.sh`; run it after every upstream merge. Many
+packages listed in the Key Packages section below therefore no longer exist in this repository.
+
 ## Session Summary: URL Encoding, API Key Injection & PRO Badge System
 
 ### Overview

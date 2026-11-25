@@ -13,9 +13,23 @@ describe('spec-transform', () => {
   describe('buildSpec with a key', () => {
     const spec = buildSpec(freeSpec, proSpec, 'my-key')
 
-    it('puts the key in the pro server variable', () => {
-      expect(spec.servers[0].url).toBe('https://pro-api.llama.fi/{YOUR_API_KEY}')
-      expect(spec.servers[0].variables.YOUR_API_KEY.default).toBe('my-key')
+    // The Server box shows the bare host, as before the upgrade, with no editable key field
+    it('shows the bare pro host as the document server', () => {
+      expect(spec.servers).toEqual([{ url: 'https://pro-api.llama.fi' }])
+    })
+
+    it('puts the key in the path of every other operation', () => {
+      for (const { path, operation } of operations(spec)) {
+        if (path === '/usage/{YOUR_API_KEY}') {
+          continue
+        }
+        expect(operation.servers).toEqual([{ url: 'https://pro-api.llama.fi/my-key' }])
+      }
+    })
+
+    it('percent-encodes a key with URL-unsafe characters', () => {
+      const encoded = buildSpec(freeSpec, proSpec, 'a/b c')
+      expect(encoded.paths['/api/protocols'].get.servers[0].url).toBe('https://pro-api.llama.fi/a%2Fb%20c')
     })
 
     it('puts the key at the end of the usage path, on the bare host', () => {
@@ -61,7 +75,7 @@ describe('spec-transform', () => {
         const operation = spec.paths[path][method]
         expect(operation['x-badges']).toContainEqual(API_PLAN_BADGE)
         if (path !== '/usage/{YOUR_API_KEY}') {
-          expect(operation.servers[0].variables.YOUR_API_KEY.default).toBe(API_KEY_PLACEHOLDER)
+          expect(operation.servers).toEqual([{ url: `https://pro-api.llama.fi/${API_KEY_PLACEHOLDER}` }])
         }
       }
     })
