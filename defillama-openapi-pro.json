@@ -16608,11 +16608,6 @@
         "x-api-beta": true,
         "summary": "Get list of all tracked public companies",
         "description": "Returns the tracked US-listed companies with their identity and sector and industry slugs, sorted by market cap (largest first). Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "sector",
@@ -16708,11 +16703,6 @@
         "x-api-beta": true,
         "summary": "Get financial statements for a company",
         "description": "Returns income statement, balance sheet, and cash flow statement for the given ticker, broken down by quarterly and annual periods.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -17616,11 +17606,6 @@
         "x-api-beta": true,
         "summary": "Get financial dimensions for a company",
         "description": "Returns time-series financial dimension metrics (revenue, holders revenue, earnings, and basic shares outstanding) for the given ticker, each broken down into annual and quarterly series. Every data point is a two-element array: ISO 8601 period-ending date, then the numeric value. Series are sorted by date descending (newest first).",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -17737,11 +17722,6 @@
         "x-api-beta": true,
         "summary": "Get historical price data for a company",
         "description": "Returns closing prices as two-element arrays: ISO 8601 date-time string, then numeric price. Sorted by date descending (newest first). Resolution follows `timeframe`: `1D`, `7D` and `1W` are 5-minute intraday bars whose date-time carries a real time of day, while `1M` and longer are daily closes stamped `T00:00:00Z`.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -17838,11 +17818,6 @@
         "x-api-beta": true,
         "summary": "Get OHLCV candle data for a company",
         "description": "Returns OHLCV bars as six-number arrays: Unix timestamp in seconds (UTC), open, high, low, close, volume. Sorted by time descending (newest first). Optional `timeframe` controls both how far back data goes and the bar resolution: `1D`, `7D` and `1W` return 5-minute bars, `1M` and longer return daily bars. Omit or empty for full history (`MAX`).",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -17936,11 +17911,6 @@
         "x-api-beta": true,
         "summary": "Get live market summary for a company",
         "description": "Returns current market data for a single ticker. This is a compact snapshot (no `ticker` / `name` fields); use `GET /equities/v1/companies-list` for the list of tracked companies with their identity details.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -18172,11 +18142,6 @@
         "x-api-beta": true,
         "summary": "Get filings for a company",
         "description": "Returns a list of company filings (such as annual reports, quarterly reports, and other important filings) for the given ticker, sorted by filing date descending (newest first).",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -18254,11 +18219,6 @@
         "x-api-beta": true,
         "summary": "Get on-chain tradeable markets for a company",
         "description": "Returns where the stock can be traded on-chain: `perps` are perpetual futures markets across exchanges, and `tokens` are tokenised-equity issuers. This is a live snapshot refreshed hourly and no history is kept. On-chain data is only collected for US-listed tickers, so a ticker in another market comes back with empty `perps` and `tokens` arrays rather than an error.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -18442,11 +18402,6 @@
         "x-api-beta": true,
         "summary": "Get all sectors",
         "description": "Returns one row per sector, sorted by market cap (largest first): market cap and weight, traded value, valuation ratios, price changes over seven windows, and the three largest holdings.\n\nCovers US-listed companies. All monetary values are in USD.\n\nSector and industry names come from the data vendor (a Morningstar-style list of 11 sectors and about 140 industries), not GICS. Companies with no sector are grouped as `Unknown` rather than dropped, so sector market caps add up to the market total.\n\nRatios such as `trailingPE` are aggregates (total market cap / total earnings), so the group is valued as one company rather than averaging its constituents' ratios. Price changes are weighted by market cap at the start of each window. Percentages are in percent, not fractions: `1.82` means +1.82%.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful operation",
@@ -18805,11 +18760,6 @@
         "x-api-beta": true,
         "summary": "Get market-wide sector overview",
         "description": "Returns totals across all tracked US companies, which the per-sector rows cannot carry: the market cap every sector `weight` is measured against, aggregate and median valuation ratios for the whole market, and the best, worst, and largest sector.\n\nThe constituents here are every tracked US company. Fields shared with `GET /equities/v1/sectors` mean the same thing.\n\nCovers US-listed companies. All monetary values are in USD.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful operation",
@@ -19233,11 +19183,6 @@
         "x-api-beta": true,
         "summary": "Get details for one sector",
         "description": "Returns one sector in full: everything its `GET /equities/v1/sectors` row has, plus a short description, the ten largest holdings, aggregate and median valuation ratios side by side, and how concentrated the sector is.\n\nCovers US-listed companies. All monetary values are in USD.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "sector",
@@ -19798,11 +19743,6 @@
         "x-api-beta": true,
         "summary": "Get industries",
         "description": "Returns one row per industry, sorted by market cap (largest first), with the same metrics as a `GET /equities/v1/sectors` row plus the parent sector. Filter to one sector with `sector`, or to one industry with `industry`.\n\nEach row carries two weights: `weight` is the share of all tracked US equity, and `sectorWeight` is the share of the parent sector. For Technology's industries, `sectorWeight` sums to 100 while `weight` sums to Technology's own weight in the market.\n\n`rank` counts within the selected sector when `sector` is set, and across all industries otherwise. Filtering by `industry` alone keeps each row's market-wide rank.\n\nThe same industry name can exist under two sectors, so `industry` alone can return more than one row.\n\nCovers US-listed companies. All monetary values are in USD.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "sector",
@@ -20193,11 +20133,6 @@
         "x-api-beta": true,
         "summary": "Get earnings calendar",
         "description": "Returns earnings report dates built from SEC EDGAR filings: past reports, plus the next four expected dates projected from each company's own filing history. Covers US-listed companies.\n\nThe same path serves two shapes:\n\n- **With `ticker`**: that company's full history plus its upcoming estimates.\n- **Without `ticker`**: the market-wide calendar over a rolling window from about 1 month back to about 13 months ahead. Use the `ticker` form for older history.\n\nRows are sorted by `report_date`, oldest first, so `limit` keeps the earliest matches. `?ticker=AAPL&status=estimated&limit=1` is Apple's next report.\n\nEvery row says what kind of date it is in `date_status`. A future date is `estimated`, with a `max_drift_days` range, and is not a confirmed schedule.\n\nCompany names are not included. Join on `ticker` against `GET /equities/v1/companies-list`.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "ticker",
@@ -20450,11 +20385,6 @@
         "x-api-beta": true,
         "summary": "Get list of all tracked pre-IPO companies",
         "description": "Returns every private company in the pre-IPO registry with its latest estimated valuation and derived funding metrics. Use this to discover valid `company` ids for the other pre-IPO endpoints. Companies come back in registry order, so the list is not sorted by valuation.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful operation",
@@ -20566,11 +20496,6 @@
         "x-api-beta": true,
         "summary": "Get valuation history for a pre-IPO company",
         "description": "Returns one aggregated valuation point per calendar month, oldest first. Within a month every source's marks are averaged and then the source averages are averaged, so a source that reports daily does not outvote one that reports monthly. Points are rounded to the nearest 100 and dated `YYYY-MM-01`; months with no data are skipped, and the current month is month-to-date.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "company",
@@ -20652,11 +20577,6 @@
         "x-api-beta": true,
         "summary": "Get funding rounds for a pre-IPO company",
         "description": "Returns disclosed funding rounds, oldest first. The same round is usually reported by several sources with different dates and amounts, so rounds are reconciled before being served: each cluster collapses to one canonical raise taking the earliest date, the median amount, the median valuation, and the highest-ranked series label.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "company",
@@ -20755,11 +20675,6 @@
         "x-api-beta": true,
         "summary": "Get profile and latest valuation for a pre-IPO company",
         "description": "Returns the company profile together with its latest estimated valuation and its most recent funding round.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "company",
@@ -20879,11 +20794,6 @@
         "x-api-beta": true,
         "summary": "Get tradeable markets for a pre-IPO company",
         "description": "Returns where the company can actually be traded right now: perpetual futures venues and tokenised-share issuers. A pre-IPO perp settles in stablecoins against the venue's reference price, so no shares change hands and the same company can trade at a slightly different price on every venue. This is a live snapshot refreshed hourly and no history is kept. Every company in the registry gets a response: one with no listings returns empty `perps` and `tokenIssuers` arrays rather than a miss.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
         "parameters": [
           {
             "name": "company",
