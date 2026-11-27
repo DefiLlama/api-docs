@@ -4,19 +4,18 @@
 
 ## Have an API key? Use pro-api.llama.fi for every request
 
-If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/{YOUR_API_KEY}/...`. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
+If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/...` with the key in the `x-api-key` header. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
 
 ```
-RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/coingecko:ethereum
-WRONG  https://coins.llama.fi/prices/current/coingecko:ethereum                      (free host: ignores the key, rate limited)
-WRONG  https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum?apikey={YOUR_API_KEY}   (key not in the path)
+RIGHT  curl -H "x-api-key: YOUR_API_KEY" https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum
+WRONG  curl -H "x-api-key: YOUR_API_KEY" https://coins.llama.fi/prices/current/coingecko:ethereum   (free host: ignores the key, rate limited)
 ```
 
 - The free hosts (`api.llama.fi`, `coins.llama.fi`, `stablecoins.llama.fi`, `yields.llama.fi`) never read a key, so a 429 there means the request belongs on pro-api.llama.fi. A 402 there means the endpoint needs pro-api, not that the plan expired.
-- The key goes in the path, right after the host. Headers and `?apikey=` are not read: pro-api answers `500 {"error":"API Key is wrong"}`.
+- Send the key in the `x-api-key` header. `Authorization: Bearer YOUR_API_KEY` works too. Where a header cannot be set, `?api_key=YOUR_API_KEY` works, and so does the older form with the key as the first path segment (`https://pro-api.llama.fi/YOUR_API_KEY/api/protocols`). Without a key pro-api answers `401 {"error":"API key is missing"}`, with a wrong one `500 {"error":"API Key is wrong"}`.
 - Paths on pro-api have a prefix: `/protocols` becomes `/api/protocols`, `/prices/current/{coins}` becomes `/coins/prices/current/{coins}`, `/stablecoins` becomes `/stablecoins/stablecoins`, `/pools` becomes `/yields/v1/pools`. Every free path is mapped in [llms.txt](https://api-docs.defillama.com/llms.txt), and the pro-only endpoints are in [llms-pro.txt](https://api-docs.defillama.com/llms-pro.txt).
 - One key unlocks every endpoint. There are no add-ons or separate keys.
-- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
+- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end of the path, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
 
 **Base URL for endpoints below:** `https://api.llama.fi` (unless an endpoint lists its own)
 
@@ -24,13 +23,13 @@ WRONG  https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum?apikey={
 
 ### GET /protocols
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/protocols`
+**With an API key:** `https://pro-api.llama.fi/api/protocols` with the `x-api-key: YOUR_API_KEY` header
 List all protocols on defillama along with their tvl
 Returns: array of {id, name, symbol, category, chains, tvl, chainTvls, change_1d, change_7d}
 
 ### GET /protocol/{protocol}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/protocol/{protocol}`
+**With an API key:** `https://pro-api.llama.fi/api/protocol/{protocol}` with the `x-api-key: YOUR_API_KEY` header
 Get historical TVL of a protocol and breakdowns by token and chain
 
 **Parameters:**
@@ -39,13 +38,13 @@ Returns: {id, name, symbol, category, chains, currentChainTvls, chainTvls}
 
 ### GET /v2/historicalChainTvl
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/historicalChainTvl`
+**With an API key:** `https://pro-api.llama.fi/api/v2/historicalChainTvl` with the `x-api-key: YOUR_API_KEY` header
 Get historical TVL (excludes liquid staking and double counted tvl) of DeFi on all chains
 Returns: array of {date, tvl}
 
 ### GET /v2/historicalChainTvl/{chain}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/historicalChainTvl/{chain}`
+**With an API key:** `https://pro-api.llama.fi/api/v2/historicalChainTvl/{chain}` with the `x-api-key: YOUR_API_KEY` header
 Get historical TVL (excludes liquid staking and double counted tvl) of a chain
 
 **Parameters:**
@@ -54,7 +53,7 @@ Returns: array of {date, tvl}
 
 ### GET /tvl/{protocol}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/tvl/{protocol}`
+**With an API key:** `https://pro-api.llama.fi/api/tvl/{protocol}` with the `x-api-key: YOUR_API_KEY` header
 Simplified endpoint to get current TVL of a protocol
 
 **Parameters:**
@@ -63,7 +62,7 @@ Returns: number
 
 ### GET /v2/chains
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chains`
+**With an API key:** `https://pro-api.llama.fi/api/v2/chains` with the `x-api-key: YOUR_API_KEY` header
 Get current TVL of all chains
 Returns: array of {gecko_id, tvl, tokenSymbol, cmcId, name, chainId}
 
@@ -73,7 +72,7 @@ Returns: array of {gecko_id, tvl, tokenSymbol, cmcId, name, chainId}
 
 ### GET /prices/current/{coins}
 **Base URL:** `https://coins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/{coins}`
+**With an API key:** `https://pro-api.llama.fi/coins/prices/current/{coins}` with the `x-api-key: YOUR_API_KEY` header
 Get current prices of tokens by contract address
 
 **Parameters:**
@@ -82,7 +81,7 @@ Returns: {coins}
 
 ### GET /prices/historical/{timestamp}/{coins}
 **Base URL:** `https://coins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/historical/{timestamp}/{coins}`
+**With an API key:** `https://pro-api.llama.fi/coins/prices/historical/{timestamp}/{coins}` with the `x-api-key: YOUR_API_KEY` header
 Get historical prices of tokens by contract address
 
 **Parameters:**
@@ -92,7 +91,7 @@ Returns: {coins}
 
 ### GET /batchHistorical
 **Base URL:** `https://coins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/batchHistorical`
+**With an API key:** `https://pro-api.llama.fi/coins/batchHistorical` with the `x-api-key: YOUR_API_KEY` header
 Get historical prices for multiple tokens at multiple different timestamps
 
 **Parameters:**
@@ -102,7 +101,7 @@ Returns: {coins}
 
 ### GET /chart/{coins}
 **Base URL:** `https://coins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/chart/{coins}`
+**With an API key:** `https://pro-api.llama.fi/coins/chart/{coins}` with the `x-api-key: YOUR_API_KEY` header
 Get token prices at regular time intervals
 
 **Parameters:**
@@ -115,7 +114,7 @@ Returns: {coins}
 
 ### GET /percentage/{coins}
 **Base URL:** `https://coins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/percentage/{coins}`
+**With an API key:** `https://pro-api.llama.fi/coins/percentage/{coins}` with the `x-api-key: YOUR_API_KEY` header
 Get percentage change in price over time
 
 **Parameters:**
@@ -127,7 +126,7 @@ Returns: {coins}
 
 ### GET /prices/first/{coins}
 **Base URL:** `https://coins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/first/{coins}`
+**With an API key:** `https://pro-api.llama.fi/coins/prices/first/{coins}` with the `x-api-key: YOUR_API_KEY` header
 Get earliest timestamp price record for coins
 
 **Parameters:**
@@ -136,7 +135,7 @@ Returns: {coins}
 
 ### GET /block/{chain}/{timestamp}
 **Base URL:** `https://coins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/coins/block/{chain}/{timestamp}`
+**With an API key:** `https://pro-api.llama.fi/coins/block/{chain}/{timestamp}` with the `x-api-key: YOUR_API_KEY` header
 Get the closest block to a timestamp
 
 **Parameters:**
@@ -150,7 +149,7 @@ Returns: {height, timestamp}
 
 ### GET /stablecoins
 **Base URL:** `https://stablecoins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoins`
+**With an API key:** `https://pro-api.llama.fi/stablecoins/stablecoins` with the `x-api-key: YOUR_API_KEY` header
 List all stablecoins along with their circulating amounts
 
 **Parameters:**
@@ -160,7 +159,7 @@ Returns: {peggedAssets}
 
 ### GET /stablecoincharts/all
 **Base URL:** `https://stablecoins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoincharts/all`
+**With an API key:** `https://pro-api.llama.fi/stablecoins/stablecoincharts/all` with the `x-api-key: YOUR_API_KEY` header
 Get historical mcap sum of all stablecoins
 
 **Parameters:**
@@ -169,7 +168,7 @@ Returns: array of {date, totalCirculating}
 
 ### GET /stablecoincharts/{chain}
 **Base URL:** `https://stablecoins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoincharts/{chain}`
+**With an API key:** `https://pro-api.llama.fi/stablecoins/stablecoincharts/{chain}` with the `x-api-key: YOUR_API_KEY` header
 Get historical mcap sum of all stablecoins in a chain
 
 **Parameters:**
@@ -179,7 +178,7 @@ Returns: array of {date, totalCirculating}
 
 ### GET /stablecoin/{asset}
 **Base URL:** `https://stablecoins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoin/{asset}`
+**With an API key:** `https://pro-api.llama.fi/stablecoins/stablecoin/{asset}` with the `x-api-key: YOUR_API_KEY` header
 Get historical mcap and historical chain distribution of a stablecoin
 
 **Parameters:**
@@ -188,13 +187,13 @@ Returns: {id, name, symbol, totalCirculating, chainCirculating}
 
 ### GET /stablecoinchains
 **Base URL:** `https://stablecoins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoinchains`
+**With an API key:** `https://pro-api.llama.fi/stablecoins/stablecoinchains` with the `x-api-key: YOUR_API_KEY` header
 Get current mcap sum of all stablecoins on each chain
 Returns: array of {name, totalCirculatingUSD}
 
 ### GET /stablecoinprices
 **Base URL:** `https://stablecoins.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/stablecoins/stablecoinprices`
+**With an API key:** `https://pro-api.llama.fi/stablecoins/stablecoinprices` with the `x-api-key: YOUR_API_KEY` header
 Get historical prices of all stablecoins
 Returns: array of {date, prices}
 
@@ -204,15 +203,15 @@ Returns: array of {date, prices}
 
 ### GET /pools
 **Base URL:** `https://yields.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/pools`
-**Deprecated:** this free endpoint will shut down soon. The same data stays available with an API key at `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/pools`. `https://yields.llama.fi/yields/v1/pools` does not exist (404).
+**With an API key:** `https://pro-api.llama.fi/yields/v1/pools` with the `x-api-key: YOUR_API_KEY` header
+**Deprecated:** this free endpoint will shut down soon. The same data stays available with an API key at `https://pro-api.llama.fi/yields/v1/pools` (`x-api-key` header). `https://yields.llama.fi/yields/v1/pools` does not exist (404).
 Retrieve the latest data for all pools, including enriched information such as predictions
 Returns: {status, data}
 
 ### GET /chart/{pool}
 **Base URL:** `https://yields.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/chart/{pool}`
-**Deprecated:** this free endpoint will shut down soon. The same data stays available with an API key at `https://pro-api.llama.fi/{YOUR_API_KEY}/yields/v1/chart/{pool}`. `https://yields.llama.fi/yields/v1/chart/{pool}` does not exist (404).
+**With an API key:** `https://pro-api.llama.fi/yields/v1/chart/{pool}` with the `x-api-key: YOUR_API_KEY` header
+**Deprecated:** this free endpoint will shut down soon. The same data stays available with an API key at `https://pro-api.llama.fi/yields/v1/chart/{pool}` (`x-api-key` header). `https://yields.llama.fi/yields/v1/chart/{pool}` does not exist (404).
 Get historical APY and TVL of a pool
 
 **Parameters:**
@@ -225,7 +224,7 @@ Returns: {status, data}
 
 ### GET /overview/dexs
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/dexs`
+**With an API key:** `https://pro-api.llama.fi/api/overview/dexs` with the `x-api-key: YOUR_API_KEY` header
 List all dexs along with summaries of their volumes and dataType history data
 
 **Parameters:**
@@ -235,7 +234,7 @@ Returns: {protocols, totalDataChart, allChains}
 
 ### GET /overview/dexs/{chain}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/dexs/{chain}`
+**With an API key:** `https://pro-api.llama.fi/api/overview/dexs/{chain}` with the `x-api-key: YOUR_API_KEY` header
 List all dexs along with summaries of their volumes and dataType history data filtering by chain
 
 **Parameters:**
@@ -246,7 +245,7 @@ Returns: {protocols, totalDataChart}
 
 ### GET /summary/dexs/{protocol}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/summary/dexs/{protocol}`
+**With an API key:** `https://pro-api.llama.fi/api/summary/dexs/{protocol}` with the `x-api-key: YOUR_API_KEY` header
 Get summary of dex volume with historical data
 
 **Parameters:**
@@ -257,7 +256,7 @@ Returns: {name, total24h, totalAllTime, totalDataChart, totalDataChartBreakdown,
 
 ### GET /overview/options
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/options`
+**With an API key:** `https://pro-api.llama.fi/api/overview/options` with the `x-api-key: YOUR_API_KEY` header
 List all options dexs along with summaries of their volumes and dataType history data
 
 **Parameters:**
@@ -268,7 +267,7 @@ Returns: {protocols, totalDataChart}
 
 ### GET /overview/options/{chain}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/options/{chain}`
+**With an API key:** `https://pro-api.llama.fi/api/overview/options/{chain}` with the `x-api-key: YOUR_API_KEY` header
 List all options dexs along with summaries of their volumes and dataType history data filtering by chain
 
 **Parameters:**
@@ -280,7 +279,7 @@ Returns: {totalDataChart, totalDataChartBreakdown, breakdown24h, breakdown30d, c
 
 ### GET /summary/options/{protocol}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/summary/options/{protocol}`
+**With an API key:** `https://pro-api.llama.fi/api/summary/options/{protocol}` with the `x-api-key: YOUR_API_KEY` header
 Get summary of options dex volume with historical data
 
 **Parameters:**
@@ -294,7 +293,7 @@ Returns: {id, name, url, description, logo, gecko_id, cmcId, chains, twitter, go
 
 ### GET /overview/open-interest
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/open-interest`
+**With an API key:** `https://pro-api.llama.fi/api/overview/open-interest` with the `x-api-key: YOUR_API_KEY` header
 List all open interest dex exchanges along with summaries of their open interest
 
 **Parameters:**
@@ -308,7 +307,7 @@ Returns: {protocols, totalDataChart, allChains}
 
 ### GET /overview/fees
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/fees`
+**With an API key:** `https://pro-api.llama.fi/api/overview/fees` with the `x-api-key: YOUR_API_KEY` header
 List all protocols along with summaries of their fees and revenue and dataType history data
 
 **Parameters:**
@@ -319,7 +318,7 @@ Returns: {protocols, totalDataChart, totalDataChartBreakdown}
 
 ### GET /overview/fees/{chain}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/overview/fees/{chain}`
+**With an API key:** `https://pro-api.llama.fi/api/overview/fees/{chain}` with the `x-api-key: YOUR_API_KEY` header
 List all protocols along with summaries of their fees and revenue and dataType history data by chain
 
 **Parameters:**
@@ -331,7 +330,7 @@ Returns: {protocols, totalDataChart, totalDataChartBreakdown}
 
 ### GET /summary/fees/{protocol}
 **Base URL:** `https://api.llama.fi`
-**With an API key:** `https://pro-api.llama.fi/{YOUR_API_KEY}/api/summary/fees/{protocol}`
+**With an API key:** `https://pro-api.llama.fi/api/summary/fees/{protocol}` with the `x-api-key: YOUR_API_KEY` header
 Get summary of protocol fees and revenue with historical data
 
 **Parameters:**

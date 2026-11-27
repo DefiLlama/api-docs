@@ -4,7 +4,7 @@
  *
  * Usage: node scripts/check-spec-responses.ts [spec.json ...] [/path ...]
  *   Defaults to defillama-openapi-free.json. Paths limit the run to those operations.
- *   Operations on the pro server need DEFILLAMA_API_KEY and are skipped without it.
+ *   Operations that require the API key need DEFILLAMA_API_KEY and are skipped without it.
  *   Exits 1 when an operation fails, a path matches no operation, or nothing was checked.
  */
 import { readFileSync } from 'node:fs'
@@ -42,8 +42,6 @@ const ENFORCED = new Set([
   'maximum',
 ])
 const ANNOTATIONS = new Set(['description', 'example', 'title', 'format', 'deprecated', 'default', 'externalDocs'])
-
-const KEY_VARIABLE = '{YOUR_API_KEY}'
 
 // One object can lack an optional key, so a documented key fails only when it is absent from this many or more
 const MIN_OBJECTS = 10
@@ -174,7 +172,7 @@ const files = args.filter((arg) => arg.endsWith('.json'))
 const only = new Set(args.filter((arg) => !arg.endsWith('.json')))
 if (files.length === 0) files.push(join(import.meta.dirname, '..', 'defillama-openapi-free.json'))
 const apiKey = process.env.DEFILLAMA_API_KEY
-// Error bodies can echo the request path, which carries the key on the pro server
+// Error bodies can echo the request, so the key is masked in case one does
 const redact = (text: string) => (apiKey ? text.replaceAll(apiKey, '***') : text)
 
 let ok = 0
@@ -232,12 +230,10 @@ for (const file of files) {
       fail(['no server URL documented'])
       continue
     }
-    if (url.includes(KEY_VARIABLE)) {
-      if (!apiKey) {
-        skip('needs DEFILLAMA_API_KEY')
-        continue
-      }
-      url = url.replaceAll(KEY_VARIABLE, () => apiKey)
+    const needsKey = (operation.security ?? spec.security ?? []).length > 0
+    if (needsKey && !apiKey) {
+      skip('needs DEFILLAMA_API_KEY')
+      continue
     }
 
     // Operation parameters override path-level ones with the same name and location
@@ -274,7 +270,11 @@ for (const file of files) {
     let bytes = 0
     try {
       const response = await fetch(url, {
-        headers: { accept: 'application/json', 'user-agent': 'defillama-api-docs-spec-check' },
+        headers: {
+          accept: 'application/json',
+          'user-agent': 'defillama-api-docs-spec-check',
+          ...(needsKey && apiKey ? { 'x-api-key': apiKey } : {}),
+        },
         signal: AbortSignal.timeout(120_000),
       })
       const text = await response.text()

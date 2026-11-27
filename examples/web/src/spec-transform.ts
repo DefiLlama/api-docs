@@ -10,8 +10,10 @@ type Json = Record<string, any>
 
 export const PRO_HOST = 'https://pro-api.llama.fi'
 
-/** Shown in snippets when no key is saved, so copied URLs make the key's position obvious. */
+/** Shown in snippets when no key is saved, so copied requests make the key's place obvious. */
 export const API_KEY_PLACEHOLDER = '<API-KEY>'
+
+export const API_KEY_HEADER = 'x-api-key'
 
 export const INTRODUCTION_HEADING = 'Introduction'
 
@@ -34,21 +36,27 @@ const forEachOperation = (spec: Json, callback: (operation: Json) => void): void
 }
 
 /**
- * The server each pro operation uses, with the key already in it: https://pro-api.llama.fi/{key}.
- * It sits on the operations, not the document. The page's Server box then shows the bare host,
- * as before the upgrade, while snippets, Test Request and Copy URL still carry the key. A plain URL
- * (not the spec's {YOUR_API_KEY} variable) also keeps Scalar from adding an editable key field.
+ * The pro spec declares the key as an x-api-key security scheme. Scalar renders a scheme as its own
+ * key form next to ApiKeyInput, so the page drops the scheme and gives every operation that needs
+ * the key an x-api-key header parameter instead, with the saved key (or placeholder) as its example.
+ * Snippets and Test Request then send it.
  */
-const keyedServer = (key: string): Json => ({ url: `${PRO_HOST}/${key}` })
+const keyHeaderParameter = (key: string): Json => ({
+  name: API_KEY_HEADER,
+  in: 'header',
+  required: true,
+  description: 'Your DefiLlama API plan key',
+  schema: { type: 'string' },
+  example: key,
+})
 
 /**
  * Prepares one operation for display:
- * - pro operations get the pro server with the key (or placeholder) in the path
+ * - operations that need the key get it in the x-api-key header
  * - /usage/{YOUR_API_KEY} takes the key as its last path segment, so it gets it as the example
  * - x-api-plan-only and x-api-beta become Scalar's native x-badges
  */
-const prepareOperation = (operation: Json, server: Json | undefined, key: string): void => {
-  // Only /usage has its own server. It keeps the bare host because the key is in its path.
+const prepareOperation = (operation: Json, server: Json | undefined, key: string, needsKey: boolean): void => {
   if (server && !operation.servers) {
     operation.servers = [server]
   }
@@ -67,6 +75,10 @@ const prepareOperation = (operation: Json, server: Json | undefined, key: string
       parameter.example = key
     }
   }
+  if (needsKey) {
+    operation.parameters = [...(operation.parameters ?? []), keyHeaderParameter(key)]
+  }
+  delete operation.security
 
   const badges = [
     ...(operation['x-api-plan-only'] === true ? [API_PLAN_BADGE] : []),
@@ -79,18 +91,20 @@ const prepareOperation = (operation: Json, server: Json | undefined, key: string
 
 /**
  * Returns the document to render.
- * - With a key: the pro spec, every request going to pro-api.llama.fi/{key}.
+ * - With a key: the pro spec, every request going to pro-api.llama.fi with the key in x-api-key.
  * - Without a key: the free spec, plus the API-plan-only operations from the pro spec,
- *   which keep the pro host and show <API-KEY> where the key goes.
+ *   which keep the pro host and show <API-KEY> as the x-api-key header.
  */
 export const buildSpec = (freeSpecContent: Json, proSpecContent: Json, apiKey: string | null): Json => {
   const proSpec = structuredClone(proSpecContent)
-  const key = apiKey ? encodeURIComponent(apiKey) : API_KEY_PLACEHOLDER
-  const server = keyedServer(key)
+  const key = apiKey ?? API_KEY_PLACEHOLDER
+  const documentSecurity = proSpec.security ?? []
+  const needsKey = (operation: Json): boolean => (operation.security ?? documentSecurity).length > 0
+  delete proSpec.security
+  delete proSpec.components?.securitySchemes
 
   if (apiKey) {
-    proSpec.servers = [{ url: PRO_HOST }]
-    forEachOperation(proSpec, (operation) => prepareOperation(operation, server, key))
+    forEachOperation(proSpec, (operation) => prepareOperation(operation, undefined, key, needsKey(operation)))
     return proSpec
   }
 
@@ -106,14 +120,14 @@ export const buildSpec = (freeSpecContent: Json, proSpecContent: Json, apiKey: s
     freeSpec.info.description = `## ${INTRODUCTION_HEADING}\n\n${description}`
   }
 
-  forEachOperation(freeSpec, (operation) => prepareOperation(operation, undefined, key))
+  forEachOperation(freeSpec, (operation) => prepareOperation(operation, undefined, key, false))
 
   for (const [path, pathItem] of Object.entries<Json>(proSpec.paths)) {
     for (const [method, operation] of Object.entries<Json>(pathItem)) {
       if (!HTTP_METHODS.has(method) || operation['x-api-plan-only'] !== true) {
         continue
       }
-      prepareOperation(operation, server, key)
+      prepareOperation(operation, { url: PRO_HOST }, key, needsKey(operation))
       freeSpec.paths[path] ??= {}
       freeSpec.paths[path][method] = operation
     }
@@ -123,8 +137,10 @@ export const buildSpec = (freeSpecContent: Json, proSpecContent: Json, apiKey: s
 }
 
 /**
- * True when a request URL still carries the placeholder, so the visitor has no key saved.
- * Scalar may percent-encode it, so both forms count.
+ * True when a request still carries the placeholder, so the visitor has no key saved: in the
+ * x-api-key header, or in the /usage path. Scalar may percent-encode the path, so both forms count.
  */
-export const isMissingApiKey = (url: string): boolean =>
-  url.includes(API_KEY_PLACEHOLDER) || url.includes(encodeURIComponent(API_KEY_PLACEHOLDER))
+export const isMissingApiKey = (url: string, apiKeyHeader: string | null): boolean =>
+  apiKeyHeader === API_KEY_PLACEHOLDER ||
+  url.includes(API_KEY_PLACEHOLDER) ||
+  url.includes(encodeURIComponent(API_KEY_PLACEHOLDER))

@@ -7,7 +7,7 @@ import freeSpecContent from '../../../../defillama-openapi-free.json'
 import proSpecContent from '../../../../defillama-openapi-pro.json'
 import ApiKeyInput from '../components/ApiKeyInput.vue'
 import SlotPlaceholder from '../components/SlotPlaceholder.vue'
-import { buildSpec, isMissingApiKey } from '../spec-transform'
+import { API_KEY_HEADER, buildSpec, isMissingApiKey } from '../spec-transform'
 
 /** The saved key, or null on the free plan. ApiKeyInput reports it on mount and on every change. */
 const apiKey = ref<string | null>(null)
@@ -18,7 +18,8 @@ const apiKey = ref<string | null>(null)
  */
 const customFetch: typeof fetch = (input, init) => {
   const url = input instanceof Request ? input.url : String(input)
-  if (isMissingApiKey(url)) {
+  const headers = new Headers(input instanceof Request ? input.headers : init?.headers)
+  if (isMissingApiKey(url, headers.get(API_KEY_HEADER))) {
     return Promise.resolve(
       new Response(
         JSON.stringify({ error: 'Please set an API key to use this pro endpoint.' }),
@@ -32,7 +33,7 @@ const customFetch: typeof fetch = (input, init) => {
 const configuration = computed<Partial<ApiReferenceConfiguration>>(() => ({
   /**
    * Without this, Scalar opens on the first custom code sample (the JavaScript SDK). curl shows the
-   * full URL, so readers and agents see exactly which host and key placement to use.
+   * full URL and the x-api-key header, so readers and agents see exactly which host and header to use.
    */
   defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
   /** Shows the Beta badge in the sidebar. style.css hides the other badges there. */
@@ -65,7 +66,7 @@ const handleApiKeyChange = (key: string | null) => {
 <template>
   <div class="standalone-api-reference-page">
     <ApiKeyInput @api-key-change="handleApiKeyChange" />
-    <!-- Remount when the key changes, so every snippet and request picks up the new server URL -->
+    <!-- Remount when the key changes, so every snippet and request picks up the new key -->
     <ApiReference
       :key="apiKey ?? 'free'"
       :configuration="configuration">
