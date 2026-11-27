@@ -4,19 +4,18 @@
 
 ## Have an API key? Use pro-api.llama.fi for every request
 
-If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/{YOUR_API_KEY}/...`. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
+If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/...` with the key in the `x-api-key` header. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
 
 ```
-RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/coingecko:ethereum
-WRONG  https://coins.llama.fi/prices/current/coingecko:ethereum                      (free host: ignores the key, rate limited)
-WRONG  https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum?apikey={YOUR_API_KEY}   (key not in the path)
+RIGHT  curl -H "x-api-key: YOUR_API_KEY" https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum
+WRONG  curl -H "x-api-key: YOUR_API_KEY" https://coins.llama.fi/prices/current/coingecko:ethereum   (free host: ignores the key, rate limited)
 ```
 
 - The free hosts (`api.llama.fi`, `coins.llama.fi`, `stablecoins.llama.fi`, `yields.llama.fi`) never read a key, so a 429 there means the request belongs on pro-api.llama.fi. A 402 there means the endpoint needs pro-api, not that the plan expired.
-- The key goes in the path, right after the host. Headers and `?apikey=` are not read: pro-api answers `500 {"error":"API Key is wrong"}`.
+- Send the key in the `x-api-key` header. `Authorization: Bearer YOUR_API_KEY` works too. Where a header cannot be set, `?api_key=YOUR_API_KEY` works, and so does the older form with the key as the first path segment (`https://pro-api.llama.fi/YOUR_API_KEY/api/protocols`). Without a key pro-api answers `401 {"error":"API key is missing"}`, with a wrong one `500 {"error":"API Key is wrong"}`.
 - Paths on pro-api have a prefix: `/protocols` becomes `/api/protocols`, `/prices/current/{coins}` becomes `/coins/prices/current/{coins}`, `/stablecoins` becomes `/stablecoins/stablecoins`, `/pools` becomes `/yields/v1/pools`. Every free path is mapped in [llms.txt](https://api-docs.defillama.com/llms.txt), and the pro-only endpoints are in [llms-pro.txt](https://api-docs.defillama.com/llms-pro.txt).
 - One key unlocks every endpoint. There are no add-ons or separate keys.
-- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
+- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end of the path, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
 
 ## Important: Free API vs Pro API
 
@@ -24,14 +23,14 @@ The Free API and Pro API are entirely separate services.
 
 | Feature | Free API | Pro API |
 |---|---|---|
-| Base URL | https://api.llama.fi for most endpoints, see the host of each group below | https://pro-api.llama.fi/{KEY} |
-| Auth Required | No | Yes ($300/mo) |
+| Base URL | https://api.llama.fi for most endpoints, see the host of each group below | https://pro-api.llama.fi |
+| Auth Required | No | Yes ($300/mo), `x-api-key` header |
 | Rate Limit | Standard | Higher |
 | Endpoints | 31 | 105 exclusive + 31 free with prefix |
 
 ## Free-to-Pro Path Mapping
 
-With a key, call these on `https://pro-api.llama.fi/{YOUR_API_KEY}` with the pro path.
+With a key, call these on `https://pro-api.llama.fi` with the pro path and the `x-api-key` header.
 
 | Free path | Pro path (pro-api.llama.fi) | Description |
 |---|---|---|
@@ -90,20 +89,20 @@ No authentication required. Each group has its own base URL.
 
 Full documentation: [llms-pro.txt](/llms-pro.txt)
 
-Requires API key. Base URL: `https://pro-api.llama.fi/{YOUR_API_KEY}`
+Requires API key in the `x-api-key` header. Base URL: `https://pro-api.llama.fi`
 
 - **TVL**: `/api/tokenProtocols/{symbol}`, `/api/inflows/{protocol}/{timestamp}`, `/api/chainAssets`, `/api/v2/metrics/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}`, `/api/v2/chart/tvl/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/tvl/protocol/{protocol}/token-breakdown`
+- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
+- **Yields & APY**: `/yields/v1/poolsBorrow`, `/yields/v1/chartLendBorrow/{pool}`, `/yields/v2/earn`, `/yields/v2/earn/query`, `/yields/v2/earn/{id}/history`, `/yields/v2/earn/verified`, `/yields/v2/earn/verified/{id}`, `/yields/v2/earn/verified/{id}/history`, `/yields/v2/borrow/markets`, `/yields/v2/borrow/markets/{id}/history`, `/yields/v2/borrow/routes`, `/yields/v2/loops`, `/api/perpFundingRates`, `/api/lstRates`
+- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
 - **Token Unlocks**: `/api/emissions`, `/api/emission/{protocol}`
 - **Protocol Analytics**: `/api/categories`, `/api/forks`, `/api/oracles`, `/api/hacks`, `/api/raises`, `/api/treasuries`, `/api/entities`
 - **Token Liquidity**: `/api/historicalLiquidity/{token}`
-- **Perpetuals & Open Interest**: `/api/overview/derivatives`, `/api/summary/derivatives/{protocol}`
 - **Treasury**: `/api/v2/metrics/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}`, `/api/v2/chart/treasury/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/treasury/protocol/{protocol}/token-breakdown`
 - **Oracles**: `/api/v2/metrics/oracle`, `/api/v2/chart/oracle`, `/api/v2/chart/oracle/chain-breakdown`, `/api/v2/chart/oracle/protocol-breakdown`, `/api/v2/chart/oracle/protocol/{protocol}`, `/api/v2/chart/oracle/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/oracle/chain/{chain}`, `/api/v2/chart/oracle/chain/{chain}/protocol-breakdown`
 - **Forks**: `/api/v2/metrics/fork`, `/api/v2/chart/fork/protocol-breakdown`, `/api/v2/chart/fork/protocol/{protocol}`
 - **Dimensions**: `/api/v2/metrics/{metric}`, `/api/v2/chart/{metric}`, `/api/v2/chart/{metric}/chain-breakdown`, `/api/v2/chart/{metric}/protocol-breakdown`, `/api/v2/metrics/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}`, `/api/v2/chart/{metric}/chain/{chain}/protocol-breakdown`, `/api/v2/metrics/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}`, `/api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/version-breakdown`, `/api/v2/chart/{metric}/protocol/{protocol}/label-breakdown`, `/api/v2/metrics/{metric}/categories`, `/api/v2/metrics/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}`, `/api/v2/chart/{metric}/category/{category}/chain-breakdown`, `/api/v2/chart/{metric}/category/{category}/protocol-breakdown`, `/api/v2/metrics/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}`, `/api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown`
 - **Financial Statements**: `/api/v2/metrics/financial-statement/protocol/{protocol}`
-- **Stablecoins**: `/stablecoins/stablecoindominance/{chain}`
-- **Yields & APY**: `/yields/v1/poolsBorrow`, `/yields/v1/chartLendBorrow/{pool}`, `/yields/v2/earn`, `/yields/v2/earn/query`, `/yields/v2/earn/{id}/history`, `/yields/v2/earn/verified`, `/yields/v2/earn/verified/{id}`, `/yields/v2/earn/verified/{id}/history`, `/yields/v2/borrow/markets`, `/yields/v2/borrow/markets/{id}/history`, `/yields/v2/borrow/routes`, `/yields/v2/loops`, `/api/perpFundingRates`, `/api/lstRates`
 - **ETFs**: `/etfs/snapshot`, `/etfs/flows`
 - **Narratives**: `/fdv/performance/{period}`
 - **Bridges**: `/bridges/bridges`, `/bridges/bridge/{id}`, `/bridges/bridgevolume/{chain}`, `/bridges/bridgedaystats/{timestamp}/{chain}`, `/bridges/transactions/{id}`
@@ -113,7 +112,7 @@ Requires API key. Base URL: `https://pro-api.llama.fi/{YOUR_API_KEY}`
 - **Pre-IPO**: `/pre-ipo/v1/companies-list`, `/pre-ipo/v1/valuations`, `/pre-ipo/v1/raises`, `/pre-ipo/v1/summary`, `/pre-ipo/v1/integrations`
 - **Real World Assets**: `/rwa/current`, `/rwa/stats`, `/rwa/list`, `/rwa/chain/{chain}`, `/rwa/chart/chain/{chain}`, `/rwa/chart/chain-breakdown`
 
-## OpenAPI Specs
+## Optional
 
 - [OpenAPI spec (free)](/defillama-openapi-free.json): Full OpenAPI 3.0 specification for free endpoints
 - [OpenAPI spec (pro)](/defillama-openapi-pro.json): Full OpenAPI 3.0 specification for pro endpoints

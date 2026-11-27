@@ -4,23 +4,22 @@
 
 ## Have an API key? Use pro-api.llama.fi for every request
 
-If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/{YOUR_API_KEY}/...`. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
+If you or your user has a DefiLlama API key, whatever the plan is called ("API plan", "Pro", "pro API"), send every request to `https://pro-api.llama.fi/...` with the key in the `x-api-key` header. That includes TVL, prices, stablecoins, yields, volumes and fees, and any fallback or secondary lookup. Use the free hosts only when there is no key.
 
 ```
-RIGHT  https://pro-api.llama.fi/{YOUR_API_KEY}/coins/prices/current/coingecko:ethereum
-WRONG  https://coins.llama.fi/prices/current/coingecko:ethereum                      (free host: ignores the key, rate limited)
-WRONG  https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum?apikey={YOUR_API_KEY}   (key not in the path)
+RIGHT  curl -H "x-api-key: YOUR_API_KEY" https://pro-api.llama.fi/coins/prices/current/coingecko:ethereum
+WRONG  curl -H "x-api-key: YOUR_API_KEY" https://coins.llama.fi/prices/current/coingecko:ethereum   (free host: ignores the key, rate limited)
 ```
 
 - The free hosts (`api.llama.fi`, `coins.llama.fi`, `stablecoins.llama.fi`, `yields.llama.fi`) never read a key, so a 429 there means the request belongs on pro-api.llama.fi. A 402 there means the endpoint needs pro-api, not that the plan expired.
-- The key goes in the path, right after the host. Headers and `?apikey=` are not read: pro-api answers `500 {"error":"API Key is wrong"}`.
+- Send the key in the `x-api-key` header. `Authorization: Bearer YOUR_API_KEY` works too. Where a header cannot be set, `?api_key=YOUR_API_KEY` works, and so does the older form with the key as the first path segment (`https://pro-api.llama.fi/YOUR_API_KEY/api/protocols`). Without a key pro-api answers `401 {"error":"API key is missing"}`, with a wrong one `500 {"error":"API Key is wrong"}`.
 - Paths on pro-api have a prefix: `/protocols` becomes `/api/protocols`, `/prices/current/{coins}` becomes `/coins/prices/current/{coins}`, `/stablecoins` becomes `/stablecoins/stablecoins`, `/pools` becomes `/yields/v1/pools`. Every free path is mapped in [llms.txt](https://api-docs.defillama.com/llms.txt), and the pro-only endpoints are in [llms-pro.txt](https://api-docs.defillama.com/llms-pro.txt).
 - One key unlocks every endpoint. There are no add-ons or separate keys.
-- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
+- To check a key, call `https://pro-api.llama.fi/usage/{YOUR_API_KEY}` (key at the end of the path, for this endpoint only). It returns `{"creditsLeft": ...}`. A 200 from a free host proves nothing, those endpoints need no key.
 
 ## Free Endpoints Available on Pro (Higher Rate Limits)
 
-Call these on `https://pro-api.llama.fi/{YOUR_API_KEY}` with the pro path.
+Call these on `https://pro-api.llama.fi` with the pro path and the `x-api-key` header.
 
 | Free path | Pro path (pro-api.llama.fi) | Description |
 |---|---|---|
@@ -56,12 +55,12 @@ Call these on `https://pro-api.llama.fi/{YOUR_API_KEY}` with the pro path.
 | `/overview/fees/{chain}` | `/api/overview/fees/{chain}` | List all protocols along with summaries of their fees and revenue and dataType history data by chain |
 | `/summary/fees/{protocol}` | `/api/summary/fees/{protocol}` | Get summary of protocol fees and revenue with historical data |
 
-**Base URL for endpoints below:** `https://pro-api.llama.fi/{YOUR_API_KEY}` (unless an endpoint lists its own)
+**Base URL for endpoints below:** `https://pro-api.llama.fi` (unless an endpoint lists its own)
 
 ## TVL
 
 ### GET /api/tokenProtocols/{symbol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Lists the amount of a certain token within all protocols. Data for the Token Usage page
 
 **Parameters:**
@@ -69,7 +68,7 @@ Lists the amount of a certain token within all protocols. Data for the Token Usa
 Returns: array of {name, category, amountUsd}
 
 ### GET /api/inflows/{protocol}/{timestamp}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Lists the amount of inflows and outflows for a protocol at a given date
 
 **Parameters:**
@@ -78,16 +77,49 @@ Lists the amount of inflows and outflows for a protocol at a given date
 Returns: {outflows, oldTokens, currentTokens}
 
 ### GET /api/chainAssets
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get assets of all chains
 Returns: {chain, timestamp}
+
+### GET /api/v2/metrics/tvl/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get aggregate TVL metrics for a protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+Returns: {id, name, address, symbol, url, referralUrl, description, chain, logo, audits, audit_note, gecko_id, cmcId, category, tags, chains, module, treasury, twitter, audit_links, openSource, forkedFrom, oraclesByChain, parentProtocol, governanceID, github, currentChainTvls, isParentProtocol, mcap, methodology, raises, otherProtocols, hallmarks, stablecoins, misrepresentedTokens, deprecated, rugged, deadUrl, warningBanners, tokenRights, wrongLiquidity, tvlCodePath}
+
+### GET /api/v2/chart/tvl/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get historical TVL chart for a protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `uniswap`
+  - `key` (query, string, optional) — Metric to return. Omit for default TVL. Use "all" for the sum of tvl+borrowed+staking+pool2+vesting, or a specific metric like "staking", "borrowed", "vesting", "pool2". (one of: all, staking, borrowed, vesting, pool2) Example: `all`
+
+### GET /api/v2/chart/tvl/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical TVL chart for a protocol broken down by chain
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `euler`
+  - `key` (query, string, optional) — Metric to return. Omit for default TVL. Use "all" for the sum of tvl+borrowed+staking+pool2+vesting, or a specific metric like "staking", "borrowed", "vesting", "pool2". (one of: all, staking, borrowed, vesting, pool2) Example: `borrowed`
+
+### GET /api/v2/chart/tvl/protocol/{protocol}/token-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical TVL chart for a protocol broken down by token
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `key` (query, string, optional) — Metric to return. Omit for default TVL. Use "all" for the sum of tvl+borrowed+staking+pool2+vesting, or a specific metric like "staking", "borrowed", "vesting", "pool2". (one of: all, staking, borrowed, vesting, pool2)
+  - `currency` (query, string, optional) — Set to "tokens" to return values denominated in raw token amounts instead of USD (one of: usd, token, raw) Example: `usd`
 
 ---
 
 ## Stablecoins
 
 ### GET /stablecoins/stablecoindominance/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get stablecoin dominance per chain along with the info about the larges coin in a chain
 
 **Parameters:**
@@ -97,15 +129,140 @@ Returns: array of {date, totalCirculatingUSD, greatestMcap}
 
 ---
 
+## Yields & APY
+
+### GET /yields/v1/poolsBorrow
+**Base URL:** `https://pro-api.llama.fi`
+Borrow costs APY of assets from lending markets in the legacy v1 response format
+Returns: {status, data}
+
+### GET /yields/v1/chartLendBorrow/{pool}
+**Base URL:** `https://pro-api.llama.fi`
+Historical borrow cost APY from a pool on a lending market in the legacy v1 response format
+
+**Parameters:**
+  - `pool` (path, string, required) — pool id (UUID), from /yields/v1/poolsBorrow (property is called pool) Example: `747c1d2a-c668-4682-b9f9-296708a3dd90`
+Returns: {status, data}
+
+### GET /yields/v2/earn
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve the latest data for all earn pools
+Returns: {data}
+
+### GET /yields/v2/earn/query
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve a filtered, paginated page of earn pools
+
+**Parameters:**
+  - `chain` (query, string, optional) — Chain slug (lowercase). Repeat the parameter to match any of several chains, e.g. chain=ethereum&chain=arbitrum (at most 20 values) Example: `ethereum`
+  - `protocol` (query, string, optional) — Protocol slug (lowercase, e.g. aave-v3). Repeat the parameter to match any of several protocols (at most 20 values) Example: `lido`
+  - `stablecoin` (query, boolean, optional) — true keeps only pools whose assets are all stablecoins, false only the rest Example: `true`
+  - `single_asset_exposure` (query, boolean, optional) — true keeps only pools exposed to a single asset, false only the rest Example: `true`
+  - `impermanent_loss_risk` (query, boolean, optional) — true keeps only pools with impermanent loss risk, false only the rest Example: `false`
+  - `min_tvl` (query, number, optional) — Minimum pool TVL in USD (inclusive) Example: `1000000`
+  - `page` (query, integer, optional) — 1-based page number; default 1 Example: `1`
+  - `limit` (query, integer, optional) — Page size between 1 and 300; default 100. Values above 300 are rejected, not clamped Example: `100`
+Returns: {data, pagination}
+
+### GET /yields/v2/earn/{id}/history
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve daily history for an earn pool
+
+**Parameters:**
+  - `id` (path, string, required) — Earn pool id (UUID) Example: `747c1d2a-c668-4682-b9f9-296708a3dd90`
+  - `range` (query, string, optional) — History window; defaults to max (the full series) (one of: 30d, 90d, max) Example: `90d`
+Returns: {data}
+
+### GET /yields/v2/earn/verified
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve the latest verified data for all measured earn pools
+Returns: {data}
+
+### GET /yields/v2/earn/verified/{id}
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve the latest verified data for one earn pool
+
+**Parameters:**
+  - `id` (path, string, required) — Earn pool id (UUID) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+Returns: {data}
+
+### GET /yields/v2/earn/verified/{id}/history
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve daily verified history for an earn pool
+
+**Parameters:**
+  - `id` (path, string, required) — Earn pool id (UUID) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+  - `range` (query, string, optional) — History window; defaults to max (the full series) (one of: 30d, 90d, max) Example: `90d`
+Returns: {data}
+
+### GET /yields/v2/borrow/markets
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve the latest data for all borrow markets
+Returns: {data}
+
+### GET /yields/v2/borrow/markets/{id}/history
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve daily borrow-side history for a borrow market
+
+**Parameters:**
+  - `id` (path, string, required) — Borrow market id (UUID) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
+  - `range` (query, string, optional) — History window; defaults to max (the full series) (one of: 30d, 90d, max) Example: `90d`
+Returns: {data}
+
+### GET /yields/v2/borrow/routes
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve the latest data for all borrow routes
+Returns: {data}
+
+### GET /yields/v2/loops
+**Base URL:** `https://pro-api.llama.fi`
+Retrieve the latest data for all loop strategies
+Returns: {data}
+
+### GET /api/perpFundingRates
+**Base URL:** `https://pro-api.llama.fi`
+Funding rates and open interest of perpetual futures
+Returns: {status, data}
+
+### GET /api/lstRates
+**Base URL:** `https://pro-api.llama.fi`
+Exchange rates and ETH peg of liquid staking tokens
+Returns: array of {name, symbol, address, type, expectedRate, marketRate, ethPeg, fee}
+
+---
+
+## Perpetuals & Open Interest
+
+### GET /api/overview/derivatives
+**Base URL:** `https://pro-api.llama.fi`
+Lists all derivatives along summaries of their volumes filtering by chain
+
+**Parameters:**
+  - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
+  - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {totalDataChart, totalDataChartBreakdown, breakdown24h, breakdown30d, chain, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d, total7DaysAgo, total30DaysAgo, totalAllTime, protocols}
+
+### GET /api/summary/derivatives/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Volume Details about a specific perp protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `hyperliquid`
+  - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
+  - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
+Returns: {id, name, url, referralUrl, description, logo, gecko_id, cmcId, chains, twitter, github, symbol, address, childProtocols, linkedProtocols, defillamaId, disabled, displayName, module, category, methodologyURL, methodology, forkedFrom, audits, audit_links, versionKey, governanceID, treasury, parentProtocol, previousNames, latestFetchIsOk, slug, protocolType, total24h, total48hto24h, total7d, totalAllTime, totalDataChart, totalDataChartBreakdown, change_1d}
+
+---
+
 ## Token Unlocks
 
 ### GET /api/emissions
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 List of all tokens along with basic info for each
 Returns: array of {token, sources, protocolId, name, circSupply, circSupply30d, totalLocked, maxSupply, gecko_id, events, nextEvent, unlocksPerDay, mcap}
 
 ### GET /api/emission/{protocol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Unlocks data for a given token/protocol. You can find a list of available slugs to query by querying /emissions and then extracting the key `gecko_id`
 
 **Parameters:**
@@ -117,37 +274,37 @@ Returns: {body, lastModified}
 ## Protocol Analytics
 
 ### GET /api/categories
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Overview of all categories accross all protocols
 Returns: {chart, categories}
 
 ### GET /api/forks
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Overview of all forks accross all protocols
 Returns: {chart, forks}
 
 ### GET /api/oracles
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Overview of all oracles accross all protocols
 Returns: {chart, oracles, chainsByOracle}
 
 ### GET /api/hacks
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Overview of all hacks on our Hacks dashboard
 Returns: array of {date, name, classification, technique, amount, chain, bridgeHack, targetType, source, returnedFunds, defillamaId, language}
 
 ### GET /api/raises
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Overview of all raises on our Raises dashboard
 Returns: {raises}
 
 ### GET /api/treasuries
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 List all protocols on our Treasuries dashboard
 Returns: array of {id, name, address, symbol, url, description, chain, logo, audits, audit_note, gecko_id, cmcId, category, chains, module, treasury, forkedFromIds, twitter, slug, tvl, chainTvls, change_1h, change_1d, change_7d, tokenBreakdowns, mcap}
 
 ### GET /api/entities
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 List all entities
 Returns: array of {id, name, url, description, logo, category, module, twitter, symbol, chain, gecko_id, cmcId, chains, slug, tvl, chainTvls, change_1h, change_1d, change_7d, tokenBreakdowns, mcap}
 
@@ -156,7 +313,7 @@ Returns: array of {id, name, url, description, logo, category, module, twitter, 
 ## Token Liquidity
 
 ### GET /api/historicalLiquidity/{token}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Provides the name of contracts on a determined chain
 
 **Parameters:**
@@ -164,47 +321,567 @@ Provides the name of contracts on a determined chain
 
 ---
 
-## Yields & APY
+## Treasury
 
-### GET /yields/poolsOld
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Same as /pools but it also includes a new parameter `pool_old` which usually contains pool address (but not guaranteed)
-Returns: {status, data}
-
-### GET /yields/poolsBorrow
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Borrow costs APY of assets from lending markets
-Returns: {status, data}
-
-### GET /yields/chartLendBorrow/{pool}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Historical borrow cost APY from a pool on a lending market, pool ids should be obtained from /poolsBorrow
+### GET /api/v2/metrics/treasury/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get aggregate treasury metrics for a protocol
 
 **Parameters:**
-  - `pool` (path, string, required) — pool id, can be retrieved from /poolsBorrow (property is called pool) Example: `e880e828-ca59-4ec6-8d4f-27182a4dc23d`
-Returns: {status, data}
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+Returns: {id, name, address, symbol, url, referralUrl, description, chain, logo, audits, audit_note, gecko_id, cmcId, category, tags, chains, module, treasury, twitter, audit_links, openSource, forkedFrom, oraclesByChain, parentProtocol, governanceID, github, currentChainTvls, isParentProtocol, mcap, methodology, raises, otherProtocols, hallmarks, stablecoins, misrepresentedTokens, deprecated, rugged, deadUrl, warningBanners, tokenRights, wrongLiquidity, tvlCodePath}
 
-### GET /yields/perps
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Funding rates and Open Interest of perps across exchanges, including both Decentralized and Centralized
-Returns: {status, data}
+### GET /api/v2/chart/treasury/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get historical treasury chart for a protocol
 
-### GET /yields/lsdRates
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-APY rates of multiple LSDs
-Returns: array of {name, symbol, address, type, expectedRate, marketRate, ethPeg, fee}
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `uniswap`
+  - `key` (query, string, optional) — Token filter. Omit to exclude OwnTokens (default). Use "OwnTokens" to return only the protocol's own tokens, or "all" for the sum of all tokens including OwnTokens. (one of: OwnTokens, all) Example: `all`
+
+### GET /api/v2/chart/treasury/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical treasury chart for a protocol broken down by chain
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `key` (query, string, optional) — Token filter. Omit to exclude OwnTokens (default). Use "OwnTokens" to return only the protocol's own tokens, or "all" for the sum of all tokens including OwnTokens. (one of: OwnTokens, all) Example: `OwnTokens`
+
+### GET /api/v2/chart/treasury/protocol/{protocol}/token-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical treasury chart for a protocol broken down by token
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave`
+  - `key` (query, string, optional) — Token filter. Omit to exclude OwnTokens (default). Use "OwnTokens" to return only the protocol's own tokens, or "all" for the sum of all tokens including OwnTokens. (one of: OwnTokens, all) Example: `OwnTokens`
+  - `currency` (query, string, optional) — Set to "tokens" to return values denominated in raw token amounts instead of USD (one of: usd, token, raw) Example: `usd`
+
+---
+
+## Oracles
+
+### GET /api/v2/metrics/oracle
+**Base URL:** `https://pro-api.llama.fi`
+Get oracle data overview
+Returns: {oracles}
+
+### GET /api/v2/chart/oracle
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data for all oracles
+
+### GET /api/v2/chart/oracle/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by chain
+Returns: array of {timestamp}
+
+### GET /api/v2/chart/oracle/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by protocol
+Returns: array of {timestamp}
+
+### GET /api/v2/chart/oracle/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by protocol/oracle
+
+**Parameters:**
+  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
+
+### GET /api/v2/chart/oracle/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get chain breakdown timeseries chart data by protocol/oracle
+
+**Parameters:**
+  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
+Returns: array of {timestamp}
+
+### GET /api/v2/chart/oracle/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by chain
+
+**Parameters:**
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+
+### GET /api/v2/chart/oracle/chain/{chain}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol breakdown timeseries chart data by chain
+
+**Parameters:**
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+Returns: array of {timestamp}
+
+---
+
+## Forks
+
+### GET /api/v2/metrics/fork
+**Base URL:** `https://pro-api.llama.fi`
+Get fork data overview
+Returns: object
+
+### GET /api/v2/chart/fork/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data breakdown by protocol
+Returns: array of {timestamp}
+
+### GET /api/v2/chart/fork/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get timeseries chart data by protocol
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug Example: `aave-v3`
+
+---
+
+## Dimensions
+
+### GET /api/v2/metrics/{metric}
+**Base URL:** `https://pro-api.llama.fi`
+Get dimension data overview
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume, active-users) Example: `fees`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
+
+### GET /api/v2/chart/{metric}
+**Base URL:** `https://pro-api.llama.fi`
+Get historical timeseries chart data
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume, active-users) Example: `fees`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical timeseries chart data breakdown by chain
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume, active-users) Example: `fees`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get historical timeseries chart data breakdown by protocol
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/metrics/{metric}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get chain dimension data overview
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d, chain}
+
+### GET /api/v2/chart/{metric}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get chain historical timeseries chart data
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/chain/{chain}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get chain timeseries chart data breakdown by protocol
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/metrics/{metric}/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol dimension data overview
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `protocol` (path, string, required) — protocol slug (slugified protocol name) Example: `aave`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+Returns: {id, name, url, description, logo, chains, gecko_id, cmcId, symbol, twitter, github, treasury, governanceID, wrongLiquidity, stablecoins, total24h, total48hto24h, total7d, total30d, total1y, change_1d, change_7d, change_1m}
+
+### GET /api/v2/chart/{metric}/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol historical timeseries chart data
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `protocol` (path, string, required) — protocol slug (slugified protocol name) Example: `aave`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol timeseries chart data breakdown by chain
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `protocol` (path, string, required) — protocol slug (slugified protocol name) Example: `aave`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/protocol/{protocol}/version-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol timeseries chart data breakdown by version
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `protocol` (path, string, required) — protocol slug (slugified protocol name) Example: `aave`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/protocol/{protocol}/label-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol timeseries chart data breakdown by label
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, open-interest, normalized-volume) Example: `fees`
+  - `protocol` (path, string, required) — protocol slug (slugified protocol name) Example: `aave`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity Example: `dailyFees`
+
+### GET /api/v2/metrics/{metric}/categories
+**Base URL:** `https://pro-api.llama.fi`
+Get categories available for a dimension
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume, active-users) Example: `fees`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+- **active-users**: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+Returns: array of {category, total24h, total7d, total30d, chains}
+
+### GET /api/v2/metrics/{metric}/category/{category}
+**Base URL:** `https://pro-api.llama.fi`
+Get category dimension data overview
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `category` (path, string, required) — category slug (slugified category name, e.g. 'dexs', 'prediction-market', 'options') Example: `dexs`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d, category, allCategories}
+
+### GET /api/v2/chart/{metric}/category/{category}
+**Base URL:** `https://pro-api.llama.fi`
+Get category historical timeseries chart data
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `category` (path, string, required) — category slug (slugified category name, e.g. 'dexs', 'prediction-market', 'options') Example: `dexs`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/category/{category}/chain-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get category timeseries chart data breakdown by chain
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `category` (path, string, required) — category slug (slugified category name, e.g. 'dexs', 'prediction-market', 'options') Example: `dexs`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/category/{category}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get category timeseries chart data breakdown by protocol
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `category` (path, string, required) — category slug (slugified category name, e.g. 'dexs', 'prediction-market', 'options') Example: `dexs`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/metrics/{metric}/category/{category}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get category chain dimension data overview
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `category` (path, string, required) — category slug (slugified category name, e.g. 'dexs', 'prediction-market', 'options') Example: `dexs`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d, category, allCategories, chain}
+
+### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}
+**Base URL:** `https://pro-api.llama.fi`
+Get category chain historical timeseries chart data
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `category` (path, string, required) — category slug (slugified category name, e.g. 'dexs', 'prediction-market', 'options') Example: `dexs`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown
+**Base URL:** `https://pro-api.llama.fi`
+Get category chain timeseries chart data breakdown by protocol
+
+**Parameters:**
+  - `metric` (path, string, required) — The dimension metric type (one of: fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume) Example: `fees`
+  - `category` (path, string, required) — category slug (slugified category name, e.g. 'dexs', 'prediction-market', 'options') Example: `dexs`
+  - `chain` (path, string, required) — chain name Example: `Ethereum`
+  - `dataType` (query, string, optional) — Metric-specific data type to return. Supported values per metric:
+- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
+- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
+- **dexs**: dailyVolume (default), dailyNotionalVolume
+- **derivatives**: dailyVolume (default), dailyNotionalVolume
+- **options**: dailyNotionalVolume (default), dailyPremiumVolume
+- **aggregators**: dailyVolume (default)
+- **bridge-aggregators**: dailyBridgeVolume (default)
+- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
+- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
+- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
+
+For bridges, volume values are in USD and TxCount values count transfers. Protocol dailyAggregatedVolume and dailyTxCount use outgoing totals; per-chain values add incoming and outgoing activity. Direction is relative to the chain. Example: `dailyFees`
+
+---
+
+## Financial Statements
+
+### GET /api/v2/metrics/financial-statement/protocol/{protocol}
+**Base URL:** `https://pro-api.llama.fi`
+Get protocol income statement report
+
+**Parameters:**
+  - `protocol` (path, string, required) — protocol slug (e.g. aave-v3, hyperliquid) Example: `aave-v3`
+Returns: {id, name, address, symbol, url, description, chain, logo, audits, audit_links, category, chains, oraclesBreakdown, module, twitter, github, listedAt, parentProtocol, dimensions, methodology, breakdownMethodology, methodologyURL, tvlCodePath, hallmarks, linkedProtocols, childProtocols, hasLabelBreakdown, defillamaId, displayName, slug, protocolType, aggregates}
 
 ---
 
 ## ETFs
 
 ### GET /etfs/snapshot
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get ETFs and their metrics (aum, flows, fees...)
 Returns: array of {ticker, timestamp, asset, issuer, etf_name, custodian, pct_fee, url, flows, aum, volume}
 
 ### GET /etfs/flows
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Historical Flows at the Asset Level
 Returns: array of {gecko_id, day, total_flow_usd}
 
@@ -213,7 +890,7 @@ Returns: array of {gecko_id, day, total_flow_usd}
 ## Narratives
 
 ### GET /fdv/performance/{period}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get chart of narratives based on category performance (with individual coins weighted by mcap)
 
 **Parameters:**
@@ -222,33 +899,10 @@ Returns: array of {date, Analytics, Artificial Intelligence (AI), Bitcoin, Bridg
 
 ---
 
-## Perpetuals & Open Interest
-
-### GET /api/overview/derivatives
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Lists all derivatives along summaries of their volumes filtering by chain
-
-**Parameters:**
-  - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
-  - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
-Returns: {totalDataChart, totalDataChartBreakdown, breakdown24h, breakdown30d, chain, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d, total7DaysAgo, total30DaysAgo, totalAllTime, protocols}
-
-### GET /api/summary/derivatives/{protocol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Volume Details about a specific perp protocol
-
-**Parameters:**
-  - `protocol` (path, string, required) — protocol slug Example: `hyperliquid`
-  - `excludeTotalDataChart` (query, boolean, required) — true to exclude aggregated chart from response Example: `true`
-  - `excludeTotalDataChartBreakdown` (query, boolean, required) — true to exclude broken down chart from response Example: `true`
-Returns: {id, name, url, referralUrl, description, logo, gecko_id, cmcId, chains, twitter, github, symbol, address, childProtocols, linkedProtocols, defillamaId, disabled, displayName, module, category, methodologyURL, methodology, forkedFrom, audits, audit_links, versionKey, governanceID, treasury, parentProtocol, previousNames, latestFetchIsOk, slug, protocolType, total24h, total48hto24h, total7d, totalAllTime, totalDataChart, totalDataChartBreakdown, change_1d}
-
----
-
 ## Bridges
 
 ### GET /bridges/bridges
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 List all bridges along with summaries of recent bridge volumes.
 
 **Parameters:**
@@ -256,7 +910,7 @@ List all bridges along with summaries of recent bridge volumes.
 Returns: {bridges}
 
 ### GET /bridges/bridge/{id}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get summary of bridge volume and volume breakdown by chain
 
 **Parameters:**
@@ -264,7 +918,7 @@ Get summary of bridge volume and volume breakdown by chain
 Returns: {id, name, displayName, lastHourlyVolume, currentDayVolume, lastDailyVolume, dayBeforeLastVolume, weeklyVolume, monthlyVolume, lastHourlyTxs, currentDayTxs, prevDayTxs, dayBeforeLastTxs, weeklyTxs, monthlyTxs, chainBreakdown, destinationChain}
 
 ### GET /bridges/bridgevolume/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get historical volumes for a bridge, chain, or bridge on a particular chain
 
 **Parameters:**
@@ -273,7 +927,7 @@ Get historical volumes for a bridge, chain, or bridge on a particular chain
 Returns: array of {date, depositUSD, withdrawUSD, depositTxs, withdrawTxs}
 
 ### GET /bridges/bridgedaystats/{timestamp}/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get a 24hr token and address volume breakdown for a bridge
 
 **Parameters:**
@@ -283,7 +937,7 @@ Get a 24hr token and address volume breakdown for a bridge
 Returns: {date, totalTokensDeposited, totalTokensWithdrawn, totalAddressDeposited, totalAddressWithdrawn}
 
 ### GET /bridges/transactions/{id}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get all transactions for a bridge within a date range
 
 **Parameters:**
@@ -310,12 +964,12 @@ Get amount of credits left in the api key, these reset on the 1st of each month
 ## Digital Asset Treasury
 
 ### GET /dat/institutions
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get list of all institutions with Digital Asset Treasury data
 Returns: {institutionMetadata, assetMetadata, institutions, assets, totalCompanies, flows, mNAV, lastUpdated}
 
 ### GET /dat/institutions/{symbol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get individual institution Digital Asset Treasury details
 
 **Parameters:**
@@ -324,589 +978,199 @@ Returns: {institutionId, ticker, name, type, rank, price, priceChange24h, volume
 
 ---
 
-## Equities (beta)
-
-> **Beta:** The Equities endpoints are in beta. Behavior, parameters, and response shapes may change.
-
-Data provided by [Twelve Data](https://twelvedata.com/).
+## Equities
 
 ### GET /equities/v1/companies-list
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get list of all tracked US-listed companies. Use this to discover valid `ticker` + `country` pairs for the other equities endpoints.
+**Base URL:** `https://pro-api.llama.fi`
+Get list of all tracked public companies
 
 **Parameters:**
-  - `sector` (query, string, optional) — Only return companies in this sector, as a slug (`technology`) or its label in any case (`Financial Services`). Valid values are the `sectorSlug`s from `GET /equities/v1/sectors`. Example: `technology`
-  - `industry` (query, string, optional) — Only return companies in this industry, as a slug (`semiconductors`) or its label in any case. Valid values are the `industrySlug`s from `GET /equities/v1/industries`. Example: `semiconductors`
-Returns: array of tracked companies sorted by market cap (largest first), each `{ticker, companyName, country (ISO 3166-1 alpha-2), countryName, sectorSlug, industrySlug}`. An unknown `sector` or `industry` value returns an empty array.
+  - `sector` (query, string, optional) — Only return companies in this sector, as a slug (`technology`, `financial-services`) or as its label in any case (`Financial Services`). Valid values are the `sectorSlug`s returned by `GET /equities/v1/sectors`. An unknown value returns an empty list. Example: `technology`
+  - `industry` (query, string, optional) — Only return companies in this industry, as a slug (`semiconductors`) or as its label in any case. Valid values are the `industrySlug`s returned by `GET /equities/v1/industries`. An unknown value returns an empty list. Example: `semiconductors`
+Returns: array of {ticker, companyName, country, countryName, sectorSlug, industrySlug}
 
 ### GET /equities/v1/statements
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get financial statements for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
-  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-Returns: income statement, balance sheet, and cash flow statement for the ticker, each broken down by quarterly and annual periods. `{incomeStatement, balanceSheet, cashflow}`
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: {incomeStatement, balanceSheet, cashflow}
 
 ### GET /equities/v1/dimensions
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get financial dimensions for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
-  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-Returns: time-series financial dimension metrics (`revenue`, `holdersRevenue`, `earnings`, `basicSharesOutstanding`), each split into annual and quarterly series. Every data point is a two-element array `[date, value]` (ISO 8601 period-ending date, then numeric value), sorted by date descending (newest first).
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: object
 
 ### GET /equities/v1/price-history
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get historical price data for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
-  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
   - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive). `1D` returns the most recent trading session and `7D`/`1W` (aliases) the last 7 days, both at 5-minute resolution; `1M` and longer are daily. `YTD` runs from January 1 of the current year. Omit or empty for full history (`MAX`). Intraday coverage is best-effort — a ticker without intraday data falls back to daily bars, and `1D` then returns the single most recent daily bar. (one of: 1D, 7D, 1W, 1M, 3M, 6M, YTD, 1Y, 5Y, MAX) Example: `1Y`
-Returns: array of closing prices, each a two-element array `[timestamp, price]` (ISO 8601 date-time string, then numeric closing price). Sorted by date descending (newest first). Intraday timeframes (`1D`, `7D`, `1W`) carry a real time of day, e.g. `["2026-06-05T19:55:00Z", 251.34]`; daily timeframes are stamped `T00:00:00Z`, e.g. `["2026-03-20T00:00:00Z", 247.99]`.
 
 ### GET /equities/v1/ohlcv
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get OHLCV candle data for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
-  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
   - `timeframe` (query, string, optional) — Optional lookback window (case-insensitive), same values as price history. `1D` returns the most recent trading session and `7D`/`1W` (aliases) the last 7 days, both as 5-minute bars; `1M` and longer are daily bars. `YTD` runs from January 1 of the current year. Omit or empty for full history (`MAX`). Intraday coverage is best-effort — a ticker without intraday data falls back to daily bars. (one of: 1D, 7D, 1W, 1M, 3M, 6M, YTD, 1Y, 5Y, MAX) Example: `6M`
-Returns: array of OHLCV bars, each a six-number array `[timestamp, open, high, low, close, volume]` where `timestamp` is Unix epoch seconds (UTC). Sorted by time descending (newest first). `1D`, `7D` and `1W` return 5-minute bars; `1M` and longer return daily bars.
 
 ### GET /equities/v1/summary
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get live market summary for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
-  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-Returns: compact live market snapshot for the ticker (no `ticker`/`name` fields; use `GET /equities/v1/companies-list` for company identity). {currentPrice, volume, marketCap, circulatingMarketCap, enterpriseValue, fiftyTwoWeekHigh, fiftyTwoWeekLow, dividendYield, trailingPE, priceToRevenue, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChange1d, marketCapChange1d, priceToBook, enterpriseValueToEbitda, holdersYield, updatedAt, revenueTTM, grossProfitTTM, earningsTTM, ebitdaTTM, operatingProfitMarginTTM, holdersRevenueTTM, holderEarningsTTM, dividendsTTM, stockRepurchaseTTM, stockIssuanceTTM, stockBasedCompensationTTM, cashAndCashEquivalents, totalAssets, totalLiabilities, totalShareholdersEquity, totalDebt, circulatingSupply, totalSupply, employeeCount}
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: {currentPrice, volume, marketCap, circulatingMarketCap, enterpriseValue, fiftyTwoWeekHigh, fiftyTwoWeekLow, dividendYield, trailingPE, priceToRevenue, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChange1d, marketCapChange1d, priceToBook, enterpriseValueToEbitda, holdersYield, updatedAt, revenueTTM, grossProfitTTM, earningsTTM, ebitdaTTM, operatingProfitMarginTTM, holdersRevenueTTM, holderEarningsTTM, dividendsTTM, stockRepurchaseTTM, stockIssuanceTTM, stockBasedCompensationTTM, cashAndCashEquivalents, totalAssets, totalLiabilities, totalShareholdersEquity, totalDebt, circulatingSupply, totalSupply, employeeCount}
 
 ### GET /equities/v1/filings
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get company filings for a company (e.g. annual reports, quarterly reports, and other important filings)
+**Base URL:** `https://pro-api.llama.fi`
+Get filings for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `COIN`
-  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-Returns: array of filings, each `{filingDate, reportDate, form, primaryDocumentUrl, documentDescription}` (`form` is the filing type, e.g. annual or quarterly report). Sorted by filing date descending (newest first).
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: array of {filingDate, reportDate, form, primaryDocumentUrl, documentDescription}
 
 ### GET /equities/v1/onchain
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get on-chain tradeable markets for a company (perpetual futures venues and tokenised-equity issuers)
+**Base URL:** `https://pro-api.llama.fi`
+Get on-chain tradeable markets for a company
 
 **Parameters:**
   - `ticker` (query, string, required) — Stock ticker symbol (case-insensitive) Example: `AAPL`
-  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) identifying the market where the company is listed. Used together with `ticker` to uniquely identify a company, since the same ticker can exist in different markets. Must match a `country` value from `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
-Returns: `{perps, tokens}`. Each perp is `{pair, price, volume24h, openInterest, annualizedFundingRate, tradeUrl, contractSlug, exchangeProtocolSlug, rwaPlatformSlug, exchangeType (CEX or DEX), updatedAt}` (`annualizedFundingRate` is a percent, so `-70.13` is -70.13% a year); each token is `{issuer, issuerRwaPlatformSlug, price, assetSlug, activeMarketcap}` (`issuer` is the token issuer, not the listed company). A live hourly snapshot with no history. On-chain data is only collected for US-listed tickers, so a ticker in another market returns empty arrays rather than an error.
-
-### Sectors and industries
-
-The sector and industry endpoints cover US-listed companies; all monetary values are in USD. Sector and industry names are the data vendor's labels (11 sectors, about 140 industries), not GICS; companies with no sector are grouped as `Unknown` so sector market caps sum to the market total. Ratios such as `trailingPE` are aggregates (total market cap / total earnings), not averages of constituent ratios, and are `null` when the denominator is zero or negative or when less than 60% of the group's market cap supplied the inputs (see `coverage`). Price changes are cap-weighted from the start of each window. Percentages are percent, not fractions: `1.82` means +1.82%.
-
-Every sector and industry row carries the same metric block: `{marketCap, marketCapChange1d, dollarVolume24h, revenueTTM, earningsTTM, ebitdaTTM, enterpriseValue, employeeCount, trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, dividendYield, holdersYield, operatingProfitMarginTTM, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChangePercentage3m, priceChangePercentage6m, priceChangePercentageYtd, priceChangePercentage1y, companyCount, coverage, updatedAt, volumeAsOf}`. `earningsYield` is signed, so it stays defined when `trailingPE` is `null` for a loss-making group. `coverage` maps each metric name to the share (0 to 1) of market cap that supplied its inputs.
+  - `country` (query, string, required) — Two-letter country code (ISO 3166-1 alpha-2) for the company, as returned by `GET /equities/v1/companies-list` (case-insensitive). Example: `US`
+Returns: {perps, tokens}
 
 ### GET /equities/v1/sectors
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get all sectors
-Returns: array of sectors sorted by market cap (largest first), each `{sector, sectorSlug, rank, weight, dollarVolumeShare24h, industryCount, topHoldings, ...metric block}`. `weight` is the share of all tracked US equity market cap and sums to 100 across sectors. `topHoldings` lists the 3 largest constituents, each `{ticker, name, marketCap, sectorWeight, priceChangePercentage1d}` where `sectorWeight` is the share of the sector's market cap. Pass `sectorSlug` as `sector` to the other endpoints.
+Returns: array of {sector, sectorSlug, rank, weight, dollarVolumeShare24h, industryCount, marketCap, marketCapChange1d, dollarVolume24h, revenueTTM, earningsTTM, ebitdaTTM, enterpriseValue, employeeCount, trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, dividendYield, holdersYield, operatingProfitMarginTTM, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChangePercentage3m, priceChangePercentage6m, priceChangePercentageYtd, priceChangePercentage1y, companyCount, coverage, updatedAt, volumeAsOf, topHoldings}
 
 ### GET /equities/v1/sectors-overview
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get market-wide totals across all tracked US companies
-Returns: `{...metric block, medianTrailingPE, medianPriceToRevenue, medianPriceToBook, medianEnterpriseValueToEbitda, medianOperatingProfitMarginTTM, medianDividendYield, medianMarketCap, sectorCount, industryCount, bestSector1d, worstSector1d, largestSector}`. `marketCap` is the denominator behind every sector `weight`. Aggregate and median ratios sit side by side; compare aggregate with aggregate and median with median. `bestSector1d`, `worstSector1d` and `largestSector` are each `{sector, sectorSlug, priceChangePercentage1d, weight}` and never `Unknown`. `sectorCount` excludes `Unknown`.
+**Base URL:** `https://pro-api.llama.fi`
+Get market-wide sector overview
+Returns: {marketCap, marketCapChange1d, dollarVolume24h, revenueTTM, earningsTTM, ebitdaTTM, enterpriseValue, employeeCount, trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, dividendYield, holdersYield, operatingProfitMarginTTM, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChangePercentage3m, priceChangePercentage6m, priceChangePercentageYtd, priceChangePercentage1y, companyCount, coverage, updatedAt, volumeAsOf, medianTrailingPE, medianPriceToRevenue, medianPriceToBook, medianEnterpriseValueToEbitda, medianOperatingProfitMarginTTM, medianDividendYield, medianMarketCap, sectorCount, industryCount, bestSector1d, worstSector1d, largestSector}
 
 ### GET /equities/v1/sector
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get details for one sector
 
 **Parameters:**
-  - `sector` (query, string, required) — Sector as a slug (`technology`, `financial-services`) or its label in any case (`Financial Services`). Valid values are the `sectorSlug`s from `GET /equities/v1/sectors`. Example: `technology`
-Returns: the sector's `GET /equities/v1/sectors` row plus `{description, valuation, concentration}`, with `topHoldings` expanded to the 10 largest constituents. `valuation` is `{trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, operatingProfitMarginTTM, dividendYield, medianTrailingPE, medianPriceToRevenue, medianPriceToBook, medianEnterpriseValueToEbitda, medianOperatingProfitMarginTTM, medianDividendYield}`. `concentration` is `{top10MarketCapShare, hhi, megaCapCount, megaCapThreshold, medianMarketCap}`: `hhi` is the Herfindahl-Hirschman index on a 0 to 10,000 scale, and `megaCapThreshold` is the USD market cap from which a company counts as mega cap. A missing or unknown `sector` returns `400`.
+  - `sector` (query, string, required) — Sector to return, as a slug (`technology`, `financial-services`) or as its label in any case (`Financial Services`). Valid values are the `sectorSlug`s returned by `GET /equities/v1/sectors`. Example: `technology`
+Returns: {sector, sectorSlug, rank, weight, dollarVolumeShare24h, industryCount, marketCap, marketCapChange1d, dollarVolume24h, revenueTTM, earningsTTM, ebitdaTTM, enterpriseValue, employeeCount, trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, dividendYield, holdersYield, operatingProfitMarginTTM, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChangePercentage3m, priceChangePercentage6m, priceChangePercentageYtd, priceChangePercentage1y, companyCount, coverage, updatedAt, volumeAsOf, topHoldings, description, valuation, concentration}
 
 ### GET /equities/v1/industries
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get industries, optionally within one sector
+**Base URL:** `https://pro-api.llama.fi`
+Get industries
 
 **Parameters:**
-  - `sector` (query, string, optional) — Only return industries in this sector, as a slug or its label in any case. Example: `technology`
-  - `industry` (query, string, optional) — Only return this industry, as a slug (`semiconductors`) or its label in any case. Example: `semiconductors`
-Returns: array of industries sorted by market cap (largest first), each `{industry, industrySlug, sector, sectorSlug, rank, weight, sectorWeight, dollarVolumeShare24h, topHoldings, ...metric block}`. `weight` is the share of all tracked US equity market cap; `sectorWeight` is the share of the parent sector's market cap. `rank` counts within the sector when `sector` is set, and across all industries otherwise (`industry` alone keeps the market-wide rank). `topHoldings` lists the 3 largest constituents; their `sectorWeight` is the share of the industry's market cap. The same industry name can exist in two sectors, so `industry` alone can return more than one row. An unknown `sector` or `industry` returns an empty array.
+  - `sector` (query, string, optional) — Only return industries in this sector, as a slug (`technology`, `financial-services`) or as its label in any case (`Financial Services`). Valid values are the `sectorSlug`s returned by `GET /equities/v1/sectors`. An unknown value returns an empty list. Example: `technology`
+  - `industry` (query, string, optional) — Only return this industry, as a slug (`semiconductors`) or as its label in any case (`Semiconductors`). An unknown value returns an empty list. Example: `semiconductors`
+Returns: array of {industry, industrySlug, sector, sectorSlug, rank, weight, sectorWeight, dollarVolumeShare24h, marketCap, marketCapChange1d, dollarVolume24h, revenueTTM, earningsTTM, ebitdaTTM, enterpriseValue, employeeCount, trailingPE, earningsYield, priceToRevenue, priceToBook, enterpriseValueToEbitda, dividendYield, holdersYield, operatingProfitMarginTTM, priceChangePercentage1d, priceChangePercentage7d, priceChangePercentage1m, priceChangePercentage3m, priceChangePercentage6m, priceChangePercentageYtd, priceChangePercentage1y, companyCount, coverage, updatedAt, volumeAsOf, topHoldings}
 
 ### GET /equities/v1/earnings-calendar
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get earnings report dates for US-listed companies, built from SEC EDGAR filings
+**Base URL:** `https://pro-api.llama.fi`
+Get earnings calendar
 
 **Parameters:**
-  - `ticker` (query, string, optional) — Stock ticker symbol (case-insensitive). When set, returns that company's full history plus upcoming estimates; when omitted, returns the market-wide calendar from about 1 month back to about 13 months ahead. Example: `AAPL`
-  - `from` (query, string, optional) — Earliest `report_date` to include, `YYYY-MM-DD` (inclusive). Example: `2026-10-26`
-  - `to` (query, string, optional) — Latest `report_date` to include, `YYYY-MM-DD` (inclusive). Example: `2026-10-30`
-  - `status` (query, string, optional) — Only return rows with this `date_status` (case-insensitive). `confirmed` is accepted but nothing produces it yet. (one of: reported, inferred, confirmed, estimated) Example: `estimated`
-  - `limit` (query, integer, optional) — Maximum rows, taken from the earliest `report_date`. Positive integer, capped at 20000 (the default). Example: `1`
-Returns: array of report dates sorted by `report_date`, oldest first, so `limit` keeps the earliest matches (`?ticker=AAPL&status=estimated&limit=1` is Apple's next report). Each row is `{ticker, iso2_country_code, cik, event_key, date_status, report_date, report_time, accepted_at, fiscal_year, fiscal_period, period_end, source, source_form, accession_number, max_drift_days, first_published_at, revision_count, previous_report_date, inserted_at}`. `event_key` is `<fiscal_year>-<fiscal_period>` (e.g. `2026-Q4`). `date_status`: `reported` (8-K Item 2.02 earnings release), `inferred` (no release that quarter, dated from the 10-Q/10-K), `estimated` (projected from the company's filing cadence, with `max_drift_days` giving the ± range in days; `null` on filing-backed rows). `report_date` is the US Eastern date of the SEC acceptance time; `report_time` is `bmo` (before 09:30 ET), `dmt` (market hours), `amc` (after 16:00 ET) or `unknown`. `source` is `8k_item_202`, `periodic_filing` or `cadence_model`. Company names are not included: join on `ticker` against `GET /equities/v1/companies-list`. Response headers `X-Total-Matches` (rows matched before `limit`) and `X-Result-Truncated` (`true`/`false`) say whether `limit` cut the result. A `ticker` that is not tracked returns `404`; an invalid `limit` returns `400`.
+  - `ticker` (query, string, optional) — Stock ticker symbol (case-insensitive). When set, returns that company's full calendar. Example: `AAPL`
+  - `from` (query, string, optional) — Earliest `report_date` to include, as `YYYY-MM-DD` (inclusive). Example: `2026-10-26`
+  - `to` (query, string, optional) — Latest `report_date` to include, as `YYYY-MM-DD` (inclusive). Example: `2026-10-30`
+  - `status` (query, string, optional) — Only return rows with this `date_status` (case-insensitive). `confirmed` is accepted but nothing produces it yet, so it returns an empty list. (one of: reported, inferred, confirmed, estimated) Example: `estimated`
+  - `limit` (query, integer, optional) — Maximum rows to return, taken from the earliest `report_date`. Positive integer; values above 20000 are capped at 20000. Example: `1`
+Returns: array of {ticker, iso2_country_code, cik, event_key, date_status, report_date, report_time, accepted_at, fiscal_year, fiscal_period, period_end, source, source_form, accession_number, max_drift_days, first_published_at, revision_count, previous_report_date, inserted_at}
 
 ---
 
-## Pre-IPO (beta)
-
-> **Beta:** The Pre-IPO endpoints are in beta. Behavior, parameters, and response shapes may change.
-
-Valuation history, funding rounds, and live tradeable markets for private, pre-IPO companies. Valuations are DefiLlama estimates reconciled from secondary marketplaces and disclosed funding rounds, not official company figures.
-
-Every response is wrapped in a snapshot envelope `{updatedAt, data}`, where `updatedAt` is an ISO 8601 date-time for when the snapshot was generated. The section is served as static files, so anything other than `200` means there is no such file: an unknown `company` or a snapshot that has not been generated yet both return `502`.
+## Pre-IPO
 
 ### GET /pre-ipo/v1/companies-list
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get list of all tracked pre-IPO companies. Use this to discover valid `company` ids for the other pre-IPO endpoints.
-Returns: `{updatedAt, data}` where `data` is an array of companies, each `{id, name, description, website, sector, latestEstimatedValuation, latestRaise, latestFundingValuation, latestFundingDate, lastValuationDate, totalRaised, valuationChange1YPercentage, premiumVsLatestFundingPercentage}`. All USD. Returned in registry order, not sorted by valuation. `latestEstimatedValuation` is the latest monthly secondary-market estimate, falling back to the last funding round's post-money valuation when no marketplace lists the company; `valuationChange1YPercentage` and `premiumVsLatestFundingPercentage` are `null` when a company has no secondary marks.
+**Base URL:** `https://pro-api.llama.fi`
+Get list of all tracked pre-IPO companies
+Returns: {updatedAt, data}
 
 ### GET /pre-ipo/v1/valuations
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get valuation history for a pre-IPO company
 
 **Parameters:**
   - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
-Returns: `{updatedAt, data}` where `data` is one aggregated point per calendar month, oldest first, each `{date, estimatedValuation}` (`date` is the first day of the month, `estimatedValuation` in USD). Within a month each source's marks are averaged and then the source averages are averaged, so a source that reports daily does not outvote one that reports monthly. Values are rounded to the nearest 100, months with no data are skipped, and the current month is month-to-date.
+Returns: {updatedAt, data}
 
 ### GET /pre-ipo/v1/raises
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get funding rounds for a pre-IPO company
 
 **Parameters:**
   - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
-Returns: `{updatedAt, data}` where `data` is an array of disclosed funding rounds, oldest first, each `{date, amountRaised, valuation, series}` (amounts in USD, `valuation` is post-money and may be `null`, `series` is a label such as `Series G`). The same round reported by several sources is reconciled into one canonical raise using the earliest date, median amount, median valuation, and highest-ranked series label.
+Returns: {updatedAt, data}
 
 ### GET /pre-ipo/v1/summary
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
+**Base URL:** `https://pro-api.llama.fi`
 Get profile and latest valuation for a pre-IPO company
 
 **Parameters:**
   - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
-Returns: `{updatedAt, data}` where `data` is `{id, name, description, summary, website, sector, latestEstimatedValuation, lastValuationDate, latestRaise}`. `latestRaise` is the most recent round `{date, amountRaised, valuation, series}` or `null`. `summary` currently mirrors `description`.
+Returns: {updatedAt, data}
 
 ### GET /pre-ipo/v1/integrations
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get tradeable markets for a pre-IPO company (perpetual futures venues and tokenised-share issuers)
+**Base URL:** `https://pro-api.llama.fi`
+Get tradeable markets for a pre-IPO company
 
 **Parameters:**
   - `company` (query, string, required) — Company id from `GET /pre-ipo/v1/companies-list` (case-insensitive). The display `name` is not accepted. Example: `anthropic`
-Returns: `{updatedAt, data}` where `data` is `{perps, tokenIssuers}`. Each perp is `{exchangeName, platformSlug, defillamaContract, exchangeType (CEX or DEX), openInterest, volume, price, annualizedFundingRate, tradeUrl, estimatedValuation}` (`annualizedFundingRate` is a percent, so `5.2` is 5.2% a year); each token issuer is `{issuerName, slug, backing, productUrl, price, marketCap, estimatedValuation}` where `backing` is one of `Direct shares`, `Trust-held SPV`, `SPV interest`, `Unsecured note`, `Synthetic`, ordered from the most direct claim on the underlying shares to the least. A live hourly snapshot with no history; a company with no listings returns empty arrays rather than a miss.
-
----
-
-## Oracles (Beta)
-
-### GET /api/v2/metrics/oracle
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get oracle data overview. Returns mapping of oracle names to arrays of protocol names using that oracle.
-Returns: {oracles: {OracleName: [protocol1, protocol2, ...], ...}}
-
-### GET /api/v2/chart/oracle
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get timeseries chart data for all oracles. Returns array of [timestamp, value] pairs representing total oracle TVL over time.
-Returns: array of [timestamp, value]
-
-### GET /api/v2/chart/oracle/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get timeseries chart data breakdown by chain. Returns array of objects with timestamp and TVL per chain.
-Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
-
-### GET /api/v2/chart/oracle/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get timeseries chart data breakdown by protocol/oracle. Returns array of objects with timestamp and TVL per oracle.
-Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
-
-### GET /api/v2/chart/oracle/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get timeseries chart data by protocol/oracle. Returns array of [timestamp, value] pairs for a specific oracle.
-
-**Parameters:**
-  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
-Returns: array of [timestamp, value]
-
-### GET /api/v2/chart/oracle/protocol/{protocol}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get chain breakdown timeseries chart data by protocol/oracle. Returns array of objects with timestamp and TVL per chain for a specific oracle.
-
-**Parameters:**
-  - `protocol` (path, string, required) — oracle/protocol name Example: `Chainlink`
-Returns: array of {timestamp, Chain1: value, Chain2: value, ...}
-
-### GET /api/v2/chart/oracle/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get timeseries chart data by chain. Returns array of [timestamp, value] pairs for oracle TVL on a specific chain.
-
-**Parameters:**
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-Returns: array of [timestamp, value]
-
-### GET /api/v2/chart/oracle/chain/{chain}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get protocol breakdown timeseries chart data by chain. Returns array of objects with timestamp and TVL per oracle for a specific chain.
-
-**Parameters:**
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-Returns: array of {timestamp, Oracle1: value, Oracle2: value, ...}
-
----
-
-## Forks (Beta)
-
-### GET /api/v2/metrics/fork
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get fork data overview. Returns mapping of fork protocol names to arrays of forked protocol names.
-Returns: {ForkName: [protocol1, protocol2, ...], ...}
-
-### GET /api/v2/chart/fork/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get timeseries chart data breakdown by protocol. Returns array of objects with timestamp and TVL per fork protocol.
-Returns: array of {timestamp, Fork1: value, Fork2: value, ...}
-
-### GET /api/v2/chart/fork/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get timeseries chart data by protocol. Returns array of [timestamp, value] pairs for all forks of a specific protocol.
-
-**Parameters:**
-  - `protocol` (path, string, required) — protocol slug Example: `aave-v3`
-Returns: array of [timestamp, value]
-
----
-
-## Dimensions (Beta)
-
-Unified dimension endpoints for fees, liquidations, DEX volumes, derivatives, options, aggregators, bridge aggregators, bridges, open interest, and normalized volume.
-
-**`{metric}` values:** fees, liquidations, dexs, derivatives, options, aggregators, bridge-aggregators, bridges, open-interest, normalized-volume
-
-**`dataType` query parameter** (optional, metric-specific):
-- **fees**: dailyFees (default), dailyRevenue, dailySupplySideRevenue, dailyHoldersRevenue, dailyProtocolRevenue
-- **liquidations**: dailyLiquidationsVolume (default), dailyCollateralLiquidated
-- **dexs**: dailyVolume (default), dailyNotionalVolume
-- **derivatives**: dailyVolume (default), dailyNotionalVolume
-- **options**: dailyNotionalVolume (default), dailyPremiumVolume
-- **aggregators**: dailyVolume (default)
-- **bridge-aggregators**: dailyBridgeVolume (default)
-- **bridges**: dailyAggregatedVolume (default), dailyOutgoingVolume, dailyIncomingVolume, dailyTxCount, dailyOutgoingTxCount, dailyIncomingTxCount
-- **open-interest**: openInterestAtEnd (default), shortOpenInterestAtEnd, longOpenInterestAtEnd
-- **normalized-volume**: dailyNormalizedVolume (default), dailyActiveLiquidity
-
-**`{protocol}`** should be slug-formatted (e.g. `aave`, `hyperliquid-perps`, `openocean`, `li.fi-bridge-aggregator`)
-**`{category}`** should be slug-formatted (e.g. `dexs`, `prediction-market`, `options`, `dex-aggregator`, `bridge-aggregator`)
-
-### Bridge metrics
-
-Use `metric=bridges` for bridge transfer volumes and transaction counts. `metric=bridge-aggregators` covers activity routed through bridge aggregators and uses `dailyBridgeVolume`.
-
-| dataType | Unit | Meaning |
-| --- | --- | --- |
-| dailyAggregatedVolume | USD | Default. At protocol level, total outgoing volume across chains. For each chain, incoming plus outgoing volume. |
-| dailyOutgoingVolume | USD | Value leaving each chain through the bridge. |
-| dailyIncomingVolume | USD | Value arriving on each chain through the bridge. |
-| dailyTxCount | Transfers | At protocol level, total outgoing transfer count across chains. For each chain, incoming plus outgoing transfer counts. |
-| dailyOutgoingTxCount | Transfers | Number of transfers leaving each chain. |
-| dailyIncomingTxCount | Transfers | Number of transfers arriving on each chain. |
-
-The selected dataType controls the units of chart values and overview totals such as total24h and total7d. Chart timestamps are Unix seconds at the start of each UTC day. Missing dates or null totals do not mean zero activity.
-
-Direction is relative to each chain: Ethereum -> OP Mainnet is outgoing on Ethereum and incoming on OP Mainnet. For a chain, calculate netflow as dailyIncomingVolume minus dailyOutgoingVolume; a positive result is a net inflow.
-
-Protocol totals count the source side of transfers. Per-chain dailyAggregatedVolume and dailyTxCount count both incoming and outgoing activity, so summing a chain breakdown can count a transfer twice. Version breakdowns sum chain values within each version and can also exceed the protocol total. Use the protocol total chart for the protocol's volume or transfer count.
-
-Discover protocol slugs and chain names from `/api/v2/metrics/bridges`. Use those slugs in protocol routes, for example `optimism-bridge` or `cbridge`; the legacy `/bridges/bridge/{id}` numeric IDs are a different identifier set. Discover categories with `/api/v2/metrics/bridges/categories`, then use their slug forms in category routes, such as `bridge` or `canonical-bridge`.
-
-Examples (replace YOUR_API_KEY):
-
-```text
-https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/metrics/bridges
-https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge?dataType=dailyAggregatedVolume
-https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge?dataType=dailyTxCount
-https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/protocol/optimism-bridge/chain-breakdown?dataType=dailyIncomingVolume
-https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/chart/bridges/chain/ethereum?dataType=dailyOutgoingVolume
-https://pro-api.llama.fi/{YOUR_API_KEY}/api/v2/metrics/bridges/categories
-```
-
-Label breakdowns are available only when the protocol supplies label data; they are not available for every bridge.
-
-### Overview
-
-#### GET /api/v2/metrics/{metric}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get dimension data overview. Returns aggregate metrics including totals and percentage changes.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `dataType` (query, string, optional) — metric-specific data type
-  - Supports `metric=active-users` with `dataType` values: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
-Returns: {allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
-
-#### GET /api/v2/chart/{metric}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get historical timeseries chart data.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `dataType` (query, string, optional) — metric-specific data type
-  - Supports `metric=active-users` with `dataType` values: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
-Returns: array of [timestamp, value]
-
-#### GET /api/v2/chart/{metric}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get historical timeseries chart data breakdown by chain.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `dataType` (query, string, optional) — metric-specific data type
-  - Supports `metric=active-users` with `dataType` values: dailyActiveUsers (default), dailyTransactionCount, dailyGasUsed
-Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
-
-#### GET /api/v2/chart/{metric}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get historical timeseries chart data breakdown by protocol.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
-
-### For chains
-
-#### GET /api/v2/metrics/{metric}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get chain dimension data overview.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: {chain, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
-
-#### GET /api/v2/chart/{metric}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get chain historical timeseries chart data.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, value]
-
-#### GET /api/v2/chart/{metric}/chain/{chain}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get chain timeseries chart data breakdown by protocol.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
-
-### For protocols
-
-#### GET /api/v2/metrics/{metric}/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get protocol dimension data overview. Returns protocol metadata along with aggregate metrics.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `protocol` (path, string, required) — protocol slug Example: `aave`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: {id, name, url, description, logo, chains, gecko_id, cmcId, symbol, total24h, total48hto24h, total7d, total30d, total1y, change_1d, change_7d, change_1m}
-
-#### GET /api/v2/chart/{metric}/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get protocol historical timeseries chart data.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `protocol` (path, string, required) — protocol slug Example: `aave`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, value]
-
-#### GET /api/v2/chart/{metric}/protocol/{protocol}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get protocol timeseries chart data breakdown by chain.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `protocol` (path, string, required) — protocol slug Example: `aave`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
-
-#### GET /api/v2/chart/{metric}/protocol/{protocol}/version-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get protocol timeseries chart data breakdown by version (e.g. Aave V2, Aave V3).
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `protocol` (path, string, required) — protocol slug Example: `aave`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Version1: value, Version2: value, ...}]
-
-#### GET /api/v2/chart/{metric}/protocol/{protocol}/label-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get protocol timeseries chart data breakdown by label (e.g. Borrow Interest, Flash Loans). Currently only supported for metric=fees.
-
-**Parameters:**
-  - `metric` (path, string, required) — must be `fees` Example: `fees`
-  - `protocol` (path, string, required) — protocol slug Example: `aave`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Label1: value, Label2: value, ...}]
-
-### For categories
-
-#### GET /api/v2/metrics/{metric}/categories
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-List categories with data for the selected dimension and dataType, their aggregate totals, and active chains. Convert category names to slug form for category routes, for example `Canonical Bridge` -> `canonical-bridge`.
-
-**Parameters:**
-
-  - `metric` (path, string, required) - dimension metric type. Example: `bridges`
-  - `dataType` (query, string, optional) - metric-specific data type. Defaults to `dailyAggregatedVolume` for bridges.
-
-Returns: array of {category, total24h, total7d, total30d, chains}. Totals can be null or absent when no data is available for the period.
-
-#### GET /api/v2/metrics/{metric}/category/{category}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get category dimension data overview.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `category` (path, string, required) — category slug Example: `dexs`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: {category, allCategories, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d, change_30dover30d}
-
-#### GET /api/v2/chart/{metric}/category/{category}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get category historical timeseries chart data.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `category` (path, string, required) — category slug Example: `dexs`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, value]
-
-#### GET /api/v2/chart/{metric}/category/{category}/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get category timeseries chart data breakdown by chain.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `category` (path, string, required) — category slug Example: `dexs`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Chain1: value, Chain2: value, ...}]
-
-#### GET /api/v2/chart/{metric}/category/{category}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get category timeseries chart data breakdown by protocol.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `category` (path, string, required) — category slug Example: `dexs`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
-
-### For categories and chains
-
-#### GET /api/v2/metrics/{metric}/category/{category}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get category chain dimension data overview.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `category` (path, string, required) — category slug Example: `dexs`
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: {category, chain, allCategories, allChains, total24h, total48hto24h, total7d, total14dto7d, total60dto30d, total30d, total1y, change_1d, change_7d, change_1m, change_7dover7d}
-
-#### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get category chain historical timeseries chart data.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `category` (path, string, required) — category slug Example: `dexs`
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, value]
-
-#### GET /api/v2/chart/{metric}/category/{category}/chain/{chain}/protocol-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get category chain timeseries chart data breakdown by protocol.
-
-**Parameters:**
-  - `metric` (path, string, required) — dimension metric type Example: `fees`
-  - `category` (path, string, required) — category slug Example: `dexs`
-  - `chain` (path, string, required) — chain name Example: `Ethereum`
-  - `dataType` (query, string, optional) — metric-specific data type
-Returns: array of [timestamp, {Protocol1: value, Protocol2: value, ...}]
+Returns: {updatedAt, data}
 
 ---
 
 ## Real World Assets
 
 ### GET /rwa/current
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-List all current RWA assets with per-chain onchain market cap, active market cap, and DeFi active TVL maps. Every listed asset has a row, and a retired or delisted asset has one only when it has stored history. An asset row carries `status` (`live`, `stale`, `lapsed`, `unpriced`, `retired` or `delisted`), and `statusSince`, `statusReason` and `successor` when they apply; a perps market row (category `RWA Perps`) carries none. A `live` row can read 0 when the asset once had a value and every chain now reads a supply of 0. Only a `live` or a `stale` row carries values. A `stale` row holds its last value for up to 30 days, which counts exactly where a live row's value would until a new value is read; after that the row is `lapsed`, its value fields are empty and it counts in no total.
-Returns: array of RWA asset objects
+**Base URL:** `https://pro-api.llama.fi`
+List all current RWA assets
+Returns: array of {id, canonicalMarketId, ticker, assetName, assetGroup, primaryChain, chain, category, assetClass, rwaClassification, accessModel, issuer, parentPlatform, onChainMcap, activeAum, defiActiveTvl, price, activeAumData, coingeckoId, logo, status, statusSince, statusReason, successor}
 
 ### GET /rwa/stats
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get aggregate RWA stats by chain, category, platform, and asset group. For the default per-chain table, read `byChain[chain].base`: `assetIssuers.length`, `assetCount`, `activeMcap`, `onChainMcap`, and `defiActiveTvl`.
+**Base URL:** `https://pro-api.llama.fi`
+Get aggregate RWA stats by chain, category, platform, and asset group
 Returns: {totalOnChainMcap, totalActiveMcap, totalDefiActiveTvl, assetCount, assetIssuers, byChain, byCategory, byPlatform, byAssetGroup}
 
 ### GET /rwa/list
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-List RWA canonical market ids, platforms, chains, categories, asset groups, and id mappings.
+**Base URL:** `https://pro-api.llama.fi`
+List RWA ids and filter values
 Returns: {canonicalMarketIds, platforms, chains, categories, assetGroups, idMap}
 
 ### GET /rwa/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-List current RWA assets on a chain.
+**Base URL:** `https://pro-api.llama.fi`
+List current RWA assets on a chain
 
 **Parameters:**
-  - `chain` (path, string, required) — chain display name, case-insensitive Example: `Ethereum`
+  - `chain` (path, string, required) — Chain display name, case-insensitive. Example: `Ethereum`
 Returns: {data}
 
 ### GET /rwa/chart/chain/{chain}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get historical RWA onchain market cap, active market cap, and DeFi active TVL totals for a chain.
+**Base URL:** `https://pro-api.llama.fi`
+Get historical RWA chart data for a chain
 
 **Parameters:**
-  - `chain` (path, string, required) — chain display name Example: `Ethereum`
-Returns: array of {timestamp, onChainMcap, activeMcap, defiActiveTvl}
+  - `chain` (path, string, required) — Chain display name. The API normalizes it to the internal RWA slug. Example: `Ethereum`
+Returns: array of {timestamp, onChainMcap, activeAum, defiActiveTvl}
 
 ### GET /rwa/chart/chain-breakdown
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get historical RWA metric breakdown by chain.
+**Base URL:** `https://pro-api.llama.fi`
+Get historical RWA metric breakdown by chain
 
 **Parameters:**
-  - `key` (query, string, optional) — metric to break down by chain, defaults to `onChainMcap` (one of: onChainMcap, activeMcap, defiActiveTvl) Example: `activeMcap`
-Returns: array of {timestamp, [chain]: value}
-
----
-
-## Financial Statements (Beta)
-
-### GET /api/v2/metrics/financial-statement/protocol/{protocol}
-**Base URL:** `https://pro-api.llama.fi/{YOUR_API_KEY}`
-Get protocol income statement report. Returns protocol metadata, methodology details, and aggregated financial data (yearly, quarterly, monthly).
-
-When querying a **parent protocol** (e.g. `aave`), the response includes `childProtocols` with per-version methodology. When querying a **child protocol** (e.g. `aave-v3`), `methodology` and `breakdownMethodology` are at the top level.
-
-Each time period contains line items such as:
-- **Gross Protocol Revenue** — total fees collected (with label breakdown e.g. Borrow Interest, Liquidation Fees, Flashloan Fees)
-- **Cost Of Revenue** — fees distributed to suppliers/LPs
-- **Gross Profit** — revenue minus cost of revenue
-- **Token Holder Net Income** — value accruing to token holders (e.g. buybacks)
-- **Incentives** — token incentives distributed (e.g. staking rewards, lending rewards)
-- **Earnings** — net earnings after incentives
-
-Each line item has a `value` (total USD) and optional `by-label` object breaking down by revenue source.
-
-**Parameters:**
-  - `protocol` (path, string, required) — protocol slug Example: `aave-v3`
-Returns: {id, name, address, symbol, url, description, chain?, logo, audits?, audit_links?, category?, chains, oraclesBreakdown?, module?, twitter, github?, listedAt?, parentProtocol?, dimensions?, methodology?, breakdownMethodology?, methodologyURL?, tvlCodePath?, hallmarks?, linkedProtocols, childProtocols?, hasLabelBreakdown, defillamaId, displayName, slug, protocolType, aggregates: {yearly: {period: {LineItem: {value, by-label?}}}, quarterly: {...}, monthly: {...}}}
+  - `key` (query, string, optional) — Metric to break down by chain, defaults to `onChainMcap`. `onChainMcap` is Onchain AUM, `activeAum` is Active AUM and `defiActiveTvl` is DeFi Active TVL. The retired spelling `activeMcap` is still accepted here. (one of: onChainMcap, activeAum, defiActiveTvl) Example: `activeAum`
+Returns: array of {timestamp}

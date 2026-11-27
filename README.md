@@ -23,7 +23,7 @@ The Scalar packages in this repository match upstream [scalar/scalar](https://gi
 | --- | --- |
 | API key bar, saved in the browser (`localStorage` key `scalar-api-key-default`) | `src/components/ApiKeyInput.vue`, `src/api-key-storage.ts` |
 | Free spec plus API-plan-only endpoints, or the full pro spec when a key is set | `src/spec-transform.ts` |
-| Key in the path (`pro-api.llama.fi/{key}/…`, and `/usage/{key}`) for snippets, Test Request and Copy URL, while the Server box shows the bare host | `src/spec-transform.ts` (gives each pro operation a server with the key in it) |
+| Key in the `x-api-key` header (and at the end of `/usage/{key}`) for snippets and Test Request. The pro spec declares the header as a security scheme, which Scalar would show as a second key form, so the page turns it into a header parameter | `src/spec-transform.ts` |
 | API Plan and Beta badges (from `x-api-plan-only` and `x-api-beta`) | `src/spec-transform.ts` (Scalar's `x-badges`), styled in `src/style.css` |
 | "Please set an API key" reply when Test Request has no key | `customFetch` in `src/pages/StandaloneApiReferencePage.vue` |
 | curl as the default code sample | `defaultHttpClient` in the same page |
