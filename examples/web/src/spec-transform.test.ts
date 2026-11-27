@@ -60,6 +60,16 @@ describe('spec-transform', () => {
       }
     })
 
+    // A requirement naming an undefined scheme still counts as "needs the key" here, but OpenAPI clients cannot resolve it
+    it('only references security schemes the pro spec defines', () => {
+      const defined = Object.keys(proSpec.components.securitySchemes)
+      for (const { operation } of operations(proSpec)) {
+        for (const requirement of (operation as Record<string, any>).security ?? []) {
+          expect(defined).toEqual(expect.arrayContaining(Object.keys(requirement)))
+        }
+      }
+    })
+
     it('does not mutate the imported specs', () => {
       expect(proSpec.security).toEqual([{ apiKey: [] }])
       expect(proSpec.components.securitySchemes.apiKey.name).toBe('x-api-key')
