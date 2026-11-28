@@ -203,7 +203,7 @@ WRONG  curl -H "x-api-key: YOUR_API_KEY" https://coins.llama.fi/prices/current/c
 \`\`\`
 
 - The free hosts (\`api.llama.fi\`, \`coins.llama.fi\`, \`stablecoins.llama.fi\`, \`yields.llama.fi\`) never read a key, so a 429 there means the request belongs on pro-api.llama.fi. A 402 there means the endpoint needs pro-api, not that the plan expired.
-- Send the key in the \`x-api-key\` header. \`Authorization: Bearer YOUR_API_KEY\` works too. Where a header cannot be set, \`?api_key=YOUR_API_KEY\` works, and so does the older form with the key as the first path segment (\`https://pro-api.llama.fi/YOUR_API_KEY/api/protocols\`). Without a key pro-api answers \`401 {"error":"API key is missing"}\`, with a wrong one \`500 {"error":"API Key is wrong"}\`.
+- Send the key in the \`x-api-key\` header. Without a key pro-api answers \`401 {"error":"API key is missing"}\`, with a wrong one \`500 {"error":"API Key is wrong"}\`.
 - Paths on pro-api have a prefix: \`/protocols\` becomes \`/api/protocols\`, \`/prices/current/{coins}\` becomes \`/coins/prices/current/{coins}\`, \`/stablecoins\` becomes \`/stablecoins/stablecoins\`, \`/pools\` becomes \`/yields/v1/pools\`. Every free path is mapped in [llms.txt](https://api-docs.defillama.com/llms.txt), and the pro-only endpoints are in [llms-pro.txt](https://api-docs.defillama.com/llms-pro.txt).
 - One key unlocks every endpoint. There are no add-ons or separate keys.
 - To check a key, call \`https://pro-api.llama.fi/usage/{YOUR_API_KEY}\` (key at the end of the path, for this endpoint only). It returns \`{"creditsLeft": ...}\`. A 200 from a free host proves nothing, those endpoints need no key.`

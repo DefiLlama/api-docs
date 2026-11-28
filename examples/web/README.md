@@ -36,8 +36,8 @@ The example uses the DefiLlama API specification located in `defillama-openapi.j
 Each API reference page includes an API key input component that allows you to:
 
 - **Store API Keys**: Securely store your DefiLlama Pro API key in localStorage
-- **Auto-injection**: Automatically inject the API key into requests to `https://pro-api.llama.fi`
-- **URL Format**: Keys are injected as path segments: `https://pro-api.llama.fi/{your-key}/endpoint`
+- **Auto-injection**: Automatically send the API key with requests to `https://pro-api.llama.fi`
+- **Header**: The key is sent in the `x-api-key` header: `curl -H "x-api-key: YOUR_API_KEY" https://pro-api.llama.fi/api/protocols`
 - **Toggle Control**: Enable/disable API key usage with a simple toggle
 
 ### How It Works
